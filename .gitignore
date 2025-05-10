@@ -1,0 +1,88 @@
+# Build directories
+build/
+bin/
+lib/
+out/
+cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*~
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Generated code
+generated/
+
+# Test generated data
+test_output/
+test_data/
+*.log
+
+# Package files
+*.tar.gz
+*.zip
+
+# Dependency directories
+external/
+vendor/
+third_party/
+
+# Coverage reports
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# Temporary files
+tmp/
+temp/
+
+# Documentation generated files
+docs/generated/
+docs/html/
+docs/latex/
+docs/xml/

@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+       xmlns:xi="http://www.w3.org/2001/XInclude"
+       xmlns:code="http://example.org/codegen"
+       xmlns:ctx="http://example.org/context"
+       xmlns:di="http://example.org/dependency"
+       version="1.0"
+       initial="Main"
+       datamodel="ecmascript"
+       code:interface="StateMachineInterface"
+       code:di-compatible="true">
+
+  <!-- 컨텍스트 속성 정의 -->
+  <ctx:property name="counter" type="int"/>
+  <ctx:property name="flag" type="boolean"/>
+  <ctx:property name="currentUser" type="string"/>
+  <ctx:property name="isActive" type="boolean"/>
+  <ctx:property name="status" type="string"/>
+
+  <!-- 의존성 주입 지점 정의 -->
+  <di:inject-point name="contextProvider" type="ContextProvider"/>
+  <di:inject-point name="guardEvaluator" type="GuardEvaluator"/>
+  <di:inject-point name="eventDispatcher" type="EventDispatcher"/>
+
+  <!-- 가드 조건 정의 -->
+  <code:guards>
+    <code:guard id="counterThresholdGuard" target="Test1Sub2">
+      <code:dependency property="counter"/>
+      <code:external-implementation class="CounterThresholdGuard" factory="guardFactory"/>
+    </code:guard>
+
+    <code:guard id="adminActiveGuard" target="Test2Sub2">
+      <code:dependency property="currentUser"/>
+      <code:dependency property="isActive"/>
+      <code:external-implementation class="AdminActiveGuard" factory="guardFactory"/>
+    </code:guard>
+
+    <code:guard id="statusReadyGuard" target="Test3Sub1">
+      <code:dependency property="status"/>
+      <code:external-implementation class="StatusReadyGuard" factory="guardFactory"/>
+    </code:guard>
+  </code:guards>
+
+  <state id="Main">
+    <!-- 초기 상태는 Test1 -->
+    <initial>
+      <transition target="Test1"/>
+    </initial>
+
+    <!-- Test1 상태 및 하위 상태 -->
+    <state id="Test1">
+      <initial>
+        <transition target="Test1Sub1"/>
+      </initial>
+
+      <!-- 상태 진입/종료 콜백 지정 -->
+      <onentry code:callback="onEnterTest1"/>
+      <onexit code:callback="onExitTest1"/>
+
+      <state id="Test1Sub1">
+        <onentry code:callback="onEnterTest1Sub1"/>
+        <onexit code:callback="onExitTest1Sub1"/>
+
+        <!-- 이벤트 기반 전환 + 가드 조건 참조 -->
+        <transition event="Event1" code:guard="counterThresholdGuard" target="Test1Sub2"/>
+
+        <!-- 반응형 가드 조건 지정 (이벤트 없이도 컨텍스트 변경으로 전환 가능) -->
+        <code:reactive-guard id="counterThresholdGuard" target="Test1Sub2"/>
+      </state>
+
+      <final id="Test1Sub2">
+        <onentry code:callback="onEnterTest1Sub2"/>
+      </final>
+
+      <!-- 상태 완료 이벤트에 대한 전환 -->
+      <transition event="Test1.done" target="Test2"/>
+    </state>
+
+    <!-- Test2 상태 - 외부 파일에서 하위 상태 포함 -->
+    <state id="Test2" xmlns:xi="http://www.w3.org/2001/XInclude">
+      <initial>
+        <transition target="Test2Sub1"/>
+      </initial>
+
+      <onentry code:callback="onEnterTest2"/>
+      <onexit code:callback="onExitTest2"/>
+
+      <!-- 외부 파일에서 정의된 하위 상태 포함 -->
+      <xi:include href="Test2Sub1.xml" parse="text"/>
+
+      <final id="Test2Sub2">
+        <onentry code:callback="onEnterTest2Sub2"/>
+      </final>
+
+      <!-- Test2 완료 시 Test3으로 전환 -->
+      <transition event="done.state.Test2" target="Test3"/>
+    </state>
+
+    <!-- Test3 상태 - 타이머 사용 예제 -->
+    <state id="Test3">
+      <initial>
+        <transition target="Test3Sub1"/>
+      </initial>
+
+      <onentry code:callback="onEnterTest3"/>
+      <onexit code:callback="onExitTest3"/>
+
+      <state id="Test3Sub1">
+        <onentry code:callback="onEnterTest3Sub1">
+          <!-- 외부 타이머 서비스 호출 -->
+          <code:external-action name="startTimer" delay="5s"/>
+        </onentry>
+        <onexit code:callback="onExitTest3Sub1"/>
+
+        <!-- 타이머 이벤트에 대한 전환 -->
+        <transition event="Timer" target="Test4"/>
+
+        <!-- 반응형 가드: status가 "ready"면 자동 전환 -->
+        <code:reactive-guard id="statusReadyGuard" target="Test4"/>
+      </state>
+    </state>
+
+    <!-- Test4 상태 - 자동 전환 예제 -->
+    <state id="Test4">
+      <onentry code:callback="onEnterTest4"/>
+      <onexit code:callback="onExitTest4"/>
+
+      <initial>
+        <transition target="Test4Sub1"/>
+      </initial>
+
+      <state id="Test4Sub1">
+        <onentry code:callback="onEnterTest4Sub1"/>
+        <onexit code:callback="onExitTest4Sub1"/>
+
+        <!-- 무조건 전환 (이벤트나 가드 없음) -->
+        <transition target="Test5"/>
+      </state>
+    </state>
+
+    <!-- Test5 상태 - 병렬 상태 예제 -->
+    <state id="Test5">
+      <onentry code:callback="onEnterTest5"/>
+      <onexit code:callback="onExitTest5"/>
+
+      <initial>
+        <transition target="Test5P"/>
+      </initial>
+
+      <!-- 병렬 상태 실행 -->
+      <parallel id="Test5P">
+        <onentry code:callback="onEnterTest5P"/>
+        <onexit code:callback="onExitTest5P"/>
+
+        <state id="Test5PSub1" initial="Test5PSub1Final">
+          <onentry code:callback="onEnterTest5PSub1"/>
+          <onexit code:callback="onExitTest5PSub1"/>
+          <final id="Test5PSub1Final"/>
+        </state>
+
+        <state id="Test5PSub2" initial="Test5PSub2Final">
+          <onentry code:callback="onEnterTest5PSub2"/>
+          <onexit code:callback="onExitTest5PSub2"/>
+          <final id="Test5PSub2Final"/>
+        </state>
+      </parallel>
+
+      <!-- 병렬 상태 완료 시 전환 -->
+      <transition event="done.state.Test5P" target="Test6"/>
+    </state>
+
+    <!-- Test6 상태 - 외부 컴포넌트 연동 예제 -->
+    <state id="Test6">
+      <onentry code:callback="onEnterTest6"/>
+      <onexit code:callback="onExitTest6"/>
+
+      <!-- 외부 컴포넌트와의 연동을 위한 의존성 주입 -->
+      <di:inject-point name="externalComponent" type="ExternalComponentConnector"/>
+
+      <!-- 오류 상황에 대한 전환 -->
+      <transition event="error.*" target="Done">
+        <code:action name="handleError"/>
+      </transition>
+
+      <!-- 성공적인 완료 시 전환 -->
+      <transition event="success" target="Done"/>
+    </state>
+
+    <!-- 최종 상태 -->
+    <final id="Done">
+      <onentry code:callback="onEnterDone"/>
+    </final>
+  </state>
+</scxml>
