@@ -1,17 +1,23 @@
 #pragma once
-
+#include "DoneData.h"  // 추가된 헤더
+#include "core/types.h"
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-#include "types.h"
-#include "DoneData.h" // 추가된 헤더
 
+namespace SCXML {
+namespace Model {
+
+// Forward declarations
+
+// Forward declarations within the namespace
+class IStateNode;
 class ITransitionNode;
 class IInvokeNode;
 class IDataModelItem;
+class IActionNode;
 
-class IStateNode
-{
+class IStateNode {
 public:
     virtual ~IStateNode() = default;
 
@@ -80,6 +86,30 @@ public:
     virtual const std::vector<std::string> &getEntryActions() const = 0;
     virtual const std::vector<std::string> &getExitActions() const = 0;
 
+    /**
+     * @brief Get entry ActionNode objects for execution
+     * @return Vector of entry ActionNode objects
+     */
+    virtual const std::vector<std::shared_ptr<IActionNode>> &getEntryActionNodes() const = 0;
+
+    /**
+     * @brief Get exit ActionNode objects for execution
+     * @return Vector of exit ActionNode objects
+     */
+    virtual const std::vector<std::shared_ptr<IActionNode>> &getExitActionNodes() const = 0;
+
+    /**
+     * @brief Add entry ActionNode object
+     * @param actionNode ActionNode object to add
+     */
+    virtual void addEntryActionNode(std::shared_ptr<IActionNode> actionNode) = 0;
+
+    /**
+     * @brief Add exit ActionNode object
+     * @param actionNode ActionNode object to add
+     */
+    virtual void addExitActionNode(std::shared_ptr<IActionNode> actionNode) = 0;
+
     virtual bool isFinalState() const = 0;
 
     /**
@@ -124,3 +154,6 @@ public:
      */
     virtual void setInitialTransition(std::shared_ptr<ITransitionNode> transition) = 0;
 };
+
+}  // namespace Model
+}  // namespace SCXML

@@ -8,7 +8,14 @@
 #include <optional>
 #include <iostream>
 
-class MockDataModelItem : public IDataModelItem
+// Forward declaration
+namespace SCXML {
+namespace Runtime {
+class RuntimeContext;
+}
+}
+
+class MockDataModelItem : public SCXML::Model::IDataModelItem
 {
 public:
     MOCK_CONST_METHOD0(getId, const std::string &());
@@ -25,6 +32,7 @@ public:
     MOCK_CONST_METHOD0(isXmlContent, bool());
     MOCK_CONST_METHOD1(queryXPath, std::optional<std::string>(const std::string &));
     MOCK_CONST_METHOD1(supportsDataModel, bool(const std::string &));
+    MOCK_METHOD1(initialize, bool(SCXML::Runtime::RuntimeContext& context));
     MOCK_METHOD1(setSrc, void(const std::string &));
     MOCK_CONST_METHOD0(getSrc, const std::string &());
     MOCK_METHOD2(setAttribute, void(const std::string &, const std::string &));
@@ -143,5 +151,11 @@ public:
                 std::cout << "supportsDataModel called with: " << dataModelType << std::endl;
                 return (dataModelType == "xpath" || dataModelType == "xml" ||
                         dataModelType == "ecmascript" || dataModelType == "null"); });
+        ON_CALL(*this, initialize(testing::_))
+            .WillByDefault([](SCXML::Runtime::RuntimeContext& context) 
+                           {
+                std::cout << "initialize called" << std::endl;
+                (void)context; // Suppress unused parameter warning
+                return true; });
     }
 };

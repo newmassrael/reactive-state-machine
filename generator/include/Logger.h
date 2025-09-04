@@ -1,25 +1,24 @@
 #pragma once
 
-#include <iostream>
-#include <string>
 #include <chrono>
 #include <iomanip>
+#include <iostream>
 #include <mutex>
+#include <string>
 
-class Logger
-{
+namespace SCXML {
+namespace Common {
+
+class Logger {
+public:
+    enum class Level { DEBUG, INFO, WARNING, ERROR };
+
 private:
     static std::mutex logMutex_;
+    static Level minLevel_;
 
 public:
-    enum class Level
-    {
-        DEBUG,
-        INFO,
-        WARNING,
-        ERROR
-    };
-
+    static void setMinLevel(Level level);
     static void log(Level level, const std::string &message);
     static void debug(const std::string &message);
     static void info(const std::string &message);
@@ -29,3 +28,6 @@ public:
 private:
     static std::string getLevelString(Level level);
 };
+
+}  // namespace Common
+}  // namespace SCXML

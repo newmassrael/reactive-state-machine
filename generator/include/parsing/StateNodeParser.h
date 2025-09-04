@@ -1,82 +1,84 @@
 #pragma once
 
+#include "model/INodeFactory.h"
+#include "model/IStateNode.h"
+#include "model/ParsingContext.h"
+#include "core/types.h"
+#include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
-#include <libxml++/libxml++.h>
-#include "model/IStateNode.h"
-#include "factory/INodeFactory.h"
-#include "SCXMLContext.h"
 
+using SCXML::Model::IStateNode;
+using SCXML::Model::DoneData;
+using SCXML::Type;
+
+
+// Forward declarations
+namespace SCXML {
+
+namespace Model {
+class IStateNode;
+class DoneData;
+}
+namespace Parsing {
+// Forward declarations
 class TransitionParser;
 class ActionParser;
 class DataModelParser;
 class InvokeParser;
 class DoneDataParser;
+class GuardParser;
 
-class StateNodeParser
-{
+class StateNodeParser {
 public:
-    explicit StateNodeParser(std::shared_ptr<INodeFactory> nodeFactory);
+    explicit StateNodeParser(::std::shared_ptr<::SCXML::Model::INodeFactory> nodeFactory);
     ~StateNodeParser();
 
-    // 상태 노드 파싱
-    std::shared_ptr<IStateNode> parseStateNode(
-        const xmlpp::Element *stateElement,
-        std::shared_ptr<IStateNode> parentState = nullptr,
-        const SCXMLContext &context = SCXMLContext());
+    // Parse state node
+    ::std::shared_ptr<Model::IStateNode>
+    parseStateNode(const xmlpp::Element *stateElement, ::std::shared_ptr<Model::IStateNode> parentState = nullptr,
+                   const SCXML::Model::ParsingContext &context = SCXML::Model::ParsingContext());
 
-    // 관련 파서 설정
-    void setRelatedParsers(
-        std::shared_ptr<TransitionParser> transitionParser,
-        std::shared_ptr<ActionParser> actionParser,
-        std::shared_ptr<DataModelParser> dataModelParser,
-        std::shared_ptr<InvokeParser> invokeParser,
-        std::shared_ptr<DoneDataParser> doneDataParser);
+    // Set related parsers
+    void setRelatedParsers(::std::shared_ptr<TransitionParser> transitionParser,
+                           ::std::shared_ptr<ActionParser> actionParser,
+                           ::std::shared_ptr<SCXML::Parsing::DataModelParser> dataModelParser,
+                           ::std::shared_ptr<SCXML::Parsing::InvokeParser> invokeParser,
+                           ::std::shared_ptr<DoneDataParser> doneDataParser);
 
 private:
-    // 상태 유형 결정
+    // Determine state type
     Type determineStateType(const xmlpp::Element *stateElement);
 
-    // 자식 상태 파싱
-    void parseChildStates(
-        const xmlpp::Element *stateElement,
-        std::shared_ptr<IStateNode> parentState,
-        const SCXMLContext &context = SCXMLContext());
+    // Parse child states
+    void parseChildStates(const xmlpp::Element *stateElement, ::std::shared_ptr<Model::IStateNode> parentState,
+                          const SCXML::Model::ParsingContext &context = SCXML::Model::ParsingContext());
 
     // 전환 요소 파싱
-    void parseTransitions(
-        const xmlpp::Element *parentElement,
-        std::shared_ptr<IStateNode> state);
+    void parseTransitions(const xmlpp::Element *parentElement, ::std::shared_ptr<Model::IStateNode> state);
 
     // onentry/onexit 요소 파싱
-    void parseEntryExitElements(
-        const xmlpp::Element *parentElement,
-        std::shared_ptr<IStateNode> state);
+    void parseEntryExitElements(const xmlpp::Element *parentElement, ::std::shared_ptr<Model::IStateNode> state);
 
     // invoke 요소 파싱
-    void parseInvokeElements(
-        const xmlpp::Element *parentElement,
-        std::shared_ptr<IStateNode> state);
+    void parseInvokeElements(const xmlpp::Element *parentElement, ::std::shared_ptr<Model::IStateNode> state);
 
-    // 히스토리 상태 타입(shallow/deep) 파싱
-    void parseHistoryType(
-        const xmlpp::Element *historyElement,
-        std::shared_ptr<IStateNode> state);
+    // Parse history state type (shallow/deep)
+    void parseHistoryType(const xmlpp::Element *historyElement, ::std::shared_ptr<Model::IStateNode> state);
 
     // 반응형 가드 파싱 메서드
-    void parseReactiveGuards(
-        const xmlpp::Element *parentElement,
-        std::shared_ptr<IStateNode> state);
+    void parseReactiveGuards(const xmlpp::Element *parentElement, ::std::shared_ptr<Model::IStateNode> state);
 
     // initial 요소 파싱 메서드 추가
-    void parseInitialElement(
-        const xmlpp::Element *initialElement,
-        std::shared_ptr<IStateNode> state);
+    void parseInitialElement(const xmlpp::Element *initialElement, ::std::shared_ptr<Model::IStateNode> state);
 
-    std::shared_ptr<INodeFactory> nodeFactory_;
-    std::shared_ptr<TransitionParser> transitionParser_;
-    std::shared_ptr<ActionParser> actionParser_;
-    std::shared_ptr<DataModelParser> dataModelParser_;
-    std::shared_ptr<InvokeParser> invokeParser_;
-    std::shared_ptr<DoneDataParser> doneDataParser_;
+    ::std::shared_ptr<::SCXML::Model::INodeFactory> nodeFactory_;
+    ::std::shared_ptr<SCXML::Parsing::TransitionParser> transitionParser_;
+    ::std::shared_ptr<SCXML::Parsing::ActionParser> actionParser_;
+    ::std::shared_ptr<SCXML::Parsing::DataModelParser> dataModelParser_;
+    ::std::shared_ptr<SCXML::Parsing::InvokeParser> invokeParser_;
+    ::std::shared_ptr<SCXML::Parsing::DoneDataParser> doneDataParser_;
 };
+
+}  // namespace Parsing
+}  // namespace SCXML

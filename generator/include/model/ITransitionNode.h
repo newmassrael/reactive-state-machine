@@ -1,8 +1,17 @@
-// ITransitionNode.h
 #pragma once
-
+#include <memory>
 #include <string>
 #include <vector>
+
+namespace SCXML {
+namespace Model {
+
+// Forward declarations
+
+// ITransitionNode.h
+
+// Forward declarations
+class IActionNode;
 
 /**
  * @brief 전환 노드 인터페이스
@@ -10,8 +19,7 @@
  * 이 인터페이스는 상태 간 전환을 나타냅니다.
  * SCXML 문서의 <transition> 요소에 해당합니다.
  */
-class ITransitionNode
-{
+class ITransitionNode {
 public:
     /**
      * @brief 가상 소멸자
@@ -60,16 +68,28 @@ public:
     virtual const std::string &getGuard() const = 0;
 
     /**
-     * @brief 액션 추가
+     * @brief 액션 추가 (문자열 ID)
      * @param action 액션 ID
      */
     virtual void addAction(const std::string &action) = 0;
 
     /**
-     * @brief 액션 목록 반환
+     * @brief 액션 목록 반환 (문자열 ID)
      * @return 액션 ID 목록
      */
     virtual const std::vector<std::string> &getActions() const = 0;
+
+    /**
+     * @brief 액션 노드 추가 (객체)
+     * @param actionNode 액션 노드 객체
+     */
+    virtual void addActionNode(std::shared_ptr<IActionNode> actionNode) = 0;
+
+    /**
+     * @brief 액션 노드 목록 반환 (객체)
+     * @return 액션 노드 객체 목록
+     */
+    virtual const std::vector<std::shared_ptr<IActionNode>> &getActionNodes() const = 0;
 
     /**
      * @brief 반응형 여부 설정
@@ -121,3 +141,6 @@ public:
      */
     virtual const std::vector<std::string> &getEvents() const = 0;
 };
+
+}  // namespace Model
+}  // namespace SCXML

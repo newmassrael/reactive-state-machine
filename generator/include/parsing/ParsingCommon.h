@@ -1,10 +1,13 @@
 #pragma once
 
+#include "common/Logger.h"
 #include <libxml++/libxml++.h>
 #include <string>
-#include <vector>
 #include <unordered_map>
-#include "Logger.h"
+#include <vector>
+
+namespace SCXML {
+namespace Parsing {
 
 /**
  * @brief 파싱 관련 공통 유틸리티 클래스
@@ -13,14 +16,12 @@
  * 함수와 상수를 제공합니다. 네임스페이스 처리, 속성 검증,
  * 경로 처리 등을 위한 유틸리티가 포함됩니다.
  */
-class ParsingCommon
-{
+class ParsingCommon {
 public:
     /**
      * @brief SCXML 관련 상수
      */
-    struct Constants
-    {
+    struct Constants {
         static const std::string SCXML_NAMESPACE;
         static const std::string CODE_NAMESPACE;
         static const std::string CTX_NAMESPACE;
@@ -41,7 +42,8 @@ public:
      * @param childName 찾을 자식 이름
      * @return 찾은 자식 요소들
      */
-    static std::vector<const xmlpp::Element *> findChildElements(const xmlpp::Element *element, const std::string &childName);
+    static std::vector<const xmlpp::Element *> findChildElements(const xmlpp::Element *element,
+                                                                 const std::string &childName);
 
     /**
      * @brief 지정된 이름의 첫 번째 자식 요소 찾기 (네임스페이스 고려)
@@ -72,9 +74,8 @@ public:
      * @param excludeAttrs 제외할 속성 이름 목록
      * @return 속성 맵 (이름 -> 값)
      */
-    static std::unordered_map<std::string, std::string> collectAttributes(
-        const xmlpp::Element *element,
-        const std::vector<std::string> &excludeAttrs = {});
+    static std::unordered_map<std::string, std::string>
+    collectAttributes(const xmlpp::Element *element, const std::vector<std::string> &excludeAttrs = {});
 
     /**
      * @brief 상대 경로를 절대 경로로 변환
@@ -99,14 +100,23 @@ public:
      */
     static std::string getLocalName(const xmlpp::Element *element);
 
-    static std::vector<const xmlpp::Element *> findChildElementsWithNamespace(
-        const xmlpp::Element *parent,
-        const std::string &elementName,
-        const std::string &namespaceURI);
+    static std::vector<const xmlpp::Element *> findChildElementsWithNamespace(const xmlpp::Element *parent,
+                                                                              const std::string &elementName,
+                                                                              const std::string &namespaceURI);
 
     static std::string trimString(const std::string &str);
+
+    /**
+     * @brief XML 속성 값에서 연산자를 자동으로 인코딩
+     * @param attributeValue 원본 속성 값 (예: "temp <= 30")
+     * @return XML 인코딩된 속성 값 (예: "temp &lt;= 30")
+     */
+    static std::string encodeXmlOperators(const std::string &attributeValue);
 
 private:
     // 인스턴스 생성 방지
     ParsingCommon() = delete;
 };
+
+}  // namespace Parsing
+}  // namespace SCXML

@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.16)
 
 # GoogleTest 패키지 찾기
 find_package(GTest REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBXMLPP REQUIRED libxml++-5.0)
 
 # 컴파일 옵션 추가
 add_compile_options(${LIBXMLPP_CFLAGS})
@@ -9,20 +11,35 @@ add_compile_options(${LIBXMLPP_CFLAGS})
 # 공통 소스 파일 (generator 구현 클래스)
 set(GENERATOR_SOURCES
     # 모델 구현 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/StateNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/TransitionNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/GuardNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/ActionNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/DataModelItem.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/InvokeNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/StateNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/TransitionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/GuardNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/ActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/DataModelItem.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/InvokeNode.cpp
+
+    # 액션 구현 클래스들 (모든 액션 포함)
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/IfActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/SendActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/RaiseActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/LogActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/AssignActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/CancelActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/ScriptActionNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/actions/ForeachActionNode.cpp
 
     # 모델 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/model/SCXMLContext.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/model/SCXMLModel.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/model/DocumentModel.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/model/StateHierarchy.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/model/ParsingContext.cpp
+
+    # 핵심 impl 클래스들
+    ${CMAKE_SOURCE_DIR}/generator/src/core/DataNode.cpp
 
     # 파싱 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/SCXMLParser.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/parsing/DocumentParser.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/parsing/ExecutableContentParser.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/parsing/NamespaceAwareParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/StateNodeParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/TransitionParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/ActionParser.cpp
@@ -33,151 +50,125 @@ set(GENERATOR_SOURCES
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/InvokeParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/DoneDataParser.cpp
 
+
+    # 이벤트 시스템
+    ${CMAKE_SOURCE_DIR}/generator/src/events/Event.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/events/EventQueue.cpp
+
+    # 런타임 클래스들 (핵심 구성 - 완전히 구현된 것들만)
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/RuntimeContext.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/GuardEvaluator.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/DataModelEngine.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/HistoryStateManager.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/HistoryStateTransitionHandler.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ExpressionEvaluator.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ECMAScriptEngineFactory.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/JavaScriptEvaluatorAdapter.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/StateManager.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/DataContextManager.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/InvokeSessionManager.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/EventManager.cpp
+    # 런타임 구성요소들 - 누락된 메서드 구현 완료로 활성화
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ExecutableContentProcessor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/JavaScriptExpressionEvaluator.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/EventSystemBridge.cpp
+
+    # 실행 처리기
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ActionProcessor.cpp
+
+    # ActionExecutor 패턴 구현
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/AssignActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/LogActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/RaiseActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/SendActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/ScriptActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/CancelActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/ForeachActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/executors/IfActionExecutor.cpp
+
     # 팩토리 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/factory/NodeFactory.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/NodeFactory.cpp
+
+    # 공통 유틸리티
+    ${CMAKE_SOURCE_DIR}/generator/src/common/IdGenerator.cpp
 
     # 유틸리티
-    ${CMAKE_SOURCE_DIR}/generator/src/GuardUtils.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/common/GuardUtils.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/common/Logger.cpp
 )
 
-# 1. 상태 머신 예제 테스트 (examples 디렉토리 테스트)
-add_executable(state_machine_example_tests
-    examples/StateMachineTest.cpp
+# 공통 include 디렉토리
+set(COMMON_INCLUDE_DIRS
+    ${GTEST_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_SOURCE_DIR}/tests/mocks
+    ${CMAKE_SOURCE_DIR}/examples
+    ${CMAKE_SOURCE_DIR}/generator/include
+    ${CMAKE_SOURCE_DIR}/generator/include/impl
+    ${CMAKE_SOURCE_DIR}/generator/include/model
+    ${CMAKE_SOURCE_DIR}/generator/include/parsing
+    ${CMAKE_SOURCE_DIR}/generator/include/factory
+    ${CMAKE_SOURCE_DIR}/generator/include/runtime
+    ${CMAKE_SOURCE_DIR}/generator/src
+    ${LIBXMLPP_INCLUDE_DIRS}
 )
 
-target_include_directories(state_machine_example_tests
-    PRIVATE
-        ${GTEST_INCLUDE_DIRS}
-        ${CMAKE_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/examples
-        ${CMAKE_SOURCE_DIR}/generator/include
-        ${CMAKE_SOURCE_DIR}/tests
+# 공통 링크 라이브러리
+set(COMMON_LINK_LIBS
+    ${LIBXMLPP_LIBRARIES}
+    ${GTEST_LIBRARIES}
+    ${GTEST_MAIN_LIBRARIES}
+    gmock
+    gmock_main
+    pthread
 )
 
-target_link_libraries(state_machine_example_tests
-    PRIVATE
-        state_machine_lib
-        scxml_generator
-        ${GTEST_LIBRARIES}
-        ${GTEST_MAIN_LIBRARIES}
-        gmock
-        gmock_main
-        pthread
-)
+# Generator 테스트들 빌드
+file(GLOB GENERATOR_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/generator/Parser*.cpp")
 
-add_test(NAME StateMachineExampleTests COMMAND state_machine_example_tests)
+foreach(test_file ${GENERATOR_TEST_FILES})
+    # 파일명에서 확장자 제거하여 테스트 이름 생성
+    get_filename_component(test_name ${test_file} NAME_WE)
 
-# 2. 제너레이터 테스트 (generator 디렉토리 테스트)
-add_executable(generator_tests
-    generator/SCXMLParserBasicTest.cpp
-    generator/SCXMLParserCommunicationTest.cpp
-    generator/SCXMLParserDataModelTest.cpp
-    generator/SCXMLParserErrorTest.cpp
-    generator/SCXMLParserEventTest.cpp
-    generator/SCXMLParserExecutableTest.cpp
-    generator/SCXMLParserHistoryTest.cpp
-    generator/SCXMLParserInvokeTest.cpp
-    generator/SCXMLParserStateTest.cpp
-    generator/SCXMLParserTransitionTest.cpp
-)
-
-target_include_directories(generator_tests
-    PRIVATE
-        ${GTEST_INCLUDE_DIRS}
-        ${CMAKE_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/tests
-        ${CMAKE_SOURCE_DIR}/tests/mocks
-        ${LIBXMLPP_INCLUDE_DIRS}
-        ${CMAKE_SOURCE_DIR}/generator/src
-        ${CMAKE_SOURCE_DIR}/generator/src/impl
-        ${CMAKE_SOURCE_DIR}/generator/src/model
-        ${CMAKE_SOURCE_DIR}/generator/src/parsing
-        ${CMAKE_SOURCE_DIR}/generator/src/factory
-        ${CMAKE_SOURCE_DIR}/generator/include
-        ${CMAKE_SOURCE_DIR}/generator/include/impl
-        ${CMAKE_SOURCE_DIR}/generator/include/model
-        ${CMAKE_SOURCE_DIR}/generator/include/parsing
-        ${CMAKE_SOURCE_DIR}/generator/include/factory
-)
-
-# generator_tests 빌드에 소스 코드를 별도로 추가 (객체 파일 중복 방지)
-target_sources(generator_tests
-    PRIVATE
+    # 각 테스트 파일에 대한 실행파일 생성
+    add_executable(${test_name}
+        ${test_file}
         ${GENERATOR_SOURCES}
-)
-
-target_link_libraries(generator_tests
-    PRIVATE
-        ${LIBXMLPP_LIBRARIES}
-        ${GTEST_LIBRARIES}
-        ${GTEST_MAIN_LIBRARIES}
-        gmock
-        gmock_main
-        pthread
-)
-
-# CTest에 generator 테스트 추가
-add_test(NAME GeneratorTests COMMAND generator_tests)
-
-# 3. 기존 통합 테스트 (옵션으로 유지)
-option(BUILD_INTEGRATED_TESTS "Build integrated tests that include both examples and generator" OFF)
-
-if(BUILD_INTEGRATED_TESTS)
-    # 모든 테스트 소스 파일 설정
-    add_executable(integrated_tests
-        examples/state_machine_test.cpp
-        generator/SCXMLParserBasicTest.cpp
-        generator/SCXMLParserCommunicationTest.cpp
-        generator/SCXMLParserDataModelTest.cpp
-        generator/SCXMLParserErrorTest.cpp
-        generator/SCXMLParserEventTest.cpp
-        generator/SCXMLParserExecutableTest.cpp
-        generator/SCXMLParserHistoryTest.cpp
-        generator/SCXMLParserInvokeTest.cpp
-        generator/SCXMLParserStateTest.cpp
-        generator/SCXMLParserTransitionTest.cpp
     )
 
-    # integrated_tests 빌드에 소스 코드를 별도로 추가
-    target_sources(integrated_tests
-        PRIVATE
-            ${GENERATOR_SOURCES}
+    # Include 디렉토리 설정
+    target_include_directories(${test_name} PRIVATE ${COMMON_INCLUDE_DIRS})
+
+    # 링크 라이브러리 설정
+    target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+
+    # CTest에 테스트 추가 (라벨링 포함)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+
+    # 테스트 라벨 설정
+    set_tests_properties(${test_name} PROPERTIES
+        LABELS "parser;generator;unit"
+        TIMEOUT 30
     )
 
-    # include 디렉토리 추가 - integrated_tests 전용
-    target_include_directories(integrated_tests
-        PRIVATE
-            ${GTEST_INCLUDE_DIRS}
-            ${CMAKE_SOURCE_DIR}
-            ${CMAKE_SOURCE_DIR}/tests
-            ${CMAKE_SOURCE_DIR}/tests/mocks
-            ${LIBXMLPP_INCLUDE_DIRS}
-            ${CMAKE_SOURCE_DIR}/generator/src
-            ${CMAKE_SOURCE_DIR}/generator/src/impl
-            ${CMAKE_SOURCE_DIR}/generator/src/model
-            ${CMAKE_SOURCE_DIR}/generator/src/parsing
-            ${CMAKE_SOURCE_DIR}/generator/src/factory
-            ${CMAKE_SOURCE_DIR}/generator/include
-            ${CMAKE_SOURCE_DIR}/generator/include/impl
-            ${CMAKE_SOURCE_DIR}/generator/include/model
-            ${CMAKE_SOURCE_DIR}/generator/include/parsing
-            ${CMAKE_SOURCE_DIR}/generator/include/factory
-    )
+    # 특정 테스트별 추가 라벨
+    if(${test_name} MATCHES ".*Basic.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "basic")
+    endif()
+    if(${test_name} MATCHES ".*Integration.*|.*Communication.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "integration")
+    endif()
+    if(${test_name} MATCHES ".*Error.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "error_handling")
+    endif()
+    if(${test_name} MATCHES ".*History.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "scxml_features")
+    endif()
+endforeach()
 
-    # 테스트에 필요한 라이브러리 링크
-    target_link_libraries(integrated_tests
-        PRIVATE
-            state_machine_lib
-            scxml_generator
-            ${LIBXMLPP_LIBRARIES}
-            ${GTEST_LIBRARIES}
-            ${GTEST_MAIN_LIBRARIES}
-            gmock
-            gmock_main
-            pthread
-    )
-
-    # 통합 테스트 실행 파일을 CTest에 추가
-    add_test(NAME IntegratedTests COMMAND integrated_tests)
+# 6. Runtime 테스트들 (별도 서브디렉토리)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/runtime/CMakeLists.txt")
+    add_subdirectory(runtime)
 endif()

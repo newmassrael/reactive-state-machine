@@ -1,14 +1,14 @@
 #pragma once
 
 #include <gmock/gmock.h>
-#include "IActionNode.h"
+#include "model/IActionNode.h"
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <memory>
-#include <iostream>
+#include "common/Logger.h"
 
-class MockActionNode : public IActionNode
+class MockActionNode : public SCXML::Model::IActionNode
 {
 public:
     MOCK_CONST_METHOD0(getId, const std::string &());
@@ -21,23 +21,26 @@ public:
     MOCK_METHOD2(setAttribute, void(const std::string &, const std::string &));
     MOCK_CONST_METHOD1(getAttribute, const std::string &(const std::string &));
     MOCK_CONST_METHOD0(getAttributes, const std::unordered_map<std::string, std::string> &());
-    MOCK_METHOD1(addChildAction, void(std::shared_ptr<IActionNode>));
-    MOCK_METHOD1(setChildActions, void(const std::vector<std::shared_ptr<IActionNode>> &));
-    MOCK_CONST_METHOD0(getChildActions, const std::vector<std::shared_ptr<IActionNode>> &());
+    MOCK_METHOD1(addChildAction, void(std::shared_ptr<SCXML::Model::IActionNode>));
+    MOCK_METHOD1(setChildActions, void(const std::vector<std::shared_ptr<SCXML::Model::IActionNode>> &));
+    MOCK_CONST_METHOD0(getChildActions, const std::vector<std::shared_ptr<SCXML::Model::IActionNode>> &());
     MOCK_CONST_METHOD0(hasChildActions, bool());
+    MOCK_METHOD1(execute, bool(SCXML::Runtime::RuntimeContext&));
+    MOCK_CONST_METHOD0(clone, std::shared_ptr<SCXML::Model::IActionNode>());
+    MOCK_CONST_METHOD0(getActionType, std::string());
 
     std::string id_;
     std::string externalClass_;
     std::string externalFactory_;
     std::string type_;
     std::unordered_map<std::string, std::string> attributes_;
-    std::vector<std::shared_ptr<IActionNode>> childActions_;
+    std::vector<std::shared_ptr<SCXML::Model::IActionNode>> childActions_;
     std::string emptyString_;
 
     // 기본 동작 설정 메서드
     void SetupDefaultBehavior()
     {
-        std::cout << "Setting up default behavior for MockActionNode" << std::endl;
+        SCXML::Common::Logger::debug("MockActionNode::SetupDefaultBehavior - Setting up default behavior");
 
         // 기본 동작 정의
         ON_CALL(*this, getId())
@@ -53,7 +56,7 @@ public:
         ON_CALL(*this, getAttribute(testing::_))
             .WillByDefault([this](const std::string &key)
                            {
-                std::cout << "getAttribute called with key: " << key << std::endl;
+                SCXML::Common::Logger::debug("MockActionNode::getAttribute - Called with key: " + key);
                 auto it = attributes_.find(key);
                 return (it != attributes_.end()) ? it->second : emptyString_; });
         ON_CALL(*this, getChildActions())
@@ -66,32 +69,60 @@ public:
         ON_CALL(*this, setExternalClass(testing::_))
             .WillByDefault([this](const std::string &className)
                            {
-                std::cout << "setExternalClass called with: " << className << std::endl;
+                SCXML::Common::Logger::debug("MockActionNode::setExternalClass - Called with: " + className);
                 this->externalClass_ = className; });
         ON_CALL(*this, setExternalFactory(testing::_))
             .WillByDefault([this](const std::string &factoryName)
                            {
-                std::cout << "setExternalFactory called with: " << factoryName << std::endl;
+                SCXML::Common::Logger::debug("MockActionNode::setExternalFactory - Called with: " + factoryName);
                 this->externalFactory_ = factoryName; });
         ON_CALL(*this, setType(testing::_))
             .WillByDefault([this](const std::string &type)
                            {
-                std::cout << "setType called with: " << type << std::endl;
+                SCXML::Common::Logger::debug("MockActionNode::setType - Called with: " + type);
                 this->type_ = type; });
         ON_CALL(*this, setAttribute(testing::_, testing::_))
             .WillByDefault([this](const std::string &key, const std::string &value)
                            {
-                std::cout << "setAttribute called with key: " << key << ", value: " << value << std::endl;
+                SCXML::Common::Logger::debug("MockActionNode::setAttribute - Key: " + key + ", Value: " + value);
                 this->attributes_[key] = value; });
         ON_CALL(*this, addChildAction(testing::_))
-            .WillByDefault([this](std::shared_ptr<IActionNode> childAction)
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::IActionNode> childAction)
                            {
-                std::cout << "addChildAction called with: " << childAction->getId() << std::endl;
+                SCXML::Common::Logger::debug("MockActionNode::addChildAction - Adding child: " + childAction->getId());
                 this->childActions_.push_back(childAction); });
         ON_CALL(*this, setChildActions(testing::_))
-            .WillByDefault([this](const std::vector<std::shared_ptr<IActionNode>> &childActions)
+            .WillByDefault([this](const std::vector<std::shared_ptr<SCXML::Model::IActionNode>> &childActions)
                            {
-                std::cout << "setChildActions called with " << childActions.size() << " actions" << std::endl;
+                SCXML::Common::Logger::debug("MockActionNode::setChildActions - Setting " + std::to_string(childActions.size()) + " child actions");
                 this->childActions_ = childActions; });
+
+        // Default behavior for execute method
+        ON_CALL(*this, execute(testing::_))
+            .WillByDefault([](SCXML::Runtime::RuntimeContext&)
+                           {
+                SCXML::Common::Logger::debug("MockActionNode::execute - Called, returning true");
+                return true; });
+
+        // Default behavior for clone method
+        ON_CALL(*this, clone())
+            .WillByDefault([this]()
+                           {
+                SCXML::Common::Logger::debug("MockActionNode::clone - Creating cloned instance");
+                auto cloned = std::make_shared<MockActionNode>();
+                cloned->id_ = this->id_;
+                cloned->externalClass_ = this->externalClass_;
+                cloned->externalFactory_ = this->externalFactory_;
+                cloned->type_ = this->type_;
+                cloned->attributes_ = this->attributes_;
+                cloned->childActions_ = this->childActions_;
+                return std::static_pointer_cast<IActionNode>(cloned); });
+
+        // Default behavior for getActionType method
+        ON_CALL(*this, getActionType())
+            .WillByDefault([]()
+                           {
+                SCXML::Common::Logger::debug("MockActionNode::getActionType - Returning 'mock'");
+                return std::string("mock"); });
     }
 };

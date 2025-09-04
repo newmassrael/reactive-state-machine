@@ -1,25 +1,27 @@
+
 #include "parsing/ParsingCommon.h"
-#include <filesystem>
 #include <algorithm>
+#include <filesystem>
+
+using namespace SCXML::Parsing;
+using namespace std;
 
 // 상수 정의
-const std::string ParsingCommon::Constants::SCXML_NAMESPACE = "http://www.w3.org/2005/07/scxml";
-const std::string ParsingCommon::Constants::CODE_NAMESPACE = "http://www.example.org/code-extensions";
-const std::string ParsingCommon::Constants::CTX_NAMESPACE = "http://www.example.org/context-extensions";
-const std::string ParsingCommon::Constants::DI_NAMESPACE = "http://www.example.org/dependency-injection";
+const std::string SCXML::Parsing::ParsingCommon::Constants::SCXML_NAMESPACE = "http://www.w3.org/2005/07/scxml";
+const std::string SCXML::Parsing::ParsingCommon::Constants::CODE_NAMESPACE = "http://www.example.org/code-extensions";
+const std::string SCXML::Parsing::ParsingCommon::Constants::CTX_NAMESPACE = "http://www.example.org/context-extensions";
+const std::string SCXML::Parsing::ParsingCommon::Constants::DI_NAMESPACE =
+    "http://www.example.org/dependency-injection";
 
-bool ParsingCommon::matchNodeName(const std::string &nodeName, const std::string &baseName)
-{
+bool SCXML::Parsing::ParsingCommon::matchNodeName(const std::string &nodeName, const std::string &baseName) {
     // 정확히 일치하는 경우
-    if (nodeName == baseName)
-    {
+    if (nodeName == baseName) {
         return true;
     }
 
     // 네임스페이스가 있는 경우 (예: "code:action")
     size_t colonPos = nodeName.find(':');
-    if (colonPos != std::string::npos && colonPos + 1 < nodeName.length())
-    {
+    if (colonPos != std::string::npos && colonPos + 1 < nodeName.length()) {
         std::string localName = nodeName.substr(colonPos + 1);
         return localName == baseName;
     }
@@ -27,39 +29,32 @@ bool ParsingCommon::matchNodeName(const std::string &nodeName, const std::string
     return false;
 }
 
-std::vector<const xmlpp::Element *> ParsingCommon::findChildElements(const xmlpp::Element *element, const std::string &childName)
-{
+std::vector<const xmlpp::Element *> SCXML::Parsing::ParsingCommon::findChildElements(const xmlpp::Element *element,
+                                                                                     const std::string &childName) {
     std::vector<const xmlpp::Element *> result;
 
-    if (!element)
-    {
-        Logger::warning("ParsingCommon::findChildElements() - Null parent element");
+    if (!element) {
+        SCXML::Common::Logger::warning("SCXML::Parsing::ParsingCommon::findChildElements() - Null parent element");
         return result;
     }
 
     // 정확한 이름으로 자식 요소 찾기
     auto children = element->get_children(childName);
-    for (auto *child : children)
-    {
+    for (auto *child : children) {
         auto *childElement = dynamic_cast<const xmlpp::Element *>(child);
-        if (childElement)
-        {
+        if (childElement) {
             result.push_back(childElement);
         }
     }
 
     // 네임스페이스가 다른 경우를 위한 추가 검색
-    if (result.empty())
-    {
+    if (result.empty()) {
         auto allChildren = element->get_children();
-        for (auto *child : allChildren)
-        {
+        for (auto *child : allChildren) {
             auto *childElement = dynamic_cast<const xmlpp::Element *>(child);
-            if (childElement)
-            {
+            if (childElement) {
                 std::string nodeName = childElement->get_name();
-                if (matchNodeName(nodeName, childName))
-                {
+                if (matchNodeName(nodeName, childName)) {
                     result.push_back(childElement);
                 }
             }
@@ -69,31 +64,26 @@ std::vector<const xmlpp::Element *> ParsingCommon::findChildElements(const xmlpp
     return result;
 }
 
-const xmlpp::Element *ParsingCommon::findFirstChildElement(const xmlpp::Element *element, const std::string &childName)
-{
-    if (!element)
-    {
-        Logger::warning("ParsingCommon::findFirstChildElement() - Null parent element");
+const xmlpp::Element *SCXML::Parsing::ParsingCommon::findFirstChildElement(const xmlpp::Element *element,
+                                                                           const std::string &childName) {
+    if (!element) {
+        SCXML::Common::Logger::warning("SCXML::Parsing::ParsingCommon::findFirstChildElement() - Null parent element");
         return nullptr;
     }
 
     // 정확한 이름으로 첫 번째 자식 요소 찾기
     auto child = element->get_first_child(childName);
-    if (child)
-    {
+    if (child) {
         return dynamic_cast<const xmlpp::Element *>(child);
     }
 
     // 네임스페이스가 다른 경우를 위한 추가 검색
     auto allChildren = element->get_children();
-    for (auto *c : allChildren)
-    {
+    for (auto *c : allChildren) {
         auto *childElement = dynamic_cast<const xmlpp::Element *>(c);
-        if (childElement)
-        {
+        if (childElement) {
             std::string nodeName = childElement->get_name();
-            if (matchNodeName(nodeName, childName))
-            {
+            if (matchNodeName(nodeName, childName)) {
                 return childElement;
             }
         }
@@ -102,34 +92,28 @@ const xmlpp::Element *ParsingCommon::findFirstChildElement(const xmlpp::Element 
     return nullptr;
 }
 
-std::string ParsingCommon::findElementId(const xmlpp::Element *element)
-{
-    if (!element)
-    {
+std::string SCXML::Parsing::ParsingCommon::findElementId(const xmlpp::Element *element) {
+    if (!element) {
         return "";
     }
 
     // 직접 id 속성 찾기
     auto idAttr = element->get_attribute("id");
-    if (idAttr)
-    {
+    if (idAttr) {
         return idAttr->get_value();
     }
 
     // 대체 속성 시도
     auto nameAttr = element->get_attribute("name");
-    if (nameAttr)
-    {
+    if (nameAttr) {
         return nameAttr->get_value();
     }
 
     // 부모 요소에서 id 찾기
     auto parent = element->get_parent();
-    if (parent)
-    {
+    if (parent) {
         auto *parentElement = dynamic_cast<const xmlpp::Element *>(parent);
-        if (parentElement)
-        {
+        if (parentElement) {
             return findElementId(parentElement);
         }
     }
@@ -137,86 +121,75 @@ std::string ParsingCommon::findElementId(const xmlpp::Element *element)
     return "";
 }
 
-std::string ParsingCommon::getAttributeValue(const xmlpp::Element *element, const std::vector<std::string> &attrNames)
-{
-    if (!element)
-    {
-        Logger::debug("ParsingCommon::getAttributeValue() - Null element provided");
+std::string SCXML::Parsing::ParsingCommon::getAttributeValue(const xmlpp::Element *element,
+                                                             const std::vector<std::string> &attrNames) {
+    if (!element) {
+        SCXML::Common::Logger::debug("SCXML::Parsing::ParsingCommon::getAttributeValue() - Null element provided");
         return "";
     }
 
-    Logger::debug("ParsingCommon::getAttributeValue() - Searching for attributes in element: " + element->get_name());
+    SCXML::Common::Logger::debug("SCXML::Parsing::ParsingCommon::getAttributeValue() - Searching for attributes in element: " +
+                  element->get_name());
 
     // 주어진 속성 이름 목록에서 차례대로 시도
-    for (const auto &attrName : attrNames)
-    {
-        Logger::debug("ParsingCommon::getAttributeValue() - Checking attribute: " + attrName);
+    for (const auto &attrName : attrNames) {
+        SCXML::Common::Logger::debug("SCXML::Parsing::ParsingCommon::getAttributeValue() - Checking attribute: " + attrName);
 
         auto attr = element->get_attribute(attrName);
-        if (attr)
-        {
-            Logger::debug("ParsingCommon::getAttributeValue() - Found attribute: " + attrName + " = " + attr->get_value());
+        if (attr) {
+            SCXML::Common::Logger::debug("SCXML::Parsing::ParsingCommon::getAttributeValue() - Found attribute: " + attrName + " = " +
+                          attr->get_value());
             return attr->get_value();
         }
 
         // 네임스페이스와 분리해서 속성 찾기
         std::vector<std::string> namespaces = {"code", "ctx", "di"};
-        for (const auto &ns : namespaces)
-        {
+        for (const auto &ns : namespaces) {
             auto nsAttr = element->get_attribute(attrName, ns);
-            if (nsAttr)
-            {
-                Logger::debug("ParsingCommon::getAttributeValue() - Found namespaced attribute: " + ns + ":" + attrName + " = " + nsAttr->get_value());
+            if (nsAttr) {
+                SCXML::Common::Logger::debug("SCXML::Parsing::ParsingCommon::getAttributeValue() - Found namespaced attribute: " + ns +
+                              ":" + attrName + " = " + nsAttr->get_value());
                 return nsAttr->get_value();
             }
         }
     }
 
-    Logger::debug("ParsingCommon::getAttributeValue() - No matching attribute found for element: " + element->get_name());
+    SCXML::Common::Logger::debug("SCXML::Parsing::ParsingCommon::getAttributeValue() - No matching attribute found for element: " +
+                  element->get_name());
     return "";
 }
 
-std::unordered_map<std::string, std::string> ParsingCommon::collectAttributes(
-    const xmlpp::Element *element,
-    const std::vector<std::string> &excludeAttrs)
-{
+std::unordered_map<std::string, std::string>
+SCXML::Parsing::ParsingCommon::collectAttributes(const xmlpp::Element *element,
+                                                 const std::vector<std::string> &excludeAttrs) {
     std::unordered_map<std::string, std::string> result;
 
-    if (!element)
-    {
+    if (!element) {
         return result;
     }
 
     auto attributes = element->get_attributes();
-    for (auto *attr : attributes)
-    {
+    for (auto *attr : attributes) {
         auto *xmlAttr = dynamic_cast<const xmlpp::Attribute *>(attr);
-        if (xmlAttr)
-        {
+        if (xmlAttr) {
             std::string name = xmlAttr->get_name();
 
             // 제외할 속성인지 확인
             bool excluded = false;
-            for (const auto &excludeName : excludeAttrs)
-            {
-                if (matchNodeName(name, excludeName))
-                {
+            for (const auto &excludeName : excludeAttrs) {
+                if (matchNodeName(name, excludeName)) {
                     excluded = true;
                     break;
                 }
             }
 
-            if (!excluded)
-            {
+            if (!excluded) {
                 // 네임스페이스 제거 옵션
                 size_t colonPos = name.find(':');
-                if (colonPos != std::string::npos && colonPos + 1 < name.length())
-                {
+                if (colonPos != std::string::npos && colonPos + 1 < name.length()) {
                     std::string localName = name.substr(colonPos + 1);
                     result[localName] = xmlAttr->get_value();
-                }
-                else
-                {
+                } else {
                     result[name] = xmlAttr->get_value();
                 }
             }
@@ -226,11 +199,10 @@ std::unordered_map<std::string, std::string> ParsingCommon::collectAttributes(
     return result;
 }
 
-std::string ParsingCommon::resolveRelativePath(const std::string &basePath, const std::string &relativePath)
-{
+std::string SCXML::Parsing::ParsingCommon::resolveRelativePath(const std::string &basePath,
+                                                               const std::string &relativePath) {
     // 상대 경로가 절대 경로이면 그대로 반환
-    if (std::filesystem::path(relativePath).is_absolute())
-    {
+    if (std::filesystem::path(relativePath).is_absolute()) {
         return relativePath;
     }
 
@@ -244,40 +216,33 @@ std::string ParsingCommon::resolveRelativePath(const std::string &basePath, cons
     return std::filesystem::canonical(resolvedPath).string();
 }
 
-std::string ParsingCommon::extractTextContent(const xmlpp::Element *element, bool trimWhitespace)
-{
-    if (!element)
-    {
+std::string SCXML::Parsing::ParsingCommon::extractTextContent(const xmlpp::Element *element, bool trimWhitespace) {
+    if (!element) {
         return "";
     }
 
     std::string result;
     auto children = element->get_children();
 
-    for (auto *child : children)
-    {
+    for (auto *child : children) {
         // 일반 텍스트 노드 처리
-        if (auto *textNode = dynamic_cast<const xmlpp::TextNode *>(child))
-        {
+        if (auto *textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
             result += textNode->get_content();
             continue;
         }
 
         // CDATA 섹션 처리
-        if (auto *cdataNode = dynamic_cast<const xmlpp::CdataNode *>(child))
-        {
+        if (auto *cdataNode = dynamic_cast<const xmlpp::CdataNode *>(child)) {
             result += cdataNode->get_content();
             continue;
         }
     }
 
-    if (trimWhitespace)
-    {
+    if (trimWhitespace) {
         // 앞뒤 공백 제거
         auto start = result.find_first_not_of(" \t\n\r\f\v");
-        if (start == std::string::npos)
-        {
-            return ""; // 공백만 있는 경우
+        if (start == std::string::npos) {
+            return "";  // 공백만 있는 경우
         }
 
         auto end = result.find_last_not_of(" \t\n\r\f\v");
@@ -287,52 +252,41 @@ std::string ParsingCommon::extractTextContent(const xmlpp::Element *element, boo
     return result;
 }
 
-std::string ParsingCommon::getLocalName(const xmlpp::Element *element)
-{
-    if (!element)
-    {
+std::string SCXML::Parsing::ParsingCommon::getLocalName(const xmlpp::Element *element) {
+    if (!element) {
         return "";
     }
 
     std::string fullName = element->get_name();
     size_t colonPos = fullName.find(':');
 
-    if (colonPos != std::string::npos && colonPos + 1 < fullName.length())
-    {
+    if (colonPos != std::string::npos && colonPos + 1 < fullName.length()) {
         return fullName.substr(colonPos + 1);
     }
 
     return fullName;
 }
 
-std::vector<const xmlpp::Element *> ParsingCommon::findChildElementsWithNamespace(
-    const xmlpp::Element *parent,
-    const std::string &elementName,
-    const std::string &namespaceURI)
-{
+std::vector<const xmlpp::Element *> SCXML::Parsing::ParsingCommon::findChildElementsWithNamespace(
+    const xmlpp::Element *parent, const std::string &elementName, const std::string &namespaceURI) {
     std::vector<const xmlpp::Element *> result;
-    if (!parent)
-    {
+    if (!parent) {
         return result;
     }
 
     auto children = parent->get_children();
-    for (auto child : children)
-    {
+    for (auto child : children) {
         auto element = dynamic_cast<const xmlpp::Element *>(child);
-        if (element)
-        {
+        if (element) {
             std::string fullName = element->get_name();
             std::string ns = element->get_namespace_uri();
 
             // 네임스페이스 URI 확인 및 로컬 이름 추출
-            if (ns == namespaceURI)
-            {
+            if (ns == namespaceURI) {
                 size_t colonPos = fullName.find(':');
                 std::string localName = (colonPos != std::string::npos) ? fullName.substr(colonPos + 1) : fullName;
 
-                if (localName == elementName)
-                {
+                if (localName == elementName) {
                     result.push_back(element);
                 }
             }
@@ -341,15 +295,70 @@ std::vector<const xmlpp::Element *> ParsingCommon::findChildElementsWithNamespac
     return result;
 }
 
-std::string ParsingCommon::trimString(const std::string &str)
-{
+std::string SCXML::Parsing::ParsingCommon::trimString(const std::string &str) {
     // 앞뒤 공백 제거
     auto start = str.find_first_not_of(" \t\n\r\f\v");
-    if (start == std::string::npos)
-    {
-        return ""; // 공백만 있는 경우
+    if (start == std::string::npos) {
+        return "";  // 공백만 있는 경우
     }
 
     auto end = str.find_last_not_of(" \t\n\r\f\v");
     return str.substr(start, end - start + 1);
+}
+
+std::string SCXML::Parsing::ParsingCommon::encodeXmlOperators(const std::string &attributeValue) {
+    if (attributeValue.empty()) {
+        return attributeValue;
+    }
+
+    std::string result = attributeValue;
+
+    // XML 연산자를 순서대로 인코딩 (긴 것부터 먼저)
+    // <= 먼저 (< 보다 먼저 처리해야 함)
+    size_t pos = 0;
+    while ((pos = result.find(" <= ", pos)) != std::string::npos) {
+        result.replace(pos, 4, " &lt;= ");
+        pos += 6;  // "&lt;= " 길이
+    }
+
+    // >= 처리
+    pos = 0;
+    while ((pos = result.find(" >= ", pos)) != std::string::npos) {
+        result.replace(pos, 4, " &gt;= ");
+        pos += 6;  // "&gt;= " 길이
+    }
+
+    // && 처리
+    pos = 0;
+    while ((pos = result.find(" && ", pos)) != std::string::npos) {
+        result.replace(pos, 4, " &amp;&amp; ");
+        pos += 10;  // " &amp;&amp; " 길이
+    }
+
+    // < 처리 (이미 &lt;가 된 것은 건드리지 않음)
+    pos = 0;
+    while ((pos = result.find(" < ", pos)) != std::string::npos) {
+        // &lt; 가 아닌 경우만 처리
+        if (pos < 3 || result.substr(pos - 3, 3) != "&lt") {
+            result.replace(pos, 3, " &lt; ");
+            pos += 5;  // " &lt; " 길이
+        } else {
+            pos += 3;
+        }
+    }
+
+    // > 처리 (이미 &gt;가 된 것은 건드리지 않음)
+    pos = 0;
+    while ((pos = result.find(" > ", pos)) != std::string::npos) {
+        // &gt; 가 아닌 경우만 처리
+        if (pos < 3 || result.substr(pos - 3, 3) != "&gt") {
+            result.replace(pos, 3, " &gt; ");
+            pos += 5;  // " &gt; " 길이
+        } else {
+            pos += 3;
+        }
+    }
+
+    SCXML::Common::Logger::debug("SCXML::Parsing::ParsingCommon::encodeXmlOperators() - '" + attributeValue + "' -> '" + result + "'");
+    return result;
 }

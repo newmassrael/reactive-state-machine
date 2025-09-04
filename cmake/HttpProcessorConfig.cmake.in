@@ -1,0 +1,23 @@
+# HTTP I/O Processor 런타임 설정
+# 이 파일은 CMake에 의해 자동 생성됩니다.
+
+#cmakedefine REACTIVE_SM_HTTP_ENABLED
+#cmakedefine REACTIVE_SM_USE_LIBCURL  
+#cmakedefine REACTIVE_SM_HTTP_DISABLED
+
+# 런타임에서 사용할 기본 HTTP 프로세서 타입
+set(DEFAULT_HTTP_PROCESSOR_TYPE "@DEFAULT_HTTP_PROCESSOR_TYPE@")
+
+# 컴파일된 HTTP 기능 정보
+set(HTTP_FEATURES_AVAILABLE "@HTTP_FEATURES_AVAILABLE@")
+set(HTTP_BACKEND_TYPE "@HTTP_BACKEND_TYPE@")
+
+# 사용 예제:
+# 
+# #include "config/HttpProcessorConfig.h"
+# 
+# #ifdef REACTIVE_SM_HTTP_ENABLED
+#   auto processor = HttpIOProcessorFactory::createDefault();
+# #else  
+#   // HTTP 기능 비활성화됨
+# #endif

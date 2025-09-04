@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <iostream>
 
-class MockTransitionNode : public ITransitionNode
+class MockTransitionNode : public SCXML::Model::ITransitionNode
 {
 public:
     MOCK_CONST_METHOD0(getEvent, const std::string &());
@@ -27,12 +27,17 @@ public:
     MOCK_CONST_METHOD1(getAttribute, std::string(const std::string &));
     MOCK_METHOD1(addEvent, void(const std::string &));
     MOCK_CONST_METHOD0(getEvents, const std::vector<std::string> &());
+    
+    // New ActionNode methods
+    MOCK_METHOD1(addActionNode, void(std::shared_ptr<SCXML::Model::IActionNode>));
+    MOCK_CONST_METHOD0(getActionNodes, const std::vector<std::shared_ptr<SCXML::Model::IActionNode>>&());
 
     // 멤버 변수들
     std::string event_;
     std::vector<std::string> targets_;
     std::string guard_;
     std::vector<std::string> actions_;
+    std::vector<std::shared_ptr<SCXML::Model::IActionNode>> actionNodes_;
     std::vector<std::string> events_;
     bool isReactive_ = false;
     bool isInternal_ = false;
@@ -58,6 +63,8 @@ public:
             .WillByDefault(testing::Invoke(this, &MockTransitionNode::getIsInternal));
         ON_CALL(*this, getEvents())
             .WillByDefault(testing::ReturnRef(events_));
+        ON_CALL(*this, getActionNodes())
+            .WillByDefault(testing::ReturnRef(actionNodes_));
 
         // 메서드 호출 시 멤버 변수 업데이트 및 로깅 추가
         ON_CALL(*this, addTarget(testing::_))
@@ -120,6 +127,16 @@ public:
                            {
                                std::cout << "addEvent called with: " << event << std::endl;
                                this->events_.push_back(event); });
+        ON_CALL(*this, addActionNode(testing::_))
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::IActionNode> actionNode)
+                           {
+                               if (actionNode) {
+                                   std::cout << "addActionNode called with: " << actionNode->getId() << std::endl;
+                                   this->actionNodes_.push_back(actionNode);
+                                   // Maintain backward compatibility like real TransitionNode
+                                   this->actions_.push_back(actionNode->getId());
+                                   std::cout << "  -> Also added to actions_: " << actionNode->getId() << std::endl;
+                               } });
     }
 
     bool getIsInternal() const { return isInternal_; }

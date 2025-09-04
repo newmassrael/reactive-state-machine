@@ -1,10 +1,17 @@
-// IDataModelItem.h
 #pragma once
-
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <optional>
+
+namespace SCXML {
+
+// Forward declarations
+namespace Runtime {
+class RuntimeContext;
+}
+
+namespace Model {
 
 /**
  * @brief 데이터 모델 항목 인터페이스
@@ -12,8 +19,7 @@
  * 이 인터페이스는 SCXML 데이터 모델의 항목을 나타냅니다.
  * SCXML 문서의 <data> 요소에 해당합니다.
  */
-class IDataModelItem
-{
+class IDataModelItem {
 public:
     /**
      * @brief 가상 소멸자
@@ -139,4 +145,14 @@ public:
      * @return 처리 가능하면 true, 아니면 false
      */
     virtual bool supportsDataModel(const std::string &dataModelType) const = 0;
+
+    /**
+     * @brief 데이터 모델 아이템 초기화
+     * @param context 런타임 컨텍스트
+     * @return 초기화 성공시 true, 실패시 false
+     */
+    virtual bool initialize(Runtime::RuntimeContext &context) = 0;
 };
+
+}  // namespace Model
+}  // namespace SCXML

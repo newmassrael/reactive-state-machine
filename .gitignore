@@ -86,3 +86,43 @@ docs/generated/
 docs/html/
 docs/latex/
 docs/xml/
+
+# SCXML test files and generated artifacts
+*.scxml.log
+test_*.scxml
+*_test.scxml
+comprehensive_scxml_test.scxml
+
+# Test executables
+tests/Parser*Test
+tests/*Test
+*Test
+!*.cpp
+!*.h
+
+# Project-specific generated files
+*Generated.h
+*ControllerMigration.h
+*ControllerGenerated.h
+TrafficLightStateMachine.h
+
+# CMake Config generated files
+*Config.cmake
+*ConfigVersion.cmake
+ReactiveStateMachine*.cmake
+StateMachine*.cmake
+HttpProcessor*.cmake
+
+# Build and temporary directories
+simple_websocket_build/
+graceful_migration_demo
+simple_scxml_validation
+
+# Tool executables and scripts
+tools/analysis_*
+tools/debug_*
+scripts/build_*
+scripts/test_*
+
+.cache
+.serena

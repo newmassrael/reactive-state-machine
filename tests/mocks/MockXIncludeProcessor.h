@@ -12,7 +12,7 @@
  * 테스트에서 사용하기 위한 IXIncludeProcessor의 목 객체입니다.
  * XInclude 처리 호출을 추적하고 시뮬레이션합니다.
  */
-class MockXIncludeProcessor : public IXIncludeProcessor
+class MockXIncludeProcessor : public SCXML::Model::IXIncludeProcessor
 {
 public:
     /**

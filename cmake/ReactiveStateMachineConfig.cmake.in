@@ -1,0 +1,18 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# 필수 의존성들을 찾습니다
+find_dependency(PkgConfig REQUIRED)
+pkg_check_modules(LIBXMLPP REQUIRED IMPORTED_TARGET "libxml++-5.0 >= 5.0.0")
+find_dependency(Boost 1.65 REQUIRED)
+find_dependency(Threads REQUIRED)
+
+# 타겟들을 포함합니다
+include("${CMAKE_CURRENT_LIST_DIR}/ReactiveStateMachineTargets.cmake")
+
+# 변수들을 설정합니다
+set_and_check(ReactiveStateMachine_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+set_and_check(ReactiveStateMachine_LIB_DIR "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
+
+check_required_components(ReactiveStateMachine)

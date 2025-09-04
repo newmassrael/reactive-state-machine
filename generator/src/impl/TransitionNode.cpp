@@ -1,178 +1,147 @@
-// TransitionNode.cpp
-#include "TransitionNode.h"
-#include "Logger.h"
+#include "impl/TransitionNode.h"
+#include "../../generator/include/Logger.h"
 #include <algorithm>
-#include <sstream>
+
+namespace SCXML {
+namespace Core {
 
 TransitionNode::TransitionNode(const std::string &event, const std::string &target)
-    : event_(event), target_(target), guard_(""), reactive_(false), internal_(false), targetsDirty_(true)
-{
-    Logger::debug("TransitionNode::Constructor - Creating transition node: " +
-                  (event.empty() ? "<no event>" : event) + " -> " + target);
-
-    if (!event.empty())
-    {
-        events_.push_back(event);
+    : event_(event), target_(target), guard_(""), reactive_(false), internal_(false), targetsDirty_(true) {
+    if (!target.empty()) {
+        targets_.push_back(target);
     }
+    SCXML::Common::Logger::debug("TransitionNode::Constructor - Creating transition node: " + (event.empty() ? "<no event>" : event) +
+                        " -> " + target);
 }
 
-TransitionNode::~TransitionNode()
-{
-    Logger::debug("TransitionNode::Destructor - Destroying transition node: " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_);
+TransitionNode::~TransitionNode() {
+    SCXML::Common::Logger::debug("TransitionNode::Destructor - Destroying transition node: " +
+                        (event_.empty() ? "<no event>" : event_) + " -> " +
+                        (targets_.empty() ? "<no target>" : targets_[0]));
 }
 
-const std::string &TransitionNode::getEvent() const
-{
+const std::string &TransitionNode::getEvent() const {
     return event_;
 }
 
-std::vector<std::string> TransitionNode::getTargets() const
-{
-    // 캐싱 메커니즘 - 타겟이 변경되었거나 아직 파싱되지 않았으면 파싱
-    if (targetsDirty_)
-    {
-        parseTargets();
-        targetsDirty_ = false;
-    }
-    return cachedTargets_;
+const std::string &TransitionNode::getTarget() const {
+    return target_;
 }
 
-void TransitionNode::addTarget(const std::string &target)
-{
-    Logger::debug("TransitionNode::addTarget() - Adding target to transition " +
-                  (event_.empty() ? "<no event>" : event_) + ": " + target);
-
-    if (target.empty())
-    {
-        return; // 빈 타겟은 추가하지 않음
-    }
-
-    if (target_.empty())
-    {
-        target_ = target;
-    }
-    else
-    {
-        target_ += " " + target;
-    }
-    targetsDirty_ = true; // 캐시 갱신 필요 표시
+void TransitionNode::addTarget(const std::string &target) {
+    targets_.push_back(target);
+    targetsDirty_ = true;
+    SCXML::Common::Logger::debug("TransitionNode::addTarget() - Adding target to transition " +
+                        (event_.empty() ? "<no event>" : event_) + ": " + target);
 }
 
-void TransitionNode::clearTargets()
-{
-    Logger::debug("TransitionNode::clearTargets() - Clearing targets for transition " +
-                  (event_.empty() ? "<no event>" : event_));
-
-    target_.clear();
-    cachedTargets_.clear();
-    targetsDirty_ = false; // 이미 캐시가 비어있으므로 갱신 불필요
+const std::vector<std::string> &TransitionNode::getTargets() const {
+    return targets_;
 }
 
-bool TransitionNode::hasTargets() const
-{
-    if (!targetsDirty_ && !cachedTargets_.empty())
-    {
-        return true;
-    }
-    return !target_.empty();
+void TransitionNode::setTargets(const std::vector<std::string> &targets) {
+    targets_ = targets;
+    targetsDirty_ = true;
 }
 
-void TransitionNode::parseTargets() const
-{
-    cachedTargets_.clear();
-
-    if (target_.empty())
-    {
-        return;
-    }
-
-    std::istringstream ss(target_);
-    std::string target;
-    while (ss >> target)
-    {
-        cachedTargets_.push_back(target);
-    }
+void TransitionNode::clearTargets() {
+    targets_.clear();
+    targetsDirty_ = true;
+    SCXML::Common::Logger::debug("TransitionNode::clearTargets() - Clearing targets for transition " +
+                        (event_.empty() ? "<no event>" : event_));
 }
 
-void TransitionNode::setGuard(const std::string &guard)
-{
-    Logger::debug("TransitionNode::setGuard() - Setting guard for transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " + guard);
-    guard_ = guard;
-}
-
-const std::string &TransitionNode::getGuard() const
-{
+const std::string &TransitionNode::getGuard() const {
     return guard_;
 }
 
-void TransitionNode::addAction(const std::string &action)
-{
-    Logger::debug("TransitionNode::addAction() - Adding action to transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " + action);
-    actions_.push_back(action);
+void TransitionNode::setGuard(const std::string &guard) {
+    guard_ = guard;
+    SCXML::Common::Logger::debug("TransitionNode::setGuard() - Setting guard for transition " +
+                        (event_.empty() ? "<no event>" : event_) + ": " + guard);
 }
 
-const std::vector<std::string> &TransitionNode::getActions() const
-{
+const std::vector<std::string> &TransitionNode::getActions() const {
     return actions_;
 }
 
-void TransitionNode::setReactive(bool reactive)
-{
-    Logger::debug("TransitionNode::setReactive() - Setting reactive flag for transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " +
-                  (reactive ? "true" : "false"));
-    reactive_ = reactive;
+void TransitionNode::addAction(const std::string &action) {
+    actions_.push_back(action);
+    SCXML::Common::Logger::debug("TransitionNode::addAction() - Adding action to transition " +
+                        (event_.empty() ? "<no event>" : event_) + ": " + action);
 }
 
-bool TransitionNode::isReactive() const
-{
+bool TransitionNode::isReactive() const {
     return reactive_;
 }
 
-void TransitionNode::setInternal(bool internal)
-{
-    Logger::debug("TransitionNode::setInternal() - Setting internal flag for transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " +
-                  (internal ? "true" : "false"));
-    internal_ = internal;
+void TransitionNode::setReactive(bool reactive) {
+    reactive_ = reactive;
+    SCXML::Common::Logger::debug("TransitionNode::setReactive() - Setting reactive flag for transition " +
+                        (event_.empty() ? "<no event>" : event_) + ": " + (reactive ? "true" : "false"));
 }
 
-bool TransitionNode::isInternal() const
-{
+bool TransitionNode::isInternal() const {
     return internal_;
 }
 
-void TransitionNode::setAttribute(const std::string &name, const std::string &value)
-{
-    Logger::debug("TransitionNode::setAttribute() - Setting attribute for transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " +
-                  name + "=" + value);
+void TransitionNode::setInternal(bool internal) {
+    internal_ = internal;
+    SCXML::Common::Logger::debug("TransitionNode::setInternal() - Setting internal flag for transition " +
+                        (event_.empty() ? "<no event>" : event_) + ": " + (internal ? "true" : "false"));
+}
+
+void TransitionNode::setAttribute(const std::string &name, const std::string &value) {
     attributes_[name] = value;
+    SCXML::Common::Logger::debug("TransitionNode::setAttribute() - Setting attribute for transition " +
+                        (event_.empty() ? "<no event>" : event_) + ": " + name + " = " + value);
 }
 
-std::string TransitionNode::getAttribute(const std::string &name) const
-{
+const std::string &TransitionNode::getAttribute(const std::string &name) const {
+    static const std::string empty = "";
     auto it = attributes_.find(name);
-    if (it != attributes_.end())
-    {
-        return it->second;
-    }
-    return "";
+    return (it != attributes_.end()) ? it->second : empty;
 }
 
-void TransitionNode::addEvent(const std::string &event)
-{
-    if (std::find(events_.begin(), events_.end(), event) == events_.end())
-    {
-        Logger::debug("TransitionNode::addEvent() - Adding event to transition: " + event);
+const std::unordered_map<std::string, std::string> &TransitionNode::getAttributes() const {
+    return attributes_;
+}
+
+void TransitionNode::addEvent(const std::string &event) {
+    if (!event.empty()) {
         events_.push_back(event);
+        SCXML::Common::Logger::debug("TransitionNode::addEvent() - Adding event to transition: " + event);
     }
 }
 
-const std::vector<std::string> &TransitionNode::getEvents() const
-{
+const std::vector<std::string> &TransitionNode::getEvents() const {
     return events_;
 }
+
+void TransitionNode::addActionNode(std::shared_ptr<SCXML::Model::IActionNode> actionNode) {
+    if (actionNode) {
+        actionNodes_.push_back(actionNode);
+        SCXML::Common::Logger::debug("TransitionNode::addActionNode() - Adding action node to transition: " + actionNode->getId());
+    }
+}
+
+const std::vector<std::shared_ptr<SCXML::Model::IActionNode>> &TransitionNode::getActionNodes() const {
+    return actionNodes_;
+}
+
+std::shared_ptr<SCXML::Model::ITransitionNode> TransitionNode::clone() const {
+    auto cloned = std::make_shared<TransitionNode>(event_, target_);
+    cloned->targets_ = targets_;
+    cloned->guard_ = guard_;
+    cloned->actions_ = actions_;
+    cloned->reactive_ = reactive_;
+    cloned->internal_ = internal_;
+    cloned->attributes_ = attributes_;
+    cloned->events_ = events_;
+    // Note: actionNodes_ is not deep-cloned here
+    cloned->targetsDirty_ = targetsDirty_;
+    return cloned;
+}
+
+}  // namespace Core
+}  // namespace SCXML

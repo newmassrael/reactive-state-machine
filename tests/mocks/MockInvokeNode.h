@@ -8,7 +8,7 @@
 #include <tuple>
 #include <iostream>
 
-class MockInvokeNode : public IInvokeNode
+class MockInvokeNode : public SCXML::Model::IInvokeNode
 {
 public:
     MOCK_CONST_METHOD0(getId, const std::string &());

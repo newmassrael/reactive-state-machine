@@ -1,11 +1,14 @@
 #pragma once
-
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
 
-class IInvokeNode
-{
+namespace SCXML {
+namespace Model {
+
+// Forward declarations
+
+class IInvokeNode {
 public:
     virtual ~IInvokeNode() = default;
 
@@ -26,3 +29,6 @@ public:
     virtual const std::string &getContent() const = 0;
     virtual const std::string &getFinalize() const = 0;
 };
+
+}  // namespace Model
+}  // namespace SCXML

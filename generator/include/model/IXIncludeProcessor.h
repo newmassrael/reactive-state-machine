@@ -1,14 +1,17 @@
 #pragma once
-
 #include <libxml++/libxml++.h>
 #include <string>
 #include <vector>
 
+namespace SCXML {
+namespace Model {
+
+// Forward declarations
+
 /**
  * @brief XInclude 처리를 위한 인터페이스
  */
-class IXIncludeProcessor
-{
+class IXIncludeProcessor {
 public:
     /**
      * @brief 가상 소멸자
@@ -34,3 +37,6 @@ public:
      */
     virtual const std::vector<std::string> &getErrorMessages() const = 0;
 };
+
+}  // namespace Model
+}  // namespace SCXML

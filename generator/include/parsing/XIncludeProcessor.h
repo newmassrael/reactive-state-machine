@@ -1,10 +1,15 @@
 #pragma once
 
-#include "IXIncludeProcessor.h"
+#include "model/IXIncludeProcessor.h"
 #include <libxml++/libxml++.h>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+
+namespace SCXML {
+namespace Parsing {
 
 /**
  * @brief XInclude 처리를 담당하는 클래스
@@ -12,8 +17,7 @@
  * 이 클래스는 SCXML 문서의 XInclude 지시문을 처리하는 기능을 제공합니다.
  * 외부 파일 로드 및 통합을 처리하며, 상대 경로와 절대 경로를 모두 지원합니다.
  */
-class XIncludeProcessor : public IXIncludeProcessor
-{
+class XIncludeProcessor : public ::SCXML::Model::IXIncludeProcessor {
 public:
     /**
      * @brief 생성자
@@ -113,7 +117,11 @@ private:
     std::vector<std::string> errorMessages_;
     std::vector<std::string> warningMessages_;
     std::unordered_map<std::string, int> processedFiles_;
+    std::unordered_set<std::string> currentlyProcessingFiles_;  // 순환 참조 방지
     bool isProcessing_;
     int maxRecursionDepth_;
     int currentRecursionDepth_;
 };
+
+}  // namespace Parsing
+}  // namespace SCXML

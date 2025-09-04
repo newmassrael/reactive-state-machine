@@ -6,7 +6,7 @@
 #include <vector>
 #include <unordered_map>
 
-class MockGuardNode : public IGuardNode
+class MockGuardNode : public SCXML::Model::IGuardNode
 {
 public:
     MOCK_CONST_METHOD0(getId, const std::string &());

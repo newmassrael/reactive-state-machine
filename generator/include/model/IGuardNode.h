@@ -1,9 +1,14 @@
-// IGuardNode.h
 #pragma once
-
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
+
+namespace SCXML {
+namespace Model {
+
+// Forward declarations
+
+// IGuardNode.h
 
 /**
  * @brief 가드 노드 인터페이스
@@ -11,8 +16,7 @@
  * 이 인터페이스는 전환 조건을 나타내는 가드 노드를 정의합니다.
  * SCXML 문서의 <code:guard> 요소에 해당합니다.
  */
-class IGuardNode
-{
+class IGuardNode {
 public:
     /**
      * @brief 가상 소멸자
@@ -117,3 +121,6 @@ public:
      */
     virtual const std::unordered_map<std::string, std::string> &getAttributes() const = 0;
 };
+
+}  // namespace Model
+}  // namespace SCXML

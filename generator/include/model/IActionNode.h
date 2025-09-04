@@ -1,10 +1,17 @@
-// IActionNode.h
 #pragma once
-
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <memory>
+
+namespace SCXML {
+
+// Forward declarations
+namespace Runtime {
+class RuntimeContext;
+}
+
+namespace Model {
 
 /**
  * @brief 액션 노드 인터페이스
@@ -12,8 +19,7 @@
  * 이 인터페이스는 상태 전환 시 실행되는 액션을 나타냅니다.
  * SCXML 문서의 <code:action> 요소에 해당합니다.
  */
-class IActionNode
-{
+class IActionNode {
 public:
     /**
      * @brief 가상 소멸자
@@ -105,4 +111,26 @@ public:
      * @return 자식 액션 노드 존재 여부
      */
     virtual bool hasChildActions() const = 0;
+
+    /**
+     * @brief 액션 실행
+     * @param context 런타임 컨텍스트
+     * @return 실행 성공 여부
+     */
+    virtual bool execute(Runtime::RuntimeContext &context) = 0;
+
+    /**
+     * @brief 액션 타입 이름 반환 (assign, log, send, etc.)
+     * @return 액션 타입 문자열
+     */
+    virtual std::string getActionType() const = 0;
+
+    /**
+     * @brief 액션 노드 복제
+     * @return 복제된 액션 노드
+     */
+    virtual std::shared_ptr<IActionNode> clone() const = 0;
 };
+
+}  // namespace Model
+}  // namespace SCXML

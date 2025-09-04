@@ -1,0 +1,114 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 19,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Default Config",
+            "description": "Default build using Ninja generator",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "debug",
+            "inherits": "default",
+            "displayName": "Debug",
+            "description": "Debug build with tests and sanitizers",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_TESTS": "ON",
+                "ENABLE_SANITIZERS": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "inherits": "default",
+            "displayName": "Release",
+            "description": "Release build optimized for performance",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "coverage",
+            "inherits": "debug",
+            "displayName": "Coverage",
+            "description": "Debug build with code coverage enabled",
+            "cacheVariables": {
+                "BUILD_WITH_COVERAGE": "ON"
+            }
+        },
+        {
+            "name": "ci",
+            "inherits": "default",
+            "displayName": "CI Build",
+            "description": "Configuration optimized for CI/CD",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "BUILD_TESTS": "ON",
+                "BUILD_WITH_COVERAGE": "OFF"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "displayName": "Debug Build",
+            "description": "Build in debug mode"
+        },
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "displayName": "Release Build", 
+            "description": "Build in release mode"
+        },
+        {
+            "name": "coverage",
+            "configurePreset": "coverage",
+            "displayName": "Coverage Build",
+            "description": "Build with coverage"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "displayName": "Debug Tests",
+            "description": "Run all tests in debug mode",
+            "execution": {
+                "noTestsAction": "error",
+                "stopOnFailure": false
+            },
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "release",
+            "configurePreset": "release", 
+            "displayName": "Release Tests",
+            "description": "Run all tests in release mode"
+        },
+        {
+            "name": "parser",
+            "inherits": "debug",
+            "displayName": "Parser Tests Only",
+            "description": "Run only parser tests",
+            "filter": {
+                "include": {
+                    "name": "Parser.*"
+                }
+            }
+        }
+    ]
+}

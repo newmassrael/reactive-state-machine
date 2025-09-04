@@ -1,23 +1,24 @@
 #pragma once
 #include <gmock/gmock.h>
 #include "IStateNode.h"
+#include "IActionNode.h"
 #include <memory>
 #include <string>
 #include <vector>
 
-class MockStateNode : public IStateNode
+class MockStateNode : public SCXML::Model::IStateNode
 {
 public:
     MOCK_CONST_METHOD0(getId, const std::string &());
-    MOCK_CONST_METHOD0(getType, Type());
-    MOCK_METHOD1(setParent, void(IStateNode *));
-    MOCK_CONST_METHOD0(getParent, IStateNode *());
-    MOCK_METHOD1(addChild, void(std::shared_ptr<IStateNode>));
-    MOCK_CONST_METHOD0(getChildren, const std::vector<std::shared_ptr<IStateNode>> &());
-    MOCK_METHOD1(addTransition, void(std::shared_ptr<ITransitionNode>));
-    MOCK_CONST_METHOD0(getTransitions, const std::vector<std::shared_ptr<ITransitionNode>> &());
-    MOCK_METHOD1(addDataItem, void(std::shared_ptr<IDataModelItem>));
-    MOCK_CONST_METHOD0(getDataItems, const std::vector<std::shared_ptr<IDataModelItem>> &());
+    MOCK_CONST_METHOD0(getType, SCXML::Type());
+    MOCK_METHOD1(setParent, void(SCXML::Model::IStateNode *));
+    MOCK_CONST_METHOD0(getParent, SCXML::Model::IStateNode *());
+    MOCK_METHOD1(addChild, void(std::shared_ptr<SCXML::Model::IStateNode>));
+    MOCK_CONST_METHOD0(getChildren, const std::vector<std::shared_ptr<SCXML::Model::IStateNode>> &());
+    MOCK_METHOD1(addTransition, void(std::shared_ptr<SCXML::Model::ITransitionNode>));
+    MOCK_CONST_METHOD0(getTransitions, const std::vector<std::shared_ptr<SCXML::Model::ITransitionNode>> &());
+    MOCK_METHOD1(addDataItem, void(std::shared_ptr<SCXML::Model::IDataModelItem>));
+    MOCK_CONST_METHOD0(getDataItems, const std::vector<std::shared_ptr<SCXML::Model::IDataModelItem>> &());
     MOCK_METHOD1(setOnEntry, void(const std::string &));
     MOCK_CONST_METHOD0(getOnEntry, const std::string &());
     MOCK_METHOD1(setOnExit, void(const std::string &));
@@ -26,10 +27,10 @@ public:
     MOCK_CONST_METHOD0(getInitialState, const std::string &());
     MOCK_METHOD1(addEntryAction, void(const std::string &));
     MOCK_METHOD1(addExitAction, void(const std::string &));
-    MOCK_METHOD1(addInvoke, void(std::shared_ptr<IInvokeNode>));
-    MOCK_CONST_METHOD0(getInvoke, const std::vector<std::shared_ptr<IInvokeNode>> &());
+    MOCK_METHOD1(addInvoke, void(std::shared_ptr<SCXML::Model::IInvokeNode>));
+    MOCK_CONST_METHOD0(getInvoke, const std::vector<std::shared_ptr<SCXML::Model::IInvokeNode>> &());
     MOCK_METHOD1(setHistoryType, void(bool));
-    MOCK_CONST_METHOD0(getHistoryType, HistoryType());
+    MOCK_CONST_METHOD0(getHistoryType, SCXML::HistoryType());
     MOCK_CONST_METHOD0(isShallowHistory, bool());
     MOCK_CONST_METHOD0(isDeepHistory, bool());
     MOCK_METHOD1(addReactiveGuard, void(const std::string &));
@@ -37,32 +38,40 @@ public:
     MOCK_CONST_METHOD0(getEntryActions, const std::vector<std::string> &());
     MOCK_CONST_METHOD0(getExitActions, const std::vector<std::string> &());
     MOCK_CONST_METHOD0(isFinalState, bool());
-    MOCK_CONST_METHOD0(getDoneData, const DoneData &());
-    MOCK_METHOD0(getDoneData, DoneData &());
+    MOCK_CONST_METHOD0(getDoneData, const SCXML::Model::DoneData &());
+    MOCK_METHOD0(getDoneData, SCXML::Model::DoneData &());
     MOCK_METHOD1(setDoneDataContent, void(const std::string &));
     MOCK_METHOD2(addDoneDataParam, void(const std::string &, const std::string &));
     MOCK_METHOD0(clearDoneDataParams, void());
-    MOCK_METHOD1(setInitialTransition, void(std::shared_ptr<ITransitionNode>));
-    MOCK_CONST_METHOD0(getInitialTransition, std::shared_ptr<ITransitionNode>());
+    MOCK_METHOD1(setInitialTransition, void(std::shared_ptr<SCXML::Model::ITransitionNode>));
+    MOCK_CONST_METHOD0(getInitialTransition, std::shared_ptr<SCXML::Model::ITransitionNode>());
+    
+    // New ActionNode methods
+    MOCK_CONST_METHOD0(getEntryActionNodes, const std::vector<std::shared_ptr<SCXML::Model::IActionNode>>&());
+    MOCK_CONST_METHOD0(getExitActionNodes, const std::vector<std::shared_ptr<SCXML::Model::IActionNode>>&());
+    MOCK_METHOD1(addEntryActionNode, void(std::shared_ptr<SCXML::Model::IActionNode>));
+    MOCK_METHOD1(addExitActionNode, void(std::shared_ptr<SCXML::Model::IActionNode>));
 
     std::string id_;
-    Type type_;
-    std::vector<std::shared_ptr<IStateNode>> children_;
-    std::vector<std::shared_ptr<ITransitionNode>> transitions_;
-    std::vector<std::shared_ptr<IDataModelItem>> dataItems_;
-    std::shared_ptr<ITransitionNode> initialTransition_;
+    SCXML::Type type_;
+    std::vector<std::shared_ptr<SCXML::Model::IStateNode>> children_;
+    std::vector<std::shared_ptr<SCXML::Model::ITransitionNode>> transitions_;
+    std::vector<std::shared_ptr<SCXML::Model::IDataModelItem>> dataItems_;
+    std::shared_ptr<SCXML::Model::ITransitionNode> initialTransition_;
     std::string initialState_;
     std::string onEntry_;
     std::string onExit_;
-    IStateNode *parent_;
+    SCXML::Model::IStateNode *parent_;
     std::vector<std::string> entryActions_;
     std::vector<std::string> exitActions_;
-    std::vector<std::shared_ptr<IInvokeNode>> invokes_;
+    std::vector<std::shared_ptr<SCXML::Model::IInvokeNode>> invokes_;
     std::vector<std::string> reactiveGuards_;
-    HistoryType historyType_ = HistoryType::NONE;
+    SCXML::HistoryType historyType_ = SCXML::HistoryType::NONE;
     bool isDeepHistory_ = false;
     bool isFinalState_ = false;
-    DoneData doneData_;
+    SCXML::Model::DoneData doneData_;
+    std::vector<std::shared_ptr<SCXML::Model::IActionNode>> entryActionNodes_;
+    std::vector<std::shared_ptr<SCXML::Model::IActionNode>> exitActionNodes_;
 
     // 객체 생성 시 기본값 초기화
     MockStateNode() : parent_(nullptr) {}
@@ -112,11 +121,11 @@ public:
                            { children_.push_back(child); });
 
         ON_CALL(*this, addTransition(testing::_))
-            .WillByDefault([this](std::shared_ptr<ITransitionNode> transition)
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::ITransitionNode> transition)
                            { transitions_.push_back(transition); });
 
         ON_CALL(*this, addDataItem(testing::_))
-            .WillByDefault([this](std::shared_ptr<IDataModelItem> dataItem)
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::IDataModelItem> dataItem)
                            { dataItems_.push_back(dataItem); });
 
         ON_CALL(*this, addReactiveGuard(testing::_))
@@ -162,7 +171,7 @@ public:
                 } });
 
         ON_CALL(*this, addInvoke(testing::_))
-            .WillByDefault([this](std::shared_ptr<IInvokeNode> invoke)
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::IInvokeNode> invoke)
                            { invokes_.push_back(invoke); });
 
         ON_CALL(*this, getInvoke())
@@ -171,7 +180,7 @@ public:
         ON_CALL(*this, setHistoryType(testing::_))
             .WillByDefault([this](bool isDeep)
                            {
-                historyType_ = isDeep ? HistoryType::DEEP : HistoryType::SHALLOW;
+                historyType_ = isDeep ? SCXML::HistoryType::DEEP : SCXML::HistoryType::SHALLOW;
                 isDeepHistory_ = isDeep; });
 
         ON_CALL(*this, getHistoryType())
@@ -179,15 +188,15 @@ public:
 
         ON_CALL(*this, isShallowHistory())
             .WillByDefault([this]()
-                           { return historyType_ == HistoryType::SHALLOW; });
+                           { return historyType_ == SCXML::HistoryType::SHALLOW; });
 
         ON_CALL(*this, isDeepHistory())
             .WillByDefault([this]()
-                           { return historyType_ == HistoryType::DEEP; });
+                           { return historyType_ == SCXML::HistoryType::DEEP; });
 
         ON_CALL(*this, isFinalState())
             .WillByDefault([this]()
-                           { return (type_ == Type::FINAL) || isFinalState_; });
+                           { return (type_ == SCXML::Type::FINAL) || isFinalState_; });
 
         ON_CALL(*this, getDoneData())
             .WillByDefault(testing::ReturnRef(doneData_));
@@ -205,11 +214,26 @@ public:
                            { doneData_.clearParams(); });
 
         ON_CALL(*this, setInitialTransition(testing::_))
-            .WillByDefault([this](std::shared_ptr<ITransitionNode> transition)
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::ITransitionNode> transition)
                            { initialTransition_ = transition; });
 
         ON_CALL(*this, getInitialTransition())
             .WillByDefault([this]()
                            { return initialTransition_; });
+
+        // New ActionNode methods default behavior
+        ON_CALL(*this, getEntryActionNodes())
+            .WillByDefault(testing::ReturnRef(entryActionNodes_));
+
+        ON_CALL(*this, getExitActionNodes())
+            .WillByDefault(testing::ReturnRef(exitActionNodes_));
+
+        ON_CALL(*this, addEntryActionNode(testing::_))
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::IActionNode> actionNode)
+                           { entryActionNodes_.push_back(actionNode); });
+
+        ON_CALL(*this, addExitActionNode(testing::_))
+            .WillByDefault([this](std::shared_ptr<SCXML::Model::IActionNode> actionNode)
+                           { exitActionNodes_.push_back(actionNode); });
     }
 };

@@ -1,31 +1,30 @@
+
 #include "parsing/TransitionParser.h"
-#include "Logger.h"
+#include "common/Logger.h"
 #include "parsing/ParsingCommon.h"
 #include <algorithm>
 #include <sstream>
 
-TransitionParser::TransitionParser(std::shared_ptr<INodeFactory> nodeFactory)
-    : nodeFactory_(nodeFactory)
-{
-    Logger::debug("TransitionParser::Constructor - Creating transition parser");
+using namespace SCXML::Parsing;
+using namespace std;
+
+TransitionParser::TransitionParser(std::shared_ptr<SCXML::Model::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+    SCXML::Common::Logger::debug("TransitionParser::Constructor - Creating transition parser");
 }
 
-TransitionParser::~TransitionParser()
-{
-    Logger::debug("TransitionParser::Destructor - Destroying transition parser");
+TransitionParser::~TransitionParser() {
+    SCXML::Common::Logger::debug("TransitionParser::Destructor - Destroying transition parser");
 }
 
-void TransitionParser::setActionParser(std::shared_ptr<ActionParser> actionParser)
-{
+void TransitionParser::setActionParser(std::shared_ptr<ActionParser> actionParser) {
     actionParser_ = actionParser;
-    Logger::debug("TransitionParser::setActionParser() - Action parser set");
+    SCXML::Common::Logger::debug("TransitionParser::setActionParser() - Action parser set");
 }
 
-std::shared_ptr<ITransitionNode> TransitionParser::parseTransitionNode(const xmlpp::Element *transElement, IStateNode *stateNode)
-{
-    if (!transElement || !stateNode)
-    {
-        Logger::warning("TransitionParser::parseTransitionNode() - Null transition element or state node");
+std::shared_ptr<SCXML::Model::ITransitionNode>
+TransitionParser::parseTransitionNode(const xmlpp::Element *transElement, SCXML::Model::IStateNode *stateNode) {
+    if (!transElement || !stateNode) {
+        SCXML::Common::Logger::warning("TransitionParser::parseTransitionNode() - Null transition element or state node");
         return nullptr;
     }
 
@@ -35,19 +34,17 @@ std::shared_ptr<ITransitionNode> TransitionParser::parseTransitionNode(const xml
     std::string event = eventAttr ? eventAttr->get_value() : "";
     std::string target = targetAttr ? targetAttr->get_value() : "";
 
-    Logger::debug("TransitionParser::parseTransitionNode() - Parsing transition: " +
-                  (event.empty() ? "<no event>" : event) + " -> " +
-                  (target.empty() ? "<internal>" : target));
+    SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Parsing transition: " +
+                  (event.empty() ? "<no event>" : event) + " -> " + (target.empty() ? "<internal>" : target));
 
     // target이 비어있는 경우 내부 전환으로 처리
     bool isInternal = target.empty();
 
     // 전환 노드 생성
-    std::shared_ptr<ITransitionNode> transition;
+    std::shared_ptr<SCXML::Model::ITransitionNode> transition;
 
-    if (isInternal)
-    {
-        Logger::debug("TransitionParser::parseTransitionNode() - Internal transition detected (no target)");
+    if (isInternal) {
+        SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Internal transition detected (no target)");
 
         // 빈 타겟으로 전환 생성
         transition = nodeFactory_->createTransitionNode(event, "");
@@ -55,11 +52,9 @@ std::shared_ptr<ITransitionNode> TransitionParser::parseTransitionNode(const xml
         // 명시적으로 타겟 목록 비우기
         transition->clearTargets();
 
-        Logger::debug("TransitionParser::parseTransitionNode() - After clearTargets() - targets count: " +
+        SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - After clearTargets() - targets count: " +
                       std::to_string(transition->getTargets().size()));
-    }
-    else
-    {
+    } else {
         // 초기화 시 빈 문자열로 생성
         transition = nodeFactory_->createTransitionNode(event, "");
 
@@ -71,12 +66,10 @@ std::shared_ptr<ITransitionNode> TransitionParser::parseTransitionNode(const xml
         std::string targetId;
 
         // 개별 타겟 추가
-        while (ss >> targetId)
-        {
-            if (!targetId.empty())
-            {
+        while (ss >> targetId) {
+            if (!targetId.empty()) {
                 transition->addTarget(targetId);
-                Logger::debug("TransitionParser::parseTransitionNode() - Added target: " + targetId);
+                SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Added target: " + targetId);
             }
         }
     }
@@ -86,84 +79,75 @@ std::shared_ptr<ITransitionNode> TransitionParser::parseTransitionNode(const xml
 
     // 타입 속성 처리
     auto typeAttr = transElement->get_attribute("type");
-    if (typeAttr)
-    {
+    if (typeAttr) {
         std::string type = typeAttr->get_value();
         transition->setAttribute("type", type);
-        Logger::debug("TransitionParser::parseTransitionNode() - Type: " + type);
+        SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Type: " + type);
 
         // type이 "internal"인 경우 내부 전환으로 설정
-        if (type == "internal")
-        {
+        if (type == "internal") {
             transition->setInternal(true);
-            isInternal = true; // isInternal 변수 업데이트
+            isInternal = true;  // isInternal 변수 업데이트
         }
     }
 
     // 조건 속성 처리
     auto condAttr = transElement->get_attribute("cond");
-    if (condAttr)
-    {
+    if (condAttr) {
         std::string cond = condAttr->get_value();
         transition->setAttribute("cond", cond);
         transition->setGuard(cond);
-        Logger::debug("TransitionParser::parseTransitionNode() - Condition: " + cond);
+        SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Condition: " + cond);
     }
 
     // 가드 속성 처리
-    std::string guard = ParsingCommon::getAttributeValue(transElement, {"guard"});
-    if (!guard.empty())
-    {
+    std::string guard = SCXML::Parsing::ParsingCommon::getAttributeValue(transElement, {"guard"});
+    if (!guard.empty()) {
         transition->setGuard(guard);
-        Logger::debug("TransitionParser::parseTransitionNode() - Guard: " + guard);
+        SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Guard: " + guard);
     }
 
     // 이벤트 목록 파싱
-    if (!event.empty())
-    {
+    if (!event.empty()) {
         auto events = parseEventList(event);
-        for (const auto &eventName : events)
-        {
+        for (const auto &eventName : events) {
             transition->addEvent(eventName);
-            Logger::debug("TransitionParser::parseTransitionNode() - Added event: " + eventName);
+            SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Added event: " + eventName);
         }
     }
 
     // 액션 파싱
     parseActions(transElement, transition);
 
-    Logger::debug("TransitionParser::parseTransitionNode() - Transition parsed successfully with " +
+    SCXML::Common::Logger::debug("TransitionParser::parseTransitionNode() - Transition parsed successfully with " +
                   std::to_string(transition->getActions().size()) + " actions");
     return transition;
 }
 
-std::shared_ptr<ITransitionNode> TransitionParser::parseInitialTransition(const xmlpp::Element *initialElement)
-{
-    if (!initialElement)
-    {
-        Logger::warning("TransitionParser::parseInitialTransition() - Null initial element");
+std::shared_ptr<SCXML::Model::ITransitionNode>
+TransitionParser::parseInitialTransition(const xmlpp::Element *initialElement) {
+    if (!initialElement) {
+        SCXML::Common::Logger::warning("TransitionParser::parseInitialTransition() - Null initial element");
         return nullptr;
     }
 
-    Logger::debug("TransitionParser::parseInitialTransition() - Parsing initial transition");
+    SCXML::Common::Logger::debug("TransitionParser::parseInitialTransition() - Parsing initial transition");
 
     // initial 요소 내의 transition 요소 찾기
-    auto transElement = ParsingCommon::findFirstChildElement(initialElement, "transition");
-    if (!transElement)
-    {
-        Logger::warning("TransitionParser::parseInitialTransition() - No transition element found in initial");
+    auto transElement = SCXML::Parsing::ParsingCommon::findFirstChildElement(initialElement, "transition");
+    if (!transElement) {
+        SCXML::Common::Logger::warning("TransitionParser::parseInitialTransition() - No transition element found in initial");
         return nullptr;
     }
 
     auto targetAttr = transElement->get_attribute("target");
-    if (!targetAttr)
-    {
-        Logger::warning("TransitionParser::parseInitialTransition() - Initial transition missing target attribute");
+    if (!targetAttr) {
+        SCXML::Common::Logger::warning("TransitionParser::parseInitialTransition() - Initial transition missing target attribute");
         return nullptr;
     }
 
     std::string target = targetAttr->get_value();
-    Logger::debug("TransitionParser::parseInitialTransition() - Initial transition target: " + target);
+    SCXML::Common::Logger::debug("TransitionParser::parseInitialTransition() - Initial transition target: " + target);
 
     // 초기 전환 생성 - 이벤트 없음
     auto transition = nodeFactory_->createTransitionNode("", target);
@@ -174,43 +158,37 @@ std::shared_ptr<ITransitionNode> TransitionParser::parseInitialTransition(const 
     // 액션 파싱
     parseActions(transElement, transition);
 
-    Logger::debug("TransitionParser::parseInitialTransition() - Initial transition parsed successfully");
+    SCXML::Common::Logger::debug("TransitionParser::parseInitialTransition() - Initial transition parsed successfully");
     return transition;
 }
 
-std::vector<std::shared_ptr<ITransitionNode>> TransitionParser::parseTransitionsInState(
-    const xmlpp::Element *stateElement,
-    IStateNode *stateNode)
-{
-    std::vector<std::shared_ptr<ITransitionNode>> transitions;
+std::vector<std::shared_ptr<SCXML::Model::ITransitionNode>>
+TransitionParser::parseTransitionsInState(const xmlpp::Element *stateElement, SCXML::Model::IStateNode *stateNode) {
+    std::vector<std::shared_ptr<SCXML::Model::ITransitionNode>> transitions;
 
-    if (!stateElement || !stateNode)
-    {
-        Logger::warning("TransitionParser::parseTransitionsInState() - Null state element or node");
+    if (!stateElement || !stateNode) {
+        SCXML::Common::Logger::warning("TransitionParser::parseTransitionsInState() - Null state element or node");
         return transitions;
     }
 
-    Logger::debug("TransitionParser::parseTransitionsInState() - Parsing transitions in state: " + stateNode->getId());
+    SCXML::Common::Logger::debug("TransitionParser::parseTransitionsInState() - Parsing transitions in state: " + stateNode->getId());
 
     // 모든 transition 요소 찾기
-    auto transElements = ParsingCommon::findChildElements(stateElement, "transition");
-    for (auto *transElement : transElements)
-    {
+    auto transElements = SCXML::Parsing::ParsingCommon::findChildElements(stateElement, "transition");
+    for (auto *transElement : transElements) {
         auto transition = parseTransitionNode(transElement, stateNode);
-        if (transition)
-        {
+        if (transition) {
             transitions.push_back(transition);
         }
     }
 
-    Logger::debug("TransitionParser::parseTransitionsInState() - Found " + std::to_string(transitions.size()) + " transitions");
+    SCXML::Common::Logger::debug("TransitionParser::parseTransitionsInState() - Found " + std::to_string(transitions.size()) +
+                  " transitions");
     return transitions;
 }
 
-bool TransitionParser::isTransitionNode(const xmlpp::Element *element) const
-{
-    if (!element)
-    {
+bool TransitionParser::isTransitionNode(const xmlpp::Element *element) const {
+    if (!element) {
         return false;
     }
 
@@ -218,60 +196,44 @@ bool TransitionParser::isTransitionNode(const xmlpp::Element *element) const
     return matchNodeName(nodeName, "transition");
 }
 
-void TransitionParser::parseActions(const xmlpp::Element *transElement, std::shared_ptr<ITransitionNode> transition)
-{
-    if (!transElement || !transition)
-    {
+void TransitionParser::parseActions(const xmlpp::Element *transElement,
+                                    std::shared_ptr<SCXML::Model::ITransitionNode> transition) {
+    SCXML::Common::Logger::debug("TransitionParser::parseActions() - Starting action parsing");
+    if (!transElement || !transition) {
         return;
     }
 
-    // 액션 파서가 설정되지 않은 경우 대체 로직 사용
-    if (!actionParser_)
-    {
-        Logger::warning("TransitionParser::parseActions() - ActionParser not set, using fallback logic");
+    // 디버그: ActionParser 상태 확인
+    SCXML::Common::Logger::debug(std::string("TransitionParser::parseActions() - ActionParser state: ") +
+                  (actionParser_ ? "SET" : "NULL"));
 
-        // code:action 요소 직접 찾기
-        auto actionElements = ParsingCommon::findChildElements(transElement, "action");
-        for (auto *actionElement : actionElements)
-        {
-            auto nameAttr = actionElement->get_attribute("name");
-            if (!nameAttr)
-            {
-                nameAttr = actionElement->get_attribute("id");
-            }
-
-            if (nameAttr)
-            {
-                std::string action = nameAttr->get_value();
-                transition->addAction(action);
-                Logger::debug("TransitionParser::parseActions() - Added action (fallback): " + action);
-            }
-        }
-    }
-    else
-    {
-        // ActionParser 사용
+    // ActionParser를 사용하여 액션 파싱
+    if (actionParser_) {
+        SCXML::Common::Logger::debug("TransitionParser::parseActions() - Using ActionParser to parse actions");
         auto actions = actionParser_->parseActionsInElement(transElement);
-        for (const auto &action : actions)
-        {
-            transition->addAction(action->getId());
-            Logger::debug("TransitionParser::parseActions() - Added action: " + action->getId());
+        for (const auto &action : actions) {
+            // Store both ActionNode object and ID for backward compatibility
+            transition->addActionNode(action);
+            SCXML::Common::Logger::debug("TransitionParser::parseActions() - Added parsed action node: " + action->getId());
         }
+        SCXML::Common::Logger::debug("TransitionParser::parseActions() - ActionParser found " + std::to_string(actions.size()) +
+                      " actions");
+    } else {
+        SCXML::Common::Logger::error("TransitionParser::parseActions() - ActionParser not set! This should not happen.");
+        // ActionParser가 설정되지 않은 경우는 시스템 오류
+        return;
     }
 }
 
-std::vector<std::string> TransitionParser::parseEventList(const std::string &eventStr) const
-{
+std::vector<std::string> TransitionParser::parseEventList(const std::string &eventStr) const {
     std::vector<std::string> events;
     std::stringstream ss(eventStr);
     std::string event;
 
     // 공백으로 구분된 이벤트 목록 파싱
-    while (std::getline(ss, event, ' '))
-    {
+    while (std::getline(ss, event, ' ')) {
         // 빈 문자열 제거
-        if (!event.empty())
-        {
+        if (!event.empty()) {
             events.push_back(event);
         }
     }
@@ -279,23 +241,19 @@ std::vector<std::string> TransitionParser::parseEventList(const std::string &eve
     return events;
 }
 
-bool TransitionParser::matchNodeName(const std::string &nodeName, const std::string &searchName) const
-{
-    return ParsingCommon::matchNodeName(nodeName, searchName);
+bool TransitionParser::matchNodeName(const std::string &nodeName, const std::string &searchName) const {
+    return SCXML::Parsing::ParsingCommon::matchNodeName(nodeName, searchName);
 }
 
-std::vector<std::string> TransitionParser::parseTargetList(const std::string &targetStr) const
-{
+std::vector<std::string> TransitionParser::parseTargetList(const std::string &targetStr) const {
     std::vector<std::string> targets;
     std::stringstream ss(targetStr);
     std::string target;
 
     // 공백으로 구분된 타겟 목록 파싱
-    while (std::getline(ss, target, ' '))
-    {
+    while (std::getline(ss, target, ' ')) {
         // 빈 문자열 제거
-        if (!target.empty())
-        {
+        if (!target.empty()) {
             targets.push_back(target);
         }
     }

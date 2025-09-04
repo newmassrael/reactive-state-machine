@@ -1,33 +1,51 @@
 // InvokeParser.h
 #pragma once
 
+#include "model/INodeFactory.h"
+#include "model/IInvokeNode.h"
+#include <libxml++/libxml++.h>
 #include <memory>
 #include <vector>
-#include <libxml++/libxml++.h>
-#include "model/IInvokeNode.h"
-#include "factory/INodeFactory.h"
 
-class InvokeParser
-{
+using SCXML::Model::IDataModelItem;
+
+
+namespace SCXML {
+
+namespace Model {
+class IInvokeNode;
+class IDataModelItem;
+}
+
+namespace Parsing {
+
+class InvokeParser {
 public:
-    InvokeParser(std::shared_ptr<INodeFactory> nodeFactory);
+    InvokeParser(::std::shared_ptr<::SCXML::Model::INodeFactory> nodeFactory);
     ~InvokeParser();
 
-    // invoke 요소 파싱
-    std::shared_ptr<IInvokeNode> parseInvokeNode(const xmlpp::Element *invokeElement);
+    // Parse invoke element
+    ::std::shared_ptr<::SCXML::Model::IInvokeNode> parseInvokeNode(const xmlpp::Element *invokeElement);
 
-    // 특정 상태 내의 모든 invoke 요소 파싱
-    std::vector<std::shared_ptr<IInvokeNode>> parseInvokesInState(const xmlpp::Element *stateElement);
+    // Parse all invoke elements within a specific state
+    ::std::vector<::std::shared_ptr<::SCXML::Model::IInvokeNode>>
+    parseInvokesInState(const xmlpp::Element *stateElement);
 
-    // param 요소를 파싱하고 생성된 DataModelItem 반환
-    std::vector<std::shared_ptr<IDataModelItem>> parseParamElementsAndCreateDataItems(
-        const xmlpp::Element *invokeElement,
-        std::shared_ptr<IInvokeNode> invokeNode);
+    // Parse param elements and return generated DataModelItems
+    ::std::vector<::std::shared_ptr<::SCXML::Model::IDataModelItem>>
+    parseParamElementsAndCreateDataItems(const xmlpp::Element *invokeElement,
+                                         ::std::shared_ptr<::SCXML::Model::IInvokeNode> invokeNode);
 
 private:
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    ::std::shared_ptr<::SCXML::Model::INodeFactory> nodeFactory_;
 
-    void parseFinalizeElement(const xmlpp::Element *finalizeElement, std::shared_ptr<IInvokeNode> invokeNode);
-    void parseParamElements(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);
-    void parseContentElement(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);
+    void parseFinalizeElement(const xmlpp::Element *finalizeElement,
+                              ::std::shared_ptr<::SCXML::Model::IInvokeNode> invokeNode);
+    void parseParamElements(const xmlpp::Element *invokeElement,
+                            ::std::shared_ptr<::SCXML::Model::IInvokeNode> invokeNode);
+    void parseContentElement(const xmlpp::Element *invokeElement,
+                             ::std::shared_ptr<::SCXML::Model::IInvokeNode> invokeNode);
 };
+
+}  // namespace Parsing
+}  // namespace SCXML

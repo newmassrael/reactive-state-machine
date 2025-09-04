@@ -1,41 +1,39 @@
 // InvokeParser.cpp
-#include "InvokeParser.h"
-#include "Logger.h"
+
+#include "parsing/InvokeParser.h"
+#include "common/Logger.h"
 #include "parsing/ParsingCommon.h"
+#include <atomic>
 #include <libxml++/nodes/textnode.h>
 #include <libxml/tree.h>
 
-InvokeParser::InvokeParser(std::shared_ptr<INodeFactory> nodeFactory)
-    : nodeFactory_(nodeFactory)
-{
-    Logger::debug("InvokeParser::Constructor - Creating invoke parser");
+using namespace SCXML::Parsing;
+using namespace std;
+
+InvokeParser::InvokeParser(std::shared_ptr<SCXML::Model::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+    SCXML::Common::Logger::debug("InvokeParser::Constructor - Creating invoke parser");
 }
 
-InvokeParser::~InvokeParser()
-{
-    Logger::debug("InvokeParser::Destructor - Destroying invoke parser");
+InvokeParser::~InvokeParser() {
+    SCXML::Common::Logger::debug("InvokeParser::Destructor - Destroying invoke parser");
 }
 
-std::shared_ptr<IInvokeNode> InvokeParser::parseInvokeNode(const xmlpp::Element *invokeElement)
-{
-    if (!invokeElement)
-    {
-        Logger::warning("InvokeParser::parseInvokeNode() - Null invoke element");
+std::shared_ptr<SCXML::Model::IInvokeNode> InvokeParser::parseInvokeNode(const xmlpp::Element *invokeElement) {
+    if (!invokeElement) {
+        SCXML::Common::Logger::warning("InvokeParser::parseInvokeNode() - Null invoke element");
         return nullptr;
     }
 
     // id 속성 검색
     std::string id;
     auto idAttr = invokeElement->get_attribute("id");
-    if (idAttr)
-    {
+    if (idAttr) {
         id = idAttr->get_value();
-    }
-    else
-    {
+    } else {
         // id가 없으면 자동 생성
-        id = "invoke_" + std::to_string(reinterpret_cast<uintptr_t>(invokeElement));
-        Logger::debug("InvokeParser::parseInvokeNode() - Generated id: " + id);
+        static std::atomic<uint32_t> invokeIdCounter{1};
+        id = "invoke_" + std::to_string(invokeIdCounter.fetch_add(1));
+        SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - Generated id: " + id);
     }
 
     // InvokeNode 생성
@@ -44,47 +42,38 @@ std::shared_ptr<IInvokeNode> InvokeParser::parseInvokeNode(const xmlpp::Element 
     // type 속성 처리
     auto typeAttr = invokeElement->get_attribute("type");
     auto typeExprAttr = invokeElement->get_attribute("typeexpr");
-    if (typeAttr)
-    {
+    if (typeAttr) {
         invokeNode->setType(typeAttr->get_value());
-    }
-    else if (typeExprAttr)
-    {
+    } else if (typeExprAttr) {
         // typeexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        Logger::debug("InvokeParser::parseInvokeNode() - typeexpr attribute present: " + typeExprAttr->get_value());
+        SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - typeexpr attribute present: " + typeExprAttr->get_value());
     }
 
     // src 속성 처리
     auto srcAttr = invokeElement->get_attribute("src");
     auto srcExprAttr = invokeElement->get_attribute("srcexpr");
-    if (srcAttr)
-    {
+    if (srcAttr) {
         invokeNode->setSrc(srcAttr->get_value());
-    }
-    else if (srcExprAttr)
-    {
+    } else if (srcExprAttr) {
         // srcexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        Logger::debug("InvokeParser::parseInvokeNode() - srcexpr attribute present: " + srcExprAttr->get_value());
+        SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - srcexpr attribute present: " + srcExprAttr->get_value());
     }
 
     // idlocation 속성 처리
     auto idLocationAttr = invokeElement->get_attribute("idlocation");
-    if (idLocationAttr)
-    {
+    if (idLocationAttr) {
         invokeNode->setIdLocation(idLocationAttr->get_value());
     }
 
     // namelist 속성 처리
     auto namelistAttr = invokeElement->get_attribute("namelist");
-    if (namelistAttr)
-    {
+    if (namelistAttr) {
         invokeNode->setNamelist(namelistAttr->get_value());
     }
 
     // autoforward 속성 처리
     auto autoforwardAttr = invokeElement->get_attribute("autoforward");
-    if (autoforwardAttr && autoforwardAttr->get_value() == "true")
-    {
+    if (autoforwardAttr && autoforwardAttr->get_value() == "true") {
         invokeNode->setAutoForward(true);
     }
 
@@ -95,35 +84,31 @@ std::shared_ptr<IInvokeNode> InvokeParser::parseInvokeNode(const xmlpp::Element 
     parseContentElement(invokeElement, invokeNode);
 
     // finalize 요소 파싱
-    auto finalizeElement = ParsingCommon::findFirstChildElement(invokeElement, "finalize");
-    if (finalizeElement)
-    {
+    auto finalizeElement = SCXML::Parsing::ParsingCommon::findFirstChildElement(invokeElement, "finalize");
+    if (finalizeElement) {
         parseFinalizeElement(finalizeElement, invokeNode);
     }
 
-    Logger::debug("InvokeParser::parseInvokeNode() - Invoke node parsed successfully: " + id);
+    SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - Invoke node parsed successfully: " + id);
     return invokeNode;
 }
 
-std::vector<std::shared_ptr<IInvokeNode>> InvokeParser::parseInvokesInState(const xmlpp::Element *stateElement)
-{
-    std::vector<std::shared_ptr<IInvokeNode>> invokeNodes;
+std::vector<std::shared_ptr<SCXML::Model::IInvokeNode>>
+InvokeParser::parseInvokesInState(const xmlpp::Element *stateElement) {
+    std::vector<std::shared_ptr<SCXML::Model::IInvokeNode>> invokeNodes;
 
-    if (!stateElement)
-    {
-        Logger::warning("InvokeParser::parseInvokesInState() - Null state element");
+    if (!stateElement) {
+        SCXML::Common::Logger::warning("InvokeParser::parseInvokesInState() - Null state element");
         return invokeNodes;
     }
 
-    auto invokeElements = ParsingCommon::findChildElements(stateElement, "invoke");
-    Logger::debug("InvokeParser::parseInvokesInState() - Found " +
-                  std::to_string(invokeElements.size()) + " invoke elements");
+    auto invokeElements = SCXML::Parsing::ParsingCommon::findChildElements(stateElement, "invoke");
+    SCXML::Common::Logger::debug("InvokeParser::parseInvokesInState() - Found " + std::to_string(invokeElements.size()) +
+                  " invoke elements");
 
-    for (auto invokeElement : invokeElements)
-    {
+    for (auto invokeElement : invokeElements) {
         auto invokeNode = parseInvokeNode(invokeElement);
-        if (invokeNode)
-        {
+        if (invokeNode) {
             invokeNodes.push_back(invokeNode);
         }
     }
@@ -131,97 +116,83 @@ std::vector<std::shared_ptr<IInvokeNode>> InvokeParser::parseInvokesInState(cons
     return invokeNodes;
 }
 
-void InvokeParser::parseFinalizeElement(const xmlpp::Element *finalizeElement, std::shared_ptr<IInvokeNode> invokeNode)
-{
-    if (!finalizeElement || !invokeNode)
-    {
+void InvokeParser::parseFinalizeElement(const xmlpp::Element *finalizeElement,
+                                        std::shared_ptr<SCXML::Model::IInvokeNode> invokeNode) {
+    if (!finalizeElement || !invokeNode) {
         return;
     }
 
     // get_child_text() 대신 텍스트 노드를 직접 찾아야 함
     std::string finalizeContent;
     auto children = finalizeElement->get_children();
-    for (auto child : children)
-    {
+    for (auto child : children) {
         // TextNode 타입인지 확인하고 내용 추출
-        if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child))
-        {
+        if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
             finalizeContent += textNode->get_content();
         }
     }
 
     invokeNode->setFinalize(finalizeContent);
 
-    Logger::debug("InvokeParser::parseFinalizeElement() - Finalize element parsed for invoke: " + invokeNode->getId());
+    SCXML::Common::Logger::debug("InvokeParser::parseFinalizeElement() - Finalize element parsed for invoke: " + invokeNode->getId());
 }
 
-void InvokeParser::parseParamElements(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode)
-{
-    if (!invokeElement || !invokeNode)
-    {
+void InvokeParser::parseParamElements(const xmlpp::Element *invokeElement,
+                                      std::shared_ptr<SCXML::Model::IInvokeNode> invokeNode) {
+    if (!invokeElement || !invokeNode) {
         return;
     }
 
-    auto paramElements = ParsingCommon::findChildElements(invokeElement, "param");
-    for (auto paramElement : paramElements)
-    {
+    auto paramElements = SCXML::Parsing::ParsingCommon::findChildElements(invokeElement, "param");
+    for (auto paramElement : paramElements) {
         std::string name, expr, location;
 
         auto nameAttr = paramElement->get_attribute("name");
-        if (nameAttr)
-        {
+        if (nameAttr) {
             name = nameAttr->get_value();
         }
 
         auto exprAttr = paramElement->get_attribute("expr");
-        if (exprAttr)
-        {
+        if (exprAttr) {
             expr = exprAttr->get_value();
         }
 
         auto locationAttr = paramElement->get_attribute("location");
-        if (locationAttr)
-        {
+        if (locationAttr) {
             location = locationAttr->get_value();
         }
 
         invokeNode->addParam(name, expr, location);
 
-        Logger::debug("InvokeParser::parseParamElements() - Param parsed: name=" + name);
+        SCXML::Common::Logger::debug("InvokeParser::parseParamElements() - Param parsed: name=" + name);
     }
 }
 
-std::vector<std::shared_ptr<IDataModelItem>> InvokeParser::parseParamElementsAndCreateDataItems(
-    const xmlpp::Element *invokeElement,
-    std::shared_ptr<IInvokeNode> invokeNode)
-{
-    std::vector<std::shared_ptr<IDataModelItem>> dataItems;
+std::vector<std::shared_ptr<SCXML::Model::IDataModelItem>>
+InvokeParser::parseParamElementsAndCreateDataItems(const xmlpp::Element *invokeElement,
+                                                   std::shared_ptr<SCXML::Model::IInvokeNode> invokeNode) {
+    std::vector<std::shared_ptr<SCXML::Model::IDataModelItem>> dataItems;
 
-    if (!invokeElement || !invokeNode)
-    {
+    if (!invokeElement || !invokeNode) {
         return dataItems;
     }
 
-    auto paramElements = ParsingCommon::findChildElements(invokeElement, "param");
-    for (auto paramElement : paramElements)
-    {
+    auto paramElements = SCXML::Parsing::ParsingCommon::findChildElements(invokeElement, "param");
+    for (auto paramElement : paramElements) {
         std::string name, expr, location;
 
         auto nameAttr = paramElement->get_attribute("name");
-        if (nameAttr)
-        {
+        if (nameAttr) {
             name = nameAttr->get_value();
         }
 
         auto exprAttr = paramElement->get_attribute("expr");
-        if (exprAttr)
-        {
+        if (exprAttr) {
             expr = exprAttr->get_value();
         }
 
         auto locationAttr = paramElement->get_attribute("location");
-        if (locationAttr)
-        {
+        if (locationAttr) {
             location = locationAttr->get_value();
         }
 
@@ -229,54 +200,45 @@ std::vector<std::shared_ptr<IDataModelItem>> InvokeParser::parseParamElementsAnd
         // 이미 parseInvokeNode에서 parseParamElements를 통해 추가되었음
 
         // 데이터 모델 아이템 생성
-        if (!name.empty() && (!expr.empty() || !location.empty()))
-        {
+        if (!name.empty() && (!expr.empty() || !location.empty())) {
             auto dataItem = nodeFactory_->createDataModelItem(name, expr.empty() ? location : expr);
-            if (dataItem)
-            {
+            if (dataItem) {
                 dataItems.push_back(dataItem);
             }
         }
 
-        Logger::debug("InvokeParser::parseParamElementsAndCreateDataItems() - Data item created for param: name=" + name);
+        SCXML::Common::Logger::debug("InvokeParser::parseParamElementsAndCreateDataItems() - Data item created for param: name=" +
+                      name);
     }
 
     return dataItems;
 }
 
-void InvokeParser::parseContentElement(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode)
-{
-    if (!invokeElement || !invokeNode)
-    {
+void InvokeParser::parseContentElement(const xmlpp::Element *invokeElement,
+                                       std::shared_ptr<SCXML::Model::IInvokeNode> invokeNode) {
+    if (!invokeElement || !invokeNode) {
         return;
     }
 
-    auto contentElement = ParsingCommon::findFirstChildElement(invokeElement, "content");
-    if (contentElement)
-    {
+    auto contentElement = SCXML::Parsing::ParsingCommon::findFirstChildElement(invokeElement, "content");
+    if (contentElement) {
         std::string content;
 
         auto exprAttr = contentElement->get_attribute("expr");
-        if (exprAttr)
-        {
+        if (exprAttr) {
             content = exprAttr->get_value();
-        }
-        else
-        {
+        } else {
             // 내부 XML 요소를 직렬화
             auto children = contentElement->get_children();
-            for (auto child : children)
-            {
+            for (auto child : children) {
                 // XML 요소인 경우 libxml2의 직렬화 기능 사용
-                if (auto childElement = dynamic_cast<const xmlpp::Element *>(child))
-                {
+                if (auto childElement = dynamic_cast<const xmlpp::Element *>(child)) {
                     // libxml2 노드 가져오기 - const_cast 사용
                     _xmlNode *node = const_cast<_xmlNode *>(childElement->cobj());
 
                     // 버퍼 생성
                     auto buf = xmlBufferCreate();
-                    if (buf)
-                    {
+                    if (buf) {
                         // 노드를 버퍼에 직렬화 (들여쓰기 없이 0 레벨)
                         xmlNodeDump(buf, node->doc, node, 0, 0);
 
@@ -286,9 +248,7 @@ void InvokeParser::parseContentElement(const xmlpp::Element *invokeElement, std:
                         // 버퍼 해제
                         xmlBufferFree(buf);
                     }
-                }
-                else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child))
-                {
+                } else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
                     // 텍스트 노드는 그대로 추가
                     content += textNode->get_content();
                 }
@@ -296,6 +256,6 @@ void InvokeParser::parseContentElement(const xmlpp::Element *invokeElement, std:
         }
 
         invokeNode->setContent(content);
-        Logger::debug("InvokeParser::parseContentElement() - Content element parsed with serialized XML");
+        SCXML::Common::Logger::debug("InvokeParser::parseContentElement() - Content element parsed with serialized XML");
     }
 }

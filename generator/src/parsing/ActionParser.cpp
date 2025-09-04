@@ -1,23 +1,29 @@
 #include "parsing/ActionParser.h"
-#include "Logger.h"
+#include "core/actions/AssignActionNode.h"
+#include "core/actions/LogActionNode.h"
+#include "core/actions/ScriptActionNode.h"
+#include "common/Logger.h"
 #include <algorithm>
 
-ActionParser::ActionParser(std::shared_ptr<INodeFactory> nodeFactory)
+using namespace SCXML::Parsing;
+using namespace std;
+
+ActionParser::ActionParser(std::shared_ptr<SCXML::Model::INodeFactory> nodeFactory)
     : nodeFactory_(nodeFactory)
 {
-    Logger::debug("ActionParser::Constructor - Creating action parser");
+    SCXML::Common::Logger::debug("ActionParser::Constructor - Creating action parser");
 }
 
 ActionParser::~ActionParser()
 {
-    Logger::debug("ActionParser::Destructor - Destroying action parser");
+    SCXML::Common::Logger::debug("ActionParser::Destructor - Destroying action parser");
 }
 
-std::shared_ptr<IActionNode> ActionParser::parseActionNode(const xmlpp::Element *actionNode)
+std::shared_ptr<SCXML::Model::IActionNode> ActionParser::parseActionNode(const xmlpp::Element *actionNode)
 {
     if (!actionNode)
     {
-        Logger::warning("ActionParser::parseActionNode() - Null action node");
+        SCXML::Common::Logger::warning("ActionParser::parseActionNode() - Null action node");
         return nullptr;
     }
 
@@ -48,17 +54,18 @@ std::shared_ptr<IActionNode> ActionParser::parseActionNode(const xmlpp::Element 
         id = nameAttr->get_value();
     }
 
-    Logger::debug("ActionParser::parseActionNode() - Parsing action: " + id);
+    SCXML::Common::Logger::debug("ActionParser::parseActionNode() - Parsing action: " + id);
 
     // 액션 노드 생성
     auto action = nodeFactory_->createActionNode(id);
+
 
     // 타입 속성 처리
     auto typeAttr = actionNode->get_attribute("type");
     if (typeAttr)
     {
         action->setType(typeAttr->get_value());
-        Logger::debug("ActionParser::parseActionNode() - Type: " + typeAttr->get_value());
+        SCXML::Common::Logger::debug("ActionParser::parseActionNode() - Type: " + typeAttr->get_value());
     }
     else
     {
@@ -96,14 +103,75 @@ std::shared_ptr<IActionNode> ActionParser::parseActionNode(const xmlpp::Element 
             // 이미 처리한 속성은 건너뜀
             if (name != "name" && name != "id" && name != "type")
             {
-                action->setAttribute(name, value);
-                Logger::debug("ActionParser::parseActionNode() - Added attribute: " + name + " = " + value);
+                // Special handling for AssignActionNode attributes
+                if (id == "assign") {
+                    auto assignAction = std::dynamic_pointer_cast<SCXML::Core::AssignActionNode>(action);
+                    if (assignAction) {
+                        if (name == "location") {
+                            assignAction->setLocation(value);
+                        
+                        } else if (name == "expr") {
+                            assignAction->setExpr(value);
+                        
+                        } else if (name == "attr") {
+                            assignAction->setAttr(value);
+                        
+                        } else {
+                            action->setAttribute(name, value);
+                        }
+                    } else {
+
+                        action->setAttribute(name, value);
+                    }
+                }
+                // Special handling for LogActionNode attributes
+                else if (id == "log") {
+                    auto logAction = std::dynamic_pointer_cast<SCXML::Core::LogActionNode>(action);
+                    if (logAction) {
+                        if (name == "expr") {
+                            logAction->setExpr(value);
+                        
+                        } else if (name == "label") {
+                            logAction->setLabel(value);
+                        
+                        } else if (name == "level") {
+                            logAction->setLevel(value);
+                        
+                        } else {
+                            action->setAttribute(name, value);
+                        }
+                    } else {
+
+                        action->setAttribute(name, value);
+                    }
+                }
+                // Special handling for ScriptActionNode attributes  
+                else if (id == "script") {
+                    auto scriptAction = std::dynamic_pointer_cast<SCXML::Core::ScriptActionNode>(action);
+                    if (scriptAction) {
+                        if (name == "src") {
+                            scriptAction->setSrc(value);
+                        
+                        } else if (name == "lang") {
+                            scriptAction->setLang(value);
+                        
+                        } else {
+                            action->setAttribute(name, value);
+                        }
+                    } else {
+
+                        action->setAttribute(name, value);
+                    }
+                } else {
+                    action->setAttribute(name, value);
+                }
+                SCXML::Common::Logger::debug("ActionParser::parseActionNode() - Added attribute: " + name + " = " + value);
             }
         }
     }
 
     // 자식 요소를 단순 텍스트로 취급하는 대신 계층적으로 처리
-    std::vector<std::shared_ptr<IActionNode>> childActions;
+    std::vector<std::shared_ptr<SCXML::Model::IActionNode>> childActions;
     auto children = actionNode->get_children();
     for (auto child : children)
     {
@@ -112,7 +180,17 @@ std::shared_ptr<IActionNode> ActionParser::parseActionNode(const xmlpp::Element 
         {
             // 텍스트 내용이 있는 경우 처리
             action->setAttribute("textContent", textNode->get_content());
-            Logger::debug("ActionParser::parseActionNode() - Added text content");
+            
+            // Special handling for ScriptActionNode content
+            if (action->getType() == "script") {
+                auto scriptAction = std::dynamic_pointer_cast<SCXML::Core::ScriptActionNode>(action);
+                if (scriptAction) {
+                    scriptAction->setContent(textNode->get_content());
+                
+                }
+            }
+            
+            SCXML::Common::Logger::debug("ActionParser::parseActionNode() - Added text content");
         }
         else
         {
@@ -124,7 +202,7 @@ std::shared_ptr<IActionNode> ActionParser::parseActionNode(const xmlpp::Element 
                 if (childAction)
                 {
                     childActions.push_back(childAction);
-                    Logger::debug("ActionParser::parseActionNode() - Added child action: " + childAction->getId());
+                    SCXML::Common::Logger::debug("ActionParser::parseActionNode() - Added child action: " + childAction->getId());
                 }
             }
         }
@@ -134,18 +212,18 @@ std::shared_ptr<IActionNode> ActionParser::parseActionNode(const xmlpp::Element 
     if (!childActions.empty())
     {
         action->setChildActions(childActions);
-        Logger::debug("ActionParser::parseActionNode() - Added " + std::to_string(childActions.size()) + " child actions");
+        SCXML::Common::Logger::debug("ActionParser::parseActionNode() - Added " + std::to_string(childActions.size()) + " child actions");
     }
 
-    Logger::debug("ActionParser::parseActionNode() - Action parsed successfully");
+    SCXML::Common::Logger::debug("ActionParser::parseActionNode() - Action parsed successfully");
     return action;
 }
 
-std::shared_ptr<IActionNode> ActionParser::parseExternalActionNode(const xmlpp::Element *externalActionNode)
+std::shared_ptr<SCXML::Model::IActionNode> ActionParser::parseExternalActionNode(const xmlpp::Element *externalActionNode)
 {
     if (!externalActionNode)
     {
-        Logger::warning("ActionParser::parseExternalActionNode() - Null external action node");
+        SCXML::Common::Logger::warning("ActionParser::parseExternalActionNode() - Null external action node");
         return nullptr;
     }
 
@@ -160,12 +238,12 @@ std::shared_ptr<IActionNode> ActionParser::parseExternalActionNode(const xmlpp::
 
     if (!nameAttr)
     {
-        Logger::warning("ActionParser::parseExternalActionNode() - External action node missing required name attribute");
+        SCXML::Common::Logger::warning("ActionParser::parseExternalActionNode() - External action node missing required name attribute");
         return nullptr;
     }
 
     std::string id = nameAttr->get_value();
-    Logger::debug("ActionParser::parseExternalActionNode() - Parsing external action: " + id);
+    SCXML::Common::Logger::debug("ActionParser::parseExternalActionNode() - Parsing external action: " + id);
 
     // 액션 노드 생성
     auto action = nodeFactory_->createActionNode(id);
@@ -178,7 +256,7 @@ std::shared_ptr<IActionNode> ActionParser::parseExternalActionNode(const xmlpp::
     if (delayAttr)
     {
         action->setAttribute("delay", delayAttr->get_value());
-        Logger::debug("ActionParser::parseExternalActionNode() - Delay: " + delayAttr->get_value());
+        SCXML::Common::Logger::debug("ActionParser::parseExternalActionNode() - Delay: " + delayAttr->get_value());
     }
 
     // 외부 구현 요소 파싱
@@ -212,26 +290,26 @@ std::shared_ptr<IActionNode> ActionParser::parseExternalActionNode(const xmlpp::
             if (name != "name" && name != "id" && name != "delay")
             {
                 action->setAttribute(name, value);
-                Logger::debug("ActionParser::parseExternalActionNode() - Added attribute: " + name + " = " + value);
+                SCXML::Common::Logger::debug("ActionParser::parseExternalActionNode() - Added attribute: " + name + " = " + value);
             }
         }
     }
 
-    Logger::debug("ActionParser::parseExternalActionNode() - External action parsed successfully");
+    SCXML::Common::Logger::debug("ActionParser::parseExternalActionNode() - External action parsed successfully");
     return action;
 }
 
-std::vector<std::shared_ptr<IActionNode>> ActionParser::parseActionsInElement(const xmlpp::Element *parentElement)
+std::vector<std::shared_ptr<SCXML::Model::IActionNode>> ActionParser::parseActionsInElement(const xmlpp::Element *parentElement)
 {
-    std::vector<std::shared_ptr<IActionNode>> actions;
+    std::vector<std::shared_ptr<SCXML::Model::IActionNode>> actions;
 
     if (!parentElement)
     {
-        Logger::warning("ActionParser::parseActionsInElement() - Null parent element");
+        SCXML::Common::Logger::warning("ActionParser::parseActionsInElement() - Null parent element");
         return actions;
     }
 
-    Logger::debug("ActionParser::parseActionsInElement() - Parsing actions in element: " + parentElement->get_name());
+    SCXML::Common::Logger::debug("ActionParser::parseActionsInElement() - Parsing actions in element: " + parentElement->get_name());
 
     // 모든 자식 요소 검사
     auto children = parentElement->get_children();
@@ -246,10 +324,16 @@ std::vector<std::shared_ptr<IActionNode>> ActionParser::parseActionsInElement(co
         // 액션 노드 확인
         if (isActionNode(element))
         {
+            SCXML::Common::Logger::debug("ActionParser::parseActionsInElement() - Found action node: " + element->get_name());
             auto action = parseActionNode(element);
             if (action)
             {
+                SCXML::Common::Logger::debug("ActionParser::parseActionsInElement() - Successfully parsed action: " + action->getId());
                 actions.push_back(action);
+            }
+            else
+            {
+                SCXML::Common::Logger::warning("ActionParser::parseActionsInElement() - Failed to parse action node: " + element->get_name());
             }
         }
         // 외부 실행 액션 노드 확인
@@ -269,12 +353,12 @@ std::vector<std::shared_ptr<IActionNode>> ActionParser::parseActionsInElement(co
         }
     }
 
-    Logger::debug("ActionParser::parseActionsInElement() - Found " + std::to_string(actions.size()) + " actions");
+    SCXML::Common::Logger::debug("ActionParser::parseActionsInElement() - Found " + std::to_string(actions.size()) + " actions");
     return actions;
 }
 
 void ActionParser::parseSpecialExecutableContent(const xmlpp::Element *element,
-                                                 std::vector<std::shared_ptr<IActionNode>> &actions)
+                                                 std::vector<std::shared_ptr<SCXML::Model::IActionNode>> &actions)
 {
     if (!element)
     {
@@ -282,10 +366,13 @@ void ActionParser::parseSpecialExecutableContent(const xmlpp::Element *element,
     }
 
     std::string nodeName = element->get_name();
-    Logger::debug("ActionParser::parseSpecialExecutableContent() - Parsing special content: " + nodeName);
+    SCXML::Common::Logger::debug("ActionParser::parseSpecialExecutableContent() - Parsing special content: " + nodeName);
 
     // 특수 요소에 대한 액션 노드 생성
-    auto specialAction = nodeFactory_->createActionNode(getLocalName(nodeName));
+    std::string actionType = getLocalName(nodeName);
+
+    auto specialAction = nodeFactory_->createActionNode(actionType);
+
     specialAction->setType(getLocalName(nodeName));
 
     // 속성 처리
@@ -302,7 +389,7 @@ void ActionParser::parseSpecialExecutableContent(const xmlpp::Element *element,
     }
 
     // if/elseif/else 또는 foreach 내의 자식 요소 처리
-    std::vector<std::shared_ptr<IActionNode>> childActions;
+    std::vector<std::shared_ptr<SCXML::Model::IActionNode>> childActions;
     auto children = element->get_children();
 
     for (auto child : children)
@@ -326,7 +413,7 @@ void ActionParser::parseSpecialExecutableContent(const xmlpp::Element *element,
     if (!childActions.empty())
     {
         specialAction->setChildActions(childActions);
-        Logger::debug("ActionParser::parseSpecialExecutableContent() - Added " +
+        SCXML::Common::Logger::debug("ActionParser::parseSpecialExecutableContent() - Added " +
                       std::to_string(childActions.size()) + " child actions to " + nodeName);
     }
 
@@ -387,14 +474,14 @@ bool ActionParser::isExternalActionNode(const xmlpp::Element *element) const
     return matchNodeName(nodeName, "external-action") || matchNodeName(nodeName, "code:external-action");
 }
 
-void ActionParser::parseExternalImplementation(const xmlpp::Element *element, std::shared_ptr<IActionNode> actionNode)
+void ActionParser::parseExternalImplementation(const xmlpp::Element *element, std::shared_ptr<SCXML::Model::IActionNode> actionNode)
 {
     if (!element || !actionNode)
     {
         return;
     }
 
-    Logger::debug("ActionParser::parseExternalImplementation() - Parsing external implementation for action: " + actionNode->getId());
+    SCXML::Common::Logger::debug("ActionParser::parseExternalImplementation() - Parsing external implementation for action: " + actionNode->getId());
 
     auto classAttr = element->get_attribute("class");
     auto factoryAttr = element->get_attribute("factory");
@@ -403,14 +490,14 @@ void ActionParser::parseExternalImplementation(const xmlpp::Element *element, st
     {
         std::string className = classAttr->get_value();
         actionNode->setExternalClass(className);
-        Logger::debug("ActionParser::parseExternalImplementation() - External class: " + className);
+        SCXML::Common::Logger::debug("ActionParser::parseExternalImplementation() - External class: " + className);
     }
 
     if (factoryAttr)
     {
         std::string factory = factoryAttr->get_value();
         actionNode->setExternalFactory(factory);
-        Logger::debug("ActionParser::parseExternalImplementation() - External factory: " + factory);
+        SCXML::Common::Logger::debug("ActionParser::parseExternalImplementation() - External factory: " + factory);
     }
 }
 
