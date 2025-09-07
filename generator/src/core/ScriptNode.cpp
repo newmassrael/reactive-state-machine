@@ -30,7 +30,7 @@ void ScriptNode::setSrc(const std::string &src) {
     src_ = src;
 }
 
-SCXML::Common::Result<void> ScriptNode::execute(SCXML::Runtime::RuntimeContext &context) {
+SCXML::Common::Result<void> ScriptNode::execute(SCXML::Model::IExecutionContext &context) {
     SCXML::Common::Logger::debug("ScriptNode::execute - Executing script of type: " + type_);
 
     try {
@@ -39,30 +39,33 @@ SCXML::Common::Result<void> ScriptNode::execute(SCXML::Runtime::RuntimeContext &
         if (scriptContent.empty() && !src_.empty()) {
             auto contentResult = loadContentFromSrc();
             if (!contentResult.isSuccess()) {
-                return SCXML::Common::Result<void>(
-                    SCXML::Common::ErrorInfo{"ScriptNode::execute", "Failed to load script from source: " + src_,
-                                             contentResult.getErrors()[0].details});
+                return SCXML::Common::Result<void>::failure(
+                    "Failed to load script from source: " + src_ + " - " + contentResult.getErrors()[0].message);
             }
             scriptContent = contentResult.getValue();
         }
 
         if (scriptContent.empty()) {
             SCXML::Common::Logger::warning("ScriptNode::execute - Empty script content");
-            return SCXML::Common::Result<void>();
+            return SCXML::Common::Result<void>::success();
         }
 
         // Execute based on script type
         if (type_ == "ecmascript" || type_ == "javascript") {
-            return executeECMAScript(context);
+            // Use the execution context to evaluate the expression
+            auto result = context.evaluateExpression(scriptContent);
+            if (result.isSuccess()) {
+                SCXML::Common::Logger::debug("ScriptNode::execute - Script executed successfully");
+                return SCXML::Common::Result<void>::success();
+            } else {
+                return SCXML::Common::Result<void>::failure("Script execution failed: " + result.getErrors()[0].message);
+            }
         } else {
-            return SCXML::Common::Result<void>(
-                SCXML::Common::ErrorInfo{"ScriptNode::execute", "Unsupported script type: " + type_,
-                                         "Only 'ecmascript' and 'javascript' are supported"});
+            return SCXML::Common::Result<void>::failure("Unsupported script type: " + type_);
         }
 
     } catch (const std::exception &e) {
-        return SCXML::Common::Result<void>(
-            SCXML::Common::ErrorInfo{"ScriptNode::execute", "Script execution failed", e.what()});
+        return SCXML::Common::Result<void>::failure("Script execution error: " + std::string(e.what()));
     }
 }
 
@@ -127,9 +130,7 @@ SCXML::Common::Result<void> ScriptNode::loadFromFile(const std::string &filepath
     try {
         std::ifstream file(filepath);
         if (!file.is_open()) {
-            return SCXML::Common::Result<void>(SCXML::Common::ErrorInfo{"ScriptNode::loadFromFile",
-                                                                        "Cannot open script file: " + filepath,
-                                                                        "File may not exist or be accessible"});
+            return SCXML::Common::Result<void>::failure("Cannot open script file: " + filepath, "SCRIPT_FILE_NOT_FOUND");
         }
 
         std::stringstream buffer;
@@ -141,8 +142,7 @@ SCXML::Common::Result<void> ScriptNode::loadFromFile(const std::string &filepath
         return SCXML::Common::Result<void>();
 
     } catch (const std::exception &e) {
-        return SCXML::Common::Result<void>(
-            SCXML::Common::ErrorInfo{"ScriptNode::loadFromFile", "Failed to load script file: " + filepath, e.what()});
+        return SCXML::Common::Result<void>::failure("Failed to load script file: " + filepath + " - " + e.what(), "SCRIPT_LOAD_ERROR");
     }
 }
 
@@ -155,61 +155,17 @@ void ScriptNode::setExecutionPriority(int priority) {
     executionPriority_ = priority;
 }
 
-SCXML::Common::Result<void> ScriptNode::executeECMAScript(SCXML::Runtime::RuntimeContext &context) {
-    SCXML::Common::Logger::debug("ScriptNode::executeECMAScript - Executing ECMAScript content");
 
-    try {
-        // Get the data model engine for script execution
-        auto dataModel = context.getDataModelEngine();
-        if (!dataModel) {
-            return SCXML::Common::Result<void>(
-                SCXML::Common::ErrorInfo{"ScriptNode::executeECMAScript", "No data model engine available",
-                                         "RuntimeContext must have an initialized data model engine"});
-        }
-
-        // Get script content (from content_ or loaded from src_)
-        std::string scriptContent = content_;
-        if (scriptContent.empty() && !src_.empty()) {
-            auto contentResult = loadContentFromSrc();
-            if (!contentResult.isSuccess()) {
-                return SCXML::Common::Result<void>(contentResult.getErrors()[0]);
-            }
-            scriptContent = contentResult.getValue();
-        }
-
-        if (scriptContent.empty()) {
-            SCXML::Common::Logger::warning("ScriptNode::executeECMAScript - No script content to execute");
-            return SCXML::Common::Result<void>();
-        }
-
-        // Execute the script using the data model engine
-        auto result = dataModel->evaluateExpression(scriptContent);
-        if (!result.isSuccess()) {
-            return SCXML::Common::Result<void>(SCXML::Common::ErrorInfo{
-                "ScriptNode::executeECMAScript", "Script execution failed", result.getErrorMessage()});
-        }
-
-        SCXML::Common::Logger::debug("ScriptNode::executeECMAScript - Script executed successfully");
-        return SCXML::Common::Result<void>();
-
-    } catch (const std::exception &e) {
-        return SCXML::Common::Result<void>(
-            SCXML::Common::ErrorInfo{"ScriptNode::executeECMAScript", "ECMAScript execution error", e.what()});
-    }
-}
 
 SCXML::Common::Result<std::string> ScriptNode::loadContentFromSrc() const {
     if (src_.empty()) {
-        return SCXML::Common::Result<std::string>(SCXML::Common::ErrorInfo{
-            "ScriptNode::loadContentFromSrc", "No source file specified", "src_ attribute is empty"});
+        return SCXML::Common::Result<std::string>::failure("No source file specified - src_ attribute is empty", "NO_SOURCE_FILE");
     }
 
     try {
         std::ifstream file(src_);
         if (!file.is_open()) {
-            return SCXML::Common::Result<std::string>(SCXML::Common::ErrorInfo{"ScriptNode::loadContentFromSrc",
-                                                                               "Cannot open source file: " + src_,
-                                                                               "File may not exist or be accessible"});
+            return SCXML::Common::Result<std::string>::failure("Cannot open source file: " + src_ + " - File may not exist or be accessible", "SOURCE_FILE_NOT_FOUND");
         }
 
         std::stringstream buffer;
@@ -221,8 +177,7 @@ SCXML::Common::Result<std::string> ScriptNode::loadContentFromSrc() const {
         return SCXML::Common::Result<std::string>(content);
 
     } catch (const std::exception &e) {
-        return SCXML::Common::Result<std::string>(SCXML::Common::ErrorInfo{
-            "ScriptNode::loadContentFromSrc", "Error loading from source file: " + src_, e.what()});
+        return SCXML::Common::Result<std::string>::failure("Error loading from source file: " + src_ + " - " + e.what(), "SOURCE_LOAD_ERROR");
     }
 }
 

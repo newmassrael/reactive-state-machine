@@ -1,11 +1,11 @@
 #include "ParserTestCommon.h"
 
-class SCXMLParserCommunicationTest : public SCXMLParserTestBase
+class CommunicationParserTest : public SCXMLParserTestBase
 {
 };
 
 // 외부 통신 요소 테스트 (send/cancel)
-TEST_F(SCXMLParserCommunicationTest, CommunicationElementsTest)
+TEST_F(CommunicationParserTest, CommunicationElementsTest)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
@@ -41,7 +41,7 @@ TEST_F(SCXMLParserCommunicationTest, CommunicationElementsTest)
 }
 
 // 외부 통신 요소 파싱 테스트
-TEST_F(SCXMLParserCommunicationTest, ExternalCommunicationParsing)
+TEST_F(CommunicationParserTest, ExternalCommunicationParsing)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
@@ -79,7 +79,7 @@ TEST_F(SCXMLParserCommunicationTest, ExternalCommunicationParsing)
 }
 
 // SCXML 이벤트 I/O 프로세서 파싱 테스트
-TEST_F(SCXMLParserCommunicationTest, SCXMLEventIOProcessor)
+TEST_F(CommunicationParserTest, SCXMLEventIOProcessor)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -127,7 +127,7 @@ TEST_F(SCXMLParserCommunicationTest, SCXMLEventIOProcessor)
 }
 
 // SCXML Event I/O Processor 통합 테스트
-TEST_F(SCXMLParserCommunicationTest, SCXMLEventIOProcessorIntegration)
+TEST_F(CommunicationParserTest, SCXMLEventIOProcessorIntegration)
 {
     // SCXML Event I/O 프로세서 테스트
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -173,7 +173,7 @@ TEST_F(SCXMLParserCommunicationTest, SCXMLEventIOProcessorIntegration)
 }
 
 // HTTP Event I/O Processor 테스트
-TEST_F(SCXMLParserCommunicationTest, HTTPEventIOProcessorIntegration)
+TEST_F(CommunicationParserTest, HTTPEventIOProcessorIntegration)
 {
     // HTTP Event I/O 프로세서 테스트
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -218,7 +218,7 @@ TEST_F(SCXMLParserCommunicationTest, HTTPEventIOProcessorIntegration)
 }
 
 // <raise> 요소 파싱 테스트
-TEST_F(SCXMLParserCommunicationTest, RaiseElementParsing)
+TEST_F(CommunicationParserTest, RaiseElementParsing)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

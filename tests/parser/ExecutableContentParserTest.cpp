@@ -1,12 +1,12 @@
 #include "ParserTestCommon.h"
 
 // 기본 테스트 픽스처 상속
-class SCXMLParserExecutableTest : public SCXMLParserTestBase
+class ExecutableContentParserTest : public SCXMLParserTestBase
 {
 };
 
 // 실행 가능 콘텐츠 파싱 테스트
-TEST_F(SCXMLParserExecutableTest, ExecutableContentParsing)
+TEST_F(ExecutableContentParserTest, ExecutableContentParsing)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
@@ -40,7 +40,7 @@ TEST_F(SCXMLParserExecutableTest, ExecutableContentParsing)
 }
 
 // 실행 콘텐츠 파싱 테스트 (foreach, if/else)
-TEST_F(SCXMLParserExecutableTest, ExecutableContentTest)
+TEST_F(ExecutableContentParserTest, ExecutableContentTest)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1" datamodel="ecmascript">
@@ -77,7 +77,7 @@ TEST_F(SCXMLParserExecutableTest, ExecutableContentTest)
 }
 
 // 중첩 및 복합 조건 테스트
-TEST_F(SCXMLParserExecutableTest, ComplexNestedConditionsTest)
+TEST_F(ExecutableContentParserTest, ComplexNestedConditionsTest)
 {
     // 액션 노드 생성 기대
     EXPECT_CALL(*mockFactory, createActionNode(testing::_))
@@ -150,7 +150,7 @@ TEST_F(SCXMLParserExecutableTest, ComplexNestedConditionsTest)
 }
 
 // <foreach> 요소 파싱 테스트
-TEST_F(SCXMLParserExecutableTest, ForeachElementParsing)
+TEST_F(ExecutableContentParserTest, ForeachElementParsing)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -190,7 +190,7 @@ TEST_F(SCXMLParserExecutableTest, ForeachElementParsing)
 }
 
 // Foreach 반복 테스트
-TEST_F(SCXMLParserExecutableTest, DetailedForeachTest)
+TEST_F(ExecutableContentParserTest, DetailedForeachTest)
 {
     // 액션 노드 생성 기대
     EXPECT_CALL(*mockFactory, createActionNode(testing::_))
@@ -251,7 +251,7 @@ TEST_F(SCXMLParserExecutableTest, DetailedForeachTest)
 }
 
 // <foreach>의 변경 불가능한 복사본 처리 테스트
-TEST_F(SCXMLParserExecutableTest, ForeachImmutableCopyTest)
+TEST_F(ExecutableContentParserTest, ForeachImmutableCopyTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -293,7 +293,7 @@ TEST_F(SCXMLParserExecutableTest, ForeachImmutableCopyTest)
 }
 
 // <if>, <elseif>, <else> 요소 파싱 테스트
-TEST_F(SCXMLParserExecutableTest, ConditionalElementsParsing)
+TEST_F(ExecutableContentParserTest, ConditionalElementsParsing)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -337,7 +337,7 @@ TEST_F(SCXMLParserExecutableTest, ConditionalElementsParsing)
 }
 
 // <script> 요소 테스트
-TEST_F(SCXMLParserExecutableTest, ScriptElementTest)
+TEST_F(ExecutableContentParserTest, ScriptElementTest)
 {
     // script 요소가 있는 SCXML 파싱 테스트
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -382,7 +382,7 @@ TEST_F(SCXMLParserExecutableTest, ScriptElementTest)
     EXPECT_FALSE(s1->getOnEntry().empty());
 }
 // <send> 타임아웃 및 지연 기능 테스트
-TEST_F(SCXMLParserExecutableTest, SendDelayTest)
+TEST_F(ExecutableContentParserTest, SendDelayTest)
 {
     // 액션 노드 생성 기대
     EXPECT_CALL(*mockFactory, createActionNode(testing::_))
@@ -447,7 +447,7 @@ TEST_F(SCXMLParserExecutableTest, SendDelayTest)
 }
 
 // <send> 지연 및 취소 기능 테스트
-TEST_F(SCXMLParserExecutableTest, SendDelayAndCancelTest)
+TEST_F(ExecutableContentParserTest, SendDelayAndCancelTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -500,7 +500,7 @@ TEST_F(SCXMLParserExecutableTest, SendDelayAndCancelTest)
     EXPECT_TRUE(foundCancelTransition) << "cancel 전환이 없습니다";
 }
 
-TEST_F(SCXMLParserExecutableTest, ActionNodeParsing)
+TEST_F(ExecutableContentParserTest, ActionNodeParsing)
 {
     // ActionNode Mock 생성 호출 예상
     EXPECT_CALL(*mockFactory, createActionNode(testing::_))
@@ -555,7 +555,7 @@ TEST_F(SCXMLParserExecutableTest, ActionNodeParsing)
 }
 
 // 액션 ID 처리 테스트
-TEST_F(SCXMLParserExecutableTest, ActionNodeIds)
+TEST_F(ExecutableContentParserTest, ActionNodeIds)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml"
@@ -606,7 +606,7 @@ TEST_F(SCXMLParserExecutableTest, ActionNodeIds)
 }
 
 // 사용자 정의 액션 테스트
-TEST_F(SCXMLParserExecutableTest, CustomActions)
+TEST_F(ExecutableContentParserTest, CustomActions)
 {
     // 액션 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -659,7 +659,7 @@ TEST_F(SCXMLParserExecutableTest, CustomActions)
 }
 
 // 복잡한 실행 가능 콘텐츠 파싱 테스트
-TEST_F(SCXMLParserExecutableTest, ExecutableContentParsingTest)
+TEST_F(ExecutableContentParserTest, ExecutableContentParsingTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

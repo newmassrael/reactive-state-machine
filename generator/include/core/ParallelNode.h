@@ -40,7 +40,7 @@ public:
     /**
      * @brief Destructor
      */
-    virtual ~ParallelNode() = default;
+    virtual ~ParallelNode();
 
     // IParallelNode interface implementation
     const std::string &getId() const override;
@@ -137,23 +137,23 @@ public:
     // IParallelStateManager interface implementation
     SCXML::Common::Result<void> registerParallelState(std::shared_ptr<IParallelNode> parallelState) override;
 
-    SCXML::Common::Result<void> enterParallelStates(SCXML::Runtime::RuntimeContext &context,
+    SCXML::Common::Result<void> enterParallelStates(SCXML::Model::IExecutionContext &context,
                                                     const std::set<std::string> &statesToEnter) override;
 
-    SCXML::Common::Result<void> exitParallelStates(SCXML::Runtime::RuntimeContext &context,
+    SCXML::Common::Result<void> exitParallelStates(SCXML::Model::IExecutionContext &context,
                                                    const std::set<std::string> &statesToExit) override;
 
     SCXML::Common::Result<std::map<std::string, bool>>
-    processEventAcrossParallelStates(SCXML::Runtime::RuntimeContext &context, const std::string &eventName) override;
+    processEventAcrossParallelStates(SCXML::Model::IExecutionContext &context, const std::string &eventName) override;
 
-    std::map<std::string, bool> checkParallelStateCompletions(SCXML::Runtime::RuntimeContext &context) const override;
+    std::map<std::string, bool> checkParallelStateCompletions(SCXML::Model::IExecutionContext &context) const override;
 
-    std::set<std::string> getActiveParallelStates(SCXML::Runtime::RuntimeContext &context) const override;
+    std::set<std::string> getActiveParallelStates(SCXML::Model::IExecutionContext &context) const override;
 
     std::shared_ptr<IParallelNode> findParallelState(const std::string &parallelStateId) const override;
     std::vector<std::shared_ptr<IParallelNode>> getAllParallelStates() const override;
     std::vector<std::string> validateAllParallelStates() const override;
-    std::string exportParallelStateInfo(SCXML::Runtime::RuntimeContext &context) const override;
+    std::string exportParallelStateInfo(SCXML::Model::IExecutionContext &context) const override;
 
     void
     setEventProcessingCallback(std::function<void(const std::string &, const std::string &, bool)> callback) override;
@@ -169,7 +169,7 @@ private:
      * @param parallelStateId Parallel state ID
      * @return Reference to execution context
      */
-    ParallelExecutionContext &getOrCreateExecutionContext(const std::string &parallelStateId);
+    // ParallelExecutionContext &getOrCreateExecutionContext(const std::string &parallelStateId); // Disabled for testing
 
     /**
      * @brief Remove execution context for a parallel state

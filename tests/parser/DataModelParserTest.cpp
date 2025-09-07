@@ -1,12 +1,12 @@
 #include "ParserTestCommon.h"
 
 // 데이터 모델 관련 기능을 테스트하는 픽스처 클래스
-class SCXMLParserDataModelTest : public SCXMLParserTestBase
+class DataModelParserTest : public SCXMLParserTestBase
 {
 };
 
 // 데이터 모델 파싱 테스트
-TEST_F(SCXMLParserDataModelTest, ParseDataModel)
+TEST_F(DataModelParserTest, ParseDataModel)
 {
   // 상태 및 데이터 모델 항목 생성 호출 예상
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -93,7 +93,7 @@ TEST_F(SCXMLParserDataModelTest, ParseDataModel)
 }
 
 // 데이터 모델 항목 파싱 테스트
-TEST_F(SCXMLParserDataModelTest, DataModelItemParsing)
+TEST_F(DataModelParserTest, DataModelItemParsing)
 {
   // 데이터 모델 항목 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -154,7 +154,7 @@ TEST_F(SCXMLParserDataModelTest, DataModelItemParsing)
 }
 
 // 바인딩 모드 파싱 테스트
-TEST_F(SCXMLParserDataModelTest, BindingModeParsing)
+TEST_F(DataModelParserTest, BindingModeParsing)
 {
   std::string earlyBindingScxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1" binding="early">
@@ -182,7 +182,7 @@ TEST_F(SCXMLParserDataModelTest, BindingModeParsing)
 }
 
 // 데이터 모델 바인딩 테스트 (Early/Late)
-TEST_F(SCXMLParserDataModelTest, DataModelBindingTest)
+TEST_F(DataModelParserTest, DataModelBindingTest)
 {
   // 'early' 바인딩 테스트
   std::string earlyBindingScxml = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -279,7 +279,7 @@ TEST_F(SCXMLParserDataModelTest, DataModelBindingTest)
 }
 
 // 데이터 모델 타입 테스트 (ECMAScript/XPath)
-TEST_F(SCXMLParserDataModelTest, DataModelTypesTest)
+TEST_F(DataModelParserTest, DataModelTypesTest)
 {
   // ECMAScript 데이터 모델
   std::string ecmascriptDataModel = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -376,7 +376,7 @@ TEST_F(SCXMLParserDataModelTest, DataModelTypesTest)
 }
 
 // <donedata> 요소 파싱 테스트
-TEST_F(SCXMLParserDataModelTest, ParseDoneData)
+TEST_F(DataModelParserTest, ParseDoneData)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -442,7 +442,7 @@ TEST_F(SCXMLParserDataModelTest, ParseDoneData)
 }
 
 // <donedata>에서 <content> 사용 테스트
-TEST_F(SCXMLParserDataModelTest, ParseDoneDataWithContent)
+TEST_F(DataModelParserTest, ParseDoneDataWithContent)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -487,7 +487,7 @@ TEST_F(SCXMLParserDataModelTest, ParseDoneDataWithContent)
 }
 
 // <donedata>에서 <content> 표현식 테스트
-TEST_F(SCXMLParserDataModelTest, ParseDoneDataWithContentExpr)
+TEST_F(DataModelParserTest, ParseDoneDataWithContentExpr)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -526,7 +526,7 @@ TEST_F(SCXMLParserDataModelTest, ParseDoneDataWithContentExpr)
 }
 
 // <donedata> 내의 <content> 표현식 처리 테스트
-TEST_F(SCXMLParserDataModelTest, DoneDataContentExprTest)
+TEST_F(DataModelParserTest, DoneDataContentExprTest)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -570,7 +570,7 @@ TEST_F(SCXMLParserDataModelTest, DoneDataContentExprTest)
 }
 
 // 오류 발생 시 블록 내 나머지 콘텐츠 처리 테스트
-TEST_F(SCXMLParserDataModelTest, ParseInvalidDoneData)
+TEST_F(DataModelParserTest, ParseInvalidDoneData)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -626,7 +626,7 @@ TEST_F(SCXMLParserDataModelTest, ParseInvalidDoneData)
 }
 
 // 복합 데이터 모델 지원 테스트
-TEST_F(SCXMLParserDataModelTest, DataModelSupport)
+TEST_F(DataModelParserTest, DataModelSupport)
 {
   // 여러 데이터 모델 테스트 (ECMAScript, XPath, null)
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -693,7 +693,7 @@ TEST_F(SCXMLParserDataModelTest, DataModelSupport)
 }
 
 // 데이터 모델 타입 심층 테스트
-TEST_F(SCXMLParserDataModelTest, DataModelTypesDetailedTest)
+TEST_F(DataModelParserTest, DataModelTypesDetailedTest)
 {
   // 기존 ECMAScript 데이터 모델에 대한 테스트
   std::string ecmascriptDataModel = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -859,7 +859,7 @@ TEST_F(SCXMLParserDataModelTest, DataModelTypesDetailedTest)
 }
 
 // XPath 데이터 모델 지원 테스트
-TEST_F(SCXMLParserDataModelTest, XPathDataModelTest)
+TEST_F(DataModelParserTest, XPathDataModelTest)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -920,7 +920,7 @@ TEST_F(SCXMLParserDataModelTest, XPathDataModelTest)
 }
 
 // 상세 DoneData 테스트
-TEST_F(SCXMLParserDataModelTest, DetailedDoneDataTest)
+TEST_F(DataModelParserTest, DetailedDoneDataTest)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -1014,7 +1014,7 @@ TEST_F(SCXMLParserDataModelTest, DetailedDoneDataTest)
 }
 
 // 시스템 변수 처리 테스트
-TEST_F(SCXMLParserDataModelTest, SystemVariablesProcessing)
+TEST_F(DataModelParserTest, SystemVariablesProcessing)
 {
   // SystemVariables 접근 테스트
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -1048,7 +1048,7 @@ TEST_F(SCXMLParserDataModelTest, SystemVariablesProcessing)
 }
 
 // 조건부 표현식의 In() 함수 테스트
-TEST_F(SCXMLParserDataModelTest, InFunctionTest)
+TEST_F(DataModelParserTest, InFunctionTest)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -1117,7 +1117,7 @@ TEST_F(SCXMLParserDataModelTest, InFunctionTest)
 }
 
 // 가드 조건 파싱 테스트
-TEST_F(SCXMLParserDataModelTest, ParseGuards)
+TEST_F(DataModelParserTest, ParseGuards)
 {
   // 가드 노드 생성 호출 예상
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -1201,7 +1201,7 @@ TEST_F(SCXMLParserDataModelTest, ParseGuards)
 }
 
 // 반응형 가드 테스트
-TEST_F(SCXMLParserDataModelTest, ReactiveGuards)
+TEST_F(DataModelParserTest, ReactiveGuards)
 {
   // 기대하는 호출 횟수 설정
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -1342,7 +1342,7 @@ TEST_F(SCXMLParserDataModelTest, ReactiveGuards)
 }
 
 // 복합 조건을 가진 가드 테스트
-TEST_F(SCXMLParserDataModelTest, ComplexGuardConditions)
+TEST_F(DataModelParserTest, ComplexGuardConditions)
 {
   // 가드 노드 생성 호출 예상
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

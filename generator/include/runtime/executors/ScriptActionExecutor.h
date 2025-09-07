@@ -11,6 +11,7 @@ public:
     ~ScriptActionExecutor() override = default;
 
     bool execute(const Core::ActionNode& actionNode, RuntimeContext& context) override;
+    std::vector<std::string> validate(const Core::ActionNode& actionNode) const override;
     std::string getActionType() const override { return "script"; }
 };
 

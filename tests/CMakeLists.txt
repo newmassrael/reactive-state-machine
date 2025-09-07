@@ -17,6 +17,11 @@ set(GENERATOR_SOURCES
     ${CMAKE_SOURCE_DIR}/generator/src/core/ActionNode.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/core/DataModelItem.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/core/InvokeNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/HistoryNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/ParallelNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/FinalNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/DoneDataNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/ScriptNode.cpp
 
     # 액션 구현 클래스들 (모든 액션 포함)
     ${CMAKE_SOURCE_DIR}/generator/src/core/actions/IfActionNode.cpp
@@ -125,21 +130,25 @@ set(COMMON_LINK_LIBS
     pthread
 )
 
-# Generator 테스트들 빌드
-file(GLOB GENERATOR_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/generator/Parser*.cpp")
+# Parser 테스트들 빌드
+file(GLOB PARSER_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/parser/*ParserTest.cpp")
 
-foreach(test_file ${GENERATOR_TEST_FILES})
+foreach(test_file ${PARSER_TEST_FILES})
     # 파일명에서 확장자 제거하여 테스트 이름 생성
     get_filename_component(test_name ${test_file} NAME_WE)
 
     # 각 테스트 파일에 대한 실행파일 생성
     add_executable(${test_name}
         ${test_file}
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserTestCommon.h
         ${GENERATOR_SOURCES}
     )
 
     # Include 디렉토리 설정
-    target_include_directories(${test_name} PRIVATE ${COMMON_INCLUDE_DIRS})
+    target_include_directories(${test_name} PRIVATE 
+        ${COMMON_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser
+    )
 
     # 링크 라이브러리 설정
     target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
@@ -149,26 +158,203 @@ foreach(test_file ${GENERATOR_TEST_FILES})
 
     # 테스트 라벨 설정
     set_tests_properties(${test_name} PROPERTIES
-        LABELS "parser;generator;unit"
+        LABELS "parser;unit"
         TIMEOUT 30
     )
 
     # 특정 테스트별 추가 라벨
-    if(${test_name} MATCHES ".*Basic.*")
-        set_property(TEST ${test_name} APPEND PROPERTY LABELS "basic")
+    if(${test_name} MATCHES ".*Document.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "document")
     endif()
-    if(${test_name} MATCHES ".*Integration.*|.*Communication.*")
-        set_property(TEST ${test_name} APPEND PROPERTY LABELS "integration")
+    if(${test_name} MATCHES ".*StateNode.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "state")
+    endif()
+    if(${test_name} MATCHES ".*Transition.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "transition")
     endif()
     if(${test_name} MATCHES ".*Error.*")
         set_property(TEST ${test_name} APPEND PROPERTY LABELS "error_handling")
     endif()
     if(${test_name} MATCHES ".*History.*")
-        set_property(TEST ${test_name} APPEND PROPERTY LABELS "scxml_features")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "history")
+    endif()
+    if(${test_name} MATCHES ".*Communication.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "communication")
+    endif()
+    if(${test_name} MATCHES ".*Invoke.*")
+        set_property(TEST ${test_name} APPEND PROPERTY LABELS "invoke")
     endif()
 endforeach()
 
-# 6. Runtime 테스트들 (별도 서브디렉토리)
+# Core 모듈 테스트들
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core")
+    file(GLOB_RECURSE CORE_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/core/*Test.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/core/*/*Test.cpp")
+    
+    foreach(test_file ${CORE_TEST_FILES})
+        get_filename_component(test_name ${test_file} NAME_WE)
+        
+        add_executable(${test_name}
+            ${test_file}
+            ${GENERATOR_SOURCES}
+        )
+        
+        target_include_directories(${test_name} PRIVATE 
+            ${COMMON_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/core
+        )
+        
+        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "core;unit"
+            TIMEOUT 30
+        )
+    endforeach()
+endif()
+
+# Runtime 모듈 테스트들
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/runtime")
+    file(GLOB_RECURSE RUNTIME_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/runtime/*Test.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/runtime/*/*Test.cpp")
+    
+    foreach(test_file ${RUNTIME_TEST_FILES})
+        get_filename_component(test_name ${test_file} NAME_WE)
+        
+        add_executable(${test_name}
+            ${test_file}
+            ${GENERATOR_SOURCES}
+        )
+        
+        target_include_directories(${test_name} PRIVATE 
+            ${COMMON_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/runtime
+        )
+        
+        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "runtime;unit"
+            TIMEOUT 60
+        )
+    endforeach()
+endif()
+
+# Integration 테스트들
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/integration")
+    file(GLOB_RECURSE INTEGRATION_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/integration/*Test.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/integration/*/*Test.cpp")
+    
+    foreach(test_file ${INTEGRATION_TEST_FILES})
+        get_filename_component(test_name ${test_file} NAME_WE)
+        
+        add_executable(${test_name}
+            ${test_file}
+            ${GENERATOR_SOURCES}
+        )
+        
+        target_include_directories(${test_name} PRIVATE 
+            ${COMMON_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/integration
+        )
+        
+        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "integration;system"
+            TIMEOUT 120
+        )
+    endforeach()
+endif()
+
+# Examples 테스트들
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
+    file(GLOB_RECURSE EXAMPLE_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/examples/*Test.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/examples/*/*Test.cpp")
+    
+    foreach(test_file ${EXAMPLE_TEST_FILES})
+        get_filename_component(test_name ${test_file} NAME_WE)
+        
+        add_executable(${test_name}
+            ${test_file}
+            ${GENERATOR_SOURCES}
+        )
+        
+        target_include_directories(${test_name} PRIVATE 
+            ${COMMON_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples
+        )
+        
+        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "examples;functional"
+            TIMEOUT 90
+        )
+    endforeach()
+endif()
+
+# Performance 테스트들
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/performance")
+    file(GLOB_RECURSE PERFORMANCE_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/performance/*Test.cpp")
+    
+    foreach(test_file ${PERFORMANCE_TEST_FILES})
+        get_filename_component(test_name ${test_file} NAME_WE)
+        
+        add_executable(${test_name}
+            ${test_file}
+            ${GENERATOR_SOURCES}
+        )
+        
+        target_include_directories(${test_name} PRIVATE 
+            ${COMMON_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/performance
+        )
+        
+        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "performance;benchmark"
+            TIMEOUT 300
+        )
+    endforeach()
+endif()
+
+# Compliance 테스트들
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/compliance")
+    file(GLOB_RECURSE COMPLIANCE_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/compliance/*Test.cpp")
+    
+    foreach(test_file ${COMPLIANCE_TEST_FILES})
+        get_filename_component(test_name ${test_file} NAME_WE)
+        
+        add_executable(${test_name}
+            ${test_file}
+            ${GENERATOR_SOURCES}
+        )
+        
+        target_include_directories(${test_name} PRIVATE 
+            ${COMMON_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/compliance
+        )
+        
+        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "compliance;w3c"
+            TIMEOUT 180
+        )
+    endforeach()
+endif()
+
+# Runtime 테스트들 (별도 서브디렉토리)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/runtime/CMakeLists.txt")
     add_subdirectory(runtime)
 endif()

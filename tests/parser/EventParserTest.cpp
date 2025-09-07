@@ -1,12 +1,12 @@
 #include "ParserTestCommon.h"
 
 // 기본 테스트 픽스처 상속
-class SCXMLParserEventTest : public SCXMLParserTestBase
+class EventParserTest : public SCXMLParserTestBase
 {
 };
 
 // 이벤트 디스크립터 파싱 테스트
-TEST_F(SCXMLParserEventTest, EventDescriptorParsing)
+TEST_F(EventParserTest, EventDescriptorParsing)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
@@ -55,7 +55,7 @@ TEST_F(SCXMLParserEventTest, EventDescriptorParsing)
 }
 
 // 이벤트 디스크립터 복잡한 매칭 테스트
-TEST_F(SCXMLParserEventTest, ComplexEventDescriptorTest)
+TEST_F(EventParserTest, ComplexEventDescriptorTest)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
@@ -102,7 +102,7 @@ TEST_F(SCXMLParserEventTest, ComplexEventDescriptorTest)
 }
 
 // 복잡한 이벤트 디스크립터 파싱 테스트
-TEST_F(SCXMLParserEventTest, DetailedEventDescriptorTest)
+TEST_F(EventParserTest, DetailedEventDescriptorTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -174,7 +174,7 @@ TEST_F(SCXMLParserEventTest, DetailedEventDescriptorTest)
 }
 
 // 이벤트 디스크립터 매칭 알고리즘 심층 테스트
-TEST_F(SCXMLParserEventTest, AdvancedEventDescriptorTest)
+TEST_F(EventParserTest, AdvancedEventDescriptorTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -263,7 +263,7 @@ TEST_F(SCXMLParserEventTest, AdvancedEventDescriptorTest)
 }
 
 // 이벤트 디스크립터 매칭 알고리즘 테스트
-TEST_F(SCXMLParserEventTest, EventDescriptorMatching)
+TEST_F(EventParserTest, EventDescriptorMatching)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -367,7 +367,7 @@ TEST_F(SCXMLParserEventTest, EventDescriptorMatching)
 }
 
 // 명시적인 이벤트 발생 우선순위 테스트
-TEST_F(SCXMLParserEventTest, RaiseEventPriorityTest)
+TEST_F(EventParserTest, RaiseEventPriorityTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

@@ -9,7 +9,6 @@
 #include <string>
 
 using SCXML::Model::IExecutionContext;
-using SCXML::Model::HistoryType;
 using SCXML::Model::IHistoryNode;
 
 namespace SCXML {
@@ -30,7 +29,7 @@ public:
      * @param id History node ID
      * @param type History type (shallow or deep)
      */
-    HistoryNode(const std::string &id, HistoryType type = HistoryType::SHALLOW);
+    HistoryNode(const std::string &id, SCXML::HistoryType type = SCXML::HistoryType::SHALLOW);
 
     /**
      * @brief Destructor
@@ -38,8 +37,8 @@ public:
     virtual ~HistoryNode() = default;
 
     // IHistoryNode interface implementation
-    HistoryType getType() const override;
-    void setType(HistoryType type) override;
+    SCXML::HistoryType getType() const override;
+    void setType(SCXML::HistoryType type) override;
 
     const std::string &getId() const override;
     void setId(const std::string &id) override;
@@ -68,7 +67,7 @@ public:
 
 private:
     std::string id_;             ///< History node identifier
-    HistoryType type_;           ///< History type (shallow/deep)
+    SCXML::HistoryType type_;           ///< History type (shallow/deep)
     std::string parentState_;    ///< Parent state that owns this history
     std::string defaultTarget_;  ///< Default target if no history exists
 

@@ -81,7 +81,7 @@ public:
      * @param context Runtime context for execution
      * @return true if logging was successful
      */
-    // execute() method removed - now handled by LogActionExecutor
+    bool execute(::SCXML::Runtime::RuntimeContext &context) override;
 
     /**
      * @brief Get action type name
@@ -101,7 +101,7 @@ public:
      * @brief Validate log action configuration
      * @return Vector of validation error messages (empty if valid)
      */
-    // validate() method removed - now handled by LogActionExecutor
+    std::vector<std::string> validate() const;
 
     // Helper methods removed - now handled by LogActionExecutor
 

@@ -36,7 +36,7 @@ public:
     virtual void setContent(const std::string &content) override;
     virtual const std::string &getSrc() const override;
     virtual void setSrc(const std::string &src) override;
-    virtual SCXML::Common::Result<void> execute(::SCXML::Runtime::RuntimeContext &context) override;
+    virtual SCXML::Common::Result<void> execute(SCXML::Model::IExecutionContext &context) override;
     virtual std::vector<std::string> validate() const override;
     virtual std::shared_ptr<IScriptNode> clone() const override;
     virtual const std::string &getType() const override;
@@ -70,12 +70,7 @@ private:
     bool isInitializationScript_;  ///< Whether script runs at document load
     int executionPriority_;        ///< Execution order priority
 
-    /**
-     * @brief Execute ECMAScript content
-     * @param context Runtime context
-     * @return Execution result
-     */
-    SCXML::Common::Result<void> executeECMAScript(::SCXML::Runtime::RuntimeContext &context);
+
 
     /**
      * @brief Load content from src file if specified

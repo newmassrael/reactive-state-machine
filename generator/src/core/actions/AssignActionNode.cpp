@@ -3,6 +3,7 @@
 #include "events/Event.h"
 #include "runtime/DataModelEngine.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/ActionExecutor.h"
 #include <sstream>
 
 namespace SCXML {
@@ -43,9 +44,30 @@ std::shared_ptr<SCXML::Model::IActionNode> AssignActionNode::clone() const {
     return clone;
 }
 
-// validate() method removed - now handled by AssignActionExecutor
+bool AssignActionNode::execute(::SCXML::Runtime::RuntimeContext &context) {
+    // Use Executor pattern - create static factory
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        SCXML::Common::Logger::error("AssignActionNode::execute - No executor available for action type: " + getActionType());
+        return false;
+    }
 
-// resolveValue() method removed - now handled by AssignActionExecutor
+    return executor->execute(*this, context);
+}
+
+std::vector<std::string> AssignActionNode::validate() const {
+    // Use Executor pattern - delegate to AssignActionExecutor
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        return {"No executor available for action type: " + getActionType()};
+    }
+
+    return executor->validate(*this);
+}
 
 }  // namespace Core
 }  // namespace SCXML

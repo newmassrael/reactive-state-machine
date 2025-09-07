@@ -28,5 +28,25 @@ bool IfActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeContex
     }
 }
 
+std::vector<std::string> IfActionExecutor::validate(const Core::ActionNode& actionNode) const {
+    std::vector<std::string> errors;
+
+    const auto* ifNode = safeCast<Core::IfActionNode>(actionNode);
+    if (!ifNode) {
+        errors.push_back("Invalid action node type for IfActionExecutor");
+        return errors;
+    }
+
+    // SCXML W3C specification: <if> must have 'cond' attribute (condition is required)
+    if (ifNode->getIfCondition().empty()) {
+        errors.push_back("If action must have a 'cond' attribute with a valid condition");
+    }
+
+    // SCXML W3C specification allows <elseif> and <else> branches (no additional validation needed)
+    // The structure validation (e.g., else comes last) is handled in the IfActionNode itself
+
+    return errors;
+}
+
 } // namespace Runtime
 } // namespace SCXML

@@ -1,12 +1,12 @@
 #include "ParserTestCommon.h"
 
 // 기본 테스트 픽스처 상속
-class SCXMLParserTransitionTest : public SCXMLParserTestBase
+class TransitionParserTest : public SCXMLParserTestBase
 {
 };
 
 // 전환 타입(내부/외부) 테스트
-TEST_F(SCXMLParserTransitionTest, TransitionTypes)
+TEST_F(TransitionParserTest, TransitionTypes)
 {
     // 여러 타입의 전환을 파싱
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -72,7 +72,7 @@ TEST_F(SCXMLParserTransitionTest, TransitionTypes)
 }
 
 // 내부/외부 전환 타입 테스트 확장
-TEST_F(SCXMLParserTransitionTest, DetailedTransitionTypeTest)
+TEST_F(TransitionParserTest, DetailedTransitionTypeTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -176,7 +176,7 @@ TEST_F(SCXMLParserTransitionTest, DetailedTransitionTypeTest)
 }
 
 // 상태 전환 타겟 다중 지정 테스트
-TEST_F(SCXMLParserTransitionTest, MultipleTargets)
+TEST_F(TransitionParserTest, MultipleTargets)
 {
     // 다중 타겟 전환 파싱
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -223,7 +223,7 @@ TEST_F(SCXMLParserTransitionTest, MultipleTargets)
 }
 
 // 다중 타겟 전환(Multiple Target Transitions) 테스트
-TEST_F(SCXMLParserTransitionTest, DetailedMultipleTargetsTest)
+TEST_F(TransitionParserTest, DetailedMultipleTargetsTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -270,7 +270,7 @@ TEST_F(SCXMLParserTransitionTest, DetailedMultipleTargetsTest)
 }
 
 // 타겟리스 전환(Targetless Transitions) 테스트
-TEST_F(SCXMLParserTransitionTest, TargetlessTransitionTest)
+TEST_F(TransitionParserTest, TargetlessTransitionTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -315,7 +315,7 @@ TEST_F(SCXMLParserTransitionTest, TargetlessTransitionTest)
 }
 
 // 조건부 전환(Conditional Transitions)의 우선순위 테스트
-TEST_F(SCXMLParserTransitionTest, ConditionalTransitionPriorityTest)
+TEST_F(TransitionParserTest, ConditionalTransitionPriorityTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

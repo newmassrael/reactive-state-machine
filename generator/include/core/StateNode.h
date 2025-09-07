@@ -1,7 +1,8 @@
 #pragma once
 #include "model/DoneData.h"
-#include "model/IActionNode.h"
+#include "model/IActionNode.h" 
 #include "model/IDataModelItem.h"
+
 #include "model/IInvokeNode.h"
 #include "model/IStateNode.h"
 #include "model/ITransitionNode.h"
@@ -163,25 +164,25 @@ public:
     virtual const std::vector<std::shared_ptr<IInvokeNode>> &getInvoke() const override;
 
     // 히스토리 타입 설정
-    void setHistoryType(HistoryType type) {
+    void setHistoryType(SCXML::HistoryType type) {
         historyType_ = type;
     }
 
     // IStateNode 인터페이스 구현
     void setHistoryType(bool isDeep) override {
-        historyType_ = isDeep ? HistoryType::DEEP : HistoryType::SHALLOW;
+        historyType_ = isDeep ? SCXML::HistoryType::DEEP : SCXML::HistoryType::SHALLOW;
     }
 
-    HistoryType getHistoryType() const override {
+    SCXML::HistoryType getHistoryType() const override {
         return historyType_;
     }
 
     bool isShallowHistory() const override {
-        return historyType_ == HistoryType::SHALLOW;
+        return historyType_ == SCXML::HistoryType::SHALLOW;
     }
 
     bool isDeepHistory() const override {
-        return historyType_ == HistoryType::DEEP;
+        return historyType_ == SCXML::HistoryType::DEEP;
     }
 
     // 반응형 가드 ID 추가 메서드
@@ -267,7 +268,7 @@ private:
     std::string id_;
     Type type_;
     IStateNode *parent_;
-    HistoryType historyType_ = HistoryType::NONE;
+    SCXML::HistoryType historyType_ = SCXML::HistoryType::NONE;
     std::vector<std::shared_ptr<IStateNode>> children_;
     std::vector<std::shared_ptr<ITransitionNode>> transitions_;
     std::vector<std::shared_ptr<IDataModelItem>> dataItems_;

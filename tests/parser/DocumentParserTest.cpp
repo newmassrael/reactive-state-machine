@@ -1,12 +1,12 @@
 #include "ParserTestCommon.h"
 
-// 기본 테스트 픽스처 상속
-class SCXMLParserBasicTest : public SCXMLParserTestBase
+// Document Parser 테스트 픽스처
+class DocumentParserTest : public SCXMLParserTestBase
 {
 };
 
-// 가장 간단한 테스트로 시작
-TEST_F(SCXMLParserBasicTest, SimpleTest)
+// 가장 간단한 문서 파싱 테스트
+TEST_F(DocumentParserTest, SimpleDocumentParsing)
 {
   // createStateNode가 최소 한 번 호출될 것으로 예상
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -27,7 +27,7 @@ TEST_F(SCXMLParserBasicTest, SimpleTest)
 }
 
 // 기본 SCXML 문자열 파싱 테스트
-TEST_F(SCXMLParserBasicTest, BasicParseContent)
+TEST_F(DocumentParserTest, BasicParseContent)
 {
   // 기대하는 호출 횟수 설정
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -52,7 +52,7 @@ TEST_F(SCXMLParserBasicTest, BasicParseContent)
 }
 
 // 파일에서 SCXML 파싱 테스트
-TEST_F(SCXMLParserBasicTest, ParseFile)
+TEST_F(DocumentParserTest, ParseFile)
 {
   // 기대하는 호출 횟수 설정
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -82,7 +82,7 @@ TEST_F(SCXMLParserBasicTest, ParseFile)
 }
 
 // XInclude 처리 테스트
-TEST_F(SCXMLParserBasicTest, ParseWithXInclude)
+TEST_F(DocumentParserTest, ParseWithXInclude)
 {
   // XInclude 처리 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -137,7 +137,7 @@ TEST_F(SCXMLParserBasicTest, ParseWithXInclude)
 }
 
 // 시스템 변수 및 표현식 평가 테스트
-TEST_F(SCXMLParserBasicTest, SystemVariablesTest)
+TEST_F(DocumentParserTest, SystemVariablesTest)
 {
   std::string scxml = R"delim(<?xml version="1.0" encoding="UTF-8"?>
   <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1" datamodel="ecmascript" name="TestMachine">
@@ -171,7 +171,7 @@ TEST_F(SCXMLParserBasicTest, SystemVariablesTest)
 }
 
 // 시스템 변수 및 표현식 테스트
-TEST_F(SCXMLParserBasicTest, SystemVariablesTest2)
+TEST_F(DocumentParserTest, SystemVariablesTest2)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -241,7 +241,7 @@ TEST_F(SCXMLParserBasicTest, SystemVariablesTest2)
 }
 
 // 커스텀 네임스페이스 테스트
-TEST_F(SCXMLParserBasicTest, CustomNamespaces)
+TEST_F(DocumentParserTest, CustomNamespaces)
 {
   // 다양한 커스텀 네임스페이스를 사용한 SCXML
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -286,7 +286,7 @@ TEST_F(SCXMLParserBasicTest, CustomNamespaces)
 }
 
 // XML 네임스페이스 처리 테스트
-TEST_F(SCXMLParserBasicTest, MultipleNamespacesTest)
+TEST_F(DocumentParserTest, MultipleNamespacesTest)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -360,7 +360,7 @@ TEST_F(SCXMLParserBasicTest, MultipleNamespacesTest)
 }
 
 // 새로운 네임스페이스와 XML 콘텐츠 테스트
-TEST_F(SCXMLParserBasicTest, NamespaceAndXMLContent)
+TEST_F(DocumentParserTest, NamespaceAndXMLContent)
 {
   // 다양한 네임스페이스와 XML 콘텐츠 처리
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -414,7 +414,7 @@ TEST_F(SCXMLParserBasicTest, NamespaceAndXMLContent)
 }
 
 // 안전한 종료 테스트
-TEST_F(SCXMLParserBasicTest, CleanShutdown)
+TEST_F(DocumentParserTest, CleanShutdown)
 {
   // 안전한 종료 프로세스 테스트
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

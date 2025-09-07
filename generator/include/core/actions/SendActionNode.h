@@ -133,6 +133,12 @@ public:
     }
 
     /**
+     * @brief Validate send action configuration
+     * @return Vector of validation error messages (empty if valid)
+     */
+    std::vector<std::string> validate() const;
+
+    /**
      * @brief Clone this action node
      * @return Deep copy of this SendActionNode
      */

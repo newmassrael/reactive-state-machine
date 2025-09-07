@@ -1,11 +1,11 @@
 #include "ParserTestCommon.h"
 
-class SCXMLParserHistoryTest : public SCXMLParserTestBase
+class HistoryParserTest : public SCXMLParserTestBase
 {
 };
 
 // 상세 히스토리 상태 테스트
-TEST_F(SCXMLParserHistoryTest, DetailedHistoryStateTest)
+TEST_F(HistoryParserTest, DetailedHistoryStateTest)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="off">
@@ -127,7 +127,7 @@ TEST_F(SCXMLParserHistoryTest, DetailedHistoryStateTest)
 }
 
 // 히스토리 상태 상세 테스트 추가 케이스
-TEST_F(SCXMLParserHistoryTest, DetailedHistoryStateTest2)
+TEST_F(HistoryParserTest, DetailedHistoryStateTest2)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

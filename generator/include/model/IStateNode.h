@@ -1,6 +1,7 @@
 #pragma once
 #include "DoneData.h"  // 추가된 헤더
 #include "core/types.h"
+#include "IHistoryNode.h"  // For HistoryType
 #include <memory>
 #include <string>
 #include <vector>
@@ -9,6 +10,7 @@ namespace SCXML {
 namespace Model {
 
 // Forward declarations
+using HistoryType = SCXML::Model::HistoryType;  // Use Model::HistoryType as canonical
 
 // Forward declarations within the namespace
 class IStateNode;
@@ -66,7 +68,7 @@ public:
      * @brief 히스토리 상태 타입 반환
      * @return 히스토리 타입 (NONE, SHALLOW, DEEP)
      */
-    virtual HistoryType getHistoryType() const = 0;
+    virtual SCXML::HistoryType getHistoryType() const = 0;
 
     /**
      * @brief Shallow 히스토리 여부 확인

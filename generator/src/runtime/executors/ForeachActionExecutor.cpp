@@ -28,5 +28,30 @@ bool ForeachActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeC
     }
 }
 
+std::vector<std::string> ForeachActionExecutor::validate(const Core::ActionNode& actionNode) const {
+    std::vector<std::string> errors;
+
+    const auto* foreachNode = safeCast<Core::ForeachActionNode>(actionNode);
+    if (!foreachNode) {
+        errors.push_back("Invalid action node type for ForeachActionExecutor");
+        return errors;
+    }
+
+    // SCXML W3C specification: <foreach> must have 'array' attribute (required)
+    if (foreachNode->getArray().empty()) {
+        errors.push_back("Foreach action must have an 'array' attribute");
+    }
+
+    // SCXML W3C specification: <foreach> must have 'item' attribute (required)
+    if (foreachNode->getItem().empty()) {
+        errors.push_back("Foreach action must have an 'item' attribute");
+    }
+
+    // SCXML W3C specification: 'index' attribute is optional
+    // No validation required for index attribute
+
+    return errors;
+}
+
 } // namespace Runtime
 } // namespace SCXML

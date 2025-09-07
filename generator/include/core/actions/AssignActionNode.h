@@ -99,6 +99,19 @@ public:
     }
 
     /**
+     * @brief Validate assign action configuration
+     * @return Vector of validation error messages (empty if valid)
+     */
+    std::vector<std::string> validate() const;
+
+    /**
+     * @brief Execute assign action using Executor pattern
+     * @param context Runtime context for execution
+     * @return true if assignment was successful
+     */
+    bool execute(::SCXML::Runtime::RuntimeContext &context);
+
+    /**
      * @brief Clone this action node
      * @return Deep copy of this AssignActionNode
      */

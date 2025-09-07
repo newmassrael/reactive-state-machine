@@ -3,6 +3,7 @@
 #include "core/actions/ScriptActionNode.h"
 #include "runtime/DataModelEngine.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/ActionExecutor.h"
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -32,46 +33,16 @@ void ScriptActionNode::setLang(const std::string &lang) {
 }
 
 bool ScriptActionNode::execute(::SCXML::Runtime::RuntimeContext &context) {
-    SCXML::Common::Logger::debug("ScriptActionNode::execute - Executing script action: " + getId());
-
-    // Validate configuration
-    auto errors = validate();
-    if (!errors.empty()) {
-        SCXML::Common::Logger::error("ScriptActionNode::execute - Validation errors:");
-        for (const auto &error : errors) {
-            SCXML::Common::Logger::error("  " + error);
-        }
+    // Use Executor pattern - create static factory
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        SCXML::Common::Logger::error("ScriptActionNode::execute - No executor available for action type: " + getActionType());
         return false;
     }
 
-    try {
-        // Get the effective script content (inline or from src)
-        std::string scriptContent = getEffectiveContent(context);
-        if (scriptContent.empty()) {
-            SCXML::Common::Logger::warning("ScriptActionNode::execute - No script content to execute");
-            return true;  // Empty script is not an error
-        }
-
-        SCXML::Common::Logger::debug("ScriptActionNode::execute - Executing script (" + std::to_string(scriptContent.length()) +
-                      " characters)");
-
-        // Execute based on language
-        std::string lowerLang = lang_;
-        std::transform(lowerLang.begin(), lowerLang.end(), lowerLang.begin(), ::tolower);
-
-        if (lowerLang == "ecmascript" || lowerLang == "javascript" || lowerLang == "js") {
-            return executeECMAScript(scriptContent, context);
-        } else {
-            SCXML::Common::Logger::error("ScriptActionNode::execute - Unsupported script language: " + lang_);
-            return false;
-        }
-
-    } catch (const std::exception &e) {
-        SCXML::Common::Logger::warning("ScriptActionNode::execute - Exception during script execution, continuing gracefully: " +
-                        std::string(e.what()));
-        // Return true to allow state machine to continue operating
-        return true;
-    }
+    return executor->execute(*this, context);
 }
 
 std::shared_ptr<SCXML::Model::IActionNode> ScriptActionNode::clone() const {
@@ -83,26 +54,15 @@ std::shared_ptr<SCXML::Model::IActionNode> ScriptActionNode::clone() const {
 }
 
 std::vector<std::string> ScriptActionNode::validate() const {
-    std::vector<std::string> errors;
-
-    // Must have either content or src (but not both)
-    if (content_.empty() && src_.empty()) {
-        errors.push_back("Script action must have either content or 'src' attribute");
-    } else if (!content_.empty() && !src_.empty()) {
-        errors.push_back("Script action cannot have both content and 'src' attribute");
+    // Use Executor pattern - delegate to ScriptActionExecutor
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        return {"No executor available for action type: " + getActionType()};
     }
 
-    // Validate language if specified
-    if (!lang_.empty()) {
-        std::string lowerLang = lang_;
-        std::transform(lowerLang.begin(), lowerLang.end(), lowerLang.begin(), ::tolower);
-
-        if (lowerLang != "ecmascript" && lowerLang != "javascript" && lowerLang != "js") {
-            errors.push_back("Unsupported script language: " + lang_ + " (supported: ecmascript, javascript, js)");
-        }
-    }
-
-    return errors;
+    return executor->validate(*this);
 }
 
 std::string ScriptActionNode::loadScriptFromSrc(::SCXML::Runtime::RuntimeContext & /* context */) {

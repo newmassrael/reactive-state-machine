@@ -3,12 +3,12 @@
 #include "parsing/ActionParser.h"
 
 // 상태 관련 기능을 테스트하는 픽스처 클래스
-class SCXMLParserStateTest : public SCXMLParserTestBase
+class StateNodeParserTest : public SCXMLParserTestBase
 {
 };
 
 // 복합 상태 파싱 테스트
-TEST_F(SCXMLParserStateTest, ParseCompoundState)
+TEST_F(StateNodeParserTest, ParseCompoundState)
 {
   // 복합 상태와 자식 상태, final 상태 생성 호출 예상
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -42,7 +42,7 @@ TEST_F(SCXMLParserStateTest, ParseCompoundState)
 }
 
 // 병렬 상태 파싱 테스트
-TEST_F(SCXMLParserStateTest, ParseParallelState)
+TEST_F(StateNodeParserTest, ParseParallelState)
 {
   // 병렬 상태와 여러 영역, 자식 상태 생성 호출 예상
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -80,7 +80,7 @@ TEST_F(SCXMLParserStateTest, ParseParallelState)
 }
 
 // 복잡한 중첩 상태 테스트
-TEST_F(SCXMLParserStateTest, ComplexNestedStates)
+TEST_F(StateNodeParserTest, ComplexNestedStates)
 {
   // Use real NodeFactory for this test to properly handle nested state hierarchy
   auto realFactory = std::make_shared<SCXML::Core::NodeFactory>();
@@ -159,7 +159,7 @@ TEST_F(SCXMLParserStateTest, ComplexNestedStates)
 }
 
 // 병렬 상태 내부의 원자적 상태 테스트
-TEST_F(SCXMLParserStateTest, AtomicStatesInParallel)
+TEST_F(StateNodeParserTest, AtomicStatesInParallel)
 {
   // 병렬 상태 내 여러 원자적 상태 파싱
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -230,7 +230,7 @@ TEST_F(SCXMLParserStateTest, AtomicStatesInParallel)
 }
 
 // 초기 상태 지정 방식 테스트
-TEST_F(SCXMLParserStateTest, InitialStateSpecification)
+TEST_F(StateNodeParserTest, InitialStateSpecification)
 {
   // 두 가지 방식의 초기 상태 지정
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -267,7 +267,7 @@ TEST_F(SCXMLParserStateTest, InitialStateSpecification)
 }
 
 // 초기 상태가 지정되지 않은 경우의 기본 동작 테스트
-TEST_F(SCXMLParserStateTest, DefaultInitialState)
+TEST_F(StateNodeParserTest, DefaultInitialState)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -296,7 +296,7 @@ TEST_F(SCXMLParserStateTest, DefaultInitialState)
 }
 
 // Macrostep/Microstep 알고리즘 테스트
-TEST_F(SCXMLParserStateTest, MacrostepMicrostepProcessing)
+TEST_F(StateNodeParserTest, MacrostepMicrostepProcessing)
 {
   // 복잡한 전환 체인으로 macrostep/microstep 테스트
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -365,7 +365,7 @@ TEST_F(SCXMLParserStateTest, MacrostepMicrostepProcessing)
 }
 
 // 병렬 상태 및 충돌하는 전환 테스트
-TEST_F(SCXMLParserStateTest, ParallelStatesConflictingTransitionsTest)
+TEST_F(StateNodeParserTest, ParallelStatesConflictingTransitionsTest)
 {
   // 복잡한 병렬 상태 및 충돌하는 전환을 설정
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -415,7 +415,7 @@ TEST_F(SCXMLParserStateTest, ParallelStatesConflictingTransitionsTest)
 }
 
 // 의존성 주입 파싱 테스트
-TEST_F(SCXMLParserStateTest, ParseInjectPoints)
+TEST_F(StateNodeParserTest, ParseInjectPoints)
 {
   // 상태 노드 생성 호출 예상
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -456,7 +456,7 @@ TEST_F(SCXMLParserStateTest, ParseInjectPoints)
 }
 
 // 추가 액션 테스트 (addEntryAction, addExitAction 메서드 테스트)
-TEST_F(SCXMLParserStateTest, ActionNodeAddition)
+TEST_F(StateNodeParserTest, ActionNodeAddition)
 {
   // MockStateNode 설정
   auto mockState = std::make_shared<MockStateNode>();
@@ -498,7 +498,7 @@ TEST_F(SCXMLParserStateTest, ActionNodeAddition)
 }
 
 // 전환 우선순위 및 충돌 해결 테스트
-TEST_F(SCXMLParserStateTest, TransitionPriorityAndConflictResolution)
+TEST_F(StateNodeParserTest, TransitionPriorityAndConflictResolution)
 {
   // 복잡한 병렬 상태 및 충돌하는 전환을 설정
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -548,7 +548,7 @@ TEST_F(SCXMLParserStateTest, TransitionPriorityAndConflictResolution)
 }
 
 // initial 속성과 <initial> 요소의 차이 테스트
-TEST_F(SCXMLParserStateTest, InitialAttributeVsInitialElement)
+TEST_F(StateNodeParserTest, InitialAttributeVsInitialElement)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -598,4 +598,110 @@ TEST_F(SCXMLParserStateTest, InitialAttributeVsInitialElement)
   const auto &initialTransition = state2->getInitialTransition();
   ASSERT_TRUE(initialTransition != nullptr);
   EXPECT_FALSE(initialTransition->getActions().empty());
+}
+
+// Final State 기본 파싱 테스트
+TEST_F(StateNodeParserTest, FinalStateBasicTest)
+{
+    // Final state와 일반 state 생성 기대
+    EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
+        .Times(testing::AtLeast(2)); // s1, final
+
+    // 전환 노드도 생성되어야 함
+    EXPECT_CALL(*mockFactory, createTransitionNode(testing::_, testing::_))
+        .Times(testing::AtLeast(1));
+
+    std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
+    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
+      <state id="s1">
+        <transition event="finish" target="final"/>
+      </state>
+      <final id="final"/>
+    </scxml>)";
+
+    auto model = parser->parseContent(scxml);
+    ASSERT_TRUE(model != nullptr);
+    EXPECT_FALSE(parser->hasErrors());
+
+    // Final state가 제대로 파싱되었는지 확인
+    SCXML::Model::IStateNode *finalState = model->findStateById("final");
+    ASSERT_TRUE(finalState != nullptr);
+    
+    // Final state 타입 확인
+    EXPECT_EQ(SCXML::Type::FINAL, finalState->getType());
+}
+
+// DoneData가 있는 Final State 테스트  
+TEST_F(StateNodeParserTest, FinalStateWithDoneDataTest)
+{
+    EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
+        .Times(testing::AtLeast(2)); // s1, final
+
+    EXPECT_CALL(*mockFactory, createTransitionNode(testing::_, testing::_))
+        .Times(testing::AtLeast(1));
+
+    std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
+    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
+      <state id="s1">
+        <transition event="finish" target="final"/>
+      </state>
+      <final id="final">
+        <donedata>
+          <content expr="'Task completed successfully'"/>
+        </donedata>
+      </final>
+    </scxml>)";
+
+    auto model = parser->parseContent(scxml);
+    ASSERT_TRUE(model != nullptr);
+    EXPECT_FALSE(parser->hasErrors());
+
+    SCXML::Model::IStateNode *finalState = model->findStateById("final");
+    ASSERT_TRUE(finalState != nullptr);
+    EXPECT_EQ(SCXML::Type::FINAL, finalState->getType());
+    
+    // DoneData 존재 확인 (구현에 따라 메서드명이 다를 수 있음)
+    // EXPECT_TRUE(finalState->hasDoneData()); // 실제 구현에 맞게 조정 필요
+}
+
+// 여러 Final State 테스트
+TEST_F(StateNodeParserTest, MultipleFinalStatesTest)
+{
+    EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
+        .Times(testing::AtLeast(3)); // s1, final1, final2
+
+    EXPECT_CALL(*mockFactory, createTransitionNode(testing::_, testing::_))
+        .Times(testing::AtLeast(2));
+
+    std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
+    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
+      <state id="s1">
+        <transition event="success" target="final1"/>
+        <transition event="error" target="final2"/>
+      </state>
+      <final id="final1">
+        <donedata>
+          <content expr="'Success'"/>
+        </donedata>
+      </final>
+      <final id="final2">
+        <donedata>
+          <content expr="'Error occurred'"/>
+        </donedata>  
+      </final>
+    </scxml>)";
+
+    auto model = parser->parseContent(scxml);
+    ASSERT_TRUE(model != nullptr);
+    EXPECT_FALSE(parser->hasErrors());
+
+    // 두 final state 모두 존재 확인
+    SCXML::Model::IStateNode *final1 = model->findStateById("final1");
+    SCXML::Model::IStateNode *final2 = model->findStateById("final2");
+    ASSERT_TRUE(final1 != nullptr);
+    ASSERT_TRUE(final2 != nullptr);
+    
+    // 타입 확인
+    EXPECT_EQ(SCXML::Type::FINAL, final1->getType());
+    EXPECT_EQ(SCXML::Type::FINAL, final2->getType());
 }

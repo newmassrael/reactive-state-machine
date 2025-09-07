@@ -1,8 +1,8 @@
 #include "core/actions/LogActionNode.h"
 #include "common/Logger.h"
-#include "core/actions/LogActionNode.h"
 #include "runtime/DataModelEngine.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/ActionExecutor.h"
 #include <algorithm>
 #include <sstream>
 
@@ -28,7 +28,18 @@ void LogActionNode::setLevel(const std::string &level) {
     SCXML::Common::Logger::debug("LogActionNode::setLevel - Set level: " + level);
 }
 
-// execute() method removed - now handled by LogActionExecutor
+bool LogActionNode::execute(::SCXML::Runtime::RuntimeContext &context) {
+    // Use Executor pattern - create static factory
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        SCXML::Common::Logger::error("LogActionNode::execute - No executor available for action type: " + getActionType());
+        return false;
+    }
+
+    return executor->execute(*this, context);
+}
 
 std::shared_ptr<SCXML::Model::IActionNode> LogActionNode::clone() const {
     auto clone = std::make_shared<LogActionNode>(getId());
@@ -38,7 +49,17 @@ std::shared_ptr<SCXML::Model::IActionNode> LogActionNode::clone() const {
     return clone;
 }
 
-// validate() method removed - now handled by LogActionExecutor
+std::vector<std::string> LogActionNode::validate() const {
+    // Use Executor pattern - delegate to LogActionExecutor
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        return {"No executor available for action type: " + getActionType()};
+    }
+
+    return executor->validate(*this);
+}
 
 // resolveLogMessage() method removed - now handled by LogActionExecutor
 

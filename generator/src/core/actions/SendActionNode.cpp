@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "events/Event.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/ActionExecutor.h"
 #include <algorithm>
 #include <regex>
 
@@ -36,51 +37,16 @@ void SendActionNode::setType(const std::string &type) {
 }
 
 bool SendActionNode::execute(::SCXML::Runtime::RuntimeContext &context) {
-    if (event_.empty()) {
-        // No event specified - this is an error
-        SCXML::Common::Logger::error("Event name is required for send action");
+    // Use Executor pattern - create static factory
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        SCXML::Common::Logger::error("SendActionNode::execute - No executor available for action type: " + getActionType());
         return false;
     }
 
-    try {
-        // Create event from action parameters
-        auto eventPtr = createEvent(context);
-        if (!eventPtr) {
-            SCXML::Common::Logger::error("Failed to create event for send action");
-            return false;
-        }
-
-        // Handle delay if specified
-        uint64_t delayMs = parseDelay(delay_);
-
-        // Set sendId on event for tracking
-        if (!sendId_.empty()) {
-            // Set sendId on event for tracking (method might not exist yet)
-        }
-
-        // Determine target - empty or "#_internal" means internal
-        std::string resolvedTarget = target_;
-        if (resolvedTarget.empty() || resolvedTarget == "#_internal") {
-            // Internal event - send to our own event queue
-            if (delayMs > 0) {
-                // Schedule delayed internal event
-                context.sendEvent(eventPtr, "", delayMs);
-            } else {
-                // Immediate internal event
-                context.raiseEvent(eventPtr);
-            }
-        } else {
-            // External event - send to specified target
-            context.sendEvent(eventPtr, resolvedTarget, delayMs);
-            // sendEvent is void, assume success unless exception thrown
-        }
-
-        return true;
-    } catch (const std::exception &e) {
-        // Log error and fail gracefully
-        SCXML::Common::Logger::error("Exception in send action: " + std::string(e.what()));
-        return false;
-    }
+    return executor->execute(*this, context);
 }
 
 std::shared_ptr<SCXML::Model::IActionNode> SendActionNode::clone() const {
@@ -100,6 +66,18 @@ std::shared_ptr<SCXML::Model::IActionNode> SendActionNode::clone() const {
     // }
 
     return cloned;
+}
+
+std::vector<std::string> SendActionNode::validate() const {
+    // Use Executor pattern - delegate to SendActionExecutor
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        return {"No executor available for action type: " + getActionType()};
+    }
+
+    return executor->validate(*this);
 }
 
 SCXML::Events::EventPtr SendActionNode::createEvent(::SCXML::Runtime::RuntimeContext & /* context */) {

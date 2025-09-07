@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "runtime/DataModelEngine.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/ActionExecutor.h"
 #include <sstream>
 
 namespace SCXML {
@@ -34,55 +35,16 @@ void ForeachActionNode::addIterationAction(std::shared_ptr<SCXML::Model::IAction
 }
 
 bool ForeachActionNode::execute(SCXML::Runtime::RuntimeContext &context) {
-    SCXML::Common::Logger::debug("ForeachActionNode::execute - Executing foreach action: " + getId());
-
-    // Validate configuration
-    auto errors = validate();
-    if (!errors.empty()) {
-        SCXML::Common::Logger::error("ForeachActionNode::execute - Validation errors:");
-        for (const auto &error : errors) {
-            SCXML::Common::Logger::error("  " + error);
-        }
+    // Use Executor pattern - create static factory
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        SCXML::Common::Logger::error("ForeachActionNode::execute - No executor available for action type: " + getActionType());
         return false;
     }
 
-    try {
-        // Resolve the array to iterate over
-        std::vector<std::string> arrayValues = resolveArray(context);
-
-        SCXML::Common::Logger::debug("ForeachActionNode::execute - Iterating over array with " + std::to_string(arrayValues.size()) +
-                      " elements");
-
-        // Execute iterations
-        bool allSucceeded = true;
-        for (size_t i = 0; i < arrayValues.size(); ++i) {
-            SCXML::Common::Logger::debug("ForeachActionNode::execute - Executing iteration " + std::to_string(i));
-
-            auto iterationResult = executeIteration(context, arrayValues[i], static_cast<int>(i));
-            if (!iterationResult) {
-                SCXML::Common::Logger::warning("ForeachActionNode::execute - Iteration " + std::to_string(i) + " failed");
-                allSucceeded = false;
-                // Continue with remaining iterations (SCXML behavior)
-            }
-        }
-
-        // Clean up loop variables
-        cleanupLoopVariables(context);
-
-        SCXML::Common::Logger::debug("ForeachActionNode::execute - Foreach completed, success: " +
-                      std::string(allSucceeded ? "true" : "false"));
-
-        if (allSucceeded) {
-            return true;  // Success
-        } else {
-            return false;
-        }
-
-    } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("ForeachActionNode::execute - Exception during foreach execution: " + std::string(e.what()));
-        cleanupLoopVariables(context);
-        return false;
-    }
+    return executor->execute(*this, context);
 }
 
 std::shared_ptr<SCXML::Model::IActionNode> ForeachActionNode::clone() const {
@@ -103,22 +65,15 @@ std::shared_ptr<SCXML::Model::IActionNode> ForeachActionNode::clone() const {
 }
 
 std::vector<std::string> ForeachActionNode::validate() const {
-    std::vector<std::string> errors;
-
-    // Array expression is required
-    if (array_.empty()) {
-        errors.push_back("Foreach action must have an 'array' attribute");
+    // Use Executor pattern - delegate to ForeachActionExecutor
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        return {"No executor available for action type: " + getActionType()};
     }
 
-    // Item variable is required
-    if (item_.empty()) {
-        errors.push_back("Foreach action must have an 'item' attribute");
-    }
-
-    // Index variable is optional but commonly used
-    // No validation required for index_
-
-    return errors;
+    return executor->validate(*this);
 }
 
 std::vector<std::string> ForeachActionNode::resolveArray(SCXML::Runtime::RuntimeContext &context) {

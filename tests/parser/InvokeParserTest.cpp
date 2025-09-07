@@ -2,12 +2,12 @@
 #include "ParserTestCommon.h"
 
 // 상태 관련 기능을 테스트하는 픽스처 클래스
-class SCXMLParserInvokeTest : public SCXMLParserTestBase
+class InvokeParserTest : public SCXMLParserTestBase
 {
 };
 
 // 인보크 세부 기능 테스트
-TEST_F(SCXMLParserInvokeTest, InvokeDetailedTest)
+TEST_F(InvokeParserTest, InvokeDetailedTest)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
@@ -51,7 +51,7 @@ TEST_F(SCXMLParserInvokeTest, InvokeDetailedTest)
 }
 
 // 자식 머신과의 통신 테스트 (invoke와 send의 상호작용)
-TEST_F(SCXMLParserInvokeTest, InvokeAndSendInteractionTest)
+TEST_F(InvokeParserTest, InvokeAndSendInteractionTest)
 {
     std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1" datamodel="ecmascript">
@@ -116,7 +116,7 @@ TEST_F(SCXMLParserInvokeTest, InvokeAndSendInteractionTest)
 }
 
 // 자동 이벤트 전달(Autoforwarding)과 <invoke> 상호작용 테스트
-TEST_F(SCXMLParserInvokeTest, InvokeAutoforwardingTest)
+TEST_F(InvokeParserTest, InvokeAutoforwardingTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -158,7 +158,7 @@ TEST_F(SCXMLParserInvokeTest, InvokeAutoforwardingTest)
 }
 
 // Invoke와 Finalize 테스트
-TEST_F(SCXMLParserInvokeTest, DetailedInvokeFinalizeTest)
+TEST_F(InvokeParserTest, DetailedInvokeFinalizeTest)
 {
     // 상태 노드 생성 기대
     EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

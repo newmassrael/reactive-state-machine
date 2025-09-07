@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "runtime/DataModelEngine.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/ActionExecutor.h"
 
 namespace SCXML {
 namespace Core {
@@ -21,38 +22,16 @@ void CancelActionNode::setSendIdExpr(const std::string &expr) {
 }
 
 bool CancelActionNode::execute(::SCXML::Runtime::RuntimeContext &context) {
-    SCXML::Common::Logger::debug("CancelActionNode::execute - Executing cancel action: " + getId());
-
-    try {
-        // Resolve sendid from literal or expression
-        std::string resolvedSendId = resolveSendId(context);
-        if (resolvedSendId.empty()) {
-            SCXML::Common::Logger::warning("CancelActionNode::execute - No sendid to cancel or expression failed");
-            return false;
-        }
-
-        SCXML::Common::Logger::debug("CancelActionNode::execute - Attempting to cancel event with sendid: " + resolvedSendId);
-
-        // Attempt to cancel the scheduled event
-        // Note: cancelScheduledEvent not available in current RuntimeContext
-        // This would need to be implemented through the event manager
-        bool cancelled = true; // Assume success for now
-
-        if (cancelled) {
-            SCXML::Common::Logger::debug("CancelActionNode::execute - Successfully cancelled event: " + resolvedSendId);
-        } else {
-            SCXML::Common::Logger::debug("CancelActionNode::execute - Event not found or already sent: " + resolvedSendId);
-        }
-
-        // Note: Per SCXML spec, cancel should succeed even if the event
-        // was already sent or doesn't exist. We return success in all cases
-        // except for system errors.
-        return true;  // Success
-
-    } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("CancelActionNode::execute - Exception during cancel: " + std::string(e.what()));
+    // Use Executor pattern - create static factory
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        SCXML::Common::Logger::error("CancelActionNode::execute - No executor available for action type: " + getActionType());
         return false;
     }
+
+    return executor->execute(*this, context);
 }
 
 std::shared_ptr<SCXML::Model::IActionNode> CancelActionNode::clone() const {
@@ -60,6 +39,18 @@ std::shared_ptr<SCXML::Model::IActionNode> CancelActionNode::clone() const {
     cloned->setSendId(sendId_);
     cloned->setSendIdExpr(sendIdExpr_);
     return cloned;
+}
+
+std::vector<std::string> CancelActionNode::validate() const {
+    // Use Executor pattern - delegate to CancelActionExecutor
+    ::SCXML::Runtime::DefaultActionExecutorFactory factory;
+    auto executor = factory.createExecutor(getActionType());
+    
+    if (!executor) {
+        return {"No executor available for action type: " + getActionType()};
+    }
+
+    return executor->validate(*this);
 }
 
 std::string CancelActionNode::resolveSendId(::SCXML::Runtime::RuntimeContext &context) {

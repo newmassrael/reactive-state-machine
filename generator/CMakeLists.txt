@@ -3,6 +3,7 @@
 # 소스 파일들을 변수로 정의 (가독성 및 유지보수성 향상)
 set(SCXML_GENERATOR_SOURCES
     src/common/Logger.cpp
+    src/core/ParallelNode.cpp
 )
 
 # 모던 CMake 생성기 라이브러리 정의

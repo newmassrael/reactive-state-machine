@@ -28,5 +28,27 @@ bool ScriptActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeCo
     }
 }
 
+std::vector<std::string> ScriptActionExecutor::validate(const Core::ActionNode& actionNode) const {
+    std::vector<std::string> errors;
+
+    const auto* scriptNode = safeCast<Core::ScriptActionNode>(actionNode);
+    if (!scriptNode) {
+        errors.push_back("Invalid action node type for ScriptActionExecutor");
+        return errors;
+    }
+
+    // SCXML W3C specification: <script> must have either 'src' or content (but not both)
+    const std::string& src = scriptNode->getSrc();
+    const std::string& content = scriptNode->getContent();
+    
+    if (src.empty() && content.empty()) {
+        errors.push_back("Script action must have either 'src' or inline content");
+    } else if (!src.empty() && !content.empty()) {
+        errors.push_back("Script action cannot have both 'src' and inline content - they are mutually exclusive");
+    }
+
+    return errors;
+}
+
 } // namespace Runtime
 } // namespace SCXML

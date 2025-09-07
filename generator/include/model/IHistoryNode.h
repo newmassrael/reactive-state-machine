@@ -1,6 +1,7 @@
 #pragma once
 #include "IExecutionContext.h"
 #include "common/SCXMLCommon.h"
+#include "core/types.h"  // For SCXML::HistoryType
 #include <memory>
 #include <set>
 #include <string>
@@ -10,14 +11,7 @@ namespace SCXML {
 namespace Model {
 
 // Forward declarations
-
-/**
- * @brief History types as defined in SCXML specification
- */
-enum class HistoryType {
-    SHALLOW,  ///< Shallow history - remembers only direct child state
-    DEEP      ///< Deep history - remembers entire state configuration
-};
+using HistoryType = SCXML::HistoryType;  // Use core HistoryType as canonical source
 
 /**
  * @brief Interface for SCXML <history> element implementation
@@ -34,13 +28,13 @@ public:
      * @brief Get the history type (shallow or deep)
      * @return History type
      */
-    virtual HistoryType getType() const = 0;
+    virtual SCXML::HistoryType getType() const = 0;
 
     /**
      * @brief Set the history type
      * @param type History type
      */
-    virtual void setType(HistoryType type) = 0;
+    virtual void setType(SCXML::HistoryType type) = 0;
 
     /**
      * @brief Get the history state ID
@@ -134,14 +128,14 @@ public:
      * @param type History type
      * @return String representation
      */
-    static std::string historyTypeToString(HistoryType type);
+    static std::string historyTypeToString(SCXML::HistoryType type);
 
     /**
      * @brief Convert string to history type
      * @param typeStr String representation
      * @return History type
      */
-    static HistoryType stringToHistoryType(const std::string &typeStr);
+    static SCXML::HistoryType stringToHistoryType(const std::string &typeStr);
 };
 
 /**

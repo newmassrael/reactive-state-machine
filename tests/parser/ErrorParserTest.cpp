@@ -1,12 +1,12 @@
 #include "ParserTestCommon.h"
 
 // 오류 처리 관련 기능을 테스트하는 픽스처 클래스
-class SCXMLParserErrorTest : public SCXMLParserTestBase
+class ErrorParserTest : public SCXMLParserTestBase
 {
 };
 
 // 잘못된 SCXML 처리 테스트
-TEST_F(SCXMLParserErrorTest, HandleInvalidSCXML)
+TEST_F(ErrorParserTest, HandleInvalidSCXML)
 {
   // 잘못된 XML 구문
   std::string invalidXml = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -29,7 +29,7 @@ TEST_F(SCXMLParserErrorTest, HandleInvalidSCXML)
 }
 
 // 오류 및 경고 메시지 테스트
-TEST_F(SCXMLParserErrorTest, ErrorAndWarningMessages)
+TEST_F(ErrorParserTest, ErrorAndWarningMessages)
 {
   // 존재하지 않는 파일 파싱 시도
   auto model = parser->parseFile("nonexistent_file.xml");
@@ -54,7 +54,7 @@ TEST_F(SCXMLParserErrorTest, ErrorAndWarningMessages)
 }
 
 // 모델 검증 실패 테스트
-TEST_F(SCXMLParserErrorTest, ModelValidationFailure)
+TEST_F(ErrorParserTest, ModelValidationFailure)
 {
   // 상태 노드 생성은 예상됨
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -98,7 +98,7 @@ TEST_F(SCXMLParserErrorTest, ModelValidationFailure)
 }
 
 // 오류가 있는 SCXML 유효성 검사 테스트
-TEST_F(SCXMLParserErrorTest, InvalidModelValidation)
+TEST_F(ErrorParserTest, InvalidModelValidation)
 {
   // 잘못된 전환 대상을 가진 SCXML
   std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -132,7 +132,7 @@ TEST_F(SCXMLParserErrorTest, InvalidModelValidation)
 }
 
 // 오류 복구 메커니즘 테스트
-TEST_F(SCXMLParserErrorTest, ErrorRecoveryTest)
+TEST_F(ErrorParserTest, ErrorRecoveryTest)
 {
   // 오류가 다양한 형태로 포함된 SCXML 테스트
   std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -222,7 +222,7 @@ TEST_F(SCXMLParserErrorTest, ErrorRecoveryTest)
 }
 
 // 실행 콘텐츠의 오류 처리 테스트
-TEST_F(SCXMLParserErrorTest, ExecutableContentErrorHandlingTest)
+TEST_F(ErrorParserTest, ExecutableContentErrorHandlingTest)
 {
   // 상태 노드 생성 기대
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -277,7 +277,7 @@ TEST_F(SCXMLParserErrorTest, ExecutableContentErrorHandlingTest)
 }
 
 // 오류 이벤트 처리 테스트
-TEST_F(SCXMLParserErrorTest, ErrorEventHandling)
+TEST_F(ErrorParserTest, ErrorEventHandling)
 {
   // 오류 이벤트 처리 테스트
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))
@@ -344,7 +344,7 @@ TEST_F(SCXMLParserErrorTest, ErrorEventHandling)
 }
 
 // 런타임 보안 및 유효성 검사 테스트
-TEST_F(SCXMLParserErrorTest, RuntimeSecurityValidation)
+TEST_F(ErrorParserTest, RuntimeSecurityValidation)
 {
   // 보안 관련 유효성 검사 테스트
   EXPECT_CALL(*mockFactory, createStateNode(testing::_, testing::_))

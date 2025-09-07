@@ -77,6 +77,12 @@ public:
     }
 
     /**
+     * @brief Validate raise action configuration
+     * @return Vector of validation error messages (empty if valid)
+     */
+    std::vector<std::string> validate() const;
+
+    /**
      * @brief Clone this action node
      * @return Deep copy of this RaiseActionNode
      */

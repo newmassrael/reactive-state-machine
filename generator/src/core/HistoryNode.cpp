@@ -2,32 +2,37 @@
 #include "core/DataModel.h"
 #include "runtime/RuntimeContext.h"
 #include <algorithm>
+#include <chrono>
 #include <regex>
 #include <sstream>
 
 namespace SCXML {
-namespace Core {
+namespace Model {
 
 // ============================================================================
-// Static utility functions
+// Static utility functions  
 // ============================================================================
 
-std::string IHistoryNode::historyTypeToString(HistoryType type) {
+std::string IHistoryNode::historyTypeToString(SCXML::HistoryType type) {
     switch (type) {
-    case HistoryType::SHALLOW:
+    case SCXML::HistoryType::SHALLOW:
         return "shallow";
-    case HistoryType::DEEP:
+    case SCXML::HistoryType::DEEP:
         return "deep";
+    case SCXML::HistoryType::NONE:
+        return "none";
     default:
         return "unknown";
     }
 }
 
-HistoryType IHistoryNode::stringToHistoryType(const std::string &typeStr) {
+SCXML::HistoryType IHistoryNode::stringToHistoryType(const std::string &typeStr) {
     if (typeStr == "deep") {
-        return HistoryType::DEEP;
+        return SCXML::HistoryType::DEEP;
+    } else if (typeStr == "shallow") {
+        return SCXML::HistoryType::SHALLOW;
     } else {
-        return HistoryType::SHALLOW;  // Default to shallow
+        return SCXML::HistoryType::NONE;  // Default to none
     }
 }
 
@@ -39,14 +44,14 @@ namespace Core {
 // HistoryNode Implementation
 // ============================================================================
 
-HistoryNode::HistoryNode(const std::string &id, HistoryType type)
+HistoryNode::HistoryNode(const std::string &id, SCXML::HistoryType type)
     : id_(id), type_(type), parentState_(""), defaultTarget_("") {}
 
-HistoryType HistoryNode::getType() const {
+SCXML::HistoryType HistoryNode::getType() const {
     return type_;
 }
 
-void HistoryNode::setType(HistoryType type) {
+void HistoryNode::setType(SCXML::HistoryType type) {
     type_ = type;
 }
 
@@ -79,7 +84,7 @@ Common::Result<void> HistoryNode::recordHistory(SCXML::Model::IExecutionContext 
     try {
         std::set<std::string> statesToRecord;
 
-        if (type_ == HistoryType::SHALLOW) {
+        if (type_ == SCXML::HistoryType::SHALLOW) {
             statesToRecord = filterShallowHistory(activeStates);
         } else {
             statesToRecord = filterDeepHistory(activeStates);
@@ -526,5 +531,4 @@ bool HistoryStateManager::shouldRecordHistory(std::shared_ptr<IHistoryNode> hist
 }
 
 }  // namespace Core
-} // namespace Core
-} // namespace SCXML
+}  // namespace SCXML
