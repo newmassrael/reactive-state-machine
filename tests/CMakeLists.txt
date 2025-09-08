@@ -104,6 +104,17 @@ set(GENERATOR_SOURCES
     ${CMAKE_SOURCE_DIR}/generator/src/common/Logger.cpp
 )
 
+# Add QuickJS engine source to tests if available
+if(ENABLE_QUICKJS)
+    set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+    set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+    
+    if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+        list(APPEND GENERATOR_SOURCES "${CMAKE_SOURCE_DIR}/generator/src/runtime/QuickJSEngine.cpp")
+        message(STATUS "QuickJSEngine.cpp added to test sources")
+    endif()
+endif()
+
 # 공통 include 디렉토리
 set(COMMON_INCLUDE_DIRS
     ${GTEST_INCLUDE_DIRS}
@@ -153,6 +164,20 @@ foreach(test_file ${PARSER_TEST_FILES})
 
     # 링크 라이브러리 설정
     target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+    
+    # Add QuickJS support for parser tests if available
+    if(ENABLE_QUICKJS)
+        set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+        set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+        
+        if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+            target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+            target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+            target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+            target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+            message(STATUS "QuickJS support enabled for parser test: ${test_name}")
+        endif()
+    endif()
 
     # CTest에 테스트 추가 (라벨링 포함)
     add_test(NAME ${test_name} COMMAND ${test_name})
@@ -206,6 +231,20 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core")
         
         target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
         
+        # Add QuickJS support for core tests if available
+        if(ENABLE_QUICKJS)
+            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+            
+            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+                message(STATUS "QuickJS support enabled for core test: ${test_name}")
+            endif()
+        endif()
+        
         add_test(NAME ${test_name} COMMAND ${test_name})
         
         set_tests_properties(${test_name} PROPERTIES
@@ -233,6 +272,23 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/runtime")
         )
         
         target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        # Add QuickJS support for runtime tests if available
+        if(ENABLE_QUICKJS)
+            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+            
+            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+                
+                # Disable warnings for QuickJS header (C library in C++ context)
+                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+                
+                message(STATUS "QuickJS support enabled for test: ${test_name}")
+            endif()
+        endif()
         
         add_test(NAME ${test_name} COMMAND ${test_name})
         
@@ -262,6 +318,20 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/integration")
         
         target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
         
+        # Add QuickJS support for integration tests if available
+        if(ENABLE_QUICKJS)
+            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+            
+            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+                message(STATUS "QuickJS support enabled for integration test: ${test_name}")
+            endif()
+        endif()
+        
         add_test(NAME ${test_name} COMMAND ${test_name})
         
         set_tests_properties(${test_name} PROPERTIES
@@ -289,6 +359,20 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
         )
         
         target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        # Add QuickJS support for examples tests if available
+        if(ENABLE_QUICKJS)
+            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+            
+            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+                message(STATUS "QuickJS support enabled for examples test: ${test_name}")
+            endif()
+        endif()
         
         add_test(NAME ${test_name} COMMAND ${test_name})
         
@@ -318,6 +402,20 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/performance")
         
         target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
         
+        # Add QuickJS support for performance tests if available
+        if(ENABLE_QUICKJS)
+            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+            
+            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+                message(STATUS "QuickJS support enabled for performance test: ${test_name}")
+            endif()
+        endif()
+        
         add_test(NAME ${test_name} COMMAND ${test_name})
         
         set_tests_properties(${test_name} PROPERTIES
@@ -346,6 +444,20 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/compliance")
         
         target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
         
+        # Add QuickJS support for compliance tests if available
+        if(ENABLE_QUICKJS)
+            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+            
+            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+                message(STATUS "QuickJS support enabled for compliance test: ${test_name}")
+            endif()
+        endif()
+        
         add_test(NAME ${test_name} COMMAND ${test_name})
         
         set_tests_properties(${test_name} PROPERTIES
@@ -373,6 +485,20 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance")
         )
         
         target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        # Add QuickJS support for w3c_compliance tests if available
+        if(ENABLE_QUICKJS)
+            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+            
+            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
+                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+                message(STATUS "QuickJS support enabled for w3c_compliance test: ${test_name}")
+            endif()
+        endif()
         
         add_test(NAME ${test_name} COMMAND ${test_name})
         

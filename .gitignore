@@ -69,7 +69,6 @@ test_data/
 # Dependency directories
 external/
 vendor/
-third_party/
 
 # Coverage reports
 coverage/

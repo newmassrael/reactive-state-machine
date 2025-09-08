@@ -6,6 +6,21 @@ set(SCXML_GENERATOR_SOURCES
     src/core/ParallelNode.cpp
 )
 
+# Add QuickJS engine source if available
+if(ENABLE_QUICKJS)
+    set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+    set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
+    
+    if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+        message(STATUS "Adding QuickJSEngine.cpp to build sources")
+        list(APPEND SCXML_GENERATOR_SOURCES src/runtime/QuickJSEngine.cpp)
+    else()
+        message(WARNING "QuickJS files not found at expected locations")
+        message(STATUS "Expected: ${QUICKJS_SOURCE_DIR}/quickjs.h")
+        message(STATUS "Expected: ${QUICKJS_LIBRARY}")
+    endif()
+endif()
+
 # 모던 CMake 생성기 라이브러리 정의
 add_library(scxml_generator ${SCXML_GENERATOR_SOURCES})
 
@@ -47,7 +62,7 @@ if(ENABLE_QUICKJS)
 
         # scxml_generator에 QuickJS 연결
         target_compile_definitions(scxml_generator PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
-        target_include_directories(scxml_generator PRIVATE ${QUICKJS_SOURCE_DIR})
+        target_include_directories(scxml_generator SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
         target_link_libraries(scxml_generator PRIVATE quickjs_imported m pthread dl)
 
         message(STATUS "QuickJS support enabled (using pre-built library)")

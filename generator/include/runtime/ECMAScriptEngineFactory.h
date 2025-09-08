@@ -18,10 +18,10 @@ public:
      * @brief Available engine types
      */
     enum class EngineType {
-        AUTO,                  ///< Automatic selection (FullJavaScriptEngine by default)
-        JAVASCRIPT_EVALUATOR,  ///< Use JavaScriptExpressionEvaluator (legacy)
-
-        FULL_JAVASCRIPT  ///< Use FullJavaScriptEngine (complete ECMAScript support)
+        AUTO,                  ///< Automatic selection (QuickJS if available, fallback otherwise)
+        JAVASCRIPT_EVALUATOR,  ///< Use JavaScriptExpressionEvaluator (legacy fallback)
+        QUICKJS,              ///< Use QuickJS JavaScript engine (full ECMAScript support)
+        FULL_JAVASCRIPT       ///< Legacy alias for QuickJS
     };
 
     /**

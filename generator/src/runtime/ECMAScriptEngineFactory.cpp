@@ -1,6 +1,10 @@
 #include "runtime/ECMAScriptEngineFactory.h"
 #include "runtime/JavaScriptEvaluatorAdapter.h"
 
+#ifdef HAS_QUICKJS
+#include "runtime/QuickJSEngine.h"
+#endif
+
 #include "common/Logger.h"
 #include <functional>
 #include <mutex>
@@ -12,20 +16,30 @@ std::unique_ptr<IECMAScriptEngine> ECMAScriptEngineFactory::create(EngineType ty
 
     switch (type) {
     case EngineType::AUTO:
-        SCXML::Common::Logger::debug("ECMAScriptEngineFactory::create - AUTO: Using JavaScriptEvaluatorAdapter");
+#ifdef HAS_QUICKJS
+        SCXML::Common::Logger::debug("ECMAScriptEngineFactory::create - AUTO: Using QuickJSEngine");
+        return std::make_unique<QuickJSEngine>();
+#else
+        SCXML::Common::Logger::debug("ECMAScriptEngineFactory::create - AUTO: Using JavaScriptEvaluatorAdapter (QuickJS not available)");
         return std::make_unique<JavaScriptEvaluatorAdapter>();
+#endif
 
     case EngineType::JAVASCRIPT_EVALUATOR:
         SCXML::Common::Logger::debug("ECMAScriptEngineFactory::create - Creating JavaScriptEvaluatorAdapter");
         return std::make_unique<JavaScriptEvaluatorAdapter>();
 
+    case EngineType::QUICKJS:
     case EngineType::FULL_JAVASCRIPT:
-        SCXML::Common::Logger::warning(
-            "ECMAScriptEngineFactory::create - FullJavaScriptEngine removed, using JavaScriptEvaluatorAdapter");
+#ifdef HAS_QUICKJS
+        SCXML::Common::Logger::debug("ECMAScriptEngineFactory::create - Creating QuickJSEngine");
+        return std::make_unique<QuickJSEngine>();
+#else
+        SCXML::Common::Logger::warning("ECMAScriptEngineFactory::create - QuickJS not available, using fallback");
         return std::make_unique<JavaScriptEvaluatorAdapter>();
+#endif
 
     default:
-        SCXML::Common::Logger::error("ECMAScriptEngineFactory::create - Unknown engine type, using JavaScriptEvaluator");
+        SCXML::Common::Logger::error("ECMAScriptEngineFactory::create - Unknown engine type, using fallback");
         return std::make_unique<JavaScriptEvaluatorAdapter>();
     }
 }
@@ -36,7 +50,15 @@ bool ECMAScriptEngineFactory::isEngineAvailable(EngineType type) {
         return true;  // Always available
 
     case EngineType::AUTO:
-        return true;  // AUTO always available (falls back to JavaScriptEvaluator)
+        return true;  // AUTO always available (falls back if needed)
+
+    case EngineType::QUICKJS:
+    case EngineType::FULL_JAVASCRIPT:
+#ifdef HAS_QUICKJS
+        return true;
+#else
+        return false;
+#endif
 
     default:
         return false;
@@ -53,7 +75,10 @@ std::string ECMAScriptEngineFactory::getEngineTypeName(EngineType type) {
         return "AUTO";
     case EngineType::JAVASCRIPT_EVALUATOR:
         return "JavaScriptEvaluator";
-
+    case EngineType::QUICKJS:
+        return "QuickJS";
+    case EngineType::FULL_JAVASCRIPT:
+        return "FullJavaScript";
     default:
         return "Unknown";
     }
