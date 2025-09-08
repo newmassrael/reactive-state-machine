@@ -112,6 +112,14 @@ public:
      * @brief Clear all values and expressions
      */
     void clear();
+
+private:
+    /**
+     * @brief Check if a string is a valid XML NMTOKEN
+     * @param token The string to validate
+     * @return True if valid NMTOKEN, false otherwise
+     */
+    static bool isValidNMTOKEN(const std::string &token);
 };
 
 } // namespace Core

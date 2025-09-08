@@ -40,6 +40,7 @@ set(GENERATOR_SOURCES
 
     # 핵심 impl 클래스들
     ${CMAKE_SOURCE_DIR}/generator/src/core/DataNode.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/core/ParamNode.cpp
 
     # 파싱 클래스
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/DocumentParser.cpp
@@ -351,6 +352,45 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/compliance")
             LABELS "compliance;w3c"
             TIMEOUT 180
         )
+    endforeach()
+endif()
+
+# W3C Compliance 테스트들
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance")
+    file(GLOB_RECURSE W3C_COMPLIANCE_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance/*Test.cpp")
+    
+    foreach(test_file ${W3C_COMPLIANCE_TEST_FILES})
+        get_filename_component(test_name ${test_file} NAME_WE)
+        
+        add_executable(${test_name}
+            ${test_file}
+            ${GENERATOR_SOURCES}
+        )
+        
+        target_include_directories(${test_name} PRIVATE 
+            ${COMMON_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance
+        )
+        
+        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
+        
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "w3c_compliance;scxml_specification;communication"
+            TIMEOUT 120
+        )
+        
+        # 특정 W3C 테스트별 추가 라벨링
+        if(${test_name} MATCHES ".*SendReceive.*")
+            set_property(TEST ${test_name} APPEND PROPERTY LABELS "send_receive;communication")
+        endif()
+        if(${test_name} MATCHES ".*Event.*")
+            set_property(TEST ${test_name} APPEND PROPERTY LABELS "event_system;queue_management")
+        endif()
+        if(${test_name} MATCHES ".*Comprehensive.*")
+            set_property(TEST ${test_name} APPEND PROPERTY LABELS "integration;comprehensive")
+        endif()
     endforeach()
 endif()
 

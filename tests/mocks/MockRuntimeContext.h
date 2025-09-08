@@ -24,4 +24,8 @@ public:
     MOCK_METHOD(bool, hasDataValue, (const std::string &id), (const override));
     MOCK_METHOD(std::string, evaluateExpression, (const std::string &expression), (const override));
     MOCK_METHOD(bool, evaluateCondition, (const std::string &condition), (const override));
+    
+    // Additional methods needed for DataNode testing
+    MOCK_METHOD(SCXML::Common::Result<void>, setDataValue, (const std::string &name, const std::string &value), ());
+    MOCK_METHOD(SCXML::Common::Result<std::string>, getDataValue, (const std::string &name), (const));
 };
