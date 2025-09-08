@@ -58,10 +58,59 @@ The framework supports advanced features including reactive context guards, depe
 ## Quick Start
 
 ### Prerequisites
-- CMake 3.16 or higher
-- C++17 compatible compiler (GCC 7+, Clang 5+, MSVC 2017+)
-- libxml++5.0 development libraries
-- Boost libraries (Signals2)
+
+#### System Dependencies
+Before building the project, ensure you have the following dependencies installed on your system:
+
+**Ubuntu/Debian:**
+```bash
+# Update package list
+sudo apt update
+
+# Install build essentials and CMake
+sudo apt install -y build-essential cmake pkg-config
+
+# Install required libraries
+sudo apt install -y libboost-all-dev libgtest-dev libgmock-dev
+
+# Install libxml++-5.0 if available, otherwise manual build required
+sudo apt install -y libxml++-5.0-dev || echo "libxml++-5.0 not available, manual build required"
+
+# Install development tools
+sudo apt install -y git doxygen curl
+```
+
+**Fedora/RHEL/CentOS:**
+```bash
+# Install build essentials
+sudo dnf install -y gcc-c++ cmake pkgconfig
+
+# Install required libraries
+sudo dnf install -y boost-devel gtest-devel gmock-devel
+
+# Install libxml++ dependencies
+sudo dnf install -y docbook-style-xsl docbook5-schemas libxml2-devel
+
+# Install development tools
+sudo dnf install -y git doxygen curl
+```
+
+**macOS (with Homebrew):**
+```bash
+# Install required libraries
+brew install cmake boost libxml++ googletest pkg-config
+
+# Install development tools
+brew install git doxygen curl
+```
+
+#### Required Dependencies
+- **CMake 3.16+** - Build system
+- **C++17 compatible compiler** (GCC 7+, Clang 5+, MSVC 2017+)
+- **pkg-config** - For dependency detection
+- **libxml++-5.0** - XML parsing library (version 5.0+ required)
+- **Boost 1.65+** - For Signals2 and other utilities
+- **GoogleTest/GMock** - For unit testing
 
 ### Build and Test
 
@@ -70,7 +119,7 @@ The framework supports advanced features including reactive context guards, depe
 git clone <repository-url>
 cd reactive-state-machine
 
-# Build with default configuration
+# Build with default configuration (will automatically handle libxml++ if needed)
 ./scripts/build.sh
 
 # Run all tests
@@ -79,6 +128,9 @@ cd reactive-state-machine
 # Build release version
 ./scripts/build.sh Release
 ```
+
+#### Note on libxml++ 
+This project requires libxml++-5.0 (not older versions). If not available in your package manager, you'll need to build it from source (see Installation Notes above). Most distributions don't package 5.0 yet, so manual build is common.
 
 ### Using CMake Presets
 
@@ -95,17 +147,53 @@ cmake --build --preset=release
 ## Build Requirements
 
 ### Required Dependencies
-- **CMake 3.16+** (3.19+ for preset support)
-- **C++17 compiler** (GCC 7+, Clang 5+, MSVC 2017+)
-- **libxml++5.0** - XML parsing library
-- **Boost 1.65+** - For Signals2 and other utilities
+- **CMake 3.16+** (3.19+ for preset support) - Build system
+- **C++17 compiler** (GCC 7+, Clang 5+, MSVC 2017+) - Compilation
 - **pkg-config** - For dependency detection
+- **libxml++-5.0** - XML parsing library (version 5.0+ required)
+- **Boost 1.65+** - For Signals2 and other utilities
+- **GoogleTest/GMock** - For unit testing
 
 ### Optional Dependencies
-- **GoogleTest** - For unit testing (automatically downloaded)
 - **QuickJS** - For ECMAScript data model support
 - **libcurl** - For HTTP IO processor
 - **WebSocket++** - For WebSocket IO processor
+- **Doxygen** - For documentation generation
+
+### Installation Notes
+
+#### libxml++ Installation
+This project requires **libxml++-5.0** (version 5.0+). Older versions are not supported.
+
+**Ubuntu/Debian:**
+```bash
+# Ubuntu 24.04+ has libxml++-5.0 in repositories
+sudo apt install libxml++-5.0-dev
+
+# For older distributions, manual build is required
+```
+
+**Fedora/RHEL:**
+```bash
+# Check if 5.0+ version is available
+sudo dnf search libxml++
+sudo dnf install libxml++-devel  # If 5.0+ available
+```
+
+**Manual Build (Required for most distributions):**
+Most distributions don't package libxml++-5.0 yet, so manual build is typically needed:
+```bash
+# Install build dependencies first
+sudo apt install build-essential cmake pkg-config meson ninja-build
+sudo apt install docbook-xsl docbook5-xml libxml2-utils doxygen
+
+# Clone and build libxml++ 5.0
+git clone https://github.com/libxmlplusplus/libxmlplusplus.git
+cd libxmlplusplus
+meson setup --prefix=/usr/local -Dmm-common:use-network=true builddir
+ninja -C builddir
+sudo ninja -C builddir install
+```
 
 ## Building the Project
 
@@ -361,6 +449,9 @@ httpProcessor.send(Event("http.request"), "http://example.com/api");
 # Set up development environment
 ./scripts/build.sh Debug --sanitizers
 
+# Set up automatic code formatting (one-time setup)
+./scripts/setup-hooks.sh
+
 # Run tests during development
 ./scripts/test.sh --filter "*YourFeature*"
 
@@ -369,8 +460,23 @@ httpProcessor.send(Event("http.request"), "http://example.com/api");
 ./scripts/test.sh
 # Coverage report will be in build/coverage/
 
-# Format code before committing
+# Manual code formatting (if needed)
 find . -name "*.h" -o -name "*.cpp" | xargs clang-format -i
+```
+
+#### Automatic Code Formatting
+The project includes a pre-commit hook that automatically formats C++ code using clang-format:
+
+```bash
+# Install the pre-commit hook (one-time setup)
+./scripts/setup-hooks.sh
+
+# Now every commit will automatically format staged C++ files
+git add modified_file.cpp
+git commit -m "feat: add new feature"  # Files auto-formatted before commit
+
+# To skip formatting for a specific commit (not recommended)
+git commit --no-verify -m "your message"
 ```
 
 ## License

@@ -46,7 +46,8 @@ std::shared_ptr<SCXML::Model::IInvokeNode> InvokeParser::parseInvokeNode(const x
         invokeNode->setType(typeAttr->get_value());
     } else if (typeExprAttr) {
         // typeexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - typeexpr attribute present: " + typeExprAttr->get_value());
+        SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - typeexpr attribute present: " +
+                                     typeExprAttr->get_value());
     }
 
     // src 속성 처리
@@ -56,7 +57,8 @@ std::shared_ptr<SCXML::Model::IInvokeNode> InvokeParser::parseInvokeNode(const x
         invokeNode->setSrc(srcAttr->get_value());
     } else if (srcExprAttr) {
         // srcexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - srcexpr attribute present: " + srcExprAttr->get_value());
+        SCXML::Common::Logger::debug("InvokeParser::parseInvokeNode() - srcexpr attribute present: " +
+                                     srcExprAttr->get_value());
     }
 
     // idlocation 속성 처리
@@ -103,8 +105,8 @@ InvokeParser::parseInvokesInState(const xmlpp::Element *stateElement) {
     }
 
     auto invokeElements = SCXML::Parsing::ParsingCommon::findChildElements(stateElement, "invoke");
-    SCXML::Common::Logger::debug("InvokeParser::parseInvokesInState() - Found " + std::to_string(invokeElements.size()) +
-                  " invoke elements");
+    SCXML::Common::Logger::debug("InvokeParser::parseInvokesInState() - Found " +
+                                 std::to_string(invokeElements.size()) + " invoke elements");
 
     for (auto invokeElement : invokeElements) {
         auto invokeNode = parseInvokeNode(invokeElement);
@@ -134,7 +136,8 @@ void InvokeParser::parseFinalizeElement(const xmlpp::Element *finalizeElement,
 
     invokeNode->setFinalize(finalizeContent);
 
-    SCXML::Common::Logger::debug("InvokeParser::parseFinalizeElement() - Finalize element parsed for invoke: " + invokeNode->getId());
+    SCXML::Common::Logger::debug("InvokeParser::parseFinalizeElement() - Finalize element parsed for invoke: " +
+                                 invokeNode->getId());
 }
 
 void InvokeParser::parseParamElements(const xmlpp::Element *invokeElement,
@@ -207,8 +210,8 @@ InvokeParser::parseParamElementsAndCreateDataItems(const xmlpp::Element *invokeE
             }
         }
 
-        SCXML::Common::Logger::debug("InvokeParser::parseParamElementsAndCreateDataItems() - Data item created for param: name=" +
-                      name);
+        SCXML::Common::Logger::debug(
+            "InvokeParser::parseParamElementsAndCreateDataItems() - Data item created for param: name=" + name);
     }
 
     return dataItems;
@@ -243,7 +246,7 @@ void InvokeParser::parseContentElement(const xmlpp::Element *invokeElement,
                         xmlNodeDump(buf, node->doc, node, 0, 0);
 
                         // 버퍼에서 문자열 추출
-                        content += (const char *)buf->content;
+                        content += (const char *)xmlBufferContent(buf);
 
                         // 버퍼 해제
                         xmlBufferFree(buf);
@@ -256,6 +259,7 @@ void InvokeParser::parseContentElement(const xmlpp::Element *invokeElement,
         }
 
         invokeNode->setContent(content);
-        SCXML::Common::Logger::debug("InvokeParser::parseContentElement() - Content element parsed with serialized XML");
+        SCXML::Common::Logger::debug(
+            "InvokeParser::parseContentElement() - Content element parsed with serialized XML");
     }
 }
