@@ -14,10 +14,14 @@ namespace SCXML {
 namespace Model {
 class IDataModelItem;
 }
+
 // Forward declarations
 namespace Runtime {
 class RuntimeContext;
 }
+
+// Forward declaration to avoid circular includes
+class IECMAScriptEngine;
 
 namespace Core {
 class IDataModelItem;
@@ -353,6 +357,12 @@ public:
      * @return Raw pointer to ECMAScript engine, nullptr if not using ECMAScript
      */
     class IECMAScriptEngine *getECMAScriptEngine() const;
+
+    /**
+     * @brief Set ECMAScript engine (for external engine injection)
+     * @param engine Shared pointer to ECMAScript engine to use
+     */
+    void setECMAScriptEngine(std::shared_ptr<IECMAScriptEngine> engine);
 
     /**
      * @brief Clear all data in the model
@@ -794,6 +804,13 @@ private:
      * @brief Initialize type converters
      */
     void initializeTypeConverters();
+
+    /**
+     * @brief Convert DataValue to ECMAValue preserving type information
+     * @param value DataValue to convert
+     * @return DataValue in ECMAValue format (same type)
+     */
+    DataValue dataValueToECMAValue(const DataValue &value) const;
 
     /**
      * @brief Check if location matches pattern (supports wildcards)

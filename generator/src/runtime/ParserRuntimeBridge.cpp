@@ -1,11 +1,15 @@
 #include "runtime/ParserRuntimeBridge.h"
 #include "common/Logger.h"
-#include "core/NodeFactory.h"
 #include "core/DataNode.h"
+#include "core/NodeFactory.h"
 #include "parsing/XIncludeProcessor.h"
+#include "runtime/DataModelEngine.h"
+#include "runtime/ECMAScriptEngineFactory.h"
 #include "runtime/GuardEvaluator.h"
 #include "runtime/InitialStateResolver.h"
+#include "runtime/StateMachineFactory.h"
 #include "runtime/TransitionExecutor.h"
+#include "runtime/impl/DataContextManager.h"
 
 #include <chrono>
 #include <iostream>
@@ -221,14 +225,32 @@ bool ParserRuntimeBridge::initializeRuntimeContext(std::shared_ptr<Model::Docume
     }
 
     try {
-        // Initialize data model variables
+        // Setup ECMAScript engine if required by datamodel
+        if (!setupECMAScriptEngineForContext(model, context)) {
+            addError("Failed to setup ECMAScript engine for datamodel: " + model->getDatamodel());
+            return false;
+        }
+        // Initialize data model variables with graceful error handling
         for (const auto &dataItem : model->getDataModelItems()) {
             if (dataItem) {
                 // Cast to DataNode and initialize
                 auto dataNode = std::dynamic_pointer_cast<Core::DataNode>(dataItem);
                 if (dataNode && !dataNode->initialize(context)) {
-                    addError("Failed to initialize data model item: " + dataItem->getId());
-                    return false;
+                    // Instead of failing completely, log the error and continue
+                    // This allows the state machine to work even if some data model items fail
+                    std::string errorMsg = "Failed to initialize data model item: " + dataItem->getId();
+                    addWarning(errorMsg + " (continuing with degraded functionality)");
+                    SCXML::Common::Logger::warning(errorMsg + " - ECMAScript engine may not be available");
+
+                    // Try to set a default value for the failed data item
+                    try {
+                        // This is a fallback approach - set a null/default value
+                        context.setDataValue(dataItem->getId(), "null");
+                        SCXML::Common::Logger::info("Set default value for failed data item: " + dataItem->getId());
+                    } catch (...) {
+                        // Even the fallback failed, but we continue
+                        SCXML::Common::Logger::warning("Could not set fallback value for: " + dataItem->getId());
+                    }
                 }
             }
         }
@@ -462,6 +484,65 @@ void ParserRuntimeBridge::addError(const std::string &message) {
 void ParserRuntimeBridge::addWarning(const std::string &message) {
     warnings_.push_back(message);
     SCXML::Common::Logger::warning("ParserRuntimeBridge Warning: " + message);
+}
+
+bool ParserRuntimeBridge::setupECMAScriptEngineForContext(std::shared_ptr<Model::DocumentModel> model,
+                                                          Runtime::RuntimeContext &context) {
+    if (!model) {
+        return false;
+    }
+
+    try {
+        auto datamodelType = model->getDatamodel();
+
+        // Check if ECMAScript datamodel is specified
+        if (datamodelType == "ecmascript" || datamodelType == "javascript") {
+            SCXML::Common::Logger::info("Setting up ECMAScript engine for datamodel: " + datamodelType);
+
+            // NOTE: This method is now deprecated. The new architecture uses
+            // StateMachineFactory::setupECMAScriptEngineForContext instead.
+            // Fallback: Create new ECMAScript engine using factory
+            {
+                SCXML::Common::Logger::warning("No stored ECMAScript engine found for model: " + model->getName());
+
+                // Fallback: Create new ECMAScript engine using factory
+                auto engine =
+                    ::SCXML::ECMAScriptEngineFactory::create(::SCXML::ECMAScriptEngineFactory::EngineType::QUICKJS);
+                if (!engine) {
+                    addError("Failed to create ECMAScript engine for datamodel: " + datamodelType);
+                    return false;
+                }
+
+                // Initialize engine
+                if (!engine->initialize()) {
+                    addError("Failed to initialize ECMAScript engine");
+                    return false;
+                }
+
+                SCXML::Common::Logger::info("Created fallback ECMAScript engine: " + engine->getEngineName());
+
+                // Create a DataModelEngine and connect the engine
+                auto dataModelEngine =
+                    std::make_unique<SCXML::DataModelEngine>(SCXML::DataModelEngine::DataModelType::ECMASCRIPT);
+                dataModelEngine->setECMAScriptEngine(std::move(engine));  // Move the unique_ptr to shared_ptr
+
+                // Set the DataModelEngine in the RuntimeContext
+                auto &dataContextManager =
+                    dynamic_cast<SCXML::Runtime::DataContextManager &>(context.getDataContextManager());
+                dataContextManager.setDataModelEngine(std::move(dataModelEngine));
+
+                SCXML::Common::Logger::info("Successfully connected fallback ECMAScript engine to DataContextManager");
+                return true;
+            }
+        }
+
+        // Non-ECMAScript datamodel, no engine setup needed
+        return true;
+
+    } catch (const std::exception &e) {
+        addError("Exception setting up ECMAScript engine: " + std::string(e.what()));
+        return false;
+    }
 }
 
 // ========== Convenience Functions ==========

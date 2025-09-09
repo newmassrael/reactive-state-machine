@@ -3,13 +3,13 @@
 #include "common/GracefulJoin.h"
 #include "common/IdGenerator.h"
 #include "common/SCXMLCommon.h"
-#include "runtime/ActionProcessor.h"
-#include "core/NodeFactory.h"
 #include "core/DataNode.h"
+#include "core/NodeFactory.h"
 #include "model/DocumentModel.h"
 #include "model/IStateNode.h"
 #include "model/ITransitionNode.h"
 #include "parsing/DocumentParser.h"
+#include "runtime/ActionProcessor.h"
 #include "runtime/DataModelEngine.h"
 #include "runtime/ExpressionEvaluator.h"
 #include "runtime/GuardEvaluator.h"
@@ -19,9 +19,9 @@
 #include "runtime/TransitionExecutor.h"
 // Event system headers - fully integrated
 #include "events/EventQueue.h"
-#include "runtime/IOProcessor.h"
 #include "runtime/CoreEventProcessor.h"
 #include "runtime/EventScheduler.h"
+#include "runtime/IOProcessor.h"
 // HTTP and SCXML I/O Processors not included - require external dependencies
 #include <fstream>
 
@@ -40,13 +40,17 @@ Processor::Processor(const std::string &name)
     : name_(name.empty() ? "scxml_processor" : name), sessionId_(generateSessionId()), state_(State::STOPPED),
       model_(nullptr), context_(nullptr), eventQueue_(nullptr), dispatcher_(nullptr), ioManager_(nullptr),
       stateResolver_(nullptr), transitionExecutor_(nullptr), actionProcessor_(nullptr), expressionEvaluator_(nullptr),
-      guardEvaluator_(nullptr), eventThread_(nullptr), stopRequested_(false), maxEventRate_(0), eventTracing_(false),
-      processedEvents_(0), failedEvents_(0), startTime_(std::chrono::steady_clock::now()) {}
+      guardEvaluator_(nullptr), stopRequested_(false), maxEventRate_(0), eventTracing_(false), processedEvents_(0),
+      failedEvents_(0), startTime_(std::chrono::steady_clock::now()) {}
 
 Processor::~Processor() {
+    // Ensure graceful shutdown
     if (state_ != State::STOPPED) {
-        stop();
+        stop(true);  // Wait for completion
     }
+
+    // Single-threaded mode: No event thread to clean up
+
     cleanup();
 }
 
@@ -57,8 +61,7 @@ std::string Processor::generateSessionId() {
 // ========== Lifecycle Management ==========
 
 bool Processor::initialize(const std::string &scxmlContent, bool isFilePath) {
-    std::lock_guard<std::mutex> lock(stateMutex_);
-
+    // Single-threaded mode: No mutex needed
     if (state_ != State::STOPPED) {
         return false;
     }
@@ -103,14 +106,75 @@ bool Processor::initialize(const std::string &scxmlContent, bool isFilePath) {
 }
 
 bool Processor::initialize(std::shared_ptr<Model::DocumentModel> model) {
-    std::cout << "Processor::initialize(model) - Starting model initialization..." << std::endl;
-    std::lock_guard<std::mutex> lock(stateMutex_);
-
+    // Single-threaded mode: No mutex needed
     if (state_ != State::STOPPED || !model) {
         return false;
     }
 
     return initializeWithModel(model);
+}
+
+bool Processor::initializeWithContext(std::shared_ptr<Model::DocumentModel> model,
+                                      std::shared_ptr<SCXML::Runtime::RuntimeContext> context) {
+    // Single-threaded mode: No mutex needed
+    if (state_ != State::STOPPED || !model || !context) {
+        return false;
+    }
+
+    try {
+        model_ = model;
+        context_ = context;
+        context_->setSessionName(name_);
+
+        // Initialize DataModel items with the pre-configured context
+        for (const auto &dataItem : model_->getDataModelItems()) {
+            if (dataItem) {
+                auto dataNode = std::dynamic_pointer_cast<Core::DataNode>(dataItem);
+                if (dataNode && !dataNode->initialize(*context_)) {
+                    std::cerr << "Failed to initialize data model item: " << dataItem->getId() << std::endl;
+                    cleanup();
+                    return false;
+                }
+            }
+        }
+
+        if (!initializeInternal()) {
+            cleanup();
+            return false;
+        }
+
+        if (!initializeRuntimeComponents()) {
+            cleanup();
+            return false;
+        }
+
+        // LONG-TERM FIX: Configure GuardEvaluator to use ECMAScript-enabled evaluator
+        // This ensures guard conditions like "counter == 6" are evaluated using the same
+        // JavaScript engine as assign actions, providing consistent behavior
+        if (guardEvaluator_ && context_->getDataModelEngine()) {
+            // Create an ECMAScript-enabled ExpressionEvaluator that uses the DataModelEngine
+            auto ecmaEvaluator = std::make_shared<::SCXML::Runtime::ExpressionEvaluator>();
+            guardEvaluator_->setDataModelEngine(context_->getDataModelEngine());
+            guardEvaluator_->setExpressionEvaluator(ecmaEvaluator);
+        }
+
+        // Configure TransitionExecutor's GuardEvaluator with the same DataModelEngine
+        if (transitionExecutor_ && guardEvaluator_) {
+            transitionExecutor_->setGuardEvaluator(*guardEvaluator_);
+        }
+
+        context_->setEventQueue(eventQueue_);
+        context_->setEventDispatcher(dispatcher_);
+        context_->setIOProcessorManager(ioManager_);
+
+        resetStatistics();
+
+        return true;
+    } catch (const std::exception &e) {
+        SCXML::Common::Logger::error("Processor::initializeWithContext - Exception: " + std::string(e.what()));
+        cleanup();
+        return false;
+    }
 }
 
 bool Processor::initializeWithModel(std::shared_ptr<Model::DocumentModel> model) {
@@ -152,15 +216,14 @@ bool Processor::initializeWithModel(std::shared_ptr<Model::DocumentModel> model)
 
         return true;
     } catch (const std::exception &e) {
-        std::cout << "Processor::initializeWithModel() - Exception: " << e.what() << std::endl;
+        SCXML::Common::Logger::error("Processor::initializeWithModel - Exception: " + std::string(e.what()));
         cleanup();
         return false;
     }
 }
 
 bool Processor::start() {
-    std::lock_guard<std::mutex> lock(stateMutex_);
-
+    // Single-threaded mode: No mutex needed
     if (state_ != State::STOPPED || !model_ || !context_) {
         return false;
     }
@@ -169,21 +232,17 @@ bool Processor::start() {
         setState(State::STARTING);
         stopRequested_ = false;
 
-        if (dataModelEngine_ && dataModelEngine_->getECMAScriptEngine()) {
-            auto preInitTest = dataModelEngine_->evaluateExpression("2+2", *context_);
-        }
-
         if (!initializeStateConfiguration()) {
             cleanup();
             return false;
         }
 
-        eventThread_ = std::make_unique<std::thread>(&Processor::runEventLoop, this);
+        // Single-threaded mode: No event thread needed
 
         setState(State::RUNNING);
         startTime_ = std::chrono::steady_clock::now();
 
-        stateCondition_.notify_all();
+        // Single-threaded mode: No condition variable needed
 
         return true;
     } catch (const std::exception &e) {
@@ -195,8 +254,7 @@ bool Processor::start() {
 bool Processor::stop(bool waitForCompletion) {
     (void)waitForCompletion;  // Suppress unused parameter warning
     {
-        std::lock_guard<std::mutex> lock(stateMutex_);
-
+        // Single-threaded mode: No mutex needed
         if (state_ == State::STOPPED) {
             return true;
         }
@@ -232,26 +290,22 @@ bool Processor::stop(bool waitForCompletion) {
     }
 
     // 4. Notify all waiting threads
-    stateCondition_.notify_all();
+    // Single-threaded mode: No condition variable needed
 
-    // 5. Wait for event thread to finish gracefully
-    if (eventThread_ && eventThread_->joinable()) {
-        Common::GracefulJoin::joinWithTimeout(*eventThread_, 5, "Processor EventThread");
-    }
+    // Single-threaded mode: No event thread to join
 
     {
-        std::lock_guard<std::mutex> lock(stateMutex_);
+        // Single-threaded mode: No mutex needed
         setState(State::STOPPED);
-        eventThread_.reset();
+        // Single-threaded mode: No event thread to reset
     }
 
-    stateCondition_.notify_all();
+    // Single-threaded mode: No condition variable needed
     return true;
 }
 
 bool Processor::pause() {
-    std::lock_guard<std::mutex> lock(stateMutex_);
-
+    // Single-threaded mode: No mutex needed
     if (state_ != State::RUNNING) {
         return false;
     }
@@ -261,14 +315,13 @@ bool Processor::pause() {
 }
 
 bool Processor::resume() {
-    std::lock_guard<std::mutex> lock(stateMutex_);
-
+    // Single-threaded mode: No mutex needed
     if (state_ != State::PAUSED) {
         return false;
     }
 
     setState(State::RUNNING);
-    stateCondition_.notify_all();
+    // Single-threaded mode: No condition variable needed
     return true;
 }
 
@@ -316,6 +369,11 @@ bool Processor::sendEvent(Events::EventPtr event) {
                 context_->log("debug", "Enqueued event: " + event->getName());
             }
 
+            // Single-threaded mode: Process events immediately after enqueueing
+            if (state_ == State::RUNNING) {
+                processAllEvents();
+            }
+
             return true;
         }
 
@@ -354,8 +412,97 @@ bool Processor::processNextEvent() {
     }
 }
 
+void Processor::processAllEvents() {
+    // Process all pending events synchronously until queue is empty
+    // Allow processing during initialization (STARTING state) and normal running
+    while (!stopRequested_ && (state_ == State::RUNNING || state_ == State::STARTING) &&
+           (!isEventQueueEmpty() || context_->getEventScheduler().hasReadyEvents())) {
+        // Process scheduled events that are ready for delivery
+        if (context_) {
+            context_->processScheduledEvents();
+        }
+
+        // Process regular events
+        if (!isEventQueueEmpty()) {
+            processNextEvent();
+        }
+    }
+
+    // SCXML-compliant: After processing all events, process eventless transitions
+    // Keep processing eventless transitions until no more are enabled
+    if (!stopRequested_ && (state_ == State::RUNNING || state_ == State::STARTING) && transitionExecutor_ && model_ &&
+        context_) {
+        bool eventlessTransitionTaken = true;
+        int maxIterations = 100;  // Prevent infinite loops
+        int iterations = 0;
+
+        while (eventlessTransitionTaken && iterations < maxIterations && !stopRequested_) {
+            auto result = transitionExecutor_->executeEventlessTransitions(model_, *context_);
+            eventlessTransitionTaken = result.transitionTaken;
+            iterations++;
+
+            // Check if we've reached a final state and should stop
+            if (isInFinalState() || context_->isFinalStateReached()) {
+                stopRequested_ = true;
+                break;
+            }
+        }
+
+        if (iterations >= maxIterations) {
+            SCXML::Common::Logger::warning(
+                "Processor::processAllEvents - Maximum eventless transition iterations reached");
+        }
+    }
+}
+
 bool Processor::isEventQueueEmpty() const {
     return !eventQueue_ || eventQueue_->size() == 0;
+}
+
+bool Processor::waitForStable(int timeoutMs) const {
+    auto startTime = std::chrono::steady_clock::now();
+    auto timeout = std::chrono::milliseconds(timeoutMs);
+
+    while (std::chrono::steady_clock::now() - startTime < timeout) {
+        // Check for scheduled events that might be ready or pending
+        bool hasScheduledEvents = false;
+        if (context_) {
+            hasScheduledEvents = context_->getEventScheduler().getScheduledEventCount() > 0;
+        }
+
+        // Wait for events to be processed by the background thread
+        if (isEventQueueEmpty() && !hasScheduledEvents && !isRunning()) {
+            // Processor stopped and no events pending - stable
+            return true;
+        }
+
+        // Check if we've reached a final state - this is also a stable condition
+        if (isEventQueueEmpty() && !hasScheduledEvents && isInFinalState()) {
+            return true;  // Final state reached and no events pending - stable
+        }
+
+        if (isEventQueueEmpty() && !hasScheduledEvents) {
+            // Additional wait to ensure stability
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            bool stillHasScheduledEvents = false;
+            if (context_) {
+                stillHasScheduledEvents = context_->getEventScheduler().getScheduledEventCount() > 0;
+            }
+            if (isEventQueueEmpty() && !stillHasScheduledEvents) {
+                return true;  // Stable state reached
+            }
+        }
+
+        // Process any ready scheduled events
+        if (context_) {
+            context_->processScheduledEvents();
+        }
+
+        // Let the background thread process events
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    return false;  // Timeout reached
 }
 
 // ========== State Inspection ==========
@@ -405,6 +552,10 @@ bool Processor::setDataValue(const std::string &name, const std::string &value) 
     return false;
 }
 
+std::shared_ptr<Runtime::RuntimeContext> Processor::getContext() const {
+    return context_;
+}
+
 Processor::State Processor::getCurrentState() const {
     return state_.load();
 }
@@ -420,12 +571,26 @@ std::string Processor::getName() const {
 }
 
 bool Processor::isRunning() const {
-    std::lock_guard<std::mutex> lock(stateMutex_);
-    return state_ == State::RUNNING;
+    // Single-threaded mode: No mutex needed
+    return state_ == State::RUNNING && !stopRequested_;
 }
 
 bool Processor::isInFinalState() const {
-    // Returns false - final state detection requires active state tracking implementation
+    if (!context_ || !model_) {
+        return false;
+    }
+
+    auto activeStates = context_->getActiveStates();
+    for (const auto &stateId : activeStates) {
+        auto stateNode = model_->findStateById(stateId);
+        if (stateNode && stateNode->isFinalState()) {
+            if (eventTracing_) {
+                context_->log("debug", "isInFinalState: found final state " + stateId);
+            }
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -448,7 +613,17 @@ std::map<std::string, uint64_t> Processor::getStatistics() const {
 
 bool Processor::initializeInternal() {
     try {
-        eventQueue_ = std::shared_ptr<Events::EventQueue>(new Events::EventQueue());
+        // Use the same event queue as the RuntimeContext's EventManager
+        // This ensures that raised events from actions are processed by the processor
+        if (context_) {
+            eventQueue_ = context_->getEventManager().getInternalQueue();
+        }
+
+        // Fallback to creating new queue if context is not available
+        if (!eventQueue_) {
+            eventQueue_ = std::shared_ptr<Events::EventQueue>(new Events::EventQueue());
+        }
+
         if (!eventQueue_) {
             throw std::runtime_error("Failed to create event queue");
         }
@@ -467,6 +642,9 @@ bool Processor::initializeInternal() {
 }
 
 void Processor::cleanup() {
+    // Clean up thread first
+    // Single-threaded mode: No event thread to clean up
+
     eventQueue_.reset();
     dispatcher_.reset();
     ioManager_.reset();
@@ -483,28 +661,7 @@ void Processor::setState(State newState) {
     state_ = newState;
 }
 
-void Processor::runEventLoop() {
-    while (!stopRequested_) {
-        {
-            std::unique_lock<std::mutex> lock(stateMutex_);
-            stateCondition_.wait(lock, [this] { return state_ != State::PAUSED || stopRequested_; });
-
-            if (stopRequested_) {
-                break;
-            }
-        }
-
-        bool eventProcessed = processNextEvent();
-
-        if (maxEventRate_ > 0 && eventProcessed) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000 / maxEventRate_));
-        }
-
-        if (!eventProcessed) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-    }
-}
+// Single-threaded mode: runEventLoop removed - using processAllEvents() instead
 
 void Processor::processEvent(std::shared_ptr<Events::Event> event) {
     if (!event || !context_ || !transitionExecutor_) {
@@ -512,15 +669,9 @@ void Processor::processEvent(std::shared_ptr<Events::Event> event) {
         return;
     }
 
-    // JSON 이벤트 처리 상세 로깅 시작
-    std::string eventName = event->getName().empty() ? "unnamed_event" : event->getName();
-    std::string eventData = event->getDataAsString();
-
-    // JSON 데이터 감지
-    if (!eventData.empty() && eventData.front() == '{') {
-    }
-
     try {
+        std::string eventName = event->getName().empty() ? "unnamed_event" : event->getName();
+
         if (eventTracing_) {
             context_->log("debug", "Processing event: " + eventName);
         }
@@ -529,7 +680,6 @@ void Processor::processEvent(std::shared_ptr<Events::Event> event) {
 
         if (result.transitionTaken) {
             if (eventTracing_) {
-                std::string eventName = event->getName().empty() ? "unnamed_event" : event->getName();
                 context_->log("info", "Event '" + eventName + "' caused transition: " +
                                           std::to_string(result.exitedStates.size()) + " states exited, " +
                                           std::to_string(result.enteredStates.size()) + " states entered");
@@ -541,6 +691,16 @@ void Processor::processEvent(std::shared_ptr<Events::Event> event) {
         }
 
         updateStatistics(true);
+
+        // Check if we've reached a final state and should stop
+        if (isInFinalState() || context_->isFinalStateReached()) {
+            if (eventTracing_) {
+                context_->log("info", "Final state reached, stopping processor");
+            }
+            stopRequested_ = true;
+            // Don't change state here - let the event loop exit naturally
+            // Single-threaded mode: No condition variable needed
+        }
 
     } catch (const std::exception &e) {
         if (eventTracing_) {
@@ -594,6 +754,20 @@ void Processor::enterStates(const std::set<Model::IStateNode *> &statesToEnter) 
                 }
             }
         }
+    }
+
+    // Check if we've reached a final state and should stop
+    if (isInFinalState()) {
+        if (eventTracing_) {
+            context_->log("info", "Final state reached in enterStates, stopping processor");
+        }
+        stopRequested_ = true;
+        // Also update the processor state properly with mutex protection
+        {
+            // Single-threaded mode: No mutex needed
+            state_ = State::STOPPED;
+        }
+        // Single-threaded mode: No condition variable needed
     }
 }
 
@@ -668,8 +842,8 @@ bool Processor::validateModel(std::shared_ptr<Model::DocumentModel> model) {
         }
 
         if (eventTracing_) {
-            SCXML::Common::Logger::info("SCXML model validation successful: " + std::to_string(allStates.size()) + " states, " +
-                         "initial state: " + initialState);
+            SCXML::Common::Logger::info("SCXML model validation successful: " + std::to_string(allStates.size()) +
+                                        " states, " + "initial state: " + initialState);
         }
 
         return true;
@@ -781,19 +955,36 @@ bool Processor::initializeStateConfiguration() {
             return false;
         }
 
-        for (const auto &stateId : initialConfig.activeStates) {
-            context_->activateState(stateId);
-        }
+        // Note: Only use entryOrder loop below - activeStates contains the same states
+        // and would cause duplicate entry if processed here as well
 
         // JavaScript 상태 체크 3: activeStates 활성화 후
         if (dataModelEngine_ && dataModelEngine_->getECMAScriptEngine()) {
             auto check3 = dataModelEngine_->evaluateExpression("30+30", *context_);
         }
 
+        if (eventTracing_) {
+            context_->log("info", "entryOrder size: " + std::to_string(initialConfig.entryOrder.size()));
+            for (const auto &stateId : initialConfig.entryOrder) {
+                context_->log("info", "entryOrder state: " + stateId);
+            }
+        }
+
         for (const auto &stateId : initialConfig.entryOrder) {
-            // enterStates({stateId});
-            if (context_) {
-                context_->activateState(stateId);
+            // Find the state node and call proper enterStates method
+            if (model_ && context_) {
+                auto stateNode = model_->findStateById(stateId);
+                if (stateNode) {
+                    if (eventTracing_) {
+                        context_->log("info", "About to call enterStates for: " + stateId);
+                    }
+                    std::set<Model::IStateNode *> statesToEnter;
+                    statesToEnter.insert(stateNode);
+                    enterStates(statesToEnter);
+                } else {
+                    // Fallback to just activating the state if we can't find the node
+                    context_->activateState(stateId);
+                }
             }
 
             // JavaScript 상태 체크 4: 각 entryOrder state 활성화 후
@@ -821,6 +1012,11 @@ bool Processor::initializeStateConfiguration() {
             }
             context_->log("info", "Initialized with states: " + stateList);
         }
+
+        // SCXML-compliant event processing: After state initialization,
+        // process all events that were raised during entry actions
+        context_->log("info", "Processing events raised during initialization");
+        processAllEvents();
 
         return true;
 

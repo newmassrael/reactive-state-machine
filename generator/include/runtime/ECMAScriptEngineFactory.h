@@ -18,18 +18,15 @@ public:
      * @brief Available engine types
      */
     enum class EngineType {
-        AUTO,                  ///< Automatic selection (QuickJS if available, fallback otherwise)
-        JAVASCRIPT_EVALUATOR,  ///< Use JavaScriptExpressionEvaluator (legacy fallback)
-        QUICKJS,              ///< Use QuickJS JavaScript engine (full ECMAScript support)
-        FULL_JAVASCRIPT       ///< Legacy alias for QuickJS
+        QUICKJS  ///< Use QuickJS JavaScript engine (default and only supported)
     };
 
     /**
      * @brief Create ECMAScript engine instance
-     * @param type Engine type to create
+     * @param type Engine type to create (defaults to QuickJS)
      * @return Unique pointer to engine instance
      */
-    static std::unique_ptr<IECMAScriptEngine> create(EngineType type = EngineType::AUTO);
+    static std::unique_ptr<IECMAScriptEngine> create(EngineType type = EngineType::QUICKJS);
 
     /**
      * @brief Check if specific engine type is available
@@ -40,7 +37,7 @@ public:
 
     /**
      * @brief Get default engine type for current system
-     * @return Recommended engine type
+     * @return Recommended engine type (always QuickJS)
      */
     static EngineType getDefaultEngineType();
 

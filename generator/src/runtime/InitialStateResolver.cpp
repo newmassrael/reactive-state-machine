@@ -1,4 +1,5 @@
 #include "runtime/InitialStateResolver.h"
+#include "common/Logger.h"
 #include "model/DocumentModel.h"
 #include "model/IStateNode.h"
 #include "runtime/RuntimeContext.h"
@@ -31,18 +32,36 @@ Core::InitialStateResolver::resolveInitialStates(std::shared_ptr<Model::Document
     try {
         // Start with SCXML document's initial attribute
         std::string documentInitial = model->getInitialState();
+        SCXML::Common::Logger::debug("InitialStateResolver::resolveInitialStates - documentInitial: " +
+                                     documentInitial);
 
         if (!documentInitial.empty()) {
             // Document specifies explicit initial state
+            SCXML::Common::Logger::debug("InitialStateResolver::resolveInitialStates - found documentInitial: " +
+                                         documentInitial);
             SCXML::Model::IStateNode *initialState = model->findStateById(documentInitial);
             if (!initialState) {
                 config.errorMessage = "Initial state '" + documentInitial + "' not found";
                 return config;
             }
 
+            SCXML::Common::Logger::debug("InitialStateResolver::resolveInitialStates - found initialState: " +
+                                         initialState->getId());
+
             // Add the initial state and its ancestors
             std::set<std::string> visited;
             addToConfiguration(documentInitial, config, visited);
+
+            // Check if this is a compound state that needs child resolution
+            if (isCompoundState(*initialState)) {
+                SCXML::Common::Logger::debug("InitialStateResolver::resolveInitialStates - resolving compound state: " +
+                                             documentInitial);
+                resolveCompoundStateInternal(model, *initialState, config);
+            } else if (isParallelState(*initialState)) {
+                SCXML::Common::Logger::debug("InitialStateResolver::resolveInitialStates - resolving parallel state: " +
+                                             documentInitial);
+                resolveParallelState(model, *initialState, config);
+            }
 
             // Add proper ancestors to ensure valid configuration
             auto ancestors = getProperAncestors(model, documentInitial);
@@ -168,20 +187,30 @@ void Core::InitialStateResolver::resolveCompoundStateInternal(std::shared_ptr<Mo
                                                               InitialConfiguration &config) {
     std::set<std::string> visited;
 
+    SCXML::Common::Logger::debug("InitialStateResolver::resolveCompoundStateInternal - processing state: " +
+                                 stateNode.getId());
+
     // Add the compound state itself to configuration
     addToConfiguration(stateNode.getId(), config, visited);
 
     // Find the initial child state
     std::string initialChild = getEffectiveInitial(stateNode);
+    SCXML::Common::Logger::debug(
+        "InitialStateResolver::resolveCompoundStateInternal - initialChild from getEffectiveInitial: " + initialChild);
 
     if (initialChild.empty()) {
         // No explicit initial state, use default (first child)
         initialChild = getDefaultInitial(stateNode);
+        SCXML::Common::Logger::debug(
+            "InitialStateResolver::resolveCompoundStateInternal - initialChild from getDefaultInitial: " +
+            initialChild);
     }
 
     if (!initialChild.empty()) {
         SCXML::Model::IStateNode *childState = model->findStateById(initialChild);
         if (childState) {
+            SCXML::Common::Logger::debug("InitialStateResolver::resolveCompoundStateInternal - found childState: " +
+                                         childState->getId());
             // Recursively resolve the child state
             if (isCompoundState(*childState)) {
                 resolveCompoundStateInternal(model, *childState, config);
@@ -201,6 +230,8 @@ void Core::InitialStateResolver::resolveParallelState(std::shared_ptr<Model::Doc
 
     // Add the parallel state itself to configuration
     addToConfiguration(stateNode.getId(), config, visited);
+    SCXML::Common::Logger::debug("InitialStateResolver::resolveParallelState - Processing parallel state: " +
+                                 stateNode.getId());
 
     // For parallel states, all child regions must be active
     // Enhanced parallel state support - enter all child regions
@@ -213,9 +244,26 @@ void Core::InitialStateResolver::resolveParallelState(std::shared_ptr<Model::Doc
             }
             SCXML::Model::IStateNode *childState = child.get();
             if (childState) {
+                SCXML::Common::Logger::debug("InitialStateResolver::resolveParallelState - Adding child region: " +
+                                             childState->getId());
                 config.activeStates.push_back(childState->getId());
+                config.entryOrder.push_back(childState->getId());  // CRITICAL FIX: Also add to entryOrder
+
+                // Handle initial states of parallel regions
                 if (isCompoundState(*childState)) {
                     resolveCompoundStateInternal(model, *childState, config);
+                } else if (isAtomicState(*childState)) {
+                    // For atomic states, check if they have an initial state specified
+                    std::string initialState = childState->getInitialState();
+                    if (!initialState.empty()) {
+                        SCXML::Model::IStateNode *initialStateNode = model->findStateById(initialState);
+                        if (initialStateNode) {
+                            SCXML::Common::Logger::debug(
+                                "InitialStateResolver::resolveParallelState - Adding initial state: " + initialState);
+                            config.activeStates.push_back(initialState);
+                            config.entryOrder.push_back(initialState);
+                        }
+                    }
                 }
             }
         }

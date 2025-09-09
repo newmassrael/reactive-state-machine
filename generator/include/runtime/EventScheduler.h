@@ -1,143 +1,103 @@
 #pragma once
 
-#include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <functional>
 #include <memory>
-#include <mutex>
 #include <queue>
 #include <string>
-#include <thread>
-#include <unordered_map>
+#include <vector>
 
 namespace SCXML {
-// Forward declarations
 namespace Events {
 class Event;
-using EventPtr = std::shared_ptr<Event>;
-}  // namespace Events
+}
 
 namespace Runtime {
-class RuntimeContext;
 
 /**
- * @brief Manages scheduled events for SCXML <send> with delay
+ * @brief OS-independent, non-blocking event scheduler for delayed event delivery
  *
- * The EventScheduler handles delayed event delivery and cancellation,
- * providing the timing infrastructure needed for SCXML send/cancel operations.
+ * Uses std::chrono for accurate timing without sleep or blocking calls.
+ * Events are processed on each event loop iteration.
  */
 class EventScheduler {
 public:
     /**
-     * @brief Scheduled event entry
+     * @brief Delayed event container
      */
-    struct ScheduledEvent {
-        std::string sendId;
-        SCXML::Events::EventPtr event;
-        std::chrono::steady_clock::time_point deliveryTime;
+    struct DelayedEvent {
+        std::chrono::steady_clock::time_point targetTime;
+        std::shared_ptr<SCXML::Events::Event> event;
         std::string target;
-        bool cancelled;
+        std::string sendId;
 
-        ScheduledEvent(const std::string &id, SCXML::Events::EventPtr evt, std::chrono::steady_clock::time_point time,
-                       const std::string &tgt)
-            : sendId(id), event(evt), deliveryTime(time), target(tgt), cancelled(false) {}
-    };
+        DelayedEvent(std::chrono::steady_clock::time_point time, std::shared_ptr<SCXML::Events::Event> evt,
+                     const std::string &tgt = std::string(), const std::string &id = std::string())
+            : targetTime(time), event(evt), target(tgt), sendId(id) {}
 
-    /**
-     * @brief Comparison for priority queue (earliest delivery first)
-     */
-    struct EventComparator {
-        bool operator()(const std::shared_ptr<ScheduledEvent> &a, const std::shared_ptr<ScheduledEvent> &b) const {
-            return a->deliveryTime > b->deliveryTime;
+        // For priority queue (earliest events first)
+        bool operator<(const DelayedEvent &other) const {
+            return targetTime > other.targetTime;  // Reverse comparison for min-heap
         }
     };
 
 public:
-    /**
-     * @brief Construct EventScheduler
-     */
-    EventScheduler();
-
-    /**
-     * @brief Destructor - stops scheduler thread
-     */
-    ~EventScheduler();
-
-    /**
-     * @brief Start the scheduler thread
-     */
-    void start();
-
-    /**
-     * @brief Stop the scheduler thread
-     */
-    void stop();
+    EventScheduler() = default;
+    ~EventScheduler() = default;
 
     /**
      * @brief Schedule an event for delayed delivery
-     * @param sendId Unique identifier for this scheduled event
      * @param event Event to deliver
      * @param delayMs Delay in milliseconds
-     * @param target Target for event delivery
-     * @param context Runtime context for event delivery
-     * @return true if event was scheduled successfully
+     * @param target Target for event delivery (empty for internal events)
+     * @param sendId Optional send ID for cancellation
      */
-    bool scheduleEvent(const std::string &sendId, SCXML::Events::EventPtr event, uint64_t delayMs,
-                       const std::string &target, SCXML::Runtime::RuntimeContext *context);
+    void scheduleEvent(std::shared_ptr<SCXML::Events::Event> event, uint64_t delayMs,
+                       const std::string &target = std::string(), const std::string &sendId = std::string());
 
     /**
-     * @brief Cancel a scheduled event
-     * @param sendId Identifier of event to cancel
-     * @return true if event was found and cancelled (or already delivered)
+     * @brief Get all events that are ready to be delivered now
+     * @return Vector of ready events (removed from scheduler)
+     */
+    std::vector<DelayedEvent> getReadyEvents();
+
+    /**
+     * @brief Cancel a scheduled event by send ID
+     * @param sendId Send ID to cancel
+     * @return true if event was found and cancelled
      */
     bool cancelEvent(const std::string &sendId);
 
     /**
-     * @brief Check if an event is currently scheduled
-     * @param sendId Identifier to check
-     * @return true if event exists and hasn't been delivered/cancelled
+     * @brief Get number of scheduled events
+     * @return Number of pending delayed events
      */
-    bool isEventScheduled(const std::string &sendId) const;
-
-    /**
-     * @brief Get number of pending scheduled events
-     * @return Count of events waiting for delivery
-     */
-    size_t getPendingEventCount() const;
+    size_t getScheduledEventCount() const {
+        return delayedEvents_.size();
+    }
 
     /**
      * @brief Clear all scheduled events
      */
-    void clearAllEvents();
-
-private:
-    /**
-     * @brief Main scheduler thread function
-     */
-    void schedulerThreadMain();
+    void clear() {
+        delayedEvents_ = std::priority_queue<DelayedEvent>();
+    }
 
     /**
-     * @brief Deliver an event to its target
-     * @param scheduledEvent Event to deliver
-     * @param context Runtime context for delivery
+     * @brief Check if there are any events ready to be delivered
+     * @return true if events are ready
      */
-    void deliverEvent(std::shared_ptr<ScheduledEvent> scheduledEvent, SCXML::Runtime::RuntimeContext *context);
+    bool hasReadyEvents() const;
+
+    /**
+     * @brief Get time until next event (for optimization)
+     * @return Duration until next event, or max if no events
+     */
+    std::chrono::milliseconds getTimeUntilNextEvent() const;
 
 private:
-    // Thread management
-    std::thread schedulerThread_;
-    std::atomic<bool> running_;
-    mutable std::mutex queueMutex_;
-    std::condition_variable queueCondition_;
-
-    // Event storage
-    std::priority_queue<std::shared_ptr<ScheduledEvent>, std::vector<std::shared_ptr<ScheduledEvent>>, EventComparator>
-        eventQueue_;
-
-    std::unordered_map<std::string, std::shared_ptr<ScheduledEvent>> eventLookup_;
-
-    // Context for event delivery
-    SCXML::Runtime::RuntimeContext *context_;
+    std::priority_queue<DelayedEvent> delayedEvents_;
 };
+
 }  // namespace Runtime
 }  // namespace SCXML

@@ -58,11 +58,11 @@ StateNodeParser::parseStateNode(const xmlpp::Element *stateElement,
     // 상태 유형 결정
     SCXML::Type stateType = determineStateType(stateElement);
     SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Parsing state: " + stateId + " (" +
-                  (stateType == SCXML::Type::PARALLEL  ? "parallel"
-                   : stateType == SCXML::Type::FINAL   ? "final"
-                   : stateType == SCXML::Type::HISTORY ? "history"
-                                                       : "state") +
-                  ")");
+                                 (stateType == SCXML::Type::PARALLEL  ? "parallel"
+                                  : stateType == SCXML::Type::FINAL   ? "final"
+                                  : stateType == SCXML::Type::HISTORY ? "history"
+                                                                      : "state") +
+                                 ")");
 
     // 상태 노드 생성
     auto stateNode = nodeFactory_->createStateNode(stateId, stateType);
@@ -88,7 +88,8 @@ StateNodeParser::parseStateNode(const xmlpp::Element *stateElement,
         if (transitionParser_) {
             parseTransitions(stateElement, stateNode);
         } else {
-            SCXML::Common::Logger::warning("StateNodeParser::parseStateNode() - TransitionParser not set, skipping transitions");
+            SCXML::Common::Logger::warning(
+                "StateNodeParser::parseStateNode() - TransitionParser not set, skipping transitions");
         }
 
         parseReactiveGuards(stateElement, stateNode);
@@ -102,7 +103,8 @@ StateNodeParser::parseStateNode(const xmlpp::Element *stateElement,
             SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Added data item: " + item->getId());
         }
     } else {
-        SCXML::Common::Logger::warning("StateNodeParser::parseStateNode() - DataModelParser not set, skipping data model");
+        SCXML::Common::Logger::warning(
+            "StateNodeParser::parseStateNode() - DataModelParser not set, skipping data model");
     }
 
     // 자식 상태 파싱 (compound 및 parallel 상태의 경우) - context 전달
@@ -114,7 +116,8 @@ StateNodeParser::parseStateNode(const xmlpp::Element *stateElement,
     if (invokeParser_) {
         parseInvokeElements(stateElement, stateNode);
     } else {
-        SCXML::Common::Logger::warning("StateNodeParser::parseStateNode() - InvokeParser not set, skipping invoke elements");
+        SCXML::Common::Logger::warning(
+            "StateNodeParser::parseStateNode() - InvokeParser not set, skipping invoke elements");
     }
 
     // <final> 상태에서 <donedata> 요소 파싱
@@ -124,12 +127,12 @@ StateNodeParser::parseStateNode(const xmlpp::Element *stateElement,
         if (doneDataElement) {
             bool success = doneDataParser_->parseDoneData(doneDataElement, stateNode.get());
             if (!success) {
-                SCXML::Common::Logger::warning("StateNodeParser::parseStateNode() - Failed to parse <donedata> in final state: " +
-                                stateId);
+                SCXML::Common::Logger::warning(
+                    "StateNodeParser::parseStateNode() - Failed to parse <donedata> in final state: " + stateId);
                 // 오류가 있어도 계속 진행 (치명적이지 않음)
             } else {
-                SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Successfully parsed <donedata> in final state: " +
-                              stateId);
+                SCXML::Common::Logger::debug(
+                    "StateNodeParser::parseStateNode() - Successfully parsed <donedata> in final state: " + stateId);
             }
         }
     }
@@ -142,26 +145,28 @@ StateNodeParser::parseStateNode(const xmlpp::Element *stateElement,
             if (initialElement) {
                 // <initial> 요소 파싱
                 parseInitialElement(initialElement, stateNode);
-                SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Parsed <initial> element for state: " + stateId);
+                SCXML::Common::Logger::debug(
+                    "StateNodeParser::parseStateNode() - Parsed <initial> element for state: " + stateId);
             } else {
                 // initial 속성에서 초기 상태 설정
                 auto initialAttr = stateElement->get_attribute("initial");
                 if (initialAttr) {
                     stateNode->setInitialState(initialAttr->get_value());
-                    SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Set initial state from attribute: " +
-                                  initialAttr->get_value());
+                    SCXML::Common::Logger::debug(
+                        "StateNodeParser::parseStateNode() - Set initial state from attribute: " +
+                        initialAttr->get_value());
                 } else if (!stateNode->getChildren().empty()) {
                     // 초기 상태가 지정되지 않은 경우 첫 번째 자식을 사용
                     stateNode->setInitialState(stateNode->getChildren().front()->getId());
                     SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Set default initial state: " +
-                                  stateNode->getChildren().front()->getId());
+                                                 stateNode->getChildren().front()->getId());
                 }
             }
         }
     }
 
     SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - State " + stateId + " parsed successfully with " +
-                  std::to_string(stateNode->getChildren().size()) + " child states");
+                                 std::to_string(stateNode->getChildren().size()) + " child states");
     return stateNode;
 }
 
@@ -207,7 +212,7 @@ SCXML::Type StateNodeParser::determineStateType(const xmlpp::Element *stateEleme
     }
 
     SCXML::Common::Logger::debug("StateNodeParser::determineStateType() - State type: " +
-                  std::string(hasChildStates ? "Compound" : "Standard"));
+                                 std::string(hasChildStates ? "Compound" : "Standard"));
     return hasChildStates ? SCXML::Type::COMPOUND : SCXML::Type::ATOMIC;
 }
 
@@ -225,8 +230,8 @@ void StateNodeParser::parseTransitions(const xmlpp::Element *parentElement,
         }
     }
 
-    SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Parsed " + std::to_string(state->getTransitions().size()) +
-                  " transitions");
+    SCXML::Common::Logger::debug("StateNodeParser::parseStateNode() - Parsed " +
+                                 std::to_string(state->getTransitions().size()) + " transitions");
 }
 
 void StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentElement,
@@ -242,7 +247,8 @@ void StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentElement
         for (const auto &action : actions) {
             state->addEntryAction(action->getId());
             state->addEntryActionNode(action);  // Also store ActionNode object for execution
-            SCXML::Common::Logger::debug("StateNodeParser::parseEntryExitElements() - Added entry action: " + action->getId());
+            SCXML::Common::Logger::debug("StateNodeParser::parseEntryExitElements() - Added entry action: " +
+                                         action->getId());
         }
     }
 
@@ -252,7 +258,9 @@ void StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentElement
         auto actions = actionParser_->parseActionsInElement(onexitElement);
         for (const auto &action : actions) {
             state->addExitAction(action->getId());
-            SCXML::Common::Logger::debug("StateNodeParser::parseEntryExitElements() - Added exit action: " + action->getId());
+            state->addExitActionNode(action);  // Also store ActionNode object for execution
+            SCXML::Common::Logger::debug("StateNodeParser::parseEntryExitElements() - Added exit action: " +
+                                         action->getId());
         }
     }
 }
@@ -284,8 +292,8 @@ void StateNodeParser::parseChildStates(const xmlpp::Element *stateElement,
         }
     }
 
-    SCXML::Common::Logger::debug("StateNodeParser::parseChildStates() - Found " + std::to_string(childStateElements.size()) +
-                  " child states");
+    SCXML::Common::Logger::debug("StateNodeParser::parseChildStates() - Found " +
+                                 std::to_string(childStateElements.size()) + " child states");
 }
 
 void StateNodeParser::parseInvokeElements(const xmlpp::Element *parentElement,
@@ -300,20 +308,21 @@ void StateNodeParser::parseInvokeElements(const xmlpp::Element *parentElement,
         if (invokeNode) {
             // Invoke 노드를 상태에 추가
             state->addInvoke(invokeNode);
-            SCXML::Common::Logger::debug("StateNodeParser::parseInvokeElements() - Added invoke: " + invokeNode->getId());
+            SCXML::Common::Logger::debug("StateNodeParser::parseInvokeElements() - Added invoke: " +
+                                         invokeNode->getId());
 
             // Param 요소들로부터 데이터 모델 아이템 생성 및 추가
             auto dataItems = invokeParser_->parseParamElementsAndCreateDataItems(invokeElement, invokeNode);
             for (const auto &dataItem : dataItems) {
                 state->addDataItem(dataItem);
                 SCXML::Common::Logger::debug("StateNodeParser::parseInvokeElements() - Added data item from param: " +
-                              dataItem->getId());
+                                             dataItem->getId());
             }
         }
     }
 
-    SCXML::Common::Logger::debug("StateNodeParser::parseInvokeElements() - Parsed " + std::to_string(state->getInvoke().size()) +
-                  " invoke elements");
+    SCXML::Common::Logger::debug("StateNodeParser::parseInvokeElements() - Parsed " +
+                                 std::to_string(state->getInvoke().size()) + " invoke elements");
 }
 
 void StateNodeParser::parseHistoryType(const xmlpp::Element *historyElement,
@@ -335,7 +344,7 @@ void StateNodeParser::parseHistoryType(const xmlpp::Element *historyElement,
     state->setHistoryType(isDeep);
 
     SCXML::Common::Logger::debug("StateNodeParser::parseHistoryType() - History state " + state->getId() +
-                  " type: " + (isDeep ? "deep" : "shallow"));
+                                 " type: " + (isDeep ? "deep" : "shallow"));
 
     // 히스토리 상태의 기본 전환도 파싱
     if (transitionParser_) {
@@ -365,8 +374,8 @@ void StateNodeParser::parseReactiveGuards(const xmlpp::Element *parentElement,
         }
     }
 
-    SCXML::Common::Logger::debug("StateNodeParser::parseReactiveGuards() - Parsed " + std::to_string(reactiveGuardElements.size()) +
-                  " reactive guards");
+    SCXML::Common::Logger::debug("StateNodeParser::parseReactiveGuards() - Parsed " +
+                                 std::to_string(reactiveGuardElements.size()) + " reactive guards");
 }
 
 void StateNodeParser::parseInitialElement(const xmlpp::Element *initialElement,
@@ -375,7 +384,8 @@ void StateNodeParser::parseInitialElement(const xmlpp::Element *initialElement,
         return;
     }
 
-    SCXML::Common::Logger::debug("StateNodeParser::parseInitialElement() - Parsing initial element for state: " + state->getId());
+    SCXML::Common::Logger::debug("StateNodeParser::parseInitialElement() - Parsing initial element for state: " +
+                                 state->getId());
 
     // <transition> 요소 찾기
     const xmlpp::Element *transitionElement =
@@ -391,11 +401,11 @@ void StateNodeParser::parseInitialElement(const xmlpp::Element *initialElement,
             if (!transition->getTargets().empty()) {
                 state->setInitialState(transition->getTargets()[0]);
                 SCXML::Common::Logger::debug("StateNodeParser::parseInitialElement() - Initial state set to: " +
-                              transition->getTargets()[0]);
+                                             transition->getTargets()[0]);
             }
 
             SCXML::Common::Logger::debug("StateNodeParser::parseInitialElement() - Initial transition set for state: " +
-                          state->getId());
+                                         state->getId());
         }
     }
 }

@@ -19,7 +19,8 @@ DocumentModel::~DocumentModel() {
 }
 
 void DocumentModel::setRootState(std::shared_ptr<SCXML::Model::IStateNode> rootState) {
-    SCXML::Common::Logger::debug("DocumentModel::setRootState() - Setting root state: " + (rootState ? rootState->getId() : "null"));
+    SCXML::Common::Logger::debug("DocumentModel::setRootState() - Setting root state: " +
+                                 (rootState ? rootState->getId() : "null"));
     rootState_ = rootState;
 }
 
@@ -54,7 +55,8 @@ const std::string &DocumentModel::getDatamodel() const {
 }
 
 void DocumentModel::addContextProperty(const std::string &name, const std::string &type) {
-    SCXML::Common::Logger::debug("DocumentModel::addContextProperty() - Adding context property: " + name + " (" + type + ")");
+    SCXML::Common::Logger::debug("DocumentModel::addContextProperty() - Adding context property: " + name + " (" +
+                                 type + ")");
     contextProperties_[name] = type;
 }
 
@@ -148,7 +150,7 @@ SCXML::Model::IStateNode *DocumentModel::findStateById(const std::string &id) co
 }
 
 SCXML::Model::IStateNode *DocumentModel::findStateByIdRecursive(SCXML::Model::IStateNode *state, const std::string &id,
-                                                               std::set<std::string> &visitedStates) const {
+                                                                std::set<std::string> &visitedStates) const {
     if (!state) {
         return nullptr;
     }
@@ -177,7 +179,7 @@ SCXML::Model::IStateNode *DocumentModel::findStateByIdRecursive(SCXML::Model::IS
 }
 
 SCXML::Model::IStateNode *DocumentModel::findStateInHierarchy(SCXML::Model::IStateNode *parentState,
-                                                             const std::string &childPath) const {
+                                                              const std::string &childPath) const {
     if (!parentState) {
         return nullptr;
     }
@@ -210,7 +212,8 @@ SCXML::Model::IStateNode *DocumentModel::findStateInHierarchy(SCXML::Model::ISta
 
 void DocumentModel::addDataModelItem(std::shared_ptr<SCXML::Model::IDataModelItem> dataItem) {
     if (dataItem) {
-        SCXML::Common::Logger::debug("DocumentModel::addDataModelItem() - Adding data model item: " + dataItem->getId());
+        SCXML::Common::Logger::debug("DocumentModel::addDataModelItem() - Adding data model item: " +
+                                     dataItem->getId());
         dataModelItems_.push_back(dataItem);
     }
 }
@@ -238,7 +241,8 @@ bool DocumentModel::validateStateRelationships() const {
 
             if (!foundAsChild) {
                 SCXML::Common::Logger::error("DocumentModel::validateStateRelationships() - State '" + state->getId() +
-                              "' has parent '" + parent->getId() + "' but is not in parent's children list");
+                                             "' has parent '" + parent->getId() +
+                                             "' but is not in parent's children list");
                 return false;
             }
         }
@@ -250,7 +254,8 @@ bool DocumentModel::validateStateRelationships() const {
                 SCXML::Model::IStateNode *targetState = findStateById(target);
                 if (!targetState) {
                     SCXML::Common::Logger::error("DocumentModel::validateStateRelationships() - Transition in state '" +
-                                  state->getId() + "' references non-existent target state '" + target + "'");
+                                                 state->getId() + "' references non-existent target state '" + target +
+                                                 "'");
                     return false;
                 }
             }
@@ -259,8 +264,8 @@ bool DocumentModel::validateStateRelationships() const {
         // 초기 상태가 존재하는지 확인
         if (!state->getInitialState().empty()) {
             if (state->getChildren().empty()) {
-                SCXML::Common::Logger::warning("DocumentModel::validateStateRelationships() - State '" + state->getId() +
-                                "' has initialState but no children");
+                SCXML::Common::Logger::warning("DocumentModel::validateStateRelationships() - State '" +
+                                               state->getId() + "' has initialState but no children");
             } else {
                 bool initialStateExists = false;
                 for (const auto &child : state->getChildren()) {
@@ -271,8 +276,9 @@ bool DocumentModel::validateStateRelationships() const {
                 }
 
                 if (!initialStateExists) {
-                    SCXML::Common::Logger::error("DocumentModel::validateStateRelationships() - State '" + state->getId() +
-                                  "' references non-existent initial state '" + state->getInitialState() + "'");
+                    SCXML::Common::Logger::error("DocumentModel::validateStateRelationships() - State '" +
+                                                 state->getId() + "' references non-existent initial state '" +
+                                                 state->getInitialState() + "'");
                     return false;
                 }
             }
@@ -299,8 +305,9 @@ std::vector<std::string> DocumentModel::findMissingStateIds() const {
         // 초기 상태 확인
         if (!state->getInitialState().empty() && existingIds.find(state->getInitialState()) == existingIds.end()) {
             missingIds.push_back(state->getInitialState());
-            SCXML::Common::Logger::warning("DocumentModel::findMissingStateIds() - Missing state ID referenced as initial state: " +
-                            state->getInitialState());
+            SCXML::Common::Logger::warning(
+                "DocumentModel::findMissingStateIds() - Missing state ID referenced as initial state: " +
+                state->getInitialState());
         }
 
         // 전환 타겟 확인
@@ -322,7 +329,7 @@ std::vector<std::string> DocumentModel::findMissingStateIds() const {
     missingIds.erase(std::unique(missingIds.begin(), missingIds.end()), missingIds.end());
 
     SCXML::Common::Logger::info("DocumentModel::findMissingStateIds() - Found " + std::to_string(missingIds.size()) +
-                 " missing state IDs");
+                                " missing state IDs");
     return missingIds;
 }
 
@@ -409,13 +416,25 @@ const std::string &DocumentModel::getBinding() const {
 
 void DocumentModel::addSystemVariable(std::shared_ptr<SCXML::Model::IDataModelItem> systemVar) {
     if (systemVar) {
-        SCXML::Common::Logger::debug("DocumentModel::addSystemVariable() - Adding system variable: " + systemVar->getId());
+        SCXML::Common::Logger::debug("DocumentModel::addSystemVariable() - Adding system variable: " +
+                                     systemVar->getId());
         systemVariables_.push_back(systemVar);
     }
 }
 
 const std::vector<std::shared_ptr<SCXML::Model::IDataModelItem>> &DocumentModel::getSystemVariables() const {
     return systemVariables_;
+}
+
+void DocumentModel::addDocumentTransition(std::shared_ptr<SCXML::Model::ITransitionNode> transition) {
+    if (transition) {
+        SCXML::Common::Logger::debug("DocumentModel::addDocumentTransition() - Adding document-level transition");
+        documentTransitions_.push_back(transition);
+    }
+}
+
+const std::vector<std::shared_ptr<SCXML::Model::ITransitionNode>> &DocumentModel::getDocumentTransitions() const {
+    return documentTransitions_;
 }
 
 }  // namespace Model

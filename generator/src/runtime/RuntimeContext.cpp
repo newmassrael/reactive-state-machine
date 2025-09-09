@@ -139,10 +139,10 @@ std::string RuntimeContext::getStatusSummary() const {
     if (initialized_) {
         std::string currentState = stateManager_->getCurrentState();
         status += "  Current State: " + currentState + "\n";
-        
+
         size_t activeStatesCount = stateManager_->getActiveStates().size();
         status += "  Active States: " + std::to_string(activeStatesCount) + "\n";
-        
+
         size_t activeSessionsCount = invokeSessionManager_->getActiveSessionCount();
         status += "  Active Sessions: " + std::to_string(activeSessionsCount) + "\n";
         status += "  Session ID: " + eventManager_->getSessionId() + "\n";
@@ -340,7 +340,9 @@ std::vector<std::string> RuntimeContext::getDataNames() const {
 
 void RuntimeContext::setProperty(const std::string &name, const std::string &type) {
     // Placeholder - store properties in data context
-    if (auto* dcm = dynamic_cast<DataContextManager*>(dataContextManager_.get())) dcm->setDataValue("_property_" + name, type);
+    if (auto *dcm = dynamic_cast<DataContextManager *>(dataContextManager_.get())) {
+        dcm->setDataValue("_property_" + name, type);
+    }
 }
 
 void RuntimeContext::setCurrentEvent(const std::string &eventName, const std::string &data) {
@@ -357,11 +359,61 @@ void RuntimeContext::setEventQueue(std::shared_ptr<Events::EventQueue> queue) {
 void RuntimeContext::setEventDispatcher(std::shared_ptr<Events::EventDispatcher> dispatcher) {
     // Placeholder - would need to enhance event manager to accept external dispatcher
     (void)dispatcher;  // Suppress unused parameter warning
-    SCXML::Common::Logger::debug("RuntimeContext::setEventDispatcher - External dispatcher injection not fully implemented");
+    SCXML::Common::Logger::debug(
+        "RuntimeContext::setEventDispatcher - External dispatcher injection not fully implemented");
 }
 
 void RuntimeContext::setIOProcessorManager(std::shared_ptr<void> manager) {
     // Placeholder - would need to store in invoke session manager
     (void)manager;  // Suppress unused parameter warning
-    SCXML::Common::Logger::debug("RuntimeContext::setIOProcessorManager - IO processor manager injection not fully implemented");
+    SCXML::Common::Logger::debug(
+        "RuntimeContext::setIOProcessorManager - IO processor manager injection not fully implemented");
+}
+
+// ========== Final State Management Implementation ==========
+
+void RuntimeContext::setFinalStateReached(bool reached) {
+    std::lock_guard<std::mutex> lock(contextMutex_);
+    finalStateReached_ = reached;
+    SCXML::Common::Logger::debug("RuntimeContext::setFinalStateReached - Final state reached flag set to: " +
+                                 std::to_string(reached));
+}
+
+bool RuntimeContext::isFinalStateReached() const {
+    std::lock_guard<std::mutex> lock(contextMutex_);
+    return finalStateReached_;
+}
+
+// ========== Event Scheduling Implementation ==========
+
+void RuntimeContext::scheduleEvent(std::shared_ptr<Events::Event> event, uint64_t delayMs, const std::string &target,
+                                   const std::string &sendId) {
+    std::lock_guard<std::mutex> lock(contextMutex_);
+    eventScheduler_.scheduleEvent(event, delayMs, target, sendId);
+}
+
+bool RuntimeContext::cancelScheduledEvent(const std::string &sendId) {
+    std::lock_guard<std::mutex> lock(contextMutex_);
+    return eventScheduler_.cancelEvent(sendId);
+}
+
+void RuntimeContext::processScheduledEvents() {
+    std::vector<EventScheduler::DelayedEvent> readyEvents;
+
+    // Get ready events under lock
+    {
+        std::lock_guard<std::mutex> lock(contextMutex_);
+        readyEvents = eventScheduler_.getReadyEvents();
+    }
+
+    // Process events without holding the lock
+    for (const auto &delayedEvent : readyEvents) {
+        if (delayedEvent.target.empty() || delayedEvent.target == "#_internal") {
+            // Internal event
+            raiseEvent(delayedEvent.event);
+        } else {
+            // External event
+            sendEvent(delayedEvent.event, delayedEvent.target);
+        }
+    }
 }

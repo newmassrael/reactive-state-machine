@@ -242,6 +242,15 @@ private:
      */
     void addWarning(const ::std::string &message);
 
+    /**
+     * @brief Setup ECMAScript engine for RuntimeContext based on model datamodel
+     * @param model Document model containing datamodel information
+     * @param context Runtime context to setup engine for
+     * @return true if setup successful or not needed
+     */
+    bool setupECMAScriptEngineForContext(::std::shared_ptr<Model::DocumentModel> model,
+                                         Runtime::RuntimeContext &context);
+
     // ========== Member Variables ==========
 
     ::std::shared_ptr<Model::INodeFactory> nodeFactory_;  // Node factory for parsing

@@ -310,6 +310,24 @@ bool DocumentParser::parseScxmlNode(const xmlpp::Element *scxmlNode,
         }
     }
 
+    // Parse document-level transitions (transitions at root scxml level)
+    SCXML::Common::Logger::debug("DocumentParser::parseScxmlNode() - Parsing document-level transitions");
+    auto docTransitionElements = SCXML::Parsing::ParsingCommon::findChildElements(scxmlNode, "transition");
+    SCXML::Common::Logger::debug("DocumentParser::parseScxmlNode() - Found " +
+                                 std::to_string(docTransitionElements.size()) + " document-level transitions");
+
+    for (auto *transElement : docTransitionElements) {
+        // Parse document-level transition (no source state - represents document state)
+        auto transition = transitionParser_->parseTransitionNode(transElement, nullptr);
+        if (transition) {
+            model->addDocumentTransition(transition);
+            SCXML::Common::Logger::debug("DocumentParser::parseScxmlNode() - Added document-level transition: " +
+                                         (!transition->getEvents().empty() ? transition->getEvents()[0] : "eventless"));
+        } else {
+            addWarning("Failed to parse document-level transition");
+        }
+    }
+
     return true;
 }
 
@@ -501,11 +519,39 @@ bool DocumentParser::validateModel(std::shared_ptr<::SCXML::Model::DocumentModel
                     // Check if target exists - use findStateById which supports dotted notation
                     bool targetFound = false;
 
-                    // First check direct ID match in collected states
-                    for (const auto &candidateState : allStatesRecursive) {
-                        if (candidateState->getId() == target) {
-                            targetFound = true;
-                            break;
+                    // Handle relative path targets like "../finalizing"
+                    if (target.substr(0, 3) == "../") {
+                        std::string relativeTarget = target.substr(3);  // Remove "../"
+                        // Find parent of current state
+                        auto currentParent = state->getParent();
+                        if (currentParent) {
+                            // Look for sibling of parent (i.e., sibling of current state's parent)
+                            auto parentOfParent = currentParent->getParent();
+                            if (parentOfParent) {
+                                // Search in parent's parent children
+                                for (const auto &sibling : parentOfParent->getChildren()) {
+                                    if (sibling->getId() == relativeTarget) {
+                                        targetFound = true;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                // Parent's parent is root, search in all root states
+                                for (const auto &candidateState : allStatesRecursive) {
+                                    if (candidateState->getId() == relativeTarget && !candidateState->getParent()) {
+                                        targetFound = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // First check direct ID match in collected states
+                        for (const auto &candidateState : allStatesRecursive) {
+                            if (candidateState->getId() == target) {
+                                targetFound = true;
+                                break;
+                            }
                         }
                     }
 

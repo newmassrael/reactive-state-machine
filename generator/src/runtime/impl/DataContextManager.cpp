@@ -185,11 +185,11 @@ std::string DataContextManager::getScriptBasePath() const {
 }
 
 SCXML::DataModelEngine *DataContextManager::getDataModelEngine() const {
-    return dataModelEngine_;
+    return dataModelEngine_.get();
 }
 
-void DataContextManager::setDataModelEngine(SCXML::DataModelEngine *engine) {
-    dataModelEngine_ = engine;
+void DataContextManager::setDataModelEngine(std::unique_ptr<SCXML::DataModelEngine> engine) {
+    dataModelEngine_ = std::move(engine);
 }
 
 void DataContextManager::setScriptBasePath(const std::string &basePath) {

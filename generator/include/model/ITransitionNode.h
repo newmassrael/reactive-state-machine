@@ -140,6 +140,68 @@ public:
      * @return 이벤트 이름 목록
      */
     virtual const std::vector<std::string> &getEvents() const = 0;
+
+    // ====== New methods for SCXML Core Engine ======
+
+    /**
+     * @brief Get source state ID
+     * @return Source state identifier
+     */
+    virtual std::string getSource() const = 0;
+
+    /**
+     * @brief Set source state ID
+     * @param source Source state identifier
+     */
+    virtual void setSource(const std::string &source) = 0;
+
+    /**
+     * @brief Get first target (for backward compatibility)
+     * @return First target state ID, empty if no targets
+     */
+    virtual std::string getTarget() const = 0;
+
+    /**
+     * @brief Get condition expression
+     * @return Condition expression string
+     */
+    virtual const std::string &getCond() const = 0;
+
+    /**
+     * @brief Set condition expression
+     * @param cond Condition expression
+     */
+    virtual void setCond(const std::string &cond) = 0;
+
+    /**
+     * @brief Get transition type
+     * @return Type string ("internal" or "external")
+     */
+    virtual std::string getType() const = 0;
+
+    /**
+     * @brief Set transition type
+     * @param type Type string ("internal" or "external")
+     */
+    virtual void setType(const std::string &type) = 0;
+
+    /**
+     * @brief Get document order for priority sorting
+     * @return Document order index
+     */
+    virtual int getDocumentOrder() const = 0;
+
+    /**
+     * @brief Set document order
+     * @param order Document order index
+     */
+    virtual void setDocumentOrder(int order) = 0;
+
+    /**
+     * @brief Get executable content (actions) for transition
+     * @return Vector of action nodes
+     */
+    virtual std::vector<std::shared_ptr<IActionNode>> getExecutableContent() const = 0;
 };
 
 }  // namespace Model

@@ -1,22 +1,22 @@
 #pragma once
 #include "model/DoneData.h"
-#include "model/IActionNode.h" 
+#include "model/IActionNode.h"
 #include "model/IDataModelItem.h"
 
+#include "core/types.h"
 #include "model/IInvokeNode.h"
 #include "model/IStateNode.h"
 #include "model/ITransitionNode.h"
-#include "core/types.h"
 #include <memory>
 #include <string>
 #include <vector>
 
+using SCXML::Model::DoneData;
+using SCXML::Model::IActionNode;
+using SCXML::Model::IDataModelItem;
+using SCXML::Model::IInvokeNode;
 using SCXML::Model::IStateNode;
 using SCXML::Model::ITransitionNode;
-using SCXML::Model::IActionNode;
-using SCXML::Model::IInvokeNode;
-using SCXML::Model::IDataModelItem;
-using SCXML::Model::DoneData;
 
 // Using declarations for included Model interfaces
 
@@ -264,6 +264,32 @@ public:
      */
     virtual void setInitialTransition(std::shared_ptr<ITransitionNode> transition) override;
 
+    // ====== New methods for SCXML Core Engine ======
+
+    /**
+     * @brief Get document order for priority sorting
+     * @return Document order index
+     */
+    virtual int getDocumentOrder() const override;
+
+    /**
+     * @brief Set document order
+     * @param order Document order index
+     */
+    virtual void setDocumentOrder(int order) override;
+
+    /**
+     * @brief Get onentry actions for execution (alias for getEntryActionNodes)
+     * @return Vector of onentry action nodes
+     */
+    virtual std::vector<std::shared_ptr<IActionNode>> getOnEntryActions() const override;
+
+    /**
+     * @brief Get onexit actions for execution (alias for getExitActionNodes)
+     * @return Vector of onexit action nodes
+     */
+    virtual std::vector<std::shared_ptr<IActionNode>> getOnExitActions() const override;
+
 private:
     std::string id_;
     Type type_;
@@ -283,7 +309,8 @@ private:
     DoneData doneData_;
     std::vector<std::string> reactiveGuards_;
     std::shared_ptr<ITransitionNode> initialTransition_;
+    int documentOrder_ = 0;
 };
 
-} // namespace Core
+}  // namespace Core
 }  // namespace SCXML

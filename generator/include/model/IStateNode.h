@@ -1,7 +1,7 @@
 #pragma once
-#include "DoneData.h"  // 추가된 헤더
-#include "core/types.h"
+#include "DoneData.h"      // 추가된 헤더
 #include "IHistoryNode.h"  // For HistoryType
+#include "core/types.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -99,6 +99,32 @@ public:
      * @return Vector of exit ActionNode objects
      */
     virtual const std::vector<std::shared_ptr<IActionNode>> &getExitActionNodes() const = 0;
+
+    // ====== New methods for SCXML Core Engine ======
+
+    /**
+     * @brief Get document order for priority sorting
+     * @return Document order index
+     */
+    virtual int getDocumentOrder() const = 0;
+
+    /**
+     * @brief Set document order
+     * @param order Document order index
+     */
+    virtual void setDocumentOrder(int order) = 0;
+
+    /**
+     * @brief Get onentry actions for execution (alias for getEntryActionNodes)
+     * @return Vector of onentry action nodes
+     */
+    virtual std::vector<std::shared_ptr<IActionNode>> getOnEntryActions() const = 0;
+
+    /**
+     * @brief Get onexit actions for execution (alias for getExitActionNodes)
+     * @return Vector of onexit action nodes
+     */
+    virtual std::vector<std::shared_ptr<IActionNode>> getOnExitActions() const = 0;
 
     /**
      * @brief Add entry ActionNode object

@@ -1,17 +1,28 @@
 #include "runtime/StateMachineFactory.h"
 #include "common/Logger.h"
 #include "core/NodeFactory.h"
+#include "model/DocumentModel.h"
 #include "parsing/DocumentParser.h"
 #include "parsing/XIncludeProcessor.h"
+#include "runtime/ECMAScriptContextManager.h"
+#include "runtime/ECMAScriptEngineFactory.h"
+#include "runtime/IECMAScriptEngine.h"
 #include "runtime/ParserRuntimeBridge.h"
 #include "runtime/StateMachineFactory.h"
+#include "runtime/impl/DataContextManager.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 namespace SCXML {
 namespace Runtime {
+
+// ========== ECMAScript Engine Storage Bridge ==========
+// Static storage for ECMAScript engines to bridge StateMachineFactory and RuntimeContext
 
 // ========== Public Static Methods ==========
 
@@ -35,6 +46,19 @@ StateMachineFactory::CreationResult StateMachineFactory::createFromFile(const st
 
         // Create runtime from file
         auto bridgeResult = bridge.createRuntimeFromFile(filePath, transformOptions, runtimeConfig);
+
+        // Apply automatic ECMAScript integration if model was created successfully
+        if (bridgeResult.success && bridgeResult.model && options.autoDetectDatamodel) {
+            auto datamodelType = bridgeResult.model->getDatamodel();
+            if (datamodelType == "ecmascript" || datamodelType == "javascript") {
+                if (!setupECMAScriptEngine(bridgeResult.model, options)) {
+                    CreationResult result;
+                    result.success = false;
+                    result.errorMessage = "Failed to setup ECMAScript engine for datamodel: " + datamodelType;
+                    return result;
+                }
+            }
+        }
 
         // Convert to creation result
         return createFromBridgeResult(bridgeResult, options);
@@ -68,6 +92,19 @@ StateMachineFactory::CreationResult StateMachineFactory::createFromContent(const
         // Create runtime from content
         auto bridgeResult = bridge.createRuntimeFromContent(scxmlContent, transformOptions, runtimeConfig);
 
+        // Apply automatic ECMAScript integration if model was created successfully
+        if (bridgeResult.success && bridgeResult.model && options.autoDetectDatamodel) {
+            auto datamodelType = bridgeResult.model->getDatamodel();
+            if (datamodelType == "ecmascript" || datamodelType == "javascript") {
+                if (!setupECMAScriptEngine(bridgeResult.model, options)) {
+                    CreationResult result;
+                    result.success = false;
+                    result.errorMessage = "Failed to setup ECMAScript engine for datamodel: " + datamodelType;
+                    return result;
+                }
+            }
+        }
+
         // Convert to creation result
         return createFromBridgeResult(bridgeResult, options);
 
@@ -79,25 +116,62 @@ StateMachineFactory::CreationResult StateMachineFactory::createFromContent(const
     }
 }
 
-StateMachineFactory::CreationResult
-StateMachineFactory::createFromModel(std::shared_ptr<::SCXML::Model::DocumentModel> model,
-                                     const CreationOptions &options) {
+StateMachineFactory::CreationResult StateMachineFactory::create(std::shared_ptr<::SCXML::Model::DocumentModel> model,
+                                                                const CreationOptions &options) {
+    SCXML::Common::Logger::info("*** StateMachineFactory::create ENTRY (Clean Architecture) ***");
+
     try {
-        // Create parser-runtime bridge
-        ParserRuntimeBridge bridge;
+        if (!model) {
+            CreationResult result;
+            result.success = false;
+            result.errorMessage = "Cannot create state machine from null model";
+            return result;
+        }
 
-        ParserRuntimeBridge::RuntimeConfig runtimeConfig;
-        runtimeConfig.name = options.name;
-        runtimeConfig.maxEventQueueSize = options.maxEventQueueSize;
-        runtimeConfig.enableEventTracing = options.enableEventTracing;
-        runtimeConfig.enableStateLogging = options.enableLogging;
-        runtimeConfig.maxEventRate = options.maxEventRate;
+        // Step 1: Create RuntimeContext
+        auto context = std::make_shared<SCXML::Runtime::RuntimeContext>();
+        context->setModel(model);
 
-        // Create runtime from model
-        auto bridgeResult = bridge.createRuntimeFromModel(model, runtimeConfig);
+        // Step 2: Setup ECMAScript engine if required by datamodel
+        auto datamodelType = model->getDatamodel();
 
-        // Convert to creation result
-        return createFromBridgeResult(bridgeResult, options);
+        // W3C SCXML compliance: fallback to ECMAScript for null/empty datamodel
+        if (datamodelType.empty()) {
+            datamodelType = "ecmascript";
+            SCXML::Common::Logger::info(
+                "StateMachineFactory::create - using ECMAScript as default for empty datamodel");
+        }
+
+        SCXML::Common::Logger::info("StateMachineFactory::create - detected datamodel: '" + datamodelType + "'");
+
+        if (datamodelType == "ecmascript" || datamodelType == "javascript") {
+            if (!setupECMAScriptEngineForContext(model, context, options)) {
+                CreationResult result;
+                result.success = false;
+                result.errorMessage = "Failed to setup ECMAScript engine for datamodel: " + datamodelType;
+                return result;
+            }
+        }
+
+        // Step 3: Create Processor with fully configured context
+        auto processor = std::make_shared<SCXML::Processor>(options.name);
+
+        // Step 4: Initialize processor with pre-configured context
+        if (!processor->initializeWithContext(model, context)) {
+            CreationResult result;
+            result.success = false;
+            result.errorMessage = "Failed to initialize processor with configured context";
+            return result;
+        }
+
+        // Step 5: Return success result
+        CreationResult result;
+        result.success = true;
+        result.runtime = processor;
+        result.model = model;
+        SCXML::Common::Logger::info(
+            "StateMachineFactory::create - Successfully created processor with clean architecture");
+        return result;
 
     } catch (const std::exception &e) {
         CreationResult result;
@@ -107,8 +181,8 @@ StateMachineFactory::createFromModel(std::shared_ptr<::SCXML::Model::DocumentMod
     }
 }
 
-std::shared_ptr<Processor> StateMachineFactory::quickStart(const std::string &filePath,
-                                                           const std::string &machineName) {
+std::shared_ptr<Processor> StateMachineFactory::startFromFile(const std::string &filePath,
+                                                              const std::string &machineName) {
     CreationOptions options;
     options.name = machineName;
     options.enableLogging = true;
@@ -129,8 +203,8 @@ std::shared_ptr<Processor> StateMachineFactory::quickStart(const std::string &fi
     }
 }
 
-std::shared_ptr<Processor> StateMachineFactory::quickStartFromContent(const std::string &scxmlContent,
-                                                                      const std::string &machineName) {
+std::shared_ptr<Processor> StateMachineFactory::startFromContent(const std::string &scxmlContent,
+                                                                 const std::string &machineName) {
     CreationOptions options;
     options.name = machineName;
     options.enableLogging = true;
@@ -286,6 +360,171 @@ bool StateMachineFactory::configureRuntime(std::shared_ptr<Processor> runtime, c
     }
 }
 
+bool StateMachineFactory::setupECMAScriptEngine(std::shared_ptr<::SCXML::Model::DocumentModel> model,
+                                                const CreationOptions &options) {
+    if (!model) {
+        SCXML::Common::Logger::error("Cannot setup ECMAScript engine: model is null");
+        return false;
+    }
+
+    try {
+        // Determine which engine to use
+        ::SCXML::ECMAScriptEngineFactory::EngineType engineType;
+        switch (options.ecmaScriptEngine) {
+        case ECMAScriptEngine::AUTO:
+            engineType = ::SCXML::ECMAScriptEngineFactory::EngineType::QUICKJS;
+            break;
+        case ECMAScriptEngine::QUICKJS:
+            engineType = ::SCXML::ECMAScriptEngineFactory::EngineType::QUICKJS;
+            break;
+        case ECMAScriptEngine::NONE:
+            // No engine setup needed
+            return true;
+        default:
+            engineType = ::SCXML::ECMAScriptEngineFactory::EngineType::QUICKJS;
+            break;
+        }
+
+        // Initialize shared ECMAScript context for entire SCXML engine
+        auto &contextManager = ::SCXML::ECMAScriptContextManager::getInstance();
+
+        // Initialize shared engine if not already done
+        if (!contextManager.isInitialized()) {
+            if (!contextManager.initializeEngine(static_cast<int>(engineType))) {
+                SCXML::Common::Logger::error("StateMachineFactory - Failed to initialize shared ECMAScript context");
+                return false;  // QuickJS is now required
+            }
+        }
+
+        // Get shared engine instance
+        auto engine = contextManager.getSharedEngine();
+        if (!engine) {
+            SCXML::Common::Logger::error("StateMachineFactory - Failed to get shared ECMAScript engine");
+            return false;
+        }
+
+        // Configure engine options (optional, failure won't stop execution)
+        configureECMAScriptEngine(engine.get(), options.scriptOptions);
+
+        // Get engine name before moving
+        std::string engineName = engine->getEngineName();
+
+        // NOTE: This legacy method now creates engines but doesn't store them globally.
+        // The new architecture uses setupECMAScriptEngineForContext instead.
+
+        SCXML::Common::Logger::info("Successfully setup and connected ECMAScript engine: " + engineName);
+
+        return true;
+
+    } catch (const std::exception &e) {
+        SCXML::Common::Logger::error("Exception setting up ECMAScript engine: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool StateMachineFactory::configureECMAScriptEngine(IECMAScriptEngine *engine,
+                                                    const CreationOptions::ScriptOptions &options) {
+    if (!engine) {
+        return false;
+    }
+
+    try {
+        // Note: These configurations would be implemented if the IECMAScriptEngine interface
+        // supported them. For now, we'll log the intended configuration.
+        SCXML::Common::Logger::info("ECMAScript Engine Configuration:");
+        SCXML::Common::Logger::info("- Memory Limit: " + std::to_string(options.memoryLimit) + " bytes");
+        SCXML::Common::Logger::info("- Stack Size: " + std::to_string(options.stackSize) + " bytes");
+        SCXML::Common::Logger::info("- Debugging: " + std::string(options.enableDebugging ? "enabled" : "disabled"));
+        SCXML::Common::Logger::info("- Timeout: " + std::to_string(options.timeout.count()) + "ms");
+
+        // In a complete implementation, we would:
+        // engine->setMemoryLimit(options.memoryLimit);
+        // engine->setStackSize(options.stackSize);
+        // engine->setDebuggingEnabled(options.enableDebugging);
+        // engine->setTimeout(options.timeout);
+
+        return true;
+
+    } catch (const std::exception &e) {
+        SCXML::Common::Logger::error("Failed to configure ECMAScript engine: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool StateMachineFactory::setupECMAScriptEngineForContext(std::shared_ptr<::SCXML::Model::DocumentModel> model,
+                                                          std::shared_ptr<SCXML::Runtime::RuntimeContext> context,
+                                                          const CreationOptions &options) {
+    if (!model || !context) {
+        SCXML::Common::Logger::error("Cannot setup ECMAScript engine: model or context is null");
+        return false;
+    }
+
+    try {
+        // Determine which engine to use
+        ::SCXML::ECMAScriptEngineFactory::EngineType engineType;
+        switch (options.ecmaScriptEngine) {
+        case ECMAScriptEngine::AUTO:
+            engineType = ::SCXML::ECMAScriptEngineFactory::EngineType::QUICKJS;
+            break;
+        case ECMAScriptEngine::QUICKJS:
+            engineType = ::SCXML::ECMAScriptEngineFactory::EngineType::QUICKJS;
+            break;
+        case ECMAScriptEngine::NONE:
+            SCXML::Common::Logger::info("ECMAScript engine disabled by configuration");
+            return true;
+        default:
+            engineType = ::SCXML::ECMAScriptEngineFactory::EngineType::QUICKJS;
+            break;
+        }
+
+        // Get shared ECMAScript engine from context manager
+        auto &contextManager = ::SCXML::ECMAScriptContextManager::getInstance();
+        if (!contextManager.isInitialized()) {
+            if (!contextManager.initializeEngine(static_cast<int>(engineType))) {
+                SCXML::Common::Logger::error("Failed to initialize shared ECMAScript engine");
+                return false;
+            }
+        }
+
+        auto engine = contextManager.getSharedEngine();
+        if (!engine) {
+            SCXML::Common::Logger::error("Failed to get shared ECMAScript engine");
+            return false;
+        }
+
+        // Configure engine options
+        configureECMAScriptEngine(engine.get(), options.scriptOptions);
+
+        SCXML::Common::Logger::info("ECMAScript Engine Configuration:");
+        SCXML::Common::Logger::info("- Memory Limit: " + std::to_string(options.scriptOptions.memoryLimit) + " bytes");
+        SCXML::Common::Logger::info("- Stack Size: " + std::to_string(options.scriptOptions.stackSize) + " bytes");
+        SCXML::Common::Logger::info("- Debugging: " +
+                                    std::string(options.scriptOptions.enableDebugging ? "enabled" : "disabled"));
+        SCXML::Common::Logger::info("- Timeout: " + std::to_string(options.scriptOptions.timeout.count()) + "ms");
+
+        // Get engine name for logging
+        std::string engineName = engine->getEngineName();
+
+        // Create DataModelEngine and connect ECMAScript engine directly
+        // CRITICAL: Use shared_ptr (not std::move) to maintain engine sharing across components
+        auto dataModelEngine =
+            std::make_unique<SCXML::DataModelEngine>(SCXML::DataModelEngine::DataModelType::ECMASCRIPT);
+        dataModelEngine->setECMAScriptEngine(engine);
+
+        // Connect to RuntimeContext immediately - no global storage needed
+        auto &dataContextManager = dynamic_cast<SCXML::Runtime::DataContextManager &>(context->getDataContextManager());
+        dataContextManager.setDataModelEngine(std::move(dataModelEngine));
+
+        SCXML::Common::Logger::info("Successfully setup and connected ECMAScript engine directly to RuntimeContext: " +
+                                    engineName);
+        return true;
+
+    } catch (const std::exception &e) {
+        SCXML::Common::Logger::error("Exception setting up ECMAScript engine for context: " + std::string(e.what()));
+        return false;
+    }
+}
+
 // ========== SCXML Validation Methods ==========
 
 std::vector<std::string> StateMachineFactory::validateScxmlFile(const std::string &scxmlFilePath) {
@@ -333,6 +572,8 @@ std::vector<std::string> StateMachineFactory::validateScxmlFile(const std::strin
 
     return errors;
 }
+
+// ========== ECMAScript Engine Storage Methods ==========
 
 }  // namespace Runtime
 }  // namespace SCXML

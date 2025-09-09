@@ -18,12 +18,13 @@ namespace Model {
 class DocumentModel;
 class ITransitionNode;
 class IStateNode;
-}
+}  // namespace Model
+
 // Forward declarations
 namespace Core {
 class InitialStateResolver;
 class DocumentModel;
-}
+}  // namespace Core
 
 namespace Core {
 // Forward declaration moved to Model namespace
@@ -92,6 +93,12 @@ public:
     bool initialize(std::shared_ptr<::SCXML::Model::DocumentModel> model);
 
     /**
+     * @brief Initialize processor with pre-configured RuntimeContext
+     */
+    bool initializeWithContext(std::shared_ptr<::SCXML::Model::DocumentModel> model,
+                               std::shared_ptr<SCXML::Runtime::RuntimeContext> context);
+
+    /**
      * @brief Start the state machine execution
      */
     bool start();
@@ -129,14 +136,16 @@ public:
     bool sendEvent(std::shared_ptr<SCXML::Events::Event> event);
 
     /**
-     * @brief Process next event from queue
-     */
-    bool processNextEvent();
-
-    /**
      * @brief Check if event queue is empty
      */
     bool isEventQueueEmpty() const;
+
+    /**
+     * @brief Wait for processor to reach stable state (no pending events)
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @return true if stable state reached, false if timeout
+     */
+    bool waitForStable(int timeoutMs = 5000) const;
 
     // ====== State Queries ======
 
@@ -166,6 +175,12 @@ public:
      * @brief Set data value by location expression
      */
     bool setDataValue(const std::string &location, const std::string &value);
+
+    /**
+     * @brief Get runtime context for advanced integration
+     * @return Shared pointer to runtime context, or nullptr if not initialized
+     */
+    std::shared_ptr<Runtime::RuntimeContext> getContext() const;
 
     // ====== Status and Monitoring ======
 
@@ -206,8 +221,7 @@ private:
 
     // State management
     std::atomic<State> state_;
-    mutable std::mutex stateMutex_;
-    std::condition_variable stateCondition_;
+    // Single-threaded mode: No synchronization primitives needed
 
     // Core components
     std::shared_ptr<::SCXML::Model::DocumentModel> model_;
@@ -224,8 +238,7 @@ private:
     std::unique_ptr<SCXML::GuardEvaluator> guardEvaluator_;
     std::unique_ptr<SCXML::DataModelEngine> dataModelEngine_;
 
-    // Execution thread
-    std::unique_ptr<std::thread> eventThread_;
+    // Single-threaded mode: No event thread needed
     std::atomic<bool> stopRequested_;
 
     // Configuration
@@ -245,7 +258,17 @@ private:
     bool initializeStateConfiguration();
     void cleanup();
     void setState(State newState);
-    void runEventLoop();
+    // Single-threaded mode: runEventLoop removed
+    bool processNextEvent();  // Moved to private - only called internally
+
+public:
+    /**
+     * @brief Process all pending events synchronously
+     * @note This method is public to allow test frameworks to process scheduled events
+     */
+    void processAllEvents();  // Process all pending events synchronously
+
+private:
     void processEvent(std::shared_ptr<SCXML::Events::Event> event);
     void executeTransitions(const std::vector<SCXML::Model::ITransitionNode *> &enabledTransitions);
     void enterStates(const std::set<SCXML::Model::IStateNode *> &statesToEnter);

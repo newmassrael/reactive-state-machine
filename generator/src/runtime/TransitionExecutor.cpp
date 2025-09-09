@@ -1,5 +1,6 @@
 #include "runtime/TransitionExecutor.h"
 #include "common/Logger.h"
+#include "core/types.h"
 #include "events/Event.h"
 #include "model/DocumentModel.h"
 #include "model/IActionNode.h"
@@ -17,7 +18,8 @@
 using namespace SCXML;
 
 TransitionExecutor::TransitionExecutor()
-    : guardEvaluator_(std::make_unique<GuardEvaluator>()), expressionEvaluator_(nullptr) {}
+    : guardEvaluator_(std::make_unique<GuardEvaluator>()), externalGuardEvaluator_(nullptr),
+      expressionEvaluator_(nullptr) {}
 
 TransitionExecutor::TransitionResult
 TransitionExecutor::executeTransitions(std::shared_ptr<::Model::DocumentModel> model, Events::EventPtr event,
@@ -34,14 +36,8 @@ TransitionExecutor::executeTransitions(std::shared_ptr<::Model::DocumentModel> m
     std::string eventName = event->getName();
     std::string eventData = event->getDataAsString();
 
-
-
-
-
     // JSON 데이터 감지 및 경고
     if (!eventData.empty() && eventData.front() == '{') {
-    
-    
     }
 
     try {
@@ -91,31 +87,34 @@ TransitionExecutor::executeTransitions(std::shared_ptr<::Model::DocumentModel> m
             return result;
         }
 
-        // 7.5. Check for eventless transitions after entry actions (with recursion protection)
-        if (event != nullptr) {  // Only check eventless transitions if we're processing a real event
-            auto eventlessTransitions = findEnabledTransitions(model, nullptr, context);
-            if (!eventlessTransitions.empty()) {
-                SCXML::Common::Logger::debug("TransitionExecutor::executeTransitions - Found " +
-                              std::to_string(eventlessTransitions.size()) +
-                              " eventless transitions after entry actions");
-
-                // Execute eventless transitions with limited recursion depth
-                auto eventlessResult = executeEventlessTransitions(model, context, 3);
-                if (eventlessResult.transitionTaken) {
-                    // Merge results if eventless transitions were taken
-                    result.enteredStates.insert(result.enteredStates.end(), eventlessResult.enteredStates.begin(),
-                                                eventlessResult.enteredStates.end());
-                    result.exitedStates.insert(result.exitedStates.end(), eventlessResult.exitedStates.begin(),
-                                               eventlessResult.exitedStates.end());
-                    result.targetStates.insert(result.targetStates.end(), eventlessResult.targetStates.begin(),
-                                               eventlessResult.targetStates.end());
-                }
+        // 7.5. DISABLED: Check for eventless transitions after entry actions (TEMPORARY FIX)
+        // This was causing duplicate state processing and incorrect guard evaluations
+        // TODO: Implement proper eventless transition handling that doesn't interfere with current event processing
+        TransitionResult eventlessResult;  // Declare outside scope for later use
+        if (true) {                        // Execute eventless transitions, but with priority logic
+            eventlessResult = executeEventlessTransitions(model, context);
+            if (eventlessResult.transitionTaken) {
+                SCXML::Common::Logger::debug(
+                    "TransitionExecutor::executeTransitions - Executed eventless transitions successfully");
+                // Update result with eventless transition results
+                result.enteredStates.insert(result.enteredStates.end(), eventlessResult.enteredStates.begin(),
+                                            eventlessResult.enteredStates.end());
+                result.exitedStates.insert(result.exitedStates.end(), eventlessResult.exitedStates.begin(),
+                                           eventlessResult.exitedStates.end());
+                result.targetStates.insert(result.targetStates.end(), eventlessResult.targetStates.begin(),
+                                           eventlessResult.targetStates.end());
             }
         }
 
-        // 8. Set new current state (primary target)
-        if (!entrySet.empty()) {
+        // 8. Set new current state (primary target) - but don't override eventless transitions
+        if (!eventlessResult.transitionTaken && !entrySet.empty()) {
             context.setCurrentState(entrySet.back());
+        } else if (eventlessResult.transitionTaken && !eventlessResult.enteredStates.empty()) {
+            // Use the final state from eventless transition execution
+            context.setCurrentState(eventlessResult.enteredStates.back());
+            SCXML::Common::Logger::debug(
+                "TransitionExecutor::executeTransitions - Using eventless transition target state: " +
+                eventlessResult.enteredStates.back());
         }
 
         // 9. Populate result
@@ -169,6 +168,30 @@ TransitionExecutor::findEnabledTransitions(std::shared_ptr<::Model::DocumentMode
 
                 enabledTransitions.push_back(execTrans);
             }
+        }
+    }
+
+    // Check document-level transitions (transitions at scxml root level)
+    const auto &docTransitions = model->getDocumentTransitions();
+    SCXML::Common::Logger::debug("TransitionExecutor::findEnabledTransitions - Checking " +
+                                 std::to_string(docTransitions.size()) + " document-level transitions");
+
+    for (auto transition : docTransitions) {
+        if (isTransitionEnabled(transition, event, context)) {
+            ExecutableTransition execTrans;
+            execTrans.sourceState = "";  // Document-level transition has no specific source state
+            execTrans.transition = transition;
+            execTrans.event = event;
+            execTrans.isInternal = false;  // Document-level transitions are always external
+
+            // Get target state
+            auto targets = transition->getTargets();
+            execTrans.targetState = targets.empty() ? "" : targets[0];  // Use first target
+
+            SCXML::Common::Logger::debug(
+                "TransitionExecutor::findEnabledTransitions - Found enabled document-level transition to: " +
+                execTrans.targetState);
+            enabledTransitions.push_back(execTrans);
         }
     }
 
@@ -247,23 +270,42 @@ TransitionExecutor::selectTransitions(const std::vector<ExecutableTransition> &t
         return selectedTransitions;
     }
 
-    // Sort by priority (higher priority first) and document order
+    // Sort by W3C SCXML priority: deeper states first, then by document order
     auto sortedTransitions = transitions;
     std::sort(sortedTransitions.begin(), sortedTransitions.end(),
               [](const ExecutableTransition &a, const ExecutableTransition &b) {
-                  // First by priority (higher priority first)
-                  // Note: Priority comparison requires getPriority() method implementation
-                  // Then by document order (lower document order first)
+                  // First by state depth (deeper states have higher priority)
+                  int depthA =
+                      a.sourceState.empty() ? 0 : std::count(a.sourceState.begin(), a.sourceState.end(), '.') + 1;
+                  int depthB =
+                      b.sourceState.empty() ? 0 : std::count(b.sourceState.begin(), b.sourceState.end(), '.') + 1;
+
+                  if (depthA != depthB) {
+                      return depthA > depthB;  // Higher depth first (W3C SCXML specification)
+                  }
+
+                  // Same depth: sort by document order
                   return a.documentOrder < b.documentOrder;
               });
 
-    // Advanced conflict resolution following SCXML specification
+    // W3C SCXML conflict resolution: only one transition per event can be selected
+    // For document-level transitions with same event, select only the first one
+    std::set<std::string> processedEvents;
     std::set<std::string> conflictingStates;
 
     for (const auto &trans : sortedTransitions) {
         bool hasConflict = false;
 
-        // Check for conflicts based on transition type
+        // Check for event conflicts - only one transition per event in a microstep
+        if (trans.event && !trans.event->getName().empty()) {
+            const std::string eventName = trans.event->getName();
+            if (processedEvents.find(eventName) != processedEvents.end()) {
+                continue;  // Skip this transition - event already processed
+            }
+            processedEvents.insert(eventName);
+        }
+
+        // Check for state conflicts based on transition type
         if (!trans.isInternal) {
             // External transition - conflicts with any transition that would exit overlapping states
             std::set<std::string> wouldExit;
@@ -305,22 +347,34 @@ std::vector<std::string> TransitionExecutor::computeExitSet(const std::vector<Ex
 
     for (const auto &transition : transitions) {
         if (!transition.isInternal) {
-            // External transition - need to exit source state
-            toExit.insert(transition.sourceState);
+            // External transition - need to exit source state (but skip empty sourceState for document-level
+            // transitions)
+            if (!transition.sourceState.empty()) {
+                toExit.insert(transition.sourceState);
 
-            // Also exit ancestors up to LCA with target
-            if (!transition.targetState.empty()) {
-                std::vector<std::string> states = {transition.sourceState, transition.targetState};
-                std::string lca = getLeastCommonAncestor(states, model);
+                // Also exit ancestors up to LCA with target (only if we have a source state)
+                if (!transition.targetState.empty()) {
+                    std::vector<std::string> states = {transition.sourceState, transition.targetState};
+                    std::string lca = getLeastCommonAncestor(states, model);
 
-                // Exit all ancestors from source to LCA (exclusive)
-                auto sourceAncestors = getProperAncestors(transition.sourceState, model);
-                for (const auto &ancestor : sourceAncestors) {
-                    if (ancestor != lca) {
-                        toExit.insert(ancestor);
-                    } else {
-                        break;  // Stop at LCA
+                    // Exit all ancestors from source to LCA (exclusive)
+                    auto sourceAncestors = getProperAncestors(transition.sourceState, model);
+                    for (const auto &ancestor : sourceAncestors) {
+                        if (ancestor != lca) {
+                            toExit.insert(ancestor);
+                        } else {
+                            break;  // Stop at LCA
+                        }
                     }
+                }
+            } else {
+                // Document-level transition: exit current active states (all states need to be exited)
+                // For document-level transitions from parallel state, we need to exit all parallel regions
+                SCXML::Common::Logger::debug("TransitionExecutor::computeExitSet - Document-level transition detected, "
+                                             "exiting all active states");
+                auto activeStates = context.getActiveStates();
+                for (const auto &activeState : activeStates) {
+                    toExit.insert(activeState);
                 }
             }
         }
@@ -399,11 +453,9 @@ bool TransitionExecutor::executeTransitionActions(const std::vector<ExecutableTr
             if (dataModelEngine && dataModelEngine->getDataModelType() == DataModelEngine::DataModelType::ECMASCRIPT) {
                 auto ecmaEngine = dataModelEngine->getECMAScriptEngine();
                 if (ecmaEngine) {
-                
                     ecmaEngine->setCurrentEvent(transition.event);
 
                     if (ecmaEngine && ecmaEngine->supportsDataModelSync()) {
-                    
                         ecmaEngine->syncDataModelVariables(context);
                     }
                 }
@@ -411,19 +463,15 @@ bool TransitionExecutor::executeTransitionActions(const std::vector<ExecutableTr
 
             // Get ActionNode objects directly
             auto actionNodes = transition.transition->getActionNodes();
-        
 
             // Execute each ActionNode directly using their execute() method
             for (const auto &actionNode : actionNodes) {
                 if (actionNode) {
-                
-                
                     SCXML::Common::Logger::info("Executing action node: " + actionNode->getId());
 
                     // Call the ActionNode's execute method directly - this is graceful!
-                
+
                     bool success = actionNode->execute(context);
-                
 
                     if (success) {
                         SCXML::Common::Logger::debug("Successfully executed action: " + actionNode->getId());
@@ -434,7 +482,8 @@ bool TransitionExecutor::executeTransitionActions(const std::vector<ExecutableTr
                 }
             }
 
-            SCXML::Common::Logger::debug("Executing transition from " + transition.sourceState + " to " + transition.targetState);
+            SCXML::Common::Logger::debug("Executing transition from " + transition.sourceState + " to " +
+                                         transition.targetState);
         }
     }
 
@@ -449,19 +498,16 @@ bool TransitionExecutor::executeEntryActions(const std::vector<std::string> &ent
         if (stateNode) {
             // Execute onentry actions using ActionNode objects (graceful approach)
             auto entryActionNodes = stateNode->getEntryActionNodes();
-        
 
             // Execute each ActionNode directly using their execute() method
             for (const auto &actionNode : entryActionNodes) {
                 if (actionNode) {
-                
-                
-                    SCXML::Common::Logger::info("Executing entry ActionNode for state " + stateId + ": " + actionNode->getId());
+                    SCXML::Common::Logger::info("Executing entry ActionNode for state " + stateId + ": " +
+                                                actionNode->getId());
 
                     // Call the ActionNode's execute method directly - this matches transition action execution!
-                
+
                     bool success = actionNode->execute(context);
-                
 
                     if (success) {
                         SCXML::Common::Logger::debug("Successfully executed entry action: " + actionNode->getId());
@@ -473,6 +519,56 @@ bool TransitionExecutor::executeEntryActions(const std::vector<std::string> &ent
             }
 
             SCXML::Common::Logger::debug("Entering state: " + stateId);
+
+            // PARALLEL STATE HANDLING: If this is a parallel state, enter all its regions
+            if (stateNode->getType() == SCXML::Type::PARALLEL) {
+                SCXML::Common::Logger::debug("Parallel state detected: " + stateId + ", entering all regions");
+
+                // Get all child states (regions) of the parallel state
+                auto children = stateNode->getChildren();
+                for (auto child : children) {
+                    if (child) {
+                        std::string regionId = child->getId();
+                        SCXML::Common::Logger::debug("Entering parallel region: " + regionId);
+
+                        // Activate the region
+                        context.activateState(regionId);
+
+                        // Enter the initial state of the region if it has one
+                        std::string initialState = child->getInitialState();
+                        if (!initialState.empty()) {
+                            SCXML::Common::Logger::debug("Entering initial state of region " + regionId + ": " +
+                                                         initialState);
+                            context.activateState(initialState);
+
+                            // Execute entry actions for the initial state
+                            Model::IStateNode *initialStateNode = model->findStateById(initialState);
+                            if (initialStateNode) {
+                                auto initialEntryActions = initialStateNode->getEntryActionNodes();
+                                for (const auto &actionNode : initialEntryActions) {
+                                    if (actionNode) {
+                                        SCXML::Common::Logger::info("Executing entry ActionNode for initial state " +
+                                                                    initialState + ": " + actionNode->getId());
+                                        bool success = actionNode->execute(context);
+                                        if (!success) {
+                                            SCXML::Common::Logger::error(
+                                                "Failed to execute entry action for initial state: " +
+                                                actionNode->getId());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check if this state is a final state and trigger processor stop
+            if (stateNode->isFinalState()) {
+                SCXML::Common::Logger::info("Final state reached: " + stateId + ", stopping processor");
+                // Signal processor to stop by setting a flag in the context
+                context.setFinalStateReached(true);
+            }
         }
     }
 
@@ -535,21 +631,21 @@ bool TransitionExecutor::evaluateGuardCondition(std::shared_ptr<Model::ITransiti
     // guardContext.currentEvent = context.getCurrentEvent(); // Type mismatch issue
     // Note: Event type compatibility requires namespace harmonization
 
-
-
     SCXML::Common::Logger::debug("TransitionExecutor::evaluateGuardCondition - Evaluating guard for transition: " +
-                  guardContext.sourceState + " -> " + guardContext.targetState);
+                                 guardContext.sourceState + " -> " + guardContext.targetState);
 
-    // Use GuardEvaluator to evaluate transition guard
-    auto result = guardEvaluator_->evaluateTransitionGuard(transition, guardContext);
+    // Use external GuardEvaluator if available, otherwise use internal one
+    GuardEvaluator *evaluatorToUse = externalGuardEvaluator_ ? externalGuardEvaluator_ : guardEvaluator_.get();
+    auto result = evaluatorToUse->evaluateTransitionGuard(transition, guardContext);
 
     if (!result.satisfied && !result.errorMessage.empty()) {
         addError("Guard condition failed: " + result.errorMessage + " (expression: '" + result.guardExpression + "')");
-        SCXML::Common::Logger::warning("TransitionExecutor::evaluateGuardCondition - Guard failed: " + result.errorMessage);
+        SCXML::Common::Logger::warning("TransitionExecutor::evaluateGuardCondition - Guard failed: " +
+                                       result.errorMessage);
     }
 
     SCXML::Common::Logger::debug(std::string("TransitionExecutor::evaluateGuardCondition - Guard result: ") +
-                  (result.satisfied ? "satisfied" : "not satisfied"));
+                                 (result.satisfied ? "satisfied" : "not satisfied"));
 
     return result.satisfied;
 }
@@ -682,10 +778,10 @@ bool TransitionExecutor::executeActions(const std::vector<std::shared_ptr<Model:
 
 TransitionExecutor::TransitionResult
 TransitionExecutor::executeEventlessTransitions(std::shared_ptr<::Model::DocumentModel> model,
-                                                Runtime::RuntimeContext &context, int maxDepth) {
+                                                Runtime::RuntimeContext &context) {
     TransitionResult result;
 
-    if (!model || maxDepth <= 0) {
+    if (!model) {
         return result;
     }
 
@@ -697,7 +793,7 @@ TransitionExecutor::executeEventlessTransitions(std::shared_ptr<::Model::Documen
     }
 
     SCXML::Common::Logger::debug("TransitionExecutor::executeEventlessTransitions - Found " +
-                  std::to_string(eventlessTransitions.size()) + " eventless transitions");
+                                 std::to_string(eventlessTransitions.size()) + " eventless transitions");
 
     try {
         // Select optimal transition set
@@ -754,17 +850,7 @@ TransitionExecutor::executeEventlessTransitions(std::shared_ptr<::Model::Documen
             }
         }
 
-        // Check for more eventless transitions with reduced depth
-        auto moreEventlessResult = executeEventlessTransitions(model, context, maxDepth - 1);
-        if (moreEventlessResult.transitionTaken) {
-            // Merge results
-            result.enteredStates.insert(result.enteredStates.end(), moreEventlessResult.enteredStates.begin(),
-                                        moreEventlessResult.enteredStates.end());
-            result.exitedStates.insert(result.exitedStates.end(), moreEventlessResult.exitedStates.begin(),
-                                       moreEventlessResult.exitedStates.end());
-            result.targetStates.insert(result.targetStates.end(), moreEventlessResult.targetStates.begin(),
-                                       moreEventlessResult.targetStates.end());
-        }
+        // No recursion - processUntilStable handles timeout protection
 
         return result;
 
@@ -787,16 +873,16 @@ void TransitionExecutor::clearState() {
 void TransitionExecutor::setExpressionEvaluator(Runtime::ExpressionEvaluator &evaluator) {
     expressionEvaluator_ = &evaluator;
 
-    // Also set the expression evaluator for the guard evaluator if available
-    if (guardEvaluator_) {
-        guardEvaluator_->setExpressionEvaluator(
+    // Set the expression evaluator for the guard evaluator being used
+    GuardEvaluator *evaluatorToUse = externalGuardEvaluator_ ? externalGuardEvaluator_ : guardEvaluator_.get();
+    if (evaluatorToUse) {
+        evaluatorToUse->setExpressionEvaluator(
             std::shared_ptr<Runtime::ExpressionEvaluator>(&evaluator, [](Runtime::ExpressionEvaluator *) {}));
     }
 }
 
 void TransitionExecutor::setGuardEvaluator(GuardEvaluator &evaluator) {
-    (void)evaluator;  // Suppress unused parameter warning
-    // This method allows external override of the guard evaluator if needed
-    // For now, we keep the internal guard evaluator but could extend this
-    SCXML::Common::Logger::debug("TransitionExecutor: Guard evaluator override requested (using internal evaluator)");
+    // Replace the internal guard evaluator with a reference to the external one
+    externalGuardEvaluator_ = &evaluator;
+    SCXML::Common::Logger::debug("TransitionExecutor: Guard evaluator set to external evaluator");
 }

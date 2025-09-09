@@ -1,8 +1,8 @@
 #include "core/actions/SendActionNode.h"
 #include "common/Logger.h"
 #include "events/Event.h"
-#include "runtime/RuntimeContext.h"
 #include "runtime/ActionExecutor.h"
+#include "runtime/RuntimeContext.h"
 #include <algorithm>
 #include <regex>
 
@@ -40,9 +40,10 @@ bool SendActionNode::execute(::SCXML::Runtime::RuntimeContext &context) {
     // Use Executor pattern - create static factory
     ::SCXML::Runtime::DefaultActionExecutorFactory factory;
     auto executor = factory.createExecutor(getActionType());
-    
+
     if (!executor) {
-        SCXML::Common::Logger::error("SendActionNode::execute - No executor available for action type: " + getActionType());
+        SCXML::Common::Logger::error("SendActionNode::execute - No executor available for action type: " +
+                                     getActionType());
         return false;
     }
 
@@ -72,7 +73,7 @@ std::vector<std::string> SendActionNode::validate() const {
     // Use Executor pattern - delegate to SendActionExecutor
     ::SCXML::Runtime::DefaultActionExecutorFactory factory;
     auto executor = factory.createExecutor(getActionType());
-    
+
     if (!executor) {
         return {"No executor available for action type: " + getActionType()};
     }
@@ -129,9 +130,9 @@ uint64_t SendActionNode::parseDelay(const std::string &delayStr) const {
     std::transform(unit.begin(), unit.end(), unit.begin(), ::tolower);
 
     // Convert to milliseconds
-    if (unit.empty() || unit == "ms" || unit == "milliseconds") {
+    if (unit == "ms" || unit == "milliseconds") {
         return static_cast<uint64_t>(value);
-    } else if (unit == "s" || unit == "sec" || unit == "seconds") {
+    } else if (unit.empty() || unit == "s" || unit == "sec" || unit == "seconds") {
         return static_cast<uint64_t>(value * 1000);
     } else if (unit == "min" || unit == "minutes") {
         return static_cast<uint64_t>(value * 60 * 1000);

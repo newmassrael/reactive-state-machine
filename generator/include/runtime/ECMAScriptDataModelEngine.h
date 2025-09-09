@@ -59,7 +59,7 @@ public:
      * @param engineType JavaScript 엔진 타입 (기본값: AUTO)
      */
     explicit ECMAScriptDataModelEngine(
-        ECMAScriptEngineFactory::EngineType engineType = ECMAScriptEngineFactory::EngineType::AUTO);
+        ECMAScriptEngineFactory::EngineType engineType = ECMAScriptEngineFactory::EngineType::QUICKJS);
 
     virtual ~ECMAScriptDataModelEngine();
 
@@ -147,7 +147,7 @@ public:
     void collectGarbage();
 
 private:
-    std::unique_ptr<IECMAScriptEngine> ecmaEngine_;
+    std::shared_ptr<IECMAScriptEngine> ecmaEngine_;
     ECMAScriptEngineFactory::EngineType currentEngineType_;
     StateCheckFunction stateCheckFunction_;
 

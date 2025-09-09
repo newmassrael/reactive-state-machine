@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/ActionExecutor.h"
+#include "runtime/DataModelEngine.h"
 #include <string>
 #include <vector>
 
@@ -51,7 +52,7 @@ private:
      * @param context Runtime context for evaluation
      * @return Resolved value as string, empty if resolution fails
      */
-    std::string resolveValue(const Core::AssignActionNode& assignNode, RuntimeContext& context) const;
+    SCXML::DataModelEngine::DataValue resolveValue(const Core::AssignActionNode& assignNode, RuntimeContext& context) const;
 };
 
 } // namespace Runtime

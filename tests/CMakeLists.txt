@@ -68,23 +68,32 @@ set(GENERATOR_SOURCES
     ${CMAKE_SOURCE_DIR}/generator/src/events/Event.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/events/EventQueue.cpp
 
-    # 런타임 클래스들 (핵심 구성 - 완전히 구현된 것들만)
+    # 런타임 클래스들
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/RuntimeContext.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/EventScheduler.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/GuardEvaluator.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/DataModelEngine.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/HistoryStateManager.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/HistoryStateTransitionHandler.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/ExpressionEvaluator.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/ECMAScriptEngineFactory.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/runtime/JavaScriptEvaluatorAdapter.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/StateManager.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/DataContextManager.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/InvokeSessionManager.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/impl/EventManager.cpp
-    # 런타임 구성요소들 - 누락된 메서드 구현 완료로 활성화
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/ExecutableContentProcessor.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/JavaScriptExpressionEvaluator.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/EventSystemBridge.cpp
+
+    # 런타임 엔진 및 의존성들
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/Processor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/StateMachineFactory.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/TransitionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/InitialStateResolver.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ParserRuntimeBridge.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ECMAScriptDataModelEngine.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/runtime/ECMAScriptContextManager.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/common/ErrorHandler.cpp
 
     # 실행 처리기
     ${CMAKE_SOURCE_DIR}/generator/src/runtime/ActionProcessor.cpp
@@ -117,8 +126,11 @@ if(ENABLE_QUICKJS)
     set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
     
     if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
-        list(APPEND GENERATOR_SOURCES "${CMAKE_SOURCE_DIR}/generator/src/runtime/QuickJSEngine.cpp")
-        message(STATUS "QuickJSEngine.cpp added to test sources")
+        list(APPEND GENERATOR_SOURCES 
+            "${CMAKE_SOURCE_DIR}/generator/src/runtime/QuickJSEngine.cpp"
+            "${CMAKE_SOURCE_DIR}/generator/src/runtime/JSValueManager.cpp"
+        )
+        message(STATUS "QuickJSEngine.cpp and JSValueManager.cpp added to test sources")
     endif()
 endif()
 
@@ -475,57 +487,73 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/compliance")
     endforeach()
 endif()
 
-# W3C Compliance 테스트들
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance")
-    file(GLOB_RECURSE W3C_COMPLIANCE_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance/*Test.cpp")
+# W3C Compliance 테스트들 (기존 - 주석처리됨)
+# if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance")
+#     file(GLOB_RECURSE W3C_COMPLIANCE_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance/*Test.cpp")
+#     ...기존 코드...
+# endif()
+
+# W3C Unified Test Suite (새로운 단일 바이너리 접근방식)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance/W3CUnifiedTest.cpp")
+    message(STATUS "Building W3C Unified Test Suite")
     
-    foreach(test_file ${W3C_COMPLIANCE_TEST_FILES})
-        get_filename_component(test_name ${test_file} NAME_WE)
+    add_executable(W3CUnifiedTest
+        w3c_compliance/W3CUnifiedTest.cpp
+        ${GENERATOR_SOURCES}
+    )
+    
+    target_include_directories(W3CUnifiedTest PRIVATE 
+        ${COMMON_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance
+    )
+    
+    target_link_libraries(W3CUnifiedTest ${COMMON_LINK_LIBS})
+    
+    # Add QuickJS support for W3C tests if available
+    if(ENABLE_QUICKJS)
+        set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
+        set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
         
-        add_executable(${test_name}
-            ${test_file}
-            ${GENERATOR_SOURCES}
-        )
-        
-        target_include_directories(${test_name} PRIVATE 
-            ${COMMON_INCLUDE_DIRS}
-            ${CMAKE_CURRENT_SOURCE_DIR}/w3c_compliance
-        )
-        
-        target_link_libraries(${test_name} ${COMMON_LINK_LIBS})
-        
-        # Add QuickJS support for w3c_compliance tests if available
-        if(ENABLE_QUICKJS)
-            set(QUICKJS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/quickjs")
-            set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
-            
-            if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
-                target_compile_definitions(${test_name} PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
-                target_include_directories(${test_name} SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
-                target_link_libraries(${test_name} ${QUICKJS_LIBRARY} m pthread dl)
-                target_compile_options(${test_name} PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
-                message(STATUS "QuickJS support enabled for w3c_compliance test: ${test_name}")
-            endif()
+        if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
+            target_compile_definitions(W3CUnifiedTest PRIVATE HAS_QUICKJS=1 ENABLE_QUICKJS=1)
+            target_include_directories(W3CUnifiedTest SYSTEM PRIVATE ${QUICKJS_SOURCE_DIR})
+            target_link_libraries(W3CUnifiedTest ${QUICKJS_LIBRARY} m pthread dl)
+            target_compile_options(W3CUnifiedTest PRIVATE -Wno-error=unused-parameter -Wno-error=pedantic -Wno-error=sign-conversion)
+            message(STATUS "QuickJS support enabled for W3C Unified Test")
         endif()
-        
-        add_test(NAME ${test_name} COMMAND ${test_name})
-        
-        set_tests_properties(${test_name} PROPERTIES
-            LABELS "w3c_compliance;scxml_specification;communication"
-            TIMEOUT 120
-        )
-        
-        # 특정 W3C 테스트별 추가 라벨링
-        if(${test_name} MATCHES ".*SendReceive.*")
-            set_property(TEST ${test_name} APPEND PROPERTY LABELS "send_receive;communication")
-        endif()
-        if(${test_name} MATCHES ".*Event.*")
-            set_property(TEST ${test_name} APPEND PROPERTY LABELS "event_system;queue_management")
-        endif()
-        if(${test_name} MATCHES ".*Comprehensive.*")
-            set_property(TEST ${test_name} APPEND PROPERTY LABELS "integration;comprehensive")
-        endif()
-    endforeach()
+    endif()
+    
+    # 통합 테스트 등록
+    add_test(NAME W3CUnifiedTest COMMAND W3CUnifiedTest)
+    
+    set_tests_properties(W3CUnifiedTest PROPERTIES
+        LABELS "w3c_compliance;scxml_specification;unified;comprehensive"
+        TIMEOUT 600  # 10분 - 모든 테스트 실행할 수 있도록 충분한 시간
+    )
+    
+    # 카테고리별 테스트 실행을 위한 추가 테스트들
+    add_test(NAME W3CUnifiedTest_EventTests 
+             COMMAND W3CUnifiedTest --gtest_filter="*Test144*:*Test185*:*Test223*")
+    set_tests_properties(W3CUnifiedTest_EventTests PROPERTIES
+        LABELS "w3c_compliance;event_system;queue_management"
+        TIMEOUT 60
+    )
+    
+    add_test(NAME W3CUnifiedTest_ConditionalTests 
+             COMMAND W3CUnifiedTest --gtest_filter="*Test147*:*Test148*:*Test149*")
+    set_tests_properties(W3CUnifiedTest_ConditionalTests PROPERTIES
+        LABELS "w3c_compliance;conditionals;datamodel"
+        TIMEOUT 60
+    )
+    
+    add_test(NAME W3CUnifiedTest_TransitionTests 
+             COMMAND W3CUnifiedTest --gtest_filter="*Test403*:*Test419*:*Test506*:*Test533*")
+    set_tests_properties(W3CUnifiedTest_TransitionTests PROPERTIES
+        LABELS "w3c_compliance;transitions;state_machine"
+        TIMEOUT 120
+    )
+    
+    message(STATUS "W3C Unified Test Suite configured with category-based test execution")
 endif()
 
 # Runtime 테스트들 (별도 서브디렉토리)

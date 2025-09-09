@@ -5,6 +5,7 @@
 #include "interfaces/IInvokeSessionManager.h"
 #include "interfaces/IRuntimeContext.h"
 #include "interfaces/IStateManager.h"
+#include "runtime/EventScheduler.h"
 #include <memory>
 #include <mutex>
 #include <string>
@@ -14,7 +15,7 @@ namespace SCXML {
 namespace Model {
 class IStateNode;
 class DocumentModel;
-}
+}  // namespace Model
 // Forward declarations
 class Logger;
 class DataModelEngine;
@@ -121,6 +122,56 @@ public:
     void setEventDispatcher(std::shared_ptr<Events::EventDispatcher> dispatcher);
     void setIOProcessorManager(std::shared_ptr<void> manager);  // Using void* for now
 
+    // ========== Event Scheduling ==========
+    /**
+     * @brief Schedule an event for delayed delivery
+     * @param event Event to schedule
+     * @param delayMs Delay in milliseconds
+     * @param target Target for event delivery (empty for internal)
+     * @param sendId Optional send ID for cancellation
+     */
+    void scheduleEvent(std::shared_ptr<Events::Event> event, uint64_t delayMs,
+                       const std::string &target = std::string(), const std::string &sendId = std::string());
+
+    /**
+     * @brief Cancel a scheduled event by send ID
+     * @param sendId Send ID to cancel
+     * @return true if event was cancelled
+     */
+    bool cancelScheduledEvent(const std::string &sendId);
+
+    /**
+     * @brief Process all scheduled events that are ready for delivery
+     * This should be called in the main event processing loop
+     */
+    void processScheduledEvents();
+
+    /**
+     * @brief Get the event scheduler (for advanced use)
+     * @return Reference to the event scheduler
+     */
+    EventScheduler &getEventScheduler() {
+        return eventScheduler_;
+    }
+
+    const EventScheduler &getEventScheduler() const {
+        return eventScheduler_;
+    }
+
+    // ========== Final State Management ==========
+
+    /**
+     * @brief Set the final state reached flag
+     * @param reached true if final state has been reached
+     */
+    void setFinalStateReached(bool reached);
+
+    /**
+     * @brief Check if final state has been reached
+     * @return true if final state has been reached
+     */
+    bool isFinalStateReached() const;
+
     // ========== Manager Injection (for testing/configuration) ==========
 
     void setStateManager(std::unique_ptr<IStateManager> manager);
@@ -138,6 +189,10 @@ private:
     // Context state
     mutable std::mutex contextMutex_;
     bool initialized_ = false;
+    bool finalStateReached_ = false;
+
+    // Event scheduling
+    EventScheduler eventScheduler_;
 
     // Factory methods for default implementations
     std::unique_ptr<IStateManager> createDefaultStateManager();

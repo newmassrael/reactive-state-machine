@@ -58,9 +58,7 @@ public:
      * @brief Get the assignment expression
      * @return expression string
      */
-    const std::string &getExpr() const {
-        return expr_;
-    }
+    const std::string &getExpr() const;
 
     /**
      * @brief Set assignment attribute (alternative to expr)

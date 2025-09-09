@@ -35,9 +35,7 @@ void DataNode::setFormat(const std::string &format) {
     SCXML::Common::Logger::debug("DataNode::setFormat - Set format: " + format);
 }
 
-bool DataNode::initialize(::SCXML::Runtime::RuntimeContext &context) {
-    SCXML::Common::Logger::debug("DataNode::initialize - Initializing data variable: " + id_);
-
+bool DataNode::initialize(SCXML::Runtime::RuntimeContext &context) {
     try {
         // Get data model engine
         auto dataModel = context.getDataModelEngine();
@@ -47,44 +45,61 @@ bool DataNode::initialize(::SCXML::Runtime::RuntimeContext &context) {
         }
 
         // Get the initial value
-        DataValue value = getValue(context);
+        DataValue nodeValue = getValue(context);
 
-        // Convert value to string for data model
-        std::string valueStr;
+        // Convert DataNode::DataValue to DataModelEngine::DataValue
+        SCXML::DataModelEngine::DataValue engineValue;
         std::visit(
-            [&valueStr](const auto &v) {
-                using T = std::decay_t<decltype(v)>;
+            [&](const auto &value) {
+                using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, std::monostate>) {
-                    valueStr = "";
-                } else if constexpr (std::is_same_v<T, std::string>) {
-                    valueStr = v;
-                } else if constexpr (std::is_same_v<T, int>) {
-                    valueStr = std::to_string(v);
-                } else if constexpr (std::is_same_v<T, double>) {
-                    valueStr = std::to_string(v);
+                    engineValue = std::monostate{};
                 } else if constexpr (std::is_same_v<T, bool>) {
-                    valueStr = v ? "true" : "false";
+                    engineValue = value;
+                } else if constexpr (std::is_same_v<T, int>) {
+                    engineValue = static_cast<int64_t>(value);
+                } else if constexpr (std::is_same_v<T, double>) {
+                    engineValue = value;
+                } else if constexpr (std::is_same_v<T, std::string>) {
+                    engineValue = value;
                 }
             },
-            value);
+            nodeValue);
 
-        // Set the variable in data model
-        auto result = dataModel->setValue(id_, valueStr);
+        // Create value string for logging
+        std::string valueStr;
+        std::visit(
+            [&](const auto &value) {
+                using T = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<T, std::monostate>) {
+                    valueStr = "null";
+                } else if constexpr (std::is_same_v<T, bool>) {
+                    valueStr = value ? "true" : "false";
+                } else if constexpr (std::is_same_v<T, int>) {
+                    valueStr = std::to_string(value);
+                } else if constexpr (std::is_same_v<T, double>) {
+                    valueStr = std::to_string(value);
+                } else if constexpr (std::is_same_v<T, std::string>) {
+                    valueStr = value;
+                }
+            },
+            nodeValue);
+
+        // Set the variable in data model with proper type preservation
+        auto result = dataModel->setValue(id_, engineValue);
         if (result.success) {
-            SCXML::Common::Logger::info("DataNode::initialize - Successfully initialized " + id_ + " = '" + valueStr + "'");
+            SCXML::Common::Logger::info("DataNode::initialize - Successfully initialized " + id_ + " = '" + valueStr +
+                                        "'");
             return true;
         } else {
-            SCXML::Common::Logger::error("DataNode::initialize - Failed to set variable " + id_ + ": " + result.errorMessage);
+            SCXML::Common::Logger::error("DataNode::initialize - Failed to set variable " + id_ + ": " +
+                                         result.errorMessage);
             return false;
         }
-
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("DataNode::initialize - Exception initializing " + id_ + ": " + std::string(e.what()));
+        SCXML::Common::Logger::error("DataNode::initialize - Exception: " + std::string(e.what()));
         return false;
     }
-
-    // Success
-    return true;
 }
 
 bool DataNode::supportsDataModel(const std::string &dataModelType) const {
@@ -191,13 +206,14 @@ std::string DataNode::loadFromSrc(::SCXML::Runtime::RuntimeContext &context) con
         buffer << file.rdbuf();
         std::string content = buffer.str();
 
-        SCXML::Common::Logger::debug("DataNode::loadFromSrc - Loaded " + std::to_string(content.length()) + " characters from " +
-                      src_);
+        SCXML::Common::Logger::debug("DataNode::loadFromSrc - Loaded " + std::to_string(content.length()) +
+                                     " characters from " + src_);
 
         return content;
 
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("DataNode::loadFromSrc - Exception loading from " + src_ + ": " + std::string(e.what()));
+        SCXML::Common::Logger::error("DataNode::loadFromSrc - Exception loading from " + src_ + ": " +
+                                     std::string(e.what()));
         return "";
     }
 }
@@ -296,7 +312,7 @@ DataNode::DataValue DataNode::parseContent(const std::string &content, const std
 
     } catch (const std::exception &e) {
         SCXML::Common::Logger::warning("DataNode::parseContent - Exception parsing content as " + format + ": " +
-                        std::string(e.what()) + ", defaulting to string");
+                                       std::string(e.what()) + ", defaulting to string");
         return content;
     }
 }
@@ -318,20 +334,41 @@ DataNode::DataValue DataNode::evaluateExpression(::SCXML::Runtime::RuntimeContex
         SCXML::Common::Logger::info("DataNode::evaluateExpression - About to evaluate: '" + expr_ + "'");
         auto result = dataModel->evaluateExpression(expr_, context);
         SCXML::Common::Logger::info("DataNode::evaluateExpression - Result success: " +
-                     std::string(result.success ? "true" : "false"));
+                                    std::string(result.success ? "true" : "false"));
         if (!result.success) {
-            SCXML::Common::Logger::error("DataNode::evaluateExpression - Expression evaluation failed: " + result.errorMessage);
+            SCXML::Common::Logger::error("DataNode::evaluateExpression - Expression evaluation failed: " +
+                                         result.errorMessage);
             return std::monostate{};
         }
 
-        // Convert result to DataValue
-        std::string valueStr = dataModel->valueToString(result.value);
+        // Convert DataModelEngine::DataValue to DataNode::DataValue directly
+        // avoiding the roundtrip through string that converts empty strings to null
+        DataValue nodeValue;
+        std::visit(
+            [&](const auto &value) {
+                using T = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<T, std::monostate>) {
+                    nodeValue = std::monostate{};
+                } else if constexpr (std::is_same_v<T, bool>) {
+                    nodeValue = value;
+                } else if constexpr (std::is_same_v<T, int64_t>) {
+                    nodeValue = static_cast<int>(value);
+                } else if constexpr (std::is_same_v<T, double>) {
+                    nodeValue = value;
+                } else if constexpr (std::is_same_v<T, std::string>) {
+                    nodeValue = value;  // Preserve empty strings as empty strings
+                } else {
+                    // Handle arrays/objects as strings for now (JSON representation)
+                    nodeValue = dataModel->valueToString(result.value);
+                }
+            },
+            result.value);
 
-        // Try to parse the result based on its apparent type
-        return parseContent(valueStr, "text");
+        return nodeValue;
 
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("DataNode::evaluateExpression - Exception evaluating expression: " + std::string(e.what()));
+        SCXML::Common::Logger::error("DataNode::evaluateExpression - Exception evaluating expression: " +
+                                     std::string(e.what()));
         return std::monostate{};
     }
 }

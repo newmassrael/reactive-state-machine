@@ -53,7 +53,7 @@ if(MSVC)
     # UTF-8 소스 코드 처리
     add_compile_options(/utf-8)
 else()
-    add_compile_options(-Wall -Wextra -pedantic -Werror)
+    add_compile_options(-Wall -Wextra -pedantic -Werror -Wno-maybe-uninitialized)
     # GCC/Clang 특정 최적화
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_compile_options(-Wformat=2 -Wno-conversion -Wsign-conversion)

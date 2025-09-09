@@ -57,6 +57,8 @@ bool IntegrationTestBase::validateSCXMLDocument(const std::string &scxml) {
 }
 
 void IntegrationTestBase::executeStateMachine(const std::string &scxml, const std::vector<std::string> &events) {
+    // Suppress unused parameter warning - events will be used in future implementation
+    (void)events;
     // 상태 머신 실행 테스트 구현
     // 현재는 기본 파싱만 수행
     auto model = parser->parseContent(scxml);

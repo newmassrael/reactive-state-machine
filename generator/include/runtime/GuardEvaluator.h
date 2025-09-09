@@ -29,6 +29,8 @@ namespace Runtime {
 class RuntimeContext;
 }
 
+class DataModelEngine;
+
 namespace Events {
 using EventPtr = std::shared_ptr<class Event>;
 }
@@ -125,6 +127,12 @@ public:
      */
     void setExpressionEvaluator(std::shared_ptr<SCXML::Runtime::ExpressionEvaluator> evaluator);
 
+    /**
+     * @brief Set DataModel engine for ECMAScript evaluation (architectural fix)
+     * @param dataEngine DataModel engine instance
+     */
+    void setDataModelEngine(DataModelEngine* dataEngine);
+
 protected:
     /**
      * @brief Create evaluation context for expressions
@@ -199,6 +207,9 @@ protected:
 private:
     // Expression evaluator for guard conditions
     std::shared_ptr<SCXML::Runtime::ExpressionEvaluator> expressionEvaluator_;
+
+    // DataModel engine for ECMAScript evaluation (architectural enhancement)
+    DataModelEngine* dataModelEngine_;
 
     // Error handling
     std::string lastError_;

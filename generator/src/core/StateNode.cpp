@@ -7,7 +7,7 @@ namespace Core {
 
 StateNode::StateNode(const std::string &id, Type type) : id_(id), type_(type), parent_(nullptr) {
     SCXML::Common::Logger::debug("StateNode::Constructor - Creating state node: " + id +
-                  ", type: " + std::to_string(static_cast<int>(type)));
+                                 ", type: " + std::to_string(static_cast<int>(type)));
 }
 
 StateNode::~StateNode() {
@@ -23,7 +23,8 @@ Type StateNode::getType() const {
 }
 
 void StateNode::setParent(IStateNode *parent) {
-    SCXML::Common::Logger::debug("StateNode::setParent() - Setting parent for " + id_ + ": " + (parent ? parent->getId() : "null"));
+    SCXML::Common::Logger::debug("StateNode::setParent() - Setting parent for " + id_ + ": " +
+                                 (parent ? parent->getId() : "null"));
     parent_ = parent;
 }
 
@@ -49,8 +50,8 @@ void StateNode::addTransition(std::shared_ptr<SCXML::Model::ITransitionNode> tra
         const auto targets = transition->getTargets();
         std::string targetStr = targets.empty() ? "" : (targets.size() == 1 ? targets[0] : "[multiple targets]");
 
-        SCXML::Common::Logger::debug("StateNode::addTransition() - Adding transition to " + id_ + ": event=" + transition->getEvent() +
-                      ", target=" + targetStr);
+        SCXML::Common::Logger::debug("StateNode::addTransition() - Adding transition to " + id_ +
+                                     ": event=" + transition->getEvent() + ", target=" + targetStr);
         transitions_.push_back(transition);
     } else {
         SCXML::Common::Logger::warning("StateNode::addTransition() - Attempt to add null transition to " + id_);
@@ -64,7 +65,8 @@ const std::vector<std::shared_ptr<SCXML::Model::ITransitionNode>> &StateNode::ge
 // 새로 추가된 데이터 모델 관련 메서드 구현
 void StateNode::addDataItem(std::shared_ptr<IDataModelItem> dataItem) {
     if (dataItem) {
-        SCXML::Common::Logger::debug("StateNode::addDataItem() - Adding data item to " + id_ + ": " + dataItem->getId());
+        SCXML::Common::Logger::debug("StateNode::addDataItem() - Adding data item to " + id_ + ": " +
+                                     dataItem->getId());
         dataItems_.push_back(dataItem);
     } else {
         SCXML::Common::Logger::warning("StateNode::addDataItem() - Attempt to add null data item to " + id_);
@@ -76,7 +78,8 @@ const std::vector<std::shared_ptr<IDataModelItem>> &StateNode::getDataItems() co
 }
 
 void StateNode::setInitialState(const std::string &initialState) {
-    SCXML::Common::Logger::debug("StateNode::setInitialState() - Setting initial state for " + id_ + ": " + initialState);
+    SCXML::Common::Logger::debug("StateNode::setInitialState() - Setting initial state for " + id_ + ": " +
+                                 initialState);
     initialState_ = initialState;
 }
 
@@ -165,8 +168,8 @@ void StateNode::setDoneDataContent(const std::string &content) {
 }
 
 void StateNode::addDoneDataParam(const std::string &name, const std::string &location) {
-    SCXML::Common::Logger::debug("StateNode::addDoneDataParam() - Adding param to donedata for " + id_ + ": " + name + " -> " +
-                  location);
+    SCXML::Common::Logger::debug("StateNode::addDoneDataParam() - Adding param to donedata for " + id_ + ": " + name +
+                                 " -> " + location);
     doneData_.addParam(name, location);
 }
 
@@ -194,8 +197,8 @@ const std::vector<std::shared_ptr<SCXML::Model::IActionNode>> &StateNode::getExi
 void StateNode::addEntryActionNode(std::shared_ptr<SCXML::Model::IActionNode> actionNode) {
     if (actionNode) {
         entryActionNodes_.push_back(actionNode);
-        SCXML::Common::Logger::debug("StateNode::addEntryActionNode() - Added entry ActionNode: " + actionNode->getId() +
-                      " to state: " + id_);
+        SCXML::Common::Logger::debug(
+            "StateNode::addEntryActionNode() - Added entry ActionNode: " + actionNode->getId() + " to state: " + id_);
     }
 }
 
@@ -203,8 +206,24 @@ void StateNode::addExitActionNode(std::shared_ptr<SCXML::Model::IActionNode> act
     if (actionNode) {
         exitActionNodes_.push_back(actionNode);
         SCXML::Common::Logger::debug("StateNode::addExitActionNode() - Added exit ActionNode: " + actionNode->getId() +
-                      " to state: " + id_);
+                                     " to state: " + id_);
     }
+}
+
+int StateNode::getDocumentOrder() const {
+    return documentOrder_;
+}
+
+void StateNode::setDocumentOrder(int order) {
+    documentOrder_ = order;
+}
+
+std::vector<std::shared_ptr<SCXML::Model::IActionNode>> StateNode::getOnEntryActions() const {
+    return entryActionNodes_;
+}
+
+std::vector<std::shared_ptr<SCXML::Model::IActionNode>> StateNode::getOnExitActions() const {
+    return exitActionNodes_;
 }
 
 }  // namespace Core

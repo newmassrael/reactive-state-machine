@@ -11,7 +11,8 @@ namespace Model {
 class DocumentModel;
 class ITransitionNode;
 class IActionNode;
-}
+}  // namespace Model
+
 // Forward declarations
 namespace Core {
 class DocumentModel;
@@ -61,12 +62,12 @@ public:
      * @brief Executable transition found during selection
      */
     struct ExecutableTransition {
-        std::string sourceState;                                   // Source state ID
-        std::string targetState;                                   // Target state ID
+        std::string sourceState;                                    // Source state ID
+        std::string targetState;                                    // Target state ID
         std::shared_ptr<SCXML::Model::ITransitionNode> transition;  // Transition node
-        SCXML::Events::EventPtr event;                             // Triggering event
-        bool isInternal;                                           // Whether transition is internal
-        int documentOrder;                                         // Document order for selection priority
+        SCXML::Events::EventPtr event;                              // Triggering event
+        bool isInternal;                                            // Whether transition is internal
+        int documentOrder;                                          // Document order for selection priority
 
         ExecutableTransition() : isInternal(false), documentOrder(0) {}
     };
@@ -111,7 +112,7 @@ public:
      * @return Transition execution result
      */
     TransitionResult executeEventlessTransitions(std::shared_ptr<::SCXML::Model::DocumentModel> model,
-                                                 SCXML::Runtime::RuntimeContext &context, int maxDepth = 5);
+                                                 SCXML::Runtime::RuntimeContext &context);
 
     /**
      * @brief Find enabled transitions for event in current configuration
@@ -273,6 +274,7 @@ private:
 
     // Guard evaluation
     std::unique_ptr<SCXML::GuardEvaluator> guardEvaluator_;
+    SCXML::GuardEvaluator *externalGuardEvaluator_;
 
     // Expression evaluation
     class SCXML::Runtime::ExpressionEvaluator *expressionEvaluator_;

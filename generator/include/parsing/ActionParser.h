@@ -1,14 +1,13 @@
 #pragma once
 
-#include "model/INodeFactory.h"
 #include "model/IActionNode.h"
+#include "model/INodeFactory.h"
 #include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
 #include <vector>
 
 using SCXML::Model::IActionNode;
-
 
 namespace SCXML {
 
@@ -97,6 +96,13 @@ private:
      */
     void parseSpecialExecutableContent(const xmlpp::Element *element,
                                        ::std::vector<::std::shared_ptr<::SCXML::Model::IActionNode>> &actions);
+
+    /**
+     * @brief W3C SCXML <if> 요소 파싱
+     * @param element <if> XML 요소
+     * @return 파싱된 IfActionNode
+     */
+    std::shared_ptr<::SCXML::Model::IActionNode> parseIfElement(const xmlpp::Element *element);
 
     /**
      * @brief 네임스페이스 문제 처리

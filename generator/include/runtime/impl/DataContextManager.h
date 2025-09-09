@@ -55,7 +55,7 @@ public:
 
     // Additional methods for internal use
     void setScriptBasePath(const std::string &basePath);
-    void setDataModelEngine(SCXML::DataModelEngine *engine);
+    void setDataModelEngine(std::unique_ptr<SCXML::DataModelEngine> engine);
 
 private:
     mutable std::mutex dataMutex_;
@@ -68,7 +68,7 @@ private:
 
     std::string sessionName_;
     std::string scriptBasePath_;
-    SCXML::DataModelEngine *dataModelEngine_;
+    std::unique_ptr<SCXML::DataModelEngine> dataModelEngine_;
 
     // Helper methods
     std::string dataValueToString(const DataValue &value) const;

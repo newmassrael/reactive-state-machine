@@ -1,8 +1,8 @@
 #include "core/actions/ForeachActionNode.h"
 #include "common/Logger.h"
+#include "runtime/ActionExecutor.h"
 #include "runtime/DataModelEngine.h"
 #include "runtime/RuntimeContext.h"
-#include "runtime/ActionExecutor.h"
 #include <sstream>
 
 namespace SCXML {
@@ -30,7 +30,8 @@ void ForeachActionNode::setIndex(const std::string &index) {
 void ForeachActionNode::addIterationAction(std::shared_ptr<SCXML::Model::IActionNode> action) {
     if (action) {
         iterationActions_.push_back(action);
-        SCXML::Common::Logger::debug("ForeachActionNode::addIterationAction - Added iteration action: " + action->getId());
+        SCXML::Common::Logger::debug("ForeachActionNode::addIterationAction - Added iteration action: " +
+                                     action->getId());
     }
 }
 
@@ -38,9 +39,10 @@ bool ForeachActionNode::execute(SCXML::Runtime::RuntimeContext &context) {
     // Use Executor pattern - create static factory
     ::SCXML::Runtime::DefaultActionExecutorFactory factory;
     auto executor = factory.createExecutor(getActionType());
-    
+
     if (!executor) {
-        SCXML::Common::Logger::error("ForeachActionNode::execute - No executor available for action type: " + getActionType());
+        SCXML::Common::Logger::error("ForeachActionNode::execute - No executor available for action type: " +
+                                     getActionType());
         return false;
     }
 
@@ -68,7 +70,7 @@ std::vector<std::string> ForeachActionNode::validate() const {
     // Use Executor pattern - delegate to ForeachActionExecutor
     ::SCXML::Runtime::DefaultActionExecutorFactory factory;
     auto executor = factory.createExecutor(getActionType());
-    
+
     if (!executor) {
         return {"No executor available for action type: " + getActionType()};
     }
@@ -95,7 +97,7 @@ std::vector<std::string> ForeachActionNode::resolveArray(SCXML::Runtime::Runtime
         auto evalResult = dataModel->evaluateExpression(array_, context);
         if (!evalResult.success) {
             SCXML::Common::Logger::warning("ForeachActionNode::resolveArray - Failed to evaluate array expression: " +
-                            evalResult.errorMessage);
+                                           evalResult.errorMessage);
             return result;
         }
 
@@ -121,11 +123,12 @@ std::vector<std::string> ForeachActionNode::resolveArray(SCXML::Runtime::Runtime
             }
         }
 
-        SCXML::Common::Logger::debug("ForeachActionNode::resolveArray - Resolved array with " + std::to_string(result.size()) +
-                      " elements");
+        SCXML::Common::Logger::debug("ForeachActionNode::resolveArray - Resolved array with " +
+                                     std::to_string(result.size()) + " elements");
 
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::warning("ForeachActionNode::resolveArray - Failed to resolve array: " + std::string(e.what()));
+        SCXML::Common::Logger::warning("ForeachActionNode::resolveArray - Failed to resolve array: " +
+                                       std::string(e.what()));
     }
 
     return result;
@@ -134,7 +137,7 @@ std::vector<std::string> ForeachActionNode::resolveArray(SCXML::Runtime::Runtime
 bool ForeachActionNode::executeIteration(SCXML::Runtime::RuntimeContext &context, const std::string &itemValue,
                                          int indexValue) {
     SCXML::Common::Logger::debug("ForeachActionNode::executeIteration - Executing iteration with item='" + itemValue +
-                  "', index=" + std::to_string(indexValue));
+                                 "', index=" + std::to_string(indexValue));
 
     // Set loop variables
     setLoopVariables(context, itemValue, indexValue);
@@ -148,13 +151,14 @@ bool ForeachActionNode::executeIteration(SCXML::Runtime::RuntimeContext &context
             // Execute action directly through interface
             bool actionResult = action->execute(context);
             if (!actionResult) {
-                SCXML::Common::Logger::warning("ForeachActionNode::executeIteration - Action failed: " + action->getId());
+                SCXML::Common::Logger::warning("ForeachActionNode::executeIteration - Action failed: " +
+                                               action->getId());
                 allSucceeded = false;
                 // Continue with remaining actions in iteration
             }
         }
     }
-    
+
     return allSucceeded;
 }
 
@@ -170,10 +174,11 @@ void ForeachActionNode::setLoopVariables(SCXML::Runtime::RuntimeContext &context
     if (!item_.empty()) {
         auto setResult = dataModel->setValue(item_, itemValue);
         if (setResult.success) {
-            SCXML::Common::Logger::debug("ForeachActionNode::setLoopVariables - Set " + item_ + " = '" + itemValue + "'");
+            SCXML::Common::Logger::debug("ForeachActionNode::setLoopVariables - Set " + item_ + " = '" + itemValue +
+                                         "'");
         } else {
             SCXML::Common::Logger::warning("ForeachActionNode::setLoopVariables - Failed to set " + item_ + ": " +
-                            setResult.errorMessage);
+                                           setResult.errorMessage);
         }
     }
 
@@ -182,10 +187,10 @@ void ForeachActionNode::setLoopVariables(SCXML::Runtime::RuntimeContext &context
         auto setResult = dataModel->setValue(index_, std::to_string(indexValue));
         if (setResult.success) {
             SCXML::Common::Logger::debug("ForeachActionNode::setLoopVariables - Set " + index_ + " = " +
-                          std::to_string(indexValue));
+                                         std::to_string(indexValue));
         } else {
             SCXML::Common::Logger::warning("ForeachActionNode::setLoopVariables - Failed to set " + index_ + ": " +
-                            setResult.errorMessage);
+                                           setResult.errorMessage);
         }
     }
 }
@@ -203,7 +208,7 @@ void ForeachActionNode::cleanupLoopVariables(SCXML::Runtime::RuntimeContext &con
             SCXML::Common::Logger::debug("ForeachActionNode::cleanupLoopVariables - Removed " + item_);
         } else {
             SCXML::Common::Logger::debug("ForeachActionNode::cleanupLoopVariables - Could not remove " + item_ + ": " +
-                          removeResult.errorMessage);
+                                         removeResult.errorMessage);
         }
     }
 
@@ -214,8 +219,25 @@ void ForeachActionNode::cleanupLoopVariables(SCXML::Runtime::RuntimeContext &con
             SCXML::Common::Logger::debug("ForeachActionNode::cleanupLoopVariables - Removed " + index_);
         } else {
             SCXML::Common::Logger::debug("ForeachActionNode::cleanupLoopVariables - Could not remove " + index_ + ": " +
-                          removeResult.errorMessage);
+                                         removeResult.errorMessage);
         }
+    }
+}
+
+void ForeachActionNode::setAttribute(const std::string &name, const std::string &value) {
+    // Handle foreach-specific attributes
+    if (name == "array") {
+        setArray(value);
+        SCXML::Common::Logger::debug("ForeachActionNode::setAttribute - Set array attribute: " + value);
+    } else if (name == "item") {
+        setItem(value);
+        SCXML::Common::Logger::debug("ForeachActionNode::setAttribute - Set item attribute: " + value);
+    } else if (name == "index") {
+        setIndex(value);
+        SCXML::Common::Logger::debug("ForeachActionNode::setAttribute - Set index attribute: " + value);
+    } else {
+        // Call parent implementation for other attributes
+        ActionNode::setAttribute(name, value);
     }
 }
 

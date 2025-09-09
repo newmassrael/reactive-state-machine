@@ -4,6 +4,7 @@
 #include "model/IDataModelItem.h"
 #include "runtime/ECMAScriptDataModelEngine.h"
 #include "runtime/ECMAScriptEngineFactory.h"
+#include "runtime/ECMAScriptContextManager.h"
 #include "runtime/RuntimeContext.h"
 #include <chrono>
 #include <sstream>
@@ -36,7 +37,7 @@ DataModelEngine::DataModelResult ECMAScriptDataModelEngine::initializeFromDataIt
     (void)sessionId;  // 현재 사용하지 않음
 
     SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::initializeFromDataItems - Initializing " +
-                  std::to_string(dataItems.size()) + " data items");
+                                 std::to_string(dataItems.size()) + " data items");
 
     try {
         for (const auto &item : dataItems) {
@@ -76,9 +77,10 @@ DataModelEngine::DataModelResult ECMAScriptDataModelEngine::initializeFromDataIt
                     std::string evalExpr = expr;
                     if (expr.front() == '{' && expr.back() == '}') {
                         evalExpr = "(" + expr + ")";  // 오브젝트 리터럴을 괄호로 감쌈
-                        SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::initializeFromDataItems - Wrapping object literal in "
-                                      "parentheses: " +
-                                      evalExpr);
+                        SCXML::Common::Logger::debug(
+                            "ECMAScriptDataModelEngine::initializeFromDataItems - Wrapping object literal in "
+                            "parentheses: " +
+                            evalExpr);
                     }
                     // ECMAScript 엔진으로 직접 평가 (무한 루프 방지)
                     SCXML::Runtime::RuntimeContext tempContext;
@@ -93,7 +95,8 @@ DataModelEngine::DataModelResult ECMAScriptDataModelEngine::initializeFromDataIt
                         value = dataResult.value;
                     } else {
                         SCXML::Common::Logger::warning("ECMAScriptDataModelEngine::initializeFromDataItems - " +
-                                        std::string("Failed to evaluate expression for '") + id + "': " + expr);
+                                                       std::string("Failed to evaluate expression for '") + id +
+                                                       "': " + expr);
                         // 기본값으로 표현식 문자열 사용
                         value = expr;
                     }
@@ -107,7 +110,7 @@ DataModelEngine::DataModelResult ECMAScriptDataModelEngine::initializeFromDataIt
             auto setResult = DataModelEngine::setValue(id, value, Scope::GLOBAL);
             if (!setResult.success) {
                 SCXML::Common::Logger::error("ECMAScriptDataModelEngine::initializeFromDataItems - " +
-                              std::string("Failed to set variable '") + id + "'");
+                                             std::string("Failed to set variable '") + id + "'");
                 return DataModelResult::createError("Failed to set variable '" + id + "'");
             }
 
@@ -116,16 +119,19 @@ DataModelEngine::DataModelResult ECMAScriptDataModelEngine::initializeFromDataIt
                 ECMAValue ecmaValue = dataValueToECMAValue(value);
                 bool jsSetResult = ecmaEngine_->setVariable(id, ecmaValue);
                 if (jsSetResult) {
-                    SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::initializeFromDataItems - Successfully set variable '" +
-                                  id + "' in JavaScript engine");
+                    SCXML::Common::Logger::debug(
+                        "ECMAScriptDataModelEngine::initializeFromDataItems - Successfully set variable '" + id +
+                        "' in JavaScript engine");
                 } else {
-                    SCXML::Common::Logger::warning("ECMAScriptDataModelEngine::initializeFromDataItems - Failed to set variable '" +
-                                    id + "' in JavaScript engine");
+                    SCXML::Common::Logger::warning(
+                        "ECMAScriptDataModelEngine::initializeFromDataItems - Failed to set variable '" + id +
+                        "' in JavaScript engine");
                 }
             }
         }
 
-        SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::initializeFromDataItems - Successfully initialized all data items");
+        SCXML::Common::Logger::debug(
+            "ECMAScriptDataModelEngine::initializeFromDataItems - Successfully initialized all data items");
         return DataModelResult::createSuccess();
 
     } catch (const std::exception &e) {
@@ -218,7 +224,8 @@ DataModelEngine::DataModelResult ECMAScriptDataModelEngine::evaluateExpression(c
         if (result.success) {
             // ECMAValue를 DataValue로 변환
             DataValue value = ecmaValueToDataValue(result.value);
-            SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::evaluateExpression - Successfully evaluated: " + expression);
+            SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::evaluateExpression - Successfully evaluated: " +
+                                         expression);
             return DataModelResult::createSuccess(value);
         }
 
@@ -260,19 +267,25 @@ DataModelEngine::DataModelResult ECMAScriptDataModelEngine::executeScript(const 
 
 bool ECMAScriptDataModelEngine::switchEngine(ECMAScriptEngineFactory::EngineType engineType) {
     SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::switchEngine - Switching to engine type: " +
-                  std::to_string(static_cast<int>(engineType)));
+                                 std::to_string(static_cast<int>(engineType)));
 
     try {
-        // 새 엔진 생성
-        ecmaEngine_ = ECMAScriptEngineFactory::create(engineType);
-
-        if (ecmaEngine_ && ecmaEngine_->initialize()) {
+        // Get shared ECMAScript engine from context manager
+        auto& contextManager = ECMAScriptContextManager::getInstance();
+        if (!contextManager.isInitialized()) {
+            if (!contextManager.initializeEngine(static_cast<int>(engineType))) {
+                SCXML::Common::Logger::error("ECMAScriptDataModelEngine::switchEngine - Failed to initialize shared ECMAScript engine");
+                return false;
+            }
+        }
+        
+        ecmaEngine_ = contextManager.getSharedEngine();
+        if (ecmaEngine_) {
             currentEngineType_ = engineType;
-            SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::switchEngine - Successfully switched engine");
+            SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::switchEngine - Successfully switched to shared engine");
             return true;
         } else {
-            SCXML::Common::Logger::error("ECMAScriptDataModelEngine::switchEngine - Failed to initialize engine");
-            ecmaEngine_.reset();
+            SCXML::Common::Logger::error("ECMAScriptDataModelEngine::switchEngine - Failed to get shared ECMAScript engine");
             return false;
         }
 
@@ -366,7 +379,8 @@ void ECMAScriptDataModelEngine::setupSCXMLSystemVariables(const std::string &ses
         SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::setupSCXMLSystemVariables - System variables set up");
 
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::setupSCXMLSystemVariables - Exception: " + std::string(e.what()));
+        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::setupSCXMLSystemVariables - Exception: " +
+                                     std::string(e.what()));
     }
 }
 
@@ -414,20 +428,24 @@ void ECMAScriptDataModelEngine::setCurrentEvent(const std::shared_ptr<::SCXML::E
 
             eventScript << "};";
 
-            SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::setCurrentEvent - Event script: " + eventScript.str());
+            SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::setCurrentEvent - Event script: " +
+                                         eventScript.str());
 
             // _event 객체를 ECMAScript 환경에 설정 (executeScript 대신 setVariable 사용)
-            SCXML::Common::Logger::warning("ECMAScriptDataModelEngine::setCurrentEvent - Skipping _event script execution to prevent "
-                            "stack overflow");
+            SCXML::Common::Logger::warning(
+                "ECMAScriptDataModelEngine::setCurrentEvent - Skipping _event script execution to prevent "
+                "stack overflow");
             // TODO: _event 객체를 안전하게 설정하는 방법 구현 필요
         } else {
             // _event를 null로 설정 (executeScript 대신 setVariable 사용)
             ecmaEngine_->setVariable("_event", ECMAValue(std::monostate{}));
-            SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::setCurrentEvent - Set _event to null using setVariable");
+            SCXML::Common::Logger::debug(
+                "ECMAScriptDataModelEngine::setCurrentEvent - Set _event to null using setVariable");
         }
 
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::setCurrentEvent - Exception: " + std::string(e.what()));
+        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::setCurrentEvent - Exception: " +
+                                     std::string(e.what()));
     }
 }
 
@@ -522,7 +540,8 @@ void ECMAScriptDataModelEngine::registerSCXMLBuiltins() {
         return;
     }
 
-    SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::registerSCXMLBuiltins - Registering SCXML built-in functions");
+    SCXML::Common::Logger::debug(
+        "ECMAScriptDataModelEngine::registerSCXMLBuiltins - Registering SCXML built-in functions");
 
     try {
         // SCXML 내장 함수들 등록 (In은 setStateCheckFunction에서 등록)
@@ -551,14 +570,13 @@ void ECMAScriptDataModelEngine::registerSCXMLBuiltins() {
                     },
                     args[i]);
             }
-            std::cout << oss.str() << std::endl;
+
             return ECMAValue(std::monostate{});
         });
 
-        SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::registerSCXMLBuiltins - SCXML built-ins registered");
-
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::registerSCXMLBuiltins - Exception: " + std::string(e.what()));
+        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::registerSCXMLBuiltins - Exception: " +
+                                     std::string(e.what()));
     }
 }
 
@@ -566,8 +584,6 @@ void ECMAScriptDataModelEngine::registerECMAScriptObjects() {
     if (!ecmaEngine_) {
         return;
     }
-
-    SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::registerECMAScriptObjects - Registering ECMAScript objects");
 
     try {
         // Math 객체 등록 (기본 함수들)
@@ -593,10 +609,9 @@ void ECMAScriptDataModelEngine::registerECMAScriptObjects() {
         SCXML::Runtime::RuntimeContext mathContext;
         ecmaEngine_->executeScript(mathScript, mathContext);
 
-        SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::registerECMAScriptObjects - ECMAScript objects registered");
-
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::registerECMAScriptObjects - Exception: " + std::string(e.what()));
+        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::registerECMAScriptObjects - Exception: " +
+                                     std::string(e.what()));
     }
 }
 
@@ -604,8 +619,6 @@ void ECMAScriptDataModelEngine::initializeSystemVariables() {
     if (!ecmaEngine_) {
         return;
     }
-
-    SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::initializeSystemVariables - Initializing system variables");
 
     try {
         // 기본 시스템 변수들 설정
@@ -615,10 +628,9 @@ void ECMAScriptDataModelEngine::initializeSystemVariables() {
         ecmaEngine_->executeScript("var _ioprocessors = {};", systemContext);
         ecmaEngine_->executeScript("var _event = null;", systemContext);
 
-        SCXML::Common::Logger::debug("ECMAScriptDataModelEngine::initializeSystemVariables - System variables initialized");
-
     } catch (const std::exception &e) {
-        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::initializeSystemVariables - Exception: " + std::string(e.what()));
+        SCXML::Common::Logger::error("ECMAScriptDataModelEngine::initializeSystemVariables - Exception: " +
+                                     std::string(e.what()));
     }
 }
 

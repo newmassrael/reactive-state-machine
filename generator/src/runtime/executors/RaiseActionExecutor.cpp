@@ -1,14 +1,14 @@
 #include "runtime/executors/RaiseActionExecutor.h"
-#include "core/actions/RaiseActionNode.h"
 #include "common/Logger.h"
+#include "core/actions/RaiseActionNode.h"
 #include <stdexcept>
 
 namespace SCXML {
 namespace Runtime {
 
-bool RaiseActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeContext& context) {
+bool RaiseActionExecutor::execute(const Core::ActionNode &actionNode, RuntimeContext &context) {
     // Cast to specific type
-    const auto* raiseNode = safeCast<Core::RaiseActionNode>(actionNode);
+    const auto *raiseNode = safeCast<Core::RaiseActionNode>(actionNode);
     if (!raiseNode) {
         logExecutionError("raise", "Invalid action node type for RaiseActionExecutor", context);
         return false;
@@ -18,7 +18,7 @@ bool RaiseActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeCon
     auto errors = validate(actionNode);
     if (!errors.empty()) {
         SCXML::Common::Logger::error("RaiseActionExecutor::execute - Validation errors:");
-        for (const auto& error : errors) {
+        for (const auto &error : errors) {
             SCXML::Common::Logger::error("  " + error);
         }
         logExecutionError("raise", "Validation failed", context);
@@ -42,10 +42,11 @@ bool RaiseActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeCon
 
         // Raise the event immediately in the context
         // Internal events have higher priority and are processed immediately
+        SCXML::Common::Logger::debug("RaiseActionExecutor::execute - Raising event: " + eventPtr->getName());
         context.raiseEvent(eventPtr);
         return true;
 
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         // Log error and fail gracefully
         logExecutionError("raise", "Exception in raise action: " + std::string(e.what()), context);
 
@@ -59,10 +60,10 @@ bool RaiseActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeCon
     }
 }
 
-std::vector<std::string> RaiseActionExecutor::validate(const Core::ActionNode& actionNode) const {
+std::vector<std::string> RaiseActionExecutor::validate(const Core::ActionNode &actionNode) const {
     std::vector<std::string> errors;
 
-    const auto* raiseNode = safeCast<Core::RaiseActionNode>(actionNode);
+    const auto *raiseNode = safeCast<Core::RaiseActionNode>(actionNode);
     if (!raiseNode) {
         errors.push_back("Invalid action node type for RaiseActionExecutor");
         return errors;
@@ -76,19 +77,19 @@ std::vector<std::string> RaiseActionExecutor::validate(const Core::ActionNode& a
     return errors;
 }
 
-std::shared_ptr<Events::Event> RaiseActionExecutor::createEvent(const Core::RaiseActionNode& raiseNode,
-                                                               RuntimeContext& context) const {
-    (void)context; // Suppress unused parameter warning for now
+std::shared_ptr<Events::Event> RaiseActionExecutor::createEvent(const Core::RaiseActionNode &raiseNode,
+                                                                RuntimeContext &context) const {
+    (void)context;  // Suppress unused parameter warning for now
 
     using namespace SCXML::Events;
 
     // Raised events are always internal by definition
     // They are processed with high priority within the same state machine instance
-    const std::string& eventName = raiseNode.getEvent();
-    const std::string& data = raiseNode.getData();
+    const std::string &eventName = raiseNode.getEvent();
+    const std::string &data = raiseNode.getData();
 
     return std::make_shared<Event>(eventName, Event::EventData(data), Event::Type::INTERNAL);
 }
 
-} // namespace Runtime
-} // namespace SCXML
+}  // namespace Runtime
+}  // namespace SCXML

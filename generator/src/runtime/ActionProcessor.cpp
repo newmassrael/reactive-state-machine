@@ -1,19 +1,24 @@
 #include "runtime/ActionProcessor.h"
 #include "common/Logger.h"
+#include "core/actions/AssignActionNode.h"
+#include "core/actions/CancelActionNode.h"
+#include "core/actions/ForeachActionNode.h"
+#include "core/actions/IfActionNode.h"
+#include "core/actions/LogActionNode.h"
+#include "core/actions/RaiseActionNode.h"
+#include "core/actions/ScriptActionNode.h"
+#include "core/actions/SendActionNode.h"
 #include "events/Event.h"
 #include "model/DocumentModel.h"
 #include "model/IActionNode.h"
 #include "model/IStateNode.h"
 #include "runtime/RuntimeContext.h"
-#include "core/actions/AssignActionNode.h"
-#include "core/actions/LogActionNode.h"
-#include "core/actions/RaiseActionNode.h"
 
 namespace SCXML {
 namespace Runtime {
 
-ActionProcessor::ActionProcessor() : expressionEvaluator_(nullptr), 
-                                      executorFactory_(std::make_shared<DefaultActionExecutorFactory>()) {}
+ActionProcessor::ActionProcessor()
+    : expressionEvaluator_(nullptr), executorFactory_(std::make_shared<DefaultActionExecutorFactory>()) {}
 
 ActionProcessor::ActionResult ActionProcessor::executeEntryActions(std::shared_ptr<::SCXML::Model::DocumentModel> model,
                                                                    const std::string &stateId,
@@ -36,7 +41,6 @@ ActionProcessor::ActionResult ActionProcessor::executeEntryActions(std::shared_p
 
         // Get entry actions for the state
         auto entryActions = getEntryActions(model, stateId);
-
         if (entryActions.empty()) {
             // No entry actions - this is success
             result.success = true;
@@ -193,6 +197,8 @@ ActionProcessor::getEntryActions(std::shared_ptr<::SCXML::Model::DocumentModel> 
         return actions;
     }
 
+    // Get entry action nodes from the state node
+    actions = stateNode->getEntryActionNodes();
     return actions;
 }
 
@@ -246,27 +252,66 @@ bool ActionProcessor::executeSingleAction(std::shared_ptr<SCXML::Model::IActionN
     try {
         // Get action type and find appropriate executor
         std::string actionType = action->getActionType();
+        SCXML::Common::Logger::error("ActionProcessor::executeSingleAction - Processing action type: " + actionType +
+                                     ", ID: " + action->getId());
+
+        // Debug: Check actual runtime type
+        const std::type_info &actionRuntimeType = typeid(*action);
+        SCXML::Common::Logger::error("ActionProcessor::executeSingleAction - Actual runtime type: " +
+                                     std::string(actionRuntimeType.name()));
+
         auto executor = executorFactory_->createExecutor(actionType);
-        
+
         if (!executor) {
             addError("No executor found for action type: " + actionType);
             return false;
         }
 
         // Try casting to concrete action types
-        Core::ActionNode* coreAction = nullptr;
-        
+        Core::ActionNode *coreAction = nullptr;
+
         if (actionType == "assign") {
             auto assignAction = std::dynamic_pointer_cast<Core::AssignActionNode>(action);
-            if (assignAction) coreAction = assignAction.get();
+            if (assignAction) {
+                coreAction = assignAction.get();
+            }
         } else if (actionType == "log") {
             auto logAction = std::dynamic_pointer_cast<Core::LogActionNode>(action);
-            if (logAction) coreAction = logAction.get();
+            if (logAction) {
+                coreAction = logAction.get();
+            }
         } else if (actionType == "raise") {
             auto raiseAction = std::dynamic_pointer_cast<Core::RaiseActionNode>(action);
-            if (raiseAction) coreAction = raiseAction.get();
+            if (raiseAction) {
+                coreAction = raiseAction.get();
+            }
+        } else if (actionType == "if") {
+            auto ifAction = std::dynamic_pointer_cast<Core::IfActionNode>(action);
+            if (ifAction) {
+                coreAction = ifAction.get();
+            }
+        } else if (actionType == "send") {
+            auto sendAction = std::dynamic_pointer_cast<Core::SendActionNode>(action);
+            if (sendAction) {
+                coreAction = sendAction.get();
+            }
+        } else if (actionType == "script") {
+            auto scriptAction = std::dynamic_pointer_cast<Core::ScriptActionNode>(action);
+            if (scriptAction) {
+                coreAction = scriptAction.get();
+            }
+        } else if (actionType == "cancel") {
+            auto cancelAction = std::dynamic_pointer_cast<Core::CancelActionNode>(action);
+            if (cancelAction) {
+                coreAction = cancelAction.get();
+            }
+        } else if (actionType == "foreach") {
+            auto foreachAction = std::dynamic_pointer_cast<Core::ForeachActionNode>(action);
+            if (foreachAction) {
+                coreAction = foreachAction.get();
+            }
         }
-        
+
         if (!coreAction) {
             addError("Failed to cast action to concrete type: " + actionType + " (" + action->getId() + ")");
             return false;

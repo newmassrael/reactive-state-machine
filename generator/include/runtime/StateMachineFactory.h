@@ -12,6 +12,9 @@
 
 namespace SCXML {
 
+// Forward declaration
+class IECMAScriptEngine;
+
 namespace Model {
 class DocumentModel;
 }
@@ -29,6 +32,15 @@ public:
     /**
      * @brief State machine creation options
      */
+    /**
+     * @brief ECMAScript engine configuration options
+     */
+    enum class ECMAScriptEngine {
+        AUTO,     // Auto-detect and use best available (QuickJS preferred)
+        QUICKJS,  // Force QuickJS engine
+        NONE      // Disable ECMAScript support (null datamodel only)
+    };
+
     struct CreationOptions {
         std::string name = "state_machine";  // State machine name
         bool enableLogging = true;           // Enable state change logging
@@ -37,6 +49,18 @@ public:
         bool enableOptimizations = true;     // Enable runtime optimizations
         size_t maxEventQueueSize = 1000;     // Maximum event queue size
         int maxEventRate = 0;                // Max events/sec (0=unlimited)
+
+        // ECMAScript integration options
+        ECMAScriptEngine ecmaScriptEngine = ECMAScriptEngine::AUTO;  // ECMAScript engine selection
+        bool autoDetectDatamodel = true;    // Automatically detect datamodel type and setup engine
+        
+        // Advanced ECMAScript options
+        struct ScriptOptions {
+            size_t memoryLimit = 16 * 1024 * 1024;  // Memory limit in bytes (16MB default)
+            size_t stackSize = 256 * 1024;          // Stack size in bytes (256KB default)
+            bool enableDebugging = false;           // Enable JavaScript debugging features
+            std::chrono::milliseconds timeout = std::chrono::milliseconds(5000);  // Script timeout
+        } scriptOptions;
 
         // Callback functions
         std::function<void(const std::string &)> onStateChange;  // State change callback
@@ -95,30 +119,30 @@ public:
      * @param options Creation options
      * @return Creation result with runtime
      */
-    static CreationResult createFromModel(std::shared_ptr<::SCXML::Model::DocumentModel> model,
-                                          const CreationOptions &options);
+    static CreationResult create(std::shared_ptr<::SCXML::Model::DocumentModel> model,
+                                const CreationOptions &options);
 
-    static CreationResult createFromModel(std::shared_ptr<::SCXML::Model::DocumentModel> model) {
-        return createFromModel(model, getDefaultOptions());
+    static CreationResult create(std::shared_ptr<::SCXML::Model::DocumentModel> model) {
+        return create(model, getDefaultOptions());
     }
 
     /**
-     * @brief Quick create and start state machine from file
+     * @brief Create and start state machine from file
      * @param filePath Path to SCXML file
      * @param machineName Optional machine name
      * @return Started runtime instance or nullptr on error
      */
-    static std::shared_ptr<Processor> quickStart(const std::string &filePath,
-                                                 const std::string &machineName = "quick_machine");
+    static std::shared_ptr<Processor> startFromFile(const std::string &filePath,
+                                                    const std::string &machineName = "state_machine");
 
     /**
-     * @brief Quick create and start state machine from content
+     * @brief Create and start state machine from content
      * @param scxmlContent SCXML document content
      * @param machineName Optional machine name
      * @return Started runtime instance or nullptr on error
      */
-    static std::shared_ptr<Processor> quickStartFromContent(const std::string &scxmlContent,
-                                                            const std::string &machineName = "quick_machine");
+    static std::shared_ptr<Processor> startFromContent(const std::string &scxmlContent,
+                                                       const std::string &machineName = "state_machine");
 
     /**
      * @brief Create multiple state machines from directory
@@ -169,12 +193,45 @@ private:
      */
     static bool configureRuntime(std::shared_ptr<Processor> runtime, const CreationOptions &options);
 
+public:
     /**
      * @brief Validate SCXML file
      * @param scxmlFilePath Path to SCXML file to validate
      * @return Vector of validation errors (empty if valid)
      */
     static std::vector<std::string> validateScxmlFile(const std::string &scxmlFilePath);
+
+    /**
+     * @brief Setup ECMAScript engine for automatic datamodel integration
+     * @param model Document model containing datamodel information
+     * @param options Creation options containing ECMAScript configuration
+     * @return true if successful setup or no setup needed
+     */
+    static bool setupECMAScriptEngine(std::shared_ptr<::SCXML::Model::DocumentModel> model,
+                                      const CreationOptions &options);
+
+    
+    /**
+     * @brief Setup ECMAScript engine and connect directly to RuntimeContext
+     * @param model Document model to determine engine requirements
+     * @param context RuntimeContext to configure with engine
+     * @param options Creation options including engine configuration
+     * @return true if successfully setup and connected
+     */
+    static bool setupECMAScriptEngineForContext(std::shared_ptr<::SCXML::Model::DocumentModel> model,
+                                               std::shared_ptr<SCXML::Runtime::RuntimeContext> context,
+                                               const CreationOptions &options);
+
+    /**
+     * @brief Configure ECMAScript engine with specified options
+     * @param engine ECMAScript engine to configure
+     * @param options Engine-specific configuration options
+     * @return true if successfully configured
+     */
+    static bool configureECMAScriptEngine(IECMAScriptEngine *engine,
+                                          const CreationOptions::ScriptOptions &options);
+
+
 };
 
 // ========== Convenience Macros ==========

@@ -1,31 +1,30 @@
 #pragma once
 
-#include <gtest/gtest.h>
 #include "common/Logger.h"
-#include "parsing/DocumentParser.h"
+#include "core/actions/IfActionNode.h"
+#include "mocks/MockActionNode.h"
+#include "mocks/MockDataModelItem.h"
+#include "mocks/MockGuardNode.h"
+#include "mocks/MockInvokeNode.h"
 #include "mocks/MockNodeFactory.h"
 #include "mocks/MockStateNode.h"
 #include "mocks/MockTransitionNode.h"
-#include "mocks/MockGuardNode.h"
-#include "mocks/MockActionNode.h"
-#include "mocks/MockDataModelItem.h"
 #include "mocks/MockXIncludeProcessor.h"
-#include "mocks/MockInvokeNode.h"
-#include <memory>
-#include <string>
+#include "parsing/DocumentParser.h"
 #include <fstream>
-#include <sstream>
+#include <gtest/gtest.h>
 #include <iostream>
+#include <memory>
+#include <sstream>
+#include <string>
 
 // 모든 테스트에서 공유할 기본 테스트 픽스처 클래스
-class SCXMLParserTestBase : public ::testing::Test
-{
+class SCXMLParserTestBase : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         // Disable debug logging to prevent test output spam
         SCXML::Common::Logger::setMinLevel(SCXML::Common::Logger::Level::WARNING);
-        
+
         mockFactory = std::make_shared<MockNodeFactory>();
         parser = std::make_shared<SCXML::Parsing::DocumentParser>(mockFactory);
 
@@ -35,17 +34,15 @@ protected:
         SetupDefaultMockBehavior();
 
         // 관련 파서들을 연결
-        parser->getStateNodeParser()->setRelatedParsers(
-            parser->getTransitionParser(),
-            parser->getActionParser(),
-            parser->getDataModelParser(), parser->getInvokeParser(), parser->getDoneDataParser());
+        parser->getStateNodeParser()->setRelatedParsers(parser->getTransitionParser(), parser->getActionParser(),
+                                                        parser->getDataModelParser(), parser->getInvokeParser(),
+                                                        parser->getDoneDataParser());
 
         auto actionParser = std::make_shared<SCXML::Parsing::ActionParser>(mockFactory);
         parser->getTransitionParser()->setActionParser(actionParser);
     }
 
-    void TearDown() override
-    {
+    void TearDown() override {
         // Mock 객체가 누수되지 않도록 정리
         testing::Mock::AllowLeak(mockFactory.get());
 
@@ -54,11 +51,9 @@ protected:
         mockFactory.reset();
     }
 
-    void SetupDefaultMockBehavior()
-    {
+    void SetupDefaultMockBehavior() {
         // StateNode Mock 설정
-        auto setupMockStateNode = [this](const std::string &id, const SCXML::Type type)
-        {
+        auto setupMockStateNode = [this](const std::string &id, const SCXML::Type type) {
             auto mockState = std::make_shared<MockStateNode>();
             mockState->id_ = id;
             mockState->type_ = type;
@@ -70,11 +65,10 @@ protected:
         };
 
         // TransitionNode Mock 설정
-        auto setupMockTransitionNode = [this](const std::string &event, const std::string &target)
-        {
+        auto setupMockTransitionNode = [this](const std::string &event, const std::string &target) {
             auto mockTransition = std::make_shared<MockTransitionNode>();
             mockTransition->event_ = event;
-            mockTransition->targets_ = {target}; // Changed target_ to targets_ and store as vector
+            mockTransition->targets_ = {target};  // Changed target_ to targets_ and store as vector
 
             // 기본 동작 설정
             mockTransition->SetupDefaultBehavior();
@@ -83,8 +77,7 @@ protected:
         };
 
         // GuardNode Mock 설정
-        auto setupMockGuardNode = [this](const std::string &id, const std::string &target)
-        {
+        auto setupMockGuardNode = [this](const std::string &id, const std::string &target) {
             auto mockGuard = std::make_shared<MockGuardNode>();
             mockGuard->id_ = id;
             mockGuard->target_ = target;
@@ -93,21 +86,26 @@ protected:
             return mockGuard;
         };
 
-        // ActionNode Mock 설정
-        auto setupMockActionNode = [this](const std::string &id)
-        {
-            auto mockAction = std::make_shared<MockActionNode>();
-            mockAction->id_ = id;
+        // ActionNode Mock 설정 - "if" 타입일 때는 실제 IfActionNode 사용
+        auto setupMockActionNode = [this](const std::string &id) -> std::shared_ptr<SCXML::Model::IActionNode> {
+            if (id == "if") {
+                // "if" 타입일 때는 실제 IfActionNode를 생성
+                auto ifAction = std::make_shared<SCXML::Core::IfActionNode>(id);
+                return ifAction;
+            } else {
+                // 다른 타입들은 MockActionNode 사용
+                auto mockAction = std::make_shared<MockActionNode>();
+                mockAction->id_ = id;
 
-            // 기본 동작 설정 메서드 호출
-            mockAction->SetupDefaultBehavior();
+                // 기본 동작 설정 메서드 호출
+                mockAction->SetupDefaultBehavior();
 
-            return mockAction;
+                return mockAction;
+            }
         };
 
         // DataModelItem Mock 설정
-        auto setupMockDataModelItem = [this](const std::string &id, const std::string &expr)
-        {
+        auto setupMockDataModelItem = [this](const std::string &id, const std::string &expr) {
             auto mockDataItem = std::make_shared<MockDataModelItem>();
 
             // ID와 표현식 설정
@@ -115,8 +113,7 @@ protected:
             mockDataItem->expr_ = expr;
 
             // CDATA 콘텐츠 문제 해결을 위한 특별 처리
-            if (id == "flag")
-            {
+            if (id == "flag") {
                 mockDataItem->content_ = "true";
             }
 
@@ -127,8 +124,7 @@ protected:
         };
 
         // InvokeNode Mock 설정
-        auto setupMockInvokeNode = [this](const std::string &id)
-        {
+        auto setupMockInvokeNode = [this](const std::string &id) {
             auto mockInvoke = std::make_shared<MockInvokeNode>();
             mockInvoke->id_ = id;
             mockInvoke->type_ = "http://www.w3.org/TR/scxml/";
@@ -148,17 +144,14 @@ protected:
             .WillByDefault(testing::Invoke(setupMockTransitionNode));
         ON_CALL(*mockFactory, createGuardNode(testing::_, testing::_))
             .WillByDefault(testing::Invoke(setupMockGuardNode));
-        ON_CALL(*mockFactory, createActionNode(testing::_))
-            .WillByDefault(testing::Invoke(setupMockActionNode));
+        ON_CALL(*mockFactory, createActionNode(testing::_)).WillByDefault(testing::Invoke(setupMockActionNode));
         ON_CALL(*mockFactory, createDataModelItem(testing::_, testing::_))
             .WillByDefault(testing::Invoke(setupMockDataModelItem));
-        ON_CALL(*mockFactory, createInvokeNode(testing::_))
-            .WillByDefault(testing::Invoke(setupMockInvokeNode));
+        ON_CALL(*mockFactory, createInvokeNode(testing::_)).WillByDefault(testing::Invoke(setupMockInvokeNode));
     }
 
     // 테스트용 SCXML 생성
-    std::string createBasicTestSCXML()
-    {
+    std::string createBasicTestSCXML() {
         return R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s1">
   <state id="s1">
@@ -180,8 +173,7 @@ protected:
     }
 
     // 테스트용 SCXML 파일 생성
-    std::string createTestSCXMLFile(const std::string &content)
-    {
+    std::string createTestSCXMLFile(const std::string &content) {
         std::string filename = "test_scxml_" + std::to_string(rand()) + ".xml";
         std::ofstream file(filename);
         file << content;

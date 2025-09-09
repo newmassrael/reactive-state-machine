@@ -5,6 +5,20 @@ set(SCXML_GENERATOR_SOURCES
     src/common/Logger.cpp
     src/core/ParallelNode.cpp
     src/parsing/XSDValidator.cpp
+    src/runtime/ECMAScriptContextManager.cpp
+    src/runtime/DataModelEngine.cpp
+    src/runtime/ECMAScriptDataModelEngine.cpp
+    src/runtime/StateMachineFactory.cpp
+    src/runtime/Processor.cpp
+    src/runtime/RuntimeContext.cpp
+    src/runtime/EventScheduler.cpp
+    src/runtime/TransitionExecutor.cpp
+    src/runtime/executors/AssignActionExecutor.cpp
+    src/runtime/StateConfiguration.cpp
+    src/runtime/TransitionSelector.cpp
+    src/runtime/MicrostepProcessor.cpp
+    src/runtime/SCXMLExecutionEngine.cpp
+    src/events/EventQueue.cpp
 )
 
 # Add QuickJS engine source if available
@@ -13,8 +27,11 @@ if(ENABLE_QUICKJS)
     set(QUICKJS_LIBRARY "${QUICKJS_SOURCE_DIR}/libquickjs.a")
     
     if(EXISTS "${QUICKJS_SOURCE_DIR}/quickjs.h" AND EXISTS "${QUICKJS_LIBRARY}")
-        message(STATUS "Adding QuickJSEngine.cpp to build sources")
-        list(APPEND SCXML_GENERATOR_SOURCES src/runtime/QuickJSEngine.cpp)
+        message(STATUS "Adding QuickJSEngine.cpp and JSValueManager.cpp to build sources")
+        list(APPEND SCXML_GENERATOR_SOURCES 
+            src/runtime/QuickJSEngine.cpp
+            src/runtime/JSValueManager.cpp
+        )
     else()
         message(WARNING "QuickJS files not found at expected locations")
         message(STATUS "Expected: ${QUICKJS_SOURCE_DIR}/quickjs.h")
@@ -74,13 +91,10 @@ if(ENABLE_QUICKJS)
 
         message(STATUS "QuickJS support enabled (using pre-built library)")
     else()
-        message(WARNING "QuickJS library not found, using JavaScriptEvaluatorAdapter fallback")
-        message(STATUS "Expected library at: ${QUICKJS_LIBRARY}")
-        target_compile_definitions(scxml_generator PRIVATE HAS_QUICKJS=0)
+        message(FATAL_ERROR "QuickJS library not found. QuickJS is now required for SCXML ECMAScript support. Expected library at: ${QUICKJS_LIBRARY}")
     endif()
 else()
-    target_compile_definitions(scxml_generator PRIVATE HAS_QUICKJS=0)
-    message(STATUS "QuickJS support disabled, using JavaScriptEvaluatorAdapter fallback")
+    message(FATAL_ERROR "QuickJS support disabled, but QuickJS is now required for SCXML ECMAScript support. Enable with -DENABLE_QUICKJS=ON")
 endif()
 
 # 모던 타겟 링킹

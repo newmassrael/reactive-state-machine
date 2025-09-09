@@ -21,6 +21,34 @@ void AssignActionNode::setLocation(const std::string &location) {
 void AssignActionNode::setExpr(const std::string &expr) {
     expr_ = expr;
     SCXML::Common::Logger::debug("AssignActionNode::setExpr - Set expression: " + expr);
+    SCXML::Common::Logger::debug("AssignActionNode::setExpr - Input length: " + std::to_string(expr.length()));
+    SCXML::Common::Logger::debug("AssignActionNode::setExpr - Stored expr_ value: '" + expr_ + "'");
+    SCXML::Common::Logger::debug("AssignActionNode::setExpr - Stored expr_ length: " + std::to_string(expr_.length()));
+    
+    // 16진수 덤프로 정확한 내용 확인
+    std::string hexDump = "";
+    for (size_t i = 0; i < expr_.length(); ++i) {
+        char buf[4];
+        sprintf(buf, "%02x ", (unsigned char)expr_[i]);
+        hexDump += buf;
+    }
+    SCXML::Common::Logger::debug("AssignActionNode::setExpr - Hex dump: " + hexDump);
+}
+
+const std::string &AssignActionNode::getExpr() const {
+    SCXML::Common::Logger::debug("AssignActionNode::getExpr - Retrieved expr_ value: '" + expr_ + "'");
+    SCXML::Common::Logger::debug("AssignActionNode::getExpr - Retrieved expr_ length: " + std::to_string(expr_.length()));
+    
+    // 16진수 덤프로 정확한 내용 확인
+    std::string hexDump = "";
+    for (size_t i = 0; i < expr_.length(); ++i) {
+        char buf[4];
+        sprintf(buf, "%02x ", (unsigned char)expr_[i]);
+        hexDump += buf;
+    }
+    SCXML::Common::Logger::debug("AssignActionNode::getExpr - Hex dump: " + hexDump);
+    
+    return expr_;
 }
 
 void AssignActionNode::setAttr(const std::string &attr) {

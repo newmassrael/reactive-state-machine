@@ -114,6 +114,13 @@ public:
     std::shared_ptr<IActionNode> clone() const;
 
     /**
+     * @brief Override setAttribute to handle foreach-specific attributes
+     * @param name Attribute name
+     * @param value Attribute value
+     */
+    void setAttribute(const std::string &name, const std::string &value) override;
+
+    /**
      * @brief Validate foreach action configuration
      * @return Vector of validation error messages (empty if valid)
      */
@@ -158,5 +165,5 @@ private:
     std::vector<std::shared_ptr<IActionNode>> iterationActions_;  // Actions to execute per iteration
 };
 
-} // namespace Core
+}  // namespace Core
 }  // namespace SCXML

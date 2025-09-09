@@ -28,9 +28,9 @@ bool AssignActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeCo
 
     try {
         // Resolve the value to assign
-        std::string value = resolveValue(*assignNode, context);
+        auto value = resolveValue(*assignNode, context);
         
-        if (value.empty() && !assignNode->getExpr().empty() && !assignNode->getAttr().empty()) {
+        if (std::holds_alternative<std::monostate>(value) && !assignNode->getExpr().empty() && !assignNode->getAttr().empty()) {
             logExecutionError("assign", "Failed to resolve value for assignment", context);
             return false;
         }
@@ -49,7 +49,7 @@ bool AssignActionExecutor::execute(const Core::ActionNode& actionNode, RuntimeCo
 
         if (success) {
             SCXML::Common::Logger::debug("AssignActionExecutor::execute - Successfully assigned '" + 
-                                       value + "' to location '" + location + "'");
+                                       dataModel->valueToString(value) + "' to location '" + location + "'");
             return true;
         } else {
             logExecutionError("assign", "Failed to assign to location: " + location, context);
@@ -89,10 +89,17 @@ std::vector<std::string> AssignActionExecutor::validate(const Core::ActionNode& 
     return errors;
 }
 
-std::string AssignActionExecutor::resolveValue(const Core::AssignActionNode& assignNode, 
+SCXML::DataModelEngine::DataValue AssignActionExecutor::resolveValue(const Core::AssignActionNode& assignNode, 
                                              RuntimeContext& context) const {
     const std::string& expr = assignNode.getExpr();
     const std::string& attr = assignNode.getAttr();
+    
+    // Debug logging to trace expression values
+    SCXML::Common::Logger::debug("AssignActionExecutor::resolveValue - Retrieved expr from node: '" + expr + "'");
+    SCXML::Common::Logger::debug("AssignActionExecutor::resolveValue - Retrieved attr from node: '" + attr + "'");
+    SCXML::Common::Logger::debug("AssignActionExecutor::resolveValue - Expr length: " + std::to_string(expr.length()));
+    SCXML::Common::Logger::debug("AssignActionExecutor::resolveValue - First char: " + (expr.empty() ? "empty" : std::string(1, expr[0])));
+    SCXML::Common::Logger::debug("AssignActionExecutor::resolveValue - Last char: " + (expr.empty() ? "empty" : std::string(1, expr[expr.length()-1])));
 
     if (!expr.empty()) {
         // Evaluate expression using data model engine
@@ -101,29 +108,30 @@ std::string AssignActionExecutor::resolveValue(const Core::AssignActionNode& ass
         if (dataModel) {
             try {
                 // Try to evaluate as ECMAScript expression
+                SCXML::Common::Logger::debug("AssignActionExecutor::resolveValue - About to evaluate expression: '" + expr + "'");
                 auto result = dataModel->evaluateExpression(expr, context);
                 if (result.success) {
-                    return dataModel->valueToString(result.value);
+                    return result.value;  // Return DataValue directly
                 } else {
                     throw std::runtime_error("Expression evaluation failed: " + result.errorMessage);
                 }
             } catch (const std::exception& e) {
                 SCXML::Common::Logger::warning("AssignActionExecutor::resolveValue - Expression evaluation failed: " +
                                               std::string(e.what()) + ", using literal value");
-                return expr;  // Fallback to literal value
+                return expr;  // Fallback to literal string value
             }
         } else {
             SCXML::Common::Logger::warning("AssignActionExecutor::resolveValue - No data model for expression evaluation, using literal");
-            return expr;
+            return expr;  // Return as string DataValue
         }
     } else if (!attr.empty()) {
         // Read from context attribute
         // This would typically read from the current event's data or context variables
         SCXML::Common::Logger::warning("AssignActionExecutor::resolveValue - Attribute resolution not fully implemented: " + attr);
-        return attr;  // Placeholder implementation
+        return attr;  // Placeholder implementation - return as string DataValue
     }
 
-    return "";
+    return std::monostate{};  // Return undefined/null DataValue
 }
 
 } // namespace Runtime

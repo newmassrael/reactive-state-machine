@@ -117,6 +117,68 @@ public:
     virtual void addEvent(const std::string &event) override;
     virtual const std::vector<std::string> &getEvents() const override;
 
+    // ====== New methods for SCXML Core Engine ======
+
+    /**
+     * @brief Get source state ID
+     * @return Source state identifier
+     */
+    virtual std::string getSource() const override;
+
+    /**
+     * @brief Set source state ID
+     * @param source Source state identifier
+     */
+    virtual void setSource(const std::string &source) override;
+
+    /**
+     * @brief Get first target (for backward compatibility)
+     * @return First target state ID, empty if no targets
+     */
+    virtual std::string getTarget() const override;
+
+    /**
+     * @brief Get condition expression
+     * @return Condition expression string
+     */
+    virtual const std::string &getCond() const override;
+
+    /**
+     * @brief Set condition expression
+     * @param cond Condition expression
+     */
+    virtual void setCond(const std::string &cond) override;
+
+    /**
+     * @brief Get transition type
+     * @return Type string ("internal" or "external")
+     */
+    virtual std::string getType() const override;
+
+    /**
+     * @brief Set transition type
+     * @param type Type string ("internal" or "external")
+     */
+    virtual void setType(const std::string &type) override;
+
+    /**
+     * @brief Get document order for priority sorting
+     * @return Document order index
+     */
+    virtual int getDocumentOrder() const override;
+
+    /**
+     * @brief Set document order
+     * @param order Document order index
+     */
+    virtual void setDocumentOrder(int order) override;
+
+    /**
+     * @brief Get executable content (actions) for transition
+     * @return Vector of action nodes
+     */
+    virtual std::vector<std::shared_ptr<SCXML::Model::IActionNode>> getExecutableContent() const override;
+
 private:
     /**
      * @brief 타겟 문자열에서 타겟 ID 목록 파싱
@@ -134,7 +196,13 @@ private:
     std::vector<std::string> events_;
     mutable std::vector<std::string> cachedTargets_;
     mutable bool targetsDirty_;  // 타겟 캐시가 최신 상태인지 표시
+
+    // New fields for SCXML Core Engine
+    std::string source_;     // Source state ID
+    std::string condition_;  // Condition expression
+    std::string type_;       // Transition type ("internal" or "external")
+    int documentOrder_;      // Document order for priority
 };
 
-} // namespace Core
+}  // namespace Core
 }  // namespace SCXML

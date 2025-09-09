@@ -31,6 +31,8 @@ void EventQueue::enqueue(std::shared_ptr<Event> event, Priority priority) {
     priorityEvent.priority = priority;
     priorityEvent.sequence = sequence_++;
 
+    SCXML::Common::Logger::debug("EventQueue::enqueue - Event '" + event->getName() + "' assigned sequence " + std::to_string(priorityEvent.sequence));
+
     queue_.push(priorityEvent);
     condition_.notify_one();
 }
@@ -51,6 +53,8 @@ std::shared_ptr<Event> EventQueue::dequeue() {
     auto priorityEvent = queue_.top();
     queue_.pop();
 
+    SCXML::Common::Logger::debug("EventQueue::dequeue - Dequeuing event '" + priorityEvent.event->getName() + "' with sequence " + std::to_string(priorityEvent.sequence));
+
     return priorityEvent.event;
 }
 
@@ -64,6 +68,8 @@ bool EventQueue::tryDequeue(std::shared_ptr<Event> &event) {
     auto priorityEvent = queue_.top();
     queue_.pop();
     event = priorityEvent.event;
+
+    SCXML::Common::Logger::debug("EventQueue::tryDequeue - Dequeuing event '" + priorityEvent.event->getName() + "' with sequence " + std::to_string(priorityEvent.sequence));
 
     return true;
 }

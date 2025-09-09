@@ -113,6 +113,18 @@ public:
     void addState(std::shared_ptr<IStateNode> state);
 
     /**
+     * @brief 문서 레벨 전환 추가 (document-level transitions)
+     * @param transition 문서 레벨 전환 노드
+     */
+    void addDocumentTransition(std::shared_ptr<ITransitionNode> transition);
+
+    /**
+     * @brief 문서 레벨 전환 목록 반환
+     * @return 문서 레벨 전환 벡터
+     */
+    const std::vector<std::shared_ptr<ITransitionNode>> &getDocumentTransitions() const;
+
+    /**
      * @brief 상태 노드 목록 반환
      * @return 상태 노드 벡터
      */
@@ -187,7 +199,7 @@ private:
      * @return 상태 노드 포인터, 없으면 nullptr
      */
     IStateNode *findStateByIdRecursive(IStateNode *state, const std::string &id,
-                                                    std::set<std::string> &visitedStates) const;
+                                       std::set<std::string> &visitedStates) const;
 
     /**
      * @brief Find state in hierarchy using dotted path notation
@@ -195,8 +207,7 @@ private:
      * @param childPath Remaining path to search (may contain dots for further nesting)
      * @return Found state or nullptr
      */
-    IStateNode *findStateInHierarchy(IStateNode *parentState,
-                                                  const std::string &childPath) const;
+    IStateNode *findStateInHierarchy(IStateNode *parentState, const std::string &childPath) const;
 
     /**
      * @brief 상태 계층 구조 출력 (디버깅용)
@@ -218,6 +229,7 @@ private:
     std::vector<std::shared_ptr<IDataModelItem>> dataModelItems_;
     std::string binding_;
     std::vector<std::shared_ptr<IDataModelItem>> systemVariables_;
+    std::vector<std::shared_ptr<ITransitionNode>> documentTransitions_;
 };
 
 }  // namespace Model

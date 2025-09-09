@@ -1,0 +1,5 @@
+id: 335
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: If an event was not received from an external entity, the Processor MUST leave the origin field blank.

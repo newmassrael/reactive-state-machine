@@ -144,6 +144,13 @@ public:
      */
     std::shared_ptr<IActionNode> clone() const;
 
+    /**
+     * @brief Parse delay string to milliseconds
+     * @param delayStr Delay specification (e.g., "5s", "100ms", "2min")
+     * @return Delay in milliseconds, 0 if immediate
+     */
+    uint64_t parseDelay(const std::string &delayStr) const;
+
 protected:
     /**
      * @brief Create event from action parameters
@@ -151,13 +158,6 @@ protected:
      * @return Created event ready for sending
      */
     SCXML::Events::EventPtr createEvent(::SCXML::Runtime::RuntimeContext &context);
-
-    /**
-     * @brief Parse delay string to milliseconds
-     * @param delayStr Delay specification (e.g., "5s", "100ms", "2min")
-     * @return Delay in milliseconds, 0 if immediate
-     */
-    uint64_t parseDelay(const std::string &delayStr) const;
 
 private:
     std::string target_;  // Target URI for event delivery
@@ -168,5 +168,5 @@ private:
     std::string type_;    // Event type override
 };
 
-} // namespace Core
+}  // namespace Core
 }  // namespace SCXML
