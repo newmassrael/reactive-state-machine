@@ -1,7 +1,7 @@
 #include "../../include/runtime/HTTPIOProcessor.h"
-#include "../common/Logger.h"
 #include "../../include/common/GracefulJoin.h"
 #include "../../include/runtime/HTTPIOProcessor.h"
+#include "common/Logger.h"
 #include <algorithm>
 #include <future>
 #include <httplib.h>
@@ -216,7 +216,8 @@ void HTTPIOProcessor::handleHttpResponse(const SendParameters &params, int statu
                                          const std::string &body) {
     (void)headers;  // Suppress unused parameter warning
 
-    SCXML::Common::Logger::info("HTTPIOProcessor: HTTP response " + std::to_string(statusCode) + " for: " + params.sendId);
+    SCXML::Common::Logger::info("HTTPIOProcessor: HTTP response " + std::to_string(statusCode) +
+                                " for: " + params.sendId);
 
     // Create response event
     std::string eventName = "http.response";

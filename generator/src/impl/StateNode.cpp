@@ -1,14 +1,15 @@
 #include "impl/StateNode.h"
-#include "../../generator/include/Logger.h"
+#include "common/Logger.h"
 #include <algorithm>
 
 namespace SCXML {
 namespace Core {
 
 StateNode::StateNode(const std::string &id, SCXML::Type type)
-    : id_(id), type_(type), parent_(nullptr), initialState_(""), onEntry_(""), onExit_(""), initialTransition_(nullptr) {
+    : id_(id), type_(type), parent_(nullptr), initialState_(""), onEntry_(""), onExit_(""),
+      initialTransition_(nullptr) {
     SCXML::Common::Logger::debug("StateNode::Constructor - Creating state node: " + id +
-                        ", type: " + std::to_string(static_cast<int>(type)));
+                                 ", type: " + std::to_string(static_cast<int>(type)));
 }
 
 StateNode::~StateNode() {
@@ -25,7 +26,8 @@ SCXML::Type StateNode::getType() const {
 
 void StateNode::setParent(SCXML::Model::IStateNode *parent) {
     parent_ = parent;
-    SCXML::Common::Logger::debug("StateNode::setParent() - Setting parent for " + id_ + ": " + (parent ? parent->getId() : "null"));
+    SCXML::Common::Logger::debug("StateNode::setParent() - Setting parent for " + id_ + ": " +
+                                 (parent ? parent->getId() : "null"));
 }
 
 SCXML::Model::IStateNode *StateNode::getParent() const {
@@ -49,8 +51,8 @@ const std::vector<std::shared_ptr<SCXML::Model::IStateNode>> &StateNode::getChil
 void StateNode::addTransition(std::shared_ptr<SCXML::Model::ITransitionNode> transition) {
     if (transition) {
         transitions_.push_back(transition);
-        SCXML::Common::Logger::debug("StateNode::addTransition() - Adding transition to " + id_ + ": event=" + transition->getEvent() +
-                      ", target=" + transition->getTarget());
+        SCXML::Common::Logger::debug("StateNode::addTransition() - Adding transition to " + id_ +
+                                     ": event=" + transition->getEvent() + ", target=" + transition->getTarget());
     } else {
         SCXML::Common::Logger::warning("StateNode::addTransition() - Attempt to add null transition to " + id_);
     }
@@ -63,7 +65,8 @@ const std::vector<std::shared_ptr<SCXML::Model::ITransitionNode>> &StateNode::ge
 void StateNode::addDataItem(std::shared_ptr<SCXML::Model::IDataModelItem> dataItem) {
     if (dataItem) {
         dataItems_.push_back(dataItem);
-        SCXML::Common::Logger::debug("StateNode::addDataItem() - Adding data item to " + id_ + ": " + dataItem->getId());
+        SCXML::Common::Logger::debug("StateNode::addDataItem() - Adding data item to " + id_ + ": " +
+                                     dataItem->getId());
     } else {
         SCXML::Common::Logger::warning("StateNode::addDataItem() - Attempt to add null data item to " + id_);
     }
@@ -75,7 +78,8 @@ const std::vector<std::shared_ptr<SCXML::Model::IDataModelItem>> &StateNode::get
 
 void StateNode::setInitialState(const std::string &initialState) {
     initialState_ = initialState;
-    SCXML::Common::Logger::debug("StateNode::setInitialState() - Setting initial state for " + id_ + ": " + initialState);
+    SCXML::Common::Logger::debug("StateNode::setInitialState() - Setting initial state for " + id_ + ": " +
+                                 initialState);
 }
 
 const std::string &StateNode::getInitialState() const {
@@ -160,10 +164,10 @@ bool StateNode::isHistory() const {
 }
 
 std::shared_ptr<SCXML::Model::IStateNode> StateNode::findChild(const std::string &id) const {
-    auto it = std::find_if(children_.begin(), children_.end(),
-                          [&id](const std::shared_ptr<SCXML::Model::IStateNode> &child) {
-                              return child && child->getId() == id;
-                          });
+    auto it =
+        std::find_if(children_.begin(), children_.end(), [&id](const std::shared_ptr<SCXML::Model::IStateNode> &child) {
+            return child && child->getId() == id;
+        });
     return (it != children_.end()) ? *it : nullptr;
 }
 
@@ -174,8 +178,8 @@ void StateNode::setDoneDataContent(const std::string &content) {
 
 void StateNode::addDoneDataParam(const std::string &name, const std::string &expr) {
     doneDataParams_[name] = expr;
-    SCXML::Common::Logger::debug("StateNode::addDoneDataParam() - Adding param to donedata for " + id_ + ": " + name + " -> " +
-                  expr);
+    SCXML::Common::Logger::debug("StateNode::addDoneDataParam() - Adding param to donedata for " + id_ + ": " + name +
+                                 " -> " + expr);
 }
 
 const std::string &StateNode::getDoneDataContent() const {
@@ -198,8 +202,8 @@ std::shared_ptr<SCXML::Model::ITransitionNode> StateNode::getInitialTransition()
 void StateNode::addEntryActionNode(std::shared_ptr<SCXML::Model::IActionNode> actionNode) {
     if (actionNode) {
         entryActionNodes_.push_back(actionNode);
-        SCXML::Common::Logger::debug("StateNode::addEntryActionNode() - Added entry ActionNode: " + actionNode->getId() +
-                      " to StateNode: " + id_);
+        SCXML::Common::Logger::debug("StateNode::addEntryActionNode() - Added entry ActionNode: " +
+                                     actionNode->getId() + " to StateNode: " + id_);
     }
 }
 
@@ -207,7 +211,7 @@ void StateNode::addExitActionNode(std::shared_ptr<SCXML::Model::IActionNode> act
     if (actionNode) {
         exitActionNodes_.push_back(actionNode);
         SCXML::Common::Logger::debug("StateNode::addExitActionNode() - Added exit ActionNode: " + actionNode->getId() +
-                      " to StateNode: " + id_);
+                                     " to StateNode: " + id_);
     }
 }
 

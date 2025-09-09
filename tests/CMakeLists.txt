@@ -8,6 +8,12 @@ pkg_check_modules(LIBXMLPP REQUIRED libxml++-5.0)
 # 컴파일 옵션 추가
 add_compile_options(${LIBXMLPP_CFLAGS})
 
+# 프로젝트 루트 경로를 테스트에도 전달
+add_compile_definitions(
+    SCXML_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+    SCXML_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/resources/schemas/scxml.xsd"
+)
+
 # 공통 소스 파일 (generator 구현 클래스)
 set(GENERATOR_SOURCES
     # 모델 구현 클래스
@@ -48,6 +54,7 @@ set(GENERATOR_SOURCES
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/NamespaceAwareParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/StateNodeParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/TransitionParser.cpp
+    ${CMAKE_SOURCE_DIR}/generator/src/parsing/XSDValidator.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/ActionParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/GuardParser.cpp
     ${CMAKE_SOURCE_DIR}/generator/src/parsing/DataModelParser.cpp
@@ -308,6 +315,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/integration")
         
         add_executable(${test_name}
             ${test_file}
+            ${CMAKE_CURRENT_SOURCE_DIR}/integration/IntegrationTestCommon.cpp
             ${GENERATOR_SOURCES}
         )
         

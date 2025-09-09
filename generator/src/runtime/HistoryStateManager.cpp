@@ -1,6 +1,6 @@
 #include "../../include/runtime/HistoryStateManager.h"
-#include "../common/Logger.h"
 #include "../../include/model/IStateNode.h"
+#include "common/Logger.h"
 #include <algorithm>
 #include <regex>
 #include <sstream>
@@ -33,7 +33,7 @@ bool HistoryStateManager::registerHistoryState(const std::string &historyStateId
         auto existingInfo = historyStates_[parentIt->second];
         if (existingInfo.type == type) {
             SCXML::Common::Logger::warning("HistoryStateManager: Parent state " + parentStateId + " already has a " +
-                            HistoryStateHelper::historyTypeToString(type) + " history state");
+                                           HistoryStateHelper::historyTypeToString(type) + " history state");
             return false;
         }
     }
@@ -50,7 +50,7 @@ bool HistoryStateManager::registerHistoryState(const std::string &historyStateId
     parentToHistoryState_[parentStateId + "_" + HistoryStateHelper::historyTypeToString(type)] = historyStateId;
 
     SCXML::Common::Logger::info("HistoryStateManager: Registered " + HistoryStateHelper::historyTypeToString(type) +
-                 " history state: " + historyStateId + " for parent: " + parentStateId);
+                                " history state: " + historyStateId + " for parent: " + parentStateId);
 
     // Register with static helper for isHistoryStateId checks
     HistoryStateHelper::registerHistoryStateId(historyStateId);
@@ -104,8 +104,9 @@ bool HistoryStateManager::recordHistory(const std::string &parentStateId,
                 statesStr << historyEntry->recordedStates[i];
             }
 
-            SCXML::Common::Logger::info("HistoryStateManager: Recorded " + HistoryStateHelper::historyTypeToString(historyInfo.type) +
-                         " history for " + parentStateId + ": [" + statesStr.str() + "]");
+            SCXML::Common::Logger::info("HistoryStateManager: Recorded " +
+                                        HistoryStateHelper::historyTypeToString(historyInfo.type) + " history for " +
+                                        parentStateId + ": [" + statesStr.str() + "]");
         }
     }
 
@@ -153,7 +154,8 @@ HistoryStateManager::restoreHistory(const std::string &historyStateId,
                 }
                 retrievedStr << originalStates[i];
             }
-            SCXML::Common::Logger::debug("HistoryStateManager: Retrieved from history - States: [" + retrievedStr.str() + "]");
+            SCXML::Common::Logger::debug("HistoryStateManager: Retrieved from history - States: [" +
+                                         retrievedStr.str() + "]");
 
             if (historyInfo.type == HistoryType::DEEP) {
                 // For deep history, include all intermediate parent states
@@ -173,8 +175,9 @@ HistoryStateManager::restoreHistory(const std::string &historyStateId,
                 statesStr << result.restoredStates[i];
             }
 
-            SCXML::Common::Logger::info("HistoryStateManager: Restored " + HistoryStateHelper::historyTypeToString(historyInfo.type) +
-                         " history for " + historyStateId + ": [" + statesStr.str() + "]");
+            SCXML::Common::Logger::info("HistoryStateManager: Restored " +
+                                        HistoryStateHelper::historyTypeToString(historyInfo.type) + " history for " +
+                                        historyStateId + ": [" + statesStr.str() + "]");
 
             return result;
         }
@@ -186,7 +189,7 @@ HistoryStateManager::restoreHistory(const std::string &historyStateId,
         result.success = true;
 
         SCXML::Common::Logger::info("HistoryStateManager: No valid history for " + historyStateId +
-                     ", using default state: " + historyInfo.defaultStateId);
+                                    ", using default state: " + historyInfo.defaultStateId);
     } else {
         // If no default is specified, try to use a sensible fallback
         std::string fallbackState = parentStateId;
@@ -199,7 +202,7 @@ HistoryStateManager::restoreHistory(const std::string &historyStateId,
         result.success = true;
 
         SCXML::Common::Logger::info("HistoryStateManager: No history or default for " + historyStateId +
-                     ", using fallback: " + fallbackState);
+                                    ", using fallback: " + fallbackState);
     }
 
     return result;
@@ -307,7 +310,8 @@ bool HistoryStateManager::validateHistoryStates(const std::vector<std::string> &
 
         // Check if state is a descendant of the parent state
         if (!isDescendant(stateId, parentStateId)) {
-            SCXML::Common::Logger::warning("HistoryStateManager: State " + stateId + " is not a descendant of " + parentStateId);
+            SCXML::Common::Logger::warning("HistoryStateManager: State " + stateId + " is not a descendant of " +
+                                           parentStateId);
             return false;
         }
     }
@@ -461,8 +465,8 @@ bool HistoryStateManager::validateHistoryEntry(const HistoryEntry &entry) const 
 
     // Consider history valid for up to 24 hours (configurable)
     if (age.count() > 24) {
-        SCXML::Common::Logger::warning("HistoryStateManager: History entry for " + entry.parentStateId + " is too old (" +
-                        std::to_string(age.count()) + " hours)");
+        SCXML::Common::Logger::warning("HistoryStateManager: History entry for " + entry.parentStateId +
+                                       " is too old (" + std::to_string(age.count()) + " hours)");
         return false;
     }
 
@@ -613,8 +617,8 @@ std::vector<std::string> HistoryStateManager::expandDeepHistoryStates(const std:
         expandedStr << result[i];
     }
 
-    SCXML::Common::Logger::debug("HistoryStateManager: Expanded deep history - Original: [" + originalStr.str() + "] -> Expanded: [" +
-                  expandedStr.str() + "]");
+    SCXML::Common::Logger::debug("HistoryStateManager: Expanded deep history - Original: [" + originalStr.str() +
+                                 "] -> Expanded: [" + expandedStr.str() + "]");
 
     return result;
 }

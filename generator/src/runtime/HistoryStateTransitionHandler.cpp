@@ -1,6 +1,6 @@
 #include "../../include/runtime/HistoryStateTransitionHandler.h"
-#include "../common/Logger.h"
 #include "common/ErrorCategories.h"
+#include "common/Logger.h"
 #include <algorithm>
 #include <sstream>
 
@@ -15,7 +15,8 @@ HistoryStateTransitionHandler::HistoryStateTransitionHandler(std::shared_ptr<His
                                             "History manager cannot be null", "HistoryStateTransitionHandler");
     }
 
-    SCXML::Common::Logger::info(std::string("HistoryStateTransitionHandler: ") + "History state transition handler initialized");
+    SCXML::Common::Logger::info(std::string("HistoryStateTransitionHandler: ") +
+                                "History state transition handler initialized");
 }
 
 bool HistoryStateTransitionHandler::processStateExit(const TransitionContext &context) {
@@ -37,8 +38,8 @@ bool HistoryStateTransitionHandler::processStateExit(const TransitionContext &co
 
     if (historyRecorded) {
         SCXML::Common::Logger::info(std::string("HistoryStateTransitionHandler: ") +
-                     "Processed state exit with history recording for " + std::to_string(compoundStates.size()) +
-                     " compound states");
+                                    "Processed state exit with history recording for " +
+                                    std::to_string(compoundStates.size()) + " compound states");
     }
 
     return historyRecorded;
@@ -105,8 +106,8 @@ HistoryStateTransitionHandler::resolveHistoryTargets(const std::vector<std::stri
                 }
             } else {
                 // Invalid history state - treat as regular state for graceful error recovery
-                SCXML::Common::Logger::error("HistoryStateTransitionHandler: History restoration failed for " + targetState +
-                              ", treating as regular state");
+                SCXML::Common::Logger::error("HistoryStateTransitionHandler: History restoration failed for " +
+                                             targetState + ", treating as regular state");
                 result.actualTargetStates.push_back(targetState);
             }
         } else {
@@ -152,7 +153,7 @@ HistoryStateTransitionHandler::getStatesToExitFromCompound(const std::string &co
 std::vector<std::string> HistoryStateTransitionHandler::getCompoundStatesForHistoryRecording(
     const std::vector<std::string> &exitingStates) const {
     SCXML::Common::Logger::debug("HistoryStateTransitionHandler: Getting compound states for history recording from " +
-                  std::to_string(exitingStates.size()) + " exiting states");
+                                 std::to_string(exitingStates.size()) + " exiting states");
 
     std::vector<std::string> compoundStates;
     std::unordered_set<std::string> addedStates;
@@ -163,10 +164,11 @@ std::vector<std::string> HistoryStateTransitionHandler::getCompoundStatesForHist
         // Check if this state itself is a compound state
         bool isCompound = isCompoundState(stateId);
         SCXML::Common::Logger::debug("HistoryStateTransitionHandler: State " + stateId +
-                      " isCompound: " + (isCompound ? "true" : "false"));
+                                     " isCompound: " + (isCompound ? "true" : "false"));
 
         if (isCompound && addedStates.find(stateId) == addedStates.end()) {
-            SCXML::Common::Logger::debug("HistoryStateTransitionHandler: Adding compound state for history: " + stateId);
+            SCXML::Common::Logger::debug("HistoryStateTransitionHandler: Adding compound state for history: " +
+                                         stateId);
             compoundStates.push_back(stateId);
             addedStates.insert(stateId);
         }
@@ -258,8 +260,9 @@ HistoryStateTransitionHandler::processHistoryStateTarget(const std::string &hist
     auto restoration = historyManager_->restoreHistory(historyStateId, currentActiveStates);
 
     if (!restoration.success) {
-        SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") + "History restoration failed for " +
-                      historyStateId + ": " + restoration.errorMessage);
+        SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") +
+                                     "History restoration failed for " + historyStateId + ": " +
+                                     restoration.errorMessage);
         return {};
     }
 
@@ -276,8 +279,8 @@ HistoryStateTransitionHandler::processHistoryStateTarget(const std::string &hist
         statesStr << resolvedStates[i];
     }
 
-    SCXML::Common::Logger::info(std::string("HistoryStateTransitionHandler: ") + "Resolved history state " + historyStateId +
-                 " to: [" + statesStr.str() + "]");
+    SCXML::Common::Logger::info(std::string("HistoryStateTransitionHandler: ") + "Resolved history state " +
+                                historyStateId + " to: [" + statesStr.str() + "]");
 
     return resolvedStates;
 }
@@ -292,10 +295,10 @@ bool HistoryStateTransitionHandler::recordHistoryForCompoundStates(const std::ve
         if (recorded) {
             anyRecorded = true;
             SCXML::Common::Logger::debug(std::string("HistoryStateTransitionHandler: ") +
-                          "Recorded history for compound state: " + compoundState);
+                                         "Recorded history for compound state: " + compoundState);
         } else {
             SCXML::Common::Logger::warning(std::string("HistoryStateTransitionHandler: ") +
-                            "Failed to record history for compound state: " + compoundState);
+                                           "Failed to record history for compound state: " + compoundState);
         }
     }
 
@@ -307,7 +310,8 @@ bool HistoryStateTransitionHandler::validateResolvedStates(
     // Basic validation: no empty state IDs
     for (const auto &stateId : resolvedStates) {
         if (stateId.empty()) {
-            SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") + "Resolved state has empty ID");
+            SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") +
+                                         "Resolved state has empty ID");
             return false;
         }
     }
@@ -317,7 +321,7 @@ bool HistoryStateTransitionHandler::validateResolvedStates(
     for (const auto &stateId : resolvedStates) {
         if (uniqueStates.find(stateId) != uniqueStates.end()) {
             SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") +
-                          "Duplicate state in resolved targets: " + stateId);
+                                         "Duplicate state in resolved targets: " + stateId);
             return false;
         }
         uniqueStates.insert(stateId);
@@ -327,7 +331,8 @@ bool HistoryStateTransitionHandler::validateResolvedStates(
     for (const auto &stateId : resolvedStates) {
         if (stateId.find("..") != std::string::npos || stateId.find("//") != std::string::npos ||
             stateId.front() == '.' || stateId.back() == '.' || stateId.front() == '_' || stateId.back() == '_') {
-            SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") + "Invalid state ID format: " + stateId);
+            SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") +
+                                         "Invalid state ID format: " + stateId);
             return false;
         }
     }
@@ -337,8 +342,8 @@ bool HistoryStateTransitionHandler::validateResolvedStates(
         for (size_t j = i + 1; j < resolvedStates.size(); ++j) {
             if (statesConflict(resolvedStates[i], resolvedStates[j])) {
                 SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") +
-                              "Conflicting states in resolved targets: " + resolvedStates[i] + " and " +
-                              resolvedStates[j]);
+                                             "Conflicting states in resolved targets: " + resolvedStates[i] + " and " +
+                                             resolvedStates[j]);
                 return false;
             }
         }
@@ -349,14 +354,14 @@ bool HistoryStateTransitionHandler::validateResolvedStates(
         for (const auto &stateId : resolvedStates) {
             if (!stateExistsInModel(stateId)) {
                 SCXML::Common::Logger::error(std::string("HistoryStateTransitionHandler: ") +
-                              "Resolved state does not exist in state model: " + stateId);
+                                             "Resolved state does not exist in state model: " + stateId);
                 return false;
             }
         }
     }
 
     SCXML::Common::Logger::debug(std::string("HistoryStateTransitionHandler: ") + "Validated " +
-                  std::to_string(resolvedStates.size()) + " resolved states");
+                                 std::to_string(resolvedStates.size()) + " resolved states");
 
     return true;
 }
@@ -438,7 +443,7 @@ HistoryStateIntegration::resolveTransitionTargets(const std::vector<std::string>
 
     if (!result.errorMessage.empty()) {
         SCXML::Common::Logger::error(std::string("HistoryStateIntegration: Failed to resolve transition targets: ") +
-                      result.errorMessage);
+                                     result.errorMessage);
         return originalTargets;  // Fallback to original targets
     }
 
@@ -500,14 +505,16 @@ HistoryStateTransitionHandler::findParentWithHistory(const std::vector<std::stri
         for (const auto &historyEntry : registeredHistoryStates) {
             if (historyEntry.second == compoundState) {
                 parentsWithHistory.insert(compoundState);
-                SCXML::Common::Logger::debug("HistoryStateTransitionHandler: Found parent with history: " + compoundState);
+                SCXML::Common::Logger::debug("HistoryStateTransitionHandler: Found parent with history: " +
+                                             compoundState);
                 break;  // Found one, no need to check more for this parent
             }
         }
     }
 
     SCXML::Common::Logger::debug("HistoryStateTransitionHandler: Found " + std::to_string(parentsWithHistory.size()) +
-                  " parents with registered history from " + std::to_string(exitingStates.size()) + " exiting states");
+                                 " parents with registered history from " + std::to_string(exitingStates.size()) +
+                                 " exiting states");
 
     return parentsWithHistory;
 }

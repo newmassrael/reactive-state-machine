@@ -1,7 +1,7 @@
 #pragma once
 
-#include "model/INodeFactory.h"
 #include "model/DocumentModel.h"
+#include "model/INodeFactory.h"
 #include "model/ParsingContext.h"
 #include "parsing/ActionParser.h"
 #include "parsing/DataModelParser.h"
@@ -11,6 +11,7 @@
 #include "parsing/StateNodeParser.h"
 #include "parsing/TransitionParser.h"
 #include "parsing/XIncludeProcessor.h"
+#include "parsing/XSDValidator.h"
 #include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
@@ -25,7 +26,7 @@ namespace SCXML {
 namespace Model {
 class DocumentModel;
 class DoneData;
-}
+}  // namespace Model
 
 namespace Parsing {
 
@@ -81,6 +82,18 @@ public:
      * @return 경고 메시지 목록
      */
     const ::std::vector<::std::string> &getWarningMessages() const;
+
+    /**
+     * @brief XSD 스키마 검증 활성화/비활성화
+     * @param enabled 검증 활성화 여부 (기본값: true)
+     */
+    void setXSDValidationEnabled(bool enabled);
+
+    /**
+     * @brief XSD 스키마 검증 활성화 상태 확인
+     * @return 검증이 활성화되었는지 여부
+     */
+    bool isXSDValidationEnabled() const;
 
     /**
      * @brief 상태 노드 파서 반환
@@ -212,6 +225,8 @@ private:
     ::std::shared_ptr<SCXML::Parsing::InvokeParser> invokeParser_;
     ::std::shared_ptr<SCXML::Parsing::DoneDataParser> doneDataParser_;
     ::std::shared_ptr<::SCXML::Model::IXIncludeProcessor> xincludeProcessor_;
+    ::std::unique_ptr<XSDValidator> xsdValidator_;
+    bool xsdValidationEnabled_;
     ::std::vector<::std::string> errorMessages_;
     ::std::vector<::std::string> warningMessages_;
 };

@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+W3C SCXML 1.0 XML Schema Definition
+Based on the official W3C SCXML specification
+https://www.w3.org/TR/scxml/
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://www.w3.org/2005/07/scxml"
+           xmlns:scxml="http://www.w3.org/2005/07/scxml"
+           elementFormDefault="qualified">
+
+  <!-- Root element -->
+  <xs:element name="scxml" type="scxml:scxmlType"/>
+
+  <!-- SCXML document type -->
+  <xs:complexType name="scxmlType">
+    <xs:sequence>
+      <xs:element name="datamodel" type="scxml:datamodelType" minOccurs="0"/>
+      <xs:element name="script" type="scxml:scriptType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:choice minOccurs="1" maxOccurs="unbounded">
+        <xs:element name="state" type="scxml:stateType"/>
+        <xs:element name="parallel" type="scxml:parallelType"/>
+        <xs:element name="final" type="scxml:finalType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="initial" type="xs:IDREFS" use="optional"/>
+    <xs:attribute name="name" type="xs:NMTOKEN" use="optional"/>
+    <xs:attribute name="version" type="xs:decimal" use="required" fixed="1.0"/>
+    <xs:attribute name="datamodel" type="xs:NMTOKEN" use="optional" default="null"/>
+    <xs:attribute name="binding" type="scxml:bindingType" use="optional" default="early"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- State element -->
+  <xs:complexType name="stateType">
+    <xs:sequence>
+      <xs:element name="onentry" type="scxml:onentryType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="onexit" type="scxml:onexitType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="transition" type="scxml:transitionType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="initial" type="scxml:initialType" minOccurs="0"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="state" type="scxml:stateType"/>
+        <xs:element name="parallel" type="scxml:parallelType"/>
+        <xs:element name="final" type="scxml:finalType"/>
+        <xs:element name="history" type="scxml:historyType"/>
+      </xs:choice>
+      <xs:element name="datamodel" type="scxml:datamodelType" minOccurs="0"/>
+      <xs:element name="invoke" type="scxml:invokeType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:ID" use="optional"/>
+    <xs:attribute name="initial" type="xs:IDREFS" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Parallel element -->
+  <xs:complexType name="parallelType">
+    <xs:sequence>
+      <xs:element name="onentry" type="scxml:onentryType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="onexit" type="scxml:onexitType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="transition" type="scxml:transitionType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="state" type="scxml:stateType"/>
+        <xs:element name="parallel" type="scxml:parallelType"/>
+        <xs:element name="history" type="scxml:historyType"/>
+      </xs:choice>
+      <xs:element name="datamodel" type="scxml:datamodelType" minOccurs="0"/>
+      <xs:element name="invoke" type="scxml:invokeType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:ID" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Final element -->
+  <xs:complexType name="finalType">
+    <xs:sequence>
+      <xs:element name="onentry" type="scxml:onentryType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="onexit" type="scxml:onexitType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="donedata" type="scxml:donedataType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:ID" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Transition element -->
+  <xs:complexType name="transitionType">
+    <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:attribute name="event" type="xs:NMTOKENS" use="optional"/>
+    <xs:attribute name="cond" type="xs:string" use="optional"/>
+    <xs:attribute name="target" type="xs:IDREFS" use="optional"/>
+    <xs:attribute name="type" type="scxml:transitionTypeType" use="optional" default="external"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Initial element -->
+  <xs:complexType name="initialType">
+    <xs:sequence>
+      <xs:element name="transition" type="scxml:transitionType"/>
+    </xs:sequence>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- History element -->
+  <xs:complexType name="historyType">
+    <xs:sequence>
+      <xs:element name="transition" type="scxml:transitionType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:ID" use="optional"/>
+    <xs:attribute name="type" type="scxml:historyTypeType" use="optional" default="shallow"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Onentry element -->
+  <xs:complexType name="onentryType">
+    <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Onexit element -->
+  <xs:complexType name="onexitType">
+    <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Datamodel element -->
+  <xs:complexType name="datamodelType">
+    <xs:sequence>
+      <xs:element name="data" type="scxml:dataType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Data element -->
+  <xs:complexType name="dataType" mixed="true">
+    <xs:sequence>
+      <xs:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:ID" use="required"/>
+    <xs:attribute name="src" type="xs:anyURI" use="optional"/>
+    <xs:attribute name="expr" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Executable Content Group -->
+  <xs:group name="executableContent">
+    <xs:choice>
+      <xs:element name="raise" type="scxml:raiseType"/>
+      <xs:element name="if" type="scxml:ifType"/>
+      <xs:element name="foreach" type="scxml:foreachType"/>
+      <xs:element name="log" type="scxml:logType"/>
+      <xs:element name="assign" type="scxml:assignType"/>
+      <xs:element name="send" type="scxml:sendType"/>
+      <xs:element name="cancel" type="scxml:cancelType"/>
+      <xs:element name="script" type="scxml:scriptType"/>
+      <xs:any namespace="##other" processContents="lax"/>
+    </xs:choice>
+  </xs:group>
+
+  <!-- Raise element -->
+  <xs:complexType name="raiseType">
+    <xs:attribute name="event" type="xs:NMTOKEN" use="required"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- If element -->
+  <xs:complexType name="ifType">
+    <xs:sequence>
+      <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="elseif" type="scxml:elseifType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="else" type="scxml:elseType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="cond" type="xs:string" use="required"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Elseif element -->
+  <xs:complexType name="elseifType">
+    <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:attribute name="cond" type="xs:string" use="required"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Else element -->
+  <xs:complexType name="elseType">
+    <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Foreach element -->
+  <xs:complexType name="foreachType">
+    <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:attribute name="array" type="xs:string" use="required"/>
+    <xs:attribute name="item" type="xs:string" use="required"/>
+    <xs:attribute name="index" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Log element -->
+  <xs:complexType name="logType">
+    <xs:attribute name="label" type="xs:string" use="optional"/>
+    <xs:attribute name="expr" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Assign element -->
+  <xs:complexType name="assignType">
+    <xs:attribute name="location" type="xs:string" use="required"/>
+    <xs:attribute name="expr" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Send element -->
+  <xs:complexType name="sendType">
+    <xs:sequence>
+      <xs:element name="param" type="scxml:paramType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="content" type="scxml:contentType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="event" type="xs:NMTOKEN" use="optional"/>
+    <xs:attribute name="eventexpr" type="xs:string" use="optional"/>
+    <xs:attribute name="target" type="xs:string" use="optional"/>
+    <xs:attribute name="targetexpr" type="xs:string" use="optional"/>
+    <xs:attribute name="type" type="xs:string" use="optional"/>
+    <xs:attribute name="typeexpr" type="xs:string" use="optional"/>
+    <xs:attribute name="id" type="xs:ID" use="optional"/>
+    <xs:attribute name="idlocation" type="xs:string" use="optional"/>
+    <xs:attribute name="delay" type="xs:string" use="optional" default="0s"/>
+    <xs:attribute name="delayexpr" type="xs:string" use="optional"/>
+    <xs:attribute name="namelist" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Cancel element -->
+  <xs:complexType name="cancelType">
+    <xs:attribute name="sendid" type="xs:IDREF" use="optional"/>
+    <xs:attribute name="sendidexpr" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Script element -->
+  <xs:complexType name="scriptType" mixed="true">
+    <xs:attribute name="src" type="xs:anyURI" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Invoke element -->
+  <xs:complexType name="invokeType">
+    <xs:sequence>
+      <xs:element name="param" type="scxml:paramType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="finalize" type="scxml:finalizeType" minOccurs="0"/>
+      <xs:element name="content" type="scxml:contentType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="type" type="xs:string" use="required"/>
+    <xs:attribute name="typeexpr" type="xs:string" use="optional"/>
+    <xs:attribute name="src" type="xs:anyURI" use="optional"/>
+    <xs:attribute name="srcexpr" type="xs:string" use="optional"/>
+    <xs:attribute name="id" type="xs:ID" use="optional"/>
+    <xs:attribute name="idlocation" type="xs:string" use="optional"/>
+    <xs:attribute name="namelist" type="xs:string" use="optional"/>
+    <xs:attribute name="autoforward" type="xs:boolean" use="optional" default="false"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Param element -->
+  <xs:complexType name="paramType">
+    <xs:attribute name="name" type="xs:NMTOKEN" use="required"/>
+    <xs:attribute name="expr" type="xs:string" use="optional"/>
+    <xs:attribute name="location" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Content element -->
+  <xs:complexType name="contentType" mixed="true">
+    <xs:sequence>
+      <xs:any namespace="##any" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="expr" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Finalize element -->
+  <xs:complexType name="finalizeType">
+    <xs:group ref="scxml:executableContent" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Donedata element -->
+  <xs:complexType name="donedataType">
+    <xs:sequence>
+      <xs:element name="param" type="scxml:paramType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="content" type="scxml:contentType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:anyAttribute namespace="##other" processContents="lax"/>
+  </xs:complexType>
+
+  <!-- Simple types -->
+  <xs:simpleType name="bindingType">
+    <xs:restriction base="xs:NMTOKEN">
+      <xs:enumeration value="early"/>
+      <xs:enumeration value="late"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="transitionTypeType">
+    <xs:restriction base="xs:NMTOKEN">
+      <xs:enumeration value="internal"/>
+      <xs:enumeration value="external"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="historyTypeType">
+    <xs:restriction base="xs:NMTOKEN">
+      <xs:enumeration value="shallow"/>
+      <xs:enumeration value="deep"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+</xs:schema>

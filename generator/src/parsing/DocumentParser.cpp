@@ -16,7 +16,7 @@ using namespace std;
 
 DocumentParser::DocumentParser(std::shared_ptr<SCXML::Model::INodeFactory> nodeFactory,
                                std::shared_ptr<SCXML::Model::IXIncludeProcessor> xincludeProcessor)
-    : nodeFactory_(nodeFactory) {
+    : nodeFactory_(nodeFactory), xsdValidationEnabled_(false) {
     SCXML::Common::Logger::debug("DocumentParser::Constructor - Creating SCXML parser");
 
     // 전문화된 파서 초기화
@@ -40,6 +40,16 @@ DocumentParser::DocumentParser(std::shared_ptr<SCXML::Model::INodeFactory> nodeF
         xincludeProcessor_ = xincludeProcessor;
     } else {
         xincludeProcessor_ = std::make_shared<SCXML::Parsing::XIncludeProcessor>();
+    }
+
+    // XSD 검증기 초기화 (기본적으로 비활성화됨)
+    try {
+        xsdValidator_ = std::make_unique<XSDValidator>();
+        if (!xsdValidator_->isInitialized()) {
+            SCXML::Common::Logger::warning("XSD validator initialization failed - validation disabled");
+        }
+    } catch (const std::exception &e) {
+        SCXML::Common::Logger::warning("XSD validator creation failed: " + std::string(e.what()));
     }
 }
 
@@ -111,6 +121,38 @@ std::shared_ptr<::SCXML::Model::DocumentModel> DocumentParser::parseDocument(xml
     if (!doc) {
         addError("Null document");
         return nullptr;
+    }
+
+    // XSD 스키마 검증 수행 (활성화된 경우)
+    if (xsdValidationEnabled_ && xsdValidator_ && xsdValidator_->isInitialized()) {
+        SCXML::Common::Logger::debug("DocumentParser::parseDocument - Performing XSD validation");
+
+        if (!xsdValidator_->validateDocument(*doc)) {
+            const auto &errors = xsdValidator_->getErrors();
+            for (const auto &error : errors) {
+                if (error.severity == ValidationError::Severity::ERROR ||
+                    error.severity == ValidationError::Severity::FATAL_ERROR) {
+                    addError("XSD validation error: " + error.message);
+                } else {
+                    addWarning("XSD validation warning: " + error.message);
+                }
+            }
+
+            if (!errors.empty()) {
+                auto errorCount = std::count_if(errors.begin(), errors.end(), [](const ValidationError &e) {
+                    return e.severity == ValidationError::Severity::ERROR ||
+                           e.severity == ValidationError::Severity::FATAL_ERROR;
+                });
+
+                if (errorCount > 0) {
+                    SCXML::Common::Logger::error("Document failed XSD validation with " + std::to_string(errorCount) +
+                                                 " errors");
+                    return nullptr;
+                }
+            }
+        } else {
+            SCXML::Common::Logger::debug("XSD validation passed successfully");
+        }
     }
 
     // 루트 요소 가져오기
@@ -247,7 +289,7 @@ bool DocumentParser::parseScxmlNode(const xmlpp::Element *scxmlNode,
     }
 
     SCXML::Common::Logger::info("DocumentParser::parseScxmlNode() - Found " + std::to_string(rootStateElements.size()) +
-                 " root state nodes");
+                                " root state nodes");
 
     // 모든 루트 상태 노드 파싱
     for (auto *stateElement : rootStateElements) {
@@ -290,14 +332,15 @@ void DocumentParser::parseContextProperties(const xmlpp::Element *scxmlNode,
             std::string name = nameAttr->get_value();
             std::string type = typeAttr->get_value();
             model->addContextProperty(name, type);
-            SCXML::Common::Logger::debug("DocumentParser::parseContextProperties() - Added property: " + name + " (" + type + ")");
+            SCXML::Common::Logger::debug("DocumentParser::parseContextProperties() - Added property: " + name + " (" +
+                                         type + ")");
         } else {
             addWarning("Property node missing required attributes");
         }
     }
 
     SCXML::Common::Logger::debug("DocumentParser::parseContextProperties() - Found " +
-                  std::to_string(model->getContextProperties().size()) + " context properties");
+                                 std::to_string(model->getContextProperties().size()) + " context properties");
 }
 
 void DocumentParser::parseInjectPoints(const xmlpp::Element *scxmlNode,
@@ -330,7 +373,8 @@ void DocumentParser::parseInjectPoints(const xmlpp::Element *scxmlNode,
                 std::string name = nameAttr->get_value();
                 std::string type = typeAttr->get_value();
                 model->addInjectPoint(name, type);
-                SCXML::Common::Logger::debug("DocumentParser::parseInjectPoints() - Added inject point: " + name + " (" + type + ")");
+                SCXML::Common::Logger::debug("DocumentParser::parseInjectPoints() - Added inject point: " + name +
+                                             " (" + type + ")");
                 foundInjectPoints = true;
             } else {
                 addWarning("Inject point node missing required attributes");
@@ -344,8 +388,8 @@ void DocumentParser::parseInjectPoints(const xmlpp::Element *scxmlNode,
 
     // 상태 노드 내부의 주입 지점도 확인 (선택적으로 구현 가능)
 
-    SCXML::Common::Logger::debug("DocumentParser::parseInjectPoints() - Found " + std::to_string(model->getInjectPoints().size()) +
-                  " injection points");
+    SCXML::Common::Logger::debug("DocumentParser::parseInjectPoints() - Found " +
+                                 std::to_string(model->getInjectPoints().size()) + " injection points");
 }
 
 bool DocumentParser::hasErrors() const {
@@ -358,6 +402,18 @@ const std::vector<std::string> &DocumentParser::getErrorMessages() const {
 
 const std::vector<std::string> &DocumentParser::getWarningMessages() const {
     return warningMessages_;
+}
+
+void DocumentParser::setXSDValidationEnabled(bool enabled) {
+    xsdValidationEnabled_ = enabled;
+    if (enabled && (!xsdValidator_ || !xsdValidator_->isInitialized())) {
+        SCXML::Common::Logger::warning("XSD validation requested but validator not available");
+        xsdValidationEnabled_ = false;
+    }
+}
+
+bool DocumentParser::isXSDValidationEnabled() const {
+    return xsdValidationEnabled_ && xsdValidator_ && xsdValidator_->isInitialized();
 }
 
 void DocumentParser::initParsing() {
@@ -589,7 +645,8 @@ void DocumentParser::addSystemVariables(std::shared_ptr<::SCXML::Model::Document
     std::string datamodelType = model->getDatamodel();
     // 시스템 변수가 정의된 데이터 모델에만 적용
     if (datamodelType.empty() || datamodelType == "null") {
-        SCXML::Common::Logger::debug("DocumentParser::addSystemVariables() - Skipping system variables for null datamodel");
+        SCXML::Common::Logger::debug(
+            "DocumentParser::addSystemVariables() - Skipping system variables for null datamodel");
         return;
     }
 

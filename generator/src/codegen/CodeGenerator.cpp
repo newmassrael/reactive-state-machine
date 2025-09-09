@@ -167,7 +167,7 @@ std::string CodeGenerator::generateSimpleHeader(std::shared_ptr<::SCXML::Model::
     code << "#include <queue>\n";
     code << "#include \"../generator/include/../generator/include/common/IStateMachine.h\"\n";
     code << "#include \"events/Event.h\"\n";
-    code << "#include \"Logger.h\"\n\n";
+    code << "#include \"common/Logger.h\"\n\n";
 
     // Namespace
     if (!options.namespaceName.empty()) {
@@ -1130,7 +1130,6 @@ std::string CodeGenerator::generateImplementation(std::shared_ptr<::SCXML::Model
                                                   const GenerationOptions &options) {
     return generateSimpleImplementation(model, options);
 }
-
 
 }  // namespace CodeGen
 }  // namespace SCXML

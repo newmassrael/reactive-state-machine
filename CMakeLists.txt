@@ -34,6 +34,16 @@ include(GNUInstallDirs)
 # Export compile commands for clangd/LSP
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ccache 설정 (빌드 시간 단축)
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+    message(STATUS "ccache found: ${CCACHE_FOUND}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_FOUND})
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_FOUND})
+else()
+    message(STATUS "ccache not found")
+endif()
+
 # 위치 독립적 코드 생성 (공유 라이브러리를 위해)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 

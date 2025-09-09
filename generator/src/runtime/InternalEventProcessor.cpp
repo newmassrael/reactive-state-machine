@@ -1,8 +1,8 @@
 #include "../../include/runtime/InternalEventProcessor.h"
-#include "../common/Logger.h"
 #include "../../include/common/GracefulJoin.h"
 #include "../../include/common/IdGenerator.h"
 #include "../../include/runtime/Processor.h"
+#include "common/Logger.h"
 #include <algorithm>
 #include <future>
 #include <iostream>
@@ -45,7 +45,8 @@ bool InternalEventProcessor::start() {
         return true;
     }
 
-    SCXML::Common::Logger::info("InternalEventProcessor: Starting SCXML I/O Processor (Session: " + config_.sessionId + ")");
+    SCXML::Common::Logger::info("InternalEventProcessor: Starting SCXML I/O Processor (Session: " + config_.sessionId +
+                                ")");
 
     shutdownRequested_ = false;
 
@@ -134,7 +135,8 @@ bool InternalEventProcessor::send(const SendParameters &params) {
         delivery.confirmationRequired = config_.enableEventConfirmation;
 
         if (delivery.targetSessionId.empty()) {
-            SCXML::Common::Logger::error("InternalEventProcessor: Failed to create event for delivery: " + params.sendId);
+            SCXML::Common::Logger::error("InternalEventProcessor: Failed to create event for delivery: " +
+                                         params.sendId);
             return false;
         }
 
@@ -218,7 +220,8 @@ bool InternalEventProcessor::registerRuntime(std::shared_ptr<Processor> runtime)
         nameToSessionId_[instanceName] = sessionId;
     }
 
-    SCXML::Common::Logger::info("InternalEventProcessor: Registered SCXML runtime: " + sessionId + " (" + instanceName + ")");
+    SCXML::Common::Logger::info("InternalEventProcessor: Registered SCXML runtime: " + sessionId + " (" + instanceName +
+                                ")");
     return true;
 }
 
@@ -482,7 +485,7 @@ void InternalEventProcessor::handleDeliveryConfirmation(const DeliveryConfirmati
     deliveryConfirmations_[confirmation.deliveryId] = confirmation;
 
     SCXML::Common::Logger::info("InternalEventProcessor: Received delivery confirmation: " + confirmation.deliveryId +
-                 " (delivered: " + (confirmation.delivered ? "true" : "false") + ")");
+                                " (delivered: " + (confirmation.delivered ? "true" : "false") + ")");
 }
 
 std::string InternalEventProcessor::resolveTarget(const std::string &target) const {

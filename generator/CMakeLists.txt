@@ -4,6 +4,7 @@
 set(SCXML_GENERATOR_SOURCES
     src/common/Logger.cpp
     src/core/ParallelNode.cpp
+    src/parsing/XSDValidator.cpp
 )
 
 # Add QuickJS engine source if available
@@ -42,6 +43,12 @@ target_include_directories(scxml_generator
 
 # C++17 기능 명시적 설정
 target_compile_features(scxml_generator PUBLIC cxx_std_17)
+
+# 프로젝트 루트 경로를 컴파일 타임 상수로 정의
+target_compile_definitions(scxml_generator PRIVATE 
+    SCXML_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+    SCXML_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/resources/schemas/scxml.xsd"
+)
 
 # QuickJS 지원 설정 (서브모듈 사용)
 option(ENABLE_QUICKJS "Enable QuickJS JavaScript engine support" ON)

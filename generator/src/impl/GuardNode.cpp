@@ -1,5 +1,5 @@
 #include "impl/GuardNode.h"
-#include "../../generator/include/Logger.h"
+#include "common/Logger.h"
 #include <stdexcept>
 
 namespace SCXML {
@@ -51,7 +51,8 @@ const std::vector<std::string> &GuardNode::getDependencies() const {
 
 void GuardNode::setExternalClass(const std::string &className) {
     externalClass_ = className;
-    SCXML::Common::Logger::debug("GuardNode::setExternalClass() - Setting external class for " + id_ + ": " + className);
+    SCXML::Common::Logger::debug("GuardNode::setExternalClass() - Setting external class for " + id_ + ": " +
+                                 className);
 }
 
 const std::string &GuardNode::getExternalClass() const {
@@ -60,7 +61,8 @@ const std::string &GuardNode::getExternalClass() const {
 
 void GuardNode::setExternalFactory(const std::string &factoryName) {
     externalFactory_ = factoryName;
-    SCXML::Common::Logger::debug("GuardNode::setExternalFactory() - Setting external factory for " + id_ + ": " + factoryName);
+    SCXML::Common::Logger::debug("GuardNode::setExternalFactory() - Setting external factory for " + id_ + ": " +
+                                 factoryName);
 }
 
 const std::string &GuardNode::getExternalFactory() const {
@@ -69,14 +71,15 @@ const std::string &GuardNode::getExternalFactory() const {
 
 void GuardNode::setReactive(bool reactive) {
     reactive_ = reactive;
-    SCXML::Common::Logger::debug("GuardNode::setReactive() - Setting reactive flag for " + id_ + ": " + (reactive ? "true" : "false"));
+    SCXML::Common::Logger::debug("GuardNode::setReactive() - Setting reactive flag for " + id_ + ": " +
+                                 (reactive ? "true" : "false"));
 }
 
 bool GuardNode::isReactive() const {
     return reactive_;
 }
 
-bool GuardNode::evaluate(SCXML::Model::IExecutionContext& context) const {
+bool GuardNode::evaluate(SCXML::Model::IExecutionContext &context) const {
     // Basic implementation - in real implementation, this would evaluate the condition
     return !condition_.empty();
 }
