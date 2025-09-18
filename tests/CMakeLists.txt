@@ -1,7 +1,38 @@
 cmake_minimum_required(VERSION 3.14)
 
-# GoogleTest 패키지 찾기
-find_package(GTest REQUIRED)
+# GoogleTest 설정 - FetchContent 방식
+find_package(GTest QUIET)
+
+if(NOT GTest_FOUND)
+    message(STATUS "GTest not found on system, using FetchContent to download")
+    
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG release-1.12.1
+        GIT_SHALLOW TRUE
+        GIT_PROGRESS TRUE
+    )
+    
+    # GoogleTest 옵션 설정 (빌드 시간 단축)
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
+    set(BUILD_GTEST ON CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    
+    FetchContent_MakeAvailable(googletest)
+    
+    # 별칭 생성 (find_package와 동일한 인터페이스 제공)
+    add_library(GTest::GTest ALIAS gtest)
+    add_library(GTest::Main ALIAS gtest_main)
+    add_library(GTest::gtest ALIAS gtest)
+    add_library(GTest::gtest_main ALIAS gtest_main)
+    add_library(GTest::gmock ALIAS gmock)
+    add_library(GTest::gmock_main ALIAS gmock_main)
+else()
+    message(STATUS "Using system-installed GTest")
+endif()
 
 # 컴파일 옵션 추가
 add_compile_options(${LIBXMLPP_CFLAGS})
@@ -48,7 +79,6 @@ add_executable(state_machine_example_tests
 
 target_include_directories(state_machine_example_tests
     PRIVATE
-        ${GTEST_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/examples
         ${CMAKE_SOURCE_DIR}/generator/include
@@ -59,10 +89,8 @@ target_link_libraries(state_machine_example_tests
     PRIVATE
         state_machine_lib
         scxml_generator
-        ${GTEST_LIBRARIES}
-        ${GTEST_MAIN_LIBRARIES}
-        gmock
-        gmock_main
+        GTest::gtest_main
+        GTest::gmock_main
         pthread
 )
 
@@ -84,7 +112,6 @@ add_executable(generator_tests
 
 target_include_directories(generator_tests
     PRIVATE
-        ${GTEST_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/tests
         ${CMAKE_SOURCE_DIR}/tests/mocks
@@ -110,10 +137,8 @@ target_sources(generator_tests
 target_link_libraries(generator_tests
     PRIVATE
         ${LIBXMLPP_LIBRARIES}
-        ${GTEST_LIBRARIES}
-        ${GTEST_MAIN_LIBRARIES}
-        gmock
-        gmock_main
+        GTest::gtest_main
+        GTest::gmock_main
         pthread
 )
 
@@ -148,7 +173,6 @@ if(BUILD_INTEGRATED_TESTS)
     # include 디렉토리 추가 - integrated_tests 전용
     target_include_directories(integrated_tests
         PRIVATE
-            ${GTEST_INCLUDE_DIRS}
             ${CMAKE_SOURCE_DIR}
             ${CMAKE_SOURCE_DIR}/tests
             ${CMAKE_SOURCE_DIR}/tests/mocks
@@ -171,10 +195,8 @@ if(BUILD_INTEGRATED_TESTS)
             state_machine_lib
             scxml_generator
             ${LIBXMLPP_LIBRARIES}
-            ${GTEST_LIBRARIES}
-            ${GTEST_MAIN_LIBRARIES}
-            gmock
-            gmock_main
+            GTest::gtest_main
+            GTest::gmock_main
             pthread
     )
 

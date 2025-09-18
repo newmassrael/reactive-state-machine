@@ -61,6 +61,9 @@ target_link_libraries(state_machine_example
 # 제너레이터 디렉토리 추가
 add_subdirectory(generator)
 
+# SCXML 런타임 디렉토리 추가
+add_subdirectory(scxml/runtime)
+
 # 테스트 빌드 옵션 (선택적)
 option(BUILD_TESTS "Build the tests" OFF)
 if(BUILD_TESTS)
