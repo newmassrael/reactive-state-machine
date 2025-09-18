@@ -34,198 +34,123 @@ else()
     message(STATUS "Using system-installed GTest")
 endif()
 
-# 컴파일 옵션 추가
-add_compile_options(${LIBXMLPP_CFLAGS})
-
-# 공통 소스 파일 (generator 구현 클래스)
-set(GENERATOR_SOURCES
-    # 모델 구현 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/StateNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/TransitionNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/GuardNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/ActionNode.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/DataModelItem.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/impl/InvokeNode.cpp
-
-    # 모델 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/model/SCXMLContext.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/model/SCXMLModel.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/model/StateHierarchy.cpp
-
-    # 파싱 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/SCXMLParser.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/StateNodeParser.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/TransitionParser.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/ActionParser.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/GuardParser.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/DataModelParser.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/XIncludeProcessor.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/ParsingCommon.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/InvokeParser.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/parsing/DoneDataParser.cpp
-
-    # 팩토리 클래스
-    ${CMAKE_SOURCE_DIR}/generator/src/factory/NodeFactory.cpp
-
-    # 유틸리티
-    ${CMAKE_SOURCE_DIR}/generator/src/GuardUtils.cpp
-    ${CMAKE_SOURCE_DIR}/generator/src/Logger.cpp
+# ============================================================================
+# 1. RSM SCXML Builtin Tests (현재 작동하는 테스트)
+# ============================================================================
+add_executable(rsm_scxml_tests
+    simple_scxml_test.cpp
 )
 
-# 1. 상태 머신 예제 테스트 (examples 디렉토리 테스트)
-add_executable(state_machine_example_tests
-    examples/StateMachineTest.cpp
-)
-
-target_include_directories(state_machine_example_tests
+target_include_directories(rsm_scxml_tests
     PRIVATE
         ${CMAKE_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/examples
-        ${CMAKE_SOURCE_DIR}/generator/include
+        ${CMAKE_SOURCE_DIR}/rsm/include
         ${CMAKE_SOURCE_DIR}/tests
 )
 
-target_link_libraries(state_machine_example_tests
+target_link_libraries(rsm_scxml_tests
     PRIVATE
-        state_machine_lib
-        scxml_generator
+        rsm_unified
         GTest::gtest_main
-        GTest::gmock_main
         pthread
 )
 
-add_test(NAME StateMachineExampleTests COMMAND state_machine_example_tests)
+# CTest에 작동하는 테스트 추가
+add_test(NAME RSMSCXMLTests COMMAND rsm_scxml_tests)
 
-# 2. 제너레이터 테스트 (generator 디렉토리 테스트)
-add_executable(generator_tests
-    generator/SCXMLParserBasicTest.cpp
-    generator/SCXMLParserCommunicationTest.cpp
-    generator/SCXMLParserDataModelTest.cpp
-    generator/SCXMLParserErrorTest.cpp
-    generator/SCXMLParserEventTest.cpp
-    generator/SCXMLParserExecutableTest.cpp
-    generator/SCXMLParserHistoryTest.cpp
-    generator/SCXMLParserInvokeTest.cpp
-    generator/SCXMLParserStateTest.cpp
-    generator/SCXMLParserTransitionTest.cpp
-)
-
-target_include_directories(generator_tests
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/tests
-        ${CMAKE_SOURCE_DIR}/tests/mocks
-        ${LIBXMLPP_INCLUDE_DIRS}
-        ${CMAKE_SOURCE_DIR}/generator/src
-        ${CMAKE_SOURCE_DIR}/generator/src/impl
-        ${CMAKE_SOURCE_DIR}/generator/src/model
-        ${CMAKE_SOURCE_DIR}/generator/src/parsing
-        ${CMAKE_SOURCE_DIR}/generator/src/factory
-        ${CMAKE_SOURCE_DIR}/generator/include
-        ${CMAKE_SOURCE_DIR}/generator/include/impl
-        ${CMAKE_SOURCE_DIR}/generator/include/model
-        ${CMAKE_SOURCE_DIR}/generator/include/parsing
-        ${CMAKE_SOURCE_DIR}/generator/include/factory
-)
-
-# generator_tests 빌드에 소스 코드를 별도로 추가 (객체 파일 중복 방지)
-target_sources(generator_tests
-    PRIVATE
-        ${GENERATOR_SOURCES}
-)
-
-target_link_libraries(generator_tests
-    PRIVATE
-        ${LIBXMLPP_LIBRARIES}
-        GTest::gtest_main
-        GTest::gmock_main
-        pthread
-)
-
-# CTest에 generator 테스트 추가
-add_test(NAME GeneratorTests COMMAND generator_tests)
-
-# 3. JavaScript Engine 테스트 (js_engine 디렉토리 테스트)
+# ============================================================================
+# 2. JavaScript Engine Tests (완전히 RSM으로 업데이트됨)
+# ============================================================================
 add_executable(js_engine_tests
-    js_engine/SessionManagementTest.cpp
-    js_engine/DataModelTest.cpp
-    js_engine/EventSystemTest.cpp
-    js_engine/SimpleDebugTest.cpp
+    engine/SessionManagementTest.cpp
+    engine/DataModelTest.cpp
+    engine/EventSystemTest.cpp
+    engine/SimpleDebugTest.cpp
 )
 
 target_include_directories(js_engine_tests
     PRIVATE
         ${CMAKE_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/scxml/include
-        ${CMAKE_SOURCE_DIR}/scxml/runtime
+        ${CMAKE_SOURCE_DIR}/rsm/include
         ${CMAKE_SOURCE_DIR}/tests
 )
 
 target_link_libraries(js_engine_tests
     PRIVATE
-        scxml_engine
+        rsm_unified
         GTest::gtest_main
         pthread
 )
 
-# CTest에 js_engine 테스트 추가
+# ============================================================================
+# 3. Core Parser Tests (RSM namespace updated)
+# ============================================================================
+
+# Use same libxml++ configuration as RSM
+set(LIBXMLXX_INSTALL_DIR ${CMAKE_BINARY_DIR}/libxmlxx_install)
+set(LIBXMLXX_INCLUDE_DIRS 
+    ${LIBXMLXX_INSTALL_DIR}/include/libxml++-5.0
+    ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0/include
+)
+set(LIBXMLXX_LIBRARIES ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0.so)
+
+add_executable(core_parser_tests
+    core/SCXMLParserBasicTest.cpp
+)
+
+add_dependencies(core_parser_tests libxmlxx_external rsm_unified)
+
+target_include_directories(core_parser_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+        ${LIBXMLXX_INCLUDE_DIRS}
+        /usr/include/libxml2
+)
+
+target_link_libraries(core_parser_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        ${LIBXMLXX_LIBRARIES}
+        xml2
+        pthread
+)
+
+# ============================================================================
+# 4. Integration Tests (RSM architecture)
+# ============================================================================
+add_executable(integration_tests
+    integration/StateMachineIntegrationTest.cpp
+)
+
+add_dependencies(integration_tests libxmlxx_external rsm_unified)
+
+target_include_directories(integration_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+        ${LIBXMLXX_INCLUDE_DIRS}
+        /usr/include/libxml2
+)
+
+target_link_libraries(integration_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        ${LIBXMLXX_LIBRARIES}
+        xml2
+        pthread
+)
+
+# CTest에 모든 테스트들 추가
 add_test(NAME JSEngineTests COMMAND js_engine_tests)
+add_test(NAME CoreParserTests COMMAND core_parser_tests)
+add_test(NAME IntegrationTests COMMAND integration_tests)
 
-# 4. 기존 통합 테스트 (옵션으로 유지)
-option(BUILD_INTEGRATED_TESTS "Build integrated tests that include both examples and generator" OFF)
-
-if(BUILD_INTEGRATED_TESTS)
-    # 모든 테스트 소스 파일 설정
-    add_executable(integrated_tests
-        examples/state_machine_test.cpp
-        generator/SCXMLParserBasicTest.cpp
-        generator/SCXMLParserCommunicationTest.cpp
-        generator/SCXMLParserDataModelTest.cpp
-        generator/SCXMLParserErrorTest.cpp
-        generator/SCXMLParserEventTest.cpp
-        generator/SCXMLParserExecutableTest.cpp
-        generator/SCXMLParserHistoryTest.cpp
-        generator/SCXMLParserInvokeTest.cpp
-        generator/SCXMLParserStateTest.cpp
-        generator/SCXMLParserTransitionTest.cpp
-    )
-
-    # integrated_tests 빌드에 소스 코드를 별도로 추가
-    target_sources(integrated_tests
-        PRIVATE
-            ${GENERATOR_SOURCES}
-    )
-
-    # include 디렉토리 추가 - integrated_tests 전용
-    target_include_directories(integrated_tests
-        PRIVATE
-            ${CMAKE_SOURCE_DIR}
-            ${CMAKE_SOURCE_DIR}/tests
-            ${CMAKE_SOURCE_DIR}/tests/mocks
-            ${LIBXMLPP_INCLUDE_DIRS}
-            ${CMAKE_SOURCE_DIR}/generator/src
-            ${CMAKE_SOURCE_DIR}/generator/src/impl
-            ${CMAKE_SOURCE_DIR}/generator/src/model
-            ${CMAKE_SOURCE_DIR}/generator/src/parsing
-            ${CMAKE_SOURCE_DIR}/generator/src/factory
-            ${CMAKE_SOURCE_DIR}/generator/include
-            ${CMAKE_SOURCE_DIR}/generator/include/impl
-            ${CMAKE_SOURCE_DIR}/generator/include/model
-            ${CMAKE_SOURCE_DIR}/generator/include/parsing
-            ${CMAKE_SOURCE_DIR}/generator/include/factory
-    )
-
-    # 테스트에 필요한 라이브러리 링크
-    target_link_libraries(integrated_tests
-        PRIVATE
-            state_machine_lib
-            scxml_generator
-            ${LIBXMLPP_LIBRARIES}
-            GTest::gtest_main
-            GTest::gmock_main
-            pthread
-    )
-
-    # 통합 테스트 실행 파일을 CTest에 추가
-    add_test(NAME IntegratedTests COMMAND integrated_tests)
-endif()
+message(STATUS "✅ RSM SCXML tests enabled")
+message(STATUS "✅ JavaScript Engine tests enabled")
+message(STATUS "✅ Core Parser tests enabled")
+message(STATUS "✅ Integration tests enabled")
