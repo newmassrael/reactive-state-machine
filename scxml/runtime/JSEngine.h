@@ -196,7 +196,14 @@ private:
             SET_VARIABLE,
             GET_VARIABLE,
             SET_CURRENT_EVENT,
-            SETUP_SYSTEM_VARIABLES
+            SETUP_SYSTEM_VARIABLES,
+            CREATE_SESSION,
+            DESTROY_SESSION,
+            HAS_SESSION,
+            GET_ACTIVE_SESSIONS,
+            GET_MEMORY_USAGE,
+            COLLECT_GARBAGE,
+            SHUTDOWN_ENGINE
         };
 
         Type type;
@@ -207,6 +214,7 @@ private:
         std::shared_ptr<Event> event; // for SET_CURRENT_EVENT
         std::string sessionName;    // for SETUP_SYSTEM_VARIABLES
         std::vector<std::string> ioProcessors; // for SETUP_SYSTEM_VARIABLES
+        std::string parentSessionId; // for CREATE_SESSION
         std::promise<JSResult> promise;
 
         ExecutionRequest(Type t, const std::string& sid) : type(t), sessionId(sid) {}
@@ -218,9 +226,9 @@ private:
     mutable std::mutex sessionsMutex_;
 
     // === Thread-safe Execution ===
-    std::queue<std::unique_ptr<ExecutionRequest>> requestQueue_;
-    std::mutex queueMutex_;
-    std::condition_variable queueCondition_;
+    mutable std::queue<std::unique_ptr<ExecutionRequest>> requestQueue_;
+    mutable std::mutex queueMutex_;
+    mutable std::condition_variable queueCondition_;
     std::thread executionThread_;
     std::atomic<bool> shouldStop_{false};
 

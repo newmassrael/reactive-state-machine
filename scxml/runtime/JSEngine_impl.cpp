@@ -8,22 +8,36 @@ namespace SCXML::Runtime {
 // === Internal JavaScript Execution Methods ===
 
 JSResult JSEngine::executeScriptInternal(const std::string& sessionId, const std::string& script) {
+    std::cout << "JSEngine: executeScriptInternal - sessionId: " << sessionId << ", script: " << script << std::endl;
+    
     SessionContext* session = getSession(sessionId);
     if (!session || !session->jsContext) {
+        std::cout << "JSEngine: Session not found or no context: " << sessionId << std::endl;
         return JSResult::createError("Session not found: " + sessionId);
     }
 
     JSContext* ctx = session->jsContext;
+    std::cout << "JSEngine: Evaluating script with QuickJS..." << std::endl;
     ::JSValue result = JS_Eval(ctx, script.c_str(), script.length(), "<script>", JS_EVAL_TYPE_GLOBAL);
 
+    std::cout << "JSEngine: JS_Eval completed, checking result..." << std::endl;
+    std::cout << "JSEngine: JS_IsException(result): " << (JS_IsException(result) ? "true" : "false") << std::endl;
+    std::cout << "JSEngine: JS_IsUndefined(result): " << (JS_IsUndefined(result) ? "true" : "false") << std::endl;
+    std::cout << "JSEngine: JS_IsNull(result): " << (JS_IsNull(result) ? "true" : "false") << std::endl;
+    std::cout << "JSEngine: JS_IsNumber(result): " << (JS_IsNumber(result) ? "true" : "false") << std::endl;
+
     if (JS_IsException(result)) {
+        std::cout << "JSEngine: QuickJS exception occurred" << std::endl;
         JSResult error = createErrorFromException(ctx);
         JS_FreeValue(ctx, result);
+        std::cout << "JSEngine: Error: " << error.errorMessage << std::endl;
         return error;
     }
 
+    std::cout << "JSEngine: Script executed successfully, converting result..." << std::endl;
     ScriptValue jsResult = quickJSToJSValue(ctx, result);
     JS_FreeValue(ctx, result);
+    std::cout << "JSEngine: Result converted, returning success" << std::endl;
     return JSResult::createSuccess(jsResult);
 }
 
@@ -78,10 +92,20 @@ JSResult JSEngine::getVariableInternal(const std::string& sessionId, const std::
         return createErrorFromException(ctx);
     }
 
+    // Check if the property actually exists (not just undefined)
     if (JS_IsUndefined(qjsValue)) {
-        JS_FreeValue(ctx, qjsValue);
-        JS_FreeValue(ctx, global);
-        return JSResult::createError("Variable not found: " + name);
+        // Use JS_HasProperty to distinguish between "not set" and "set to undefined"
+        JSAtom atom = JS_NewAtom(ctx, name.c_str());
+        int hasProperty = JS_HasProperty(ctx, global, atom);
+        JS_FreeAtom(ctx, atom);  // Free the atom to prevent memory leak
+        
+        if (hasProperty <= 0) {
+            // Property doesn't exist - this is an error
+            JS_FreeValue(ctx, qjsValue);
+            JS_FreeValue(ctx, global);
+            return JSResult::createError("Variable not found: " + name);
+        }
+        // Property exists but is undefined - this is valid, continue with existing qjsValue
     }
 
     ScriptValue result = quickJSToJSValue(ctx, qjsValue);
@@ -184,14 +208,10 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext* ctx, JSValue qjsValue) {
     if (JS_IsBool(qjsValue)) {
         return JS_ToBool(ctx, qjsValue) ? true : false;
     } else if (JS_IsNumber(qjsValue)) {
-        int tag = JS_VALUE_GET_TAG(qjsValue);
-        if (tag == JS_TAG_INT) {
-            return static_cast<int64_t>(JS_VALUE_GET_INT(qjsValue));
-        } else {
-            double d;
-            JS_ToFloat64(ctx, &d, qjsValue);
-            return d;
-        }
+        // JavaScript numbers are always double (IEEE 754)
+        double d;
+        JS_ToFloat64(ctx, &d, qjsValue);
+        return d;
     } else if (JS_IsString(qjsValue)) {
         const char* str = JS_ToCString(ctx, qjsValue);
         std::string result(str ? str : "");
@@ -225,14 +245,41 @@ JSValue JSEngine::jsValueToQuickJS(JSContext* ctx, const ScriptValue& value) {
 
 JSResult JSEngine::createErrorFromException(JSContext* ctx) {
     ::JSValue exception = JS_GetException(ctx);
-    const char* errorStr = JS_ToCString(ctx, exception);
-    std::string errorMessage(errorStr ? errorStr : "Unknown JavaScript error");
-
-    if (errorStr) {
-        JS_FreeCString(ctx, errorStr);
+    
+    std::cout << "JSEngine: Getting exception details..." << std::endl;
+    
+    if (JS_IsNull(exception)) {
+        std::cout << "JSEngine: Exception is null" << std::endl;
+        return JSResult::createError("JavaScript error: Exception is null");
     }
+    
+    const char* errorStr = JS_ToCString(ctx, exception);
+    std::string errorMessage;
+    
+    if (errorStr) {
+        errorMessage = std::string("JavaScript error: ") + errorStr;
+        std::cout << "JSEngine: Exception message: " << errorStr << std::endl;
+        JS_FreeCString(ctx, errorStr);
+    } else {
+        errorMessage = "Unknown JavaScript error - could not get error string";
+        std::cout << "JSEngine: Could not get error string from exception" << std::endl;
+    }
+    
+    // Try to get stack trace
+    ::JSValue stack = JS_GetPropertyStr(ctx, exception, "stack");
+    if (!JS_IsUndefined(stack)) {
+        const char* stackStr = JS_ToCString(ctx, stack);
+        if (stackStr) {
+            std::cout << "JSEngine: Stack trace: " << stackStr << std::endl;
+            errorMessage += "\nStack: " + std::string(stackStr);
+            JS_FreeCString(ctx, stackStr);
+        }
+    }
+    JS_FreeValue(ctx, stack);
+    
     JS_FreeValue(ctx, exception);
-
+    
+    std::cout << "JSEngine: Final error message: " << errorMessage << std::endl;
     return JSResult::createError(errorMessage);
 }
 

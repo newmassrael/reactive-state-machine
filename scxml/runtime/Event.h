@@ -2,19 +2,16 @@
 
 #include <string>
 #include <memory>
-#include <variant>
-#include <unordered_map>
+#include <optional>
 
 namespace SCXML::Runtime {
 
 /**
  * @brief SCXML Event representation
- * Temporary implementation for JSEngine integration
+ * Simplified implementation using JSON-only data storage
  */
 class Event {
 public:
-    using EventData = std::variant<std::monostate, bool, int64_t, double, std::string>;
-
     Event(const std::string& name, const std::string& type = "platform")
         : name_(name), type_(type) {}
 
@@ -31,26 +28,17 @@ public:
     void setOriginType(const std::string& originType) { originType_ = originType; }
     void setInvokeId(const std::string& invokeId) { invokeId_ = invokeId; }
 
-    // Event data
-    bool hasData() const { return !std::holds_alternative<std::monostate>(data_); }
-    const EventData& getData() const { return data_; }
-    void setData(const EventData& data) { data_ = data; }
+    // Event data - simplified JSON-only API
+    bool hasData() const { 
+        return rawJsonData_.has_value();
+    }
+
+    void setRawJsonData(const std::string& json) {
+        rawJsonData_ = json;
+    }
 
     std::string getDataAsString() const {
-        return std::visit([](const auto& v) -> std::string {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, std::string>) {
-                return "\"" + v + "\"";  // JSON string
-            } else if constexpr (std::is_same_v<T, bool>) {
-                return v ? "true" : "false";
-            } else if constexpr (std::is_same_v<T, int64_t>) {
-                return std::to_string(v);
-            } else if constexpr (std::is_same_v<T, double>) {
-                return std::to_string(v);
-            } else {
-                return "null";
-            }
-        }, data_);
+        return rawJsonData_.value_or("null");
     }
 
 private:
@@ -60,7 +48,7 @@ private:
     std::string origin_;
     std::string originType_;
     std::string invokeId_;
-    EventData data_ = std::monostate{};
+    mutable std::optional<std::string> rawJsonData_;  // Raw JSON storage
 };
 
 }  // namespace SCXML::Runtime

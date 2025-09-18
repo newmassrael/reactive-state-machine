@@ -17,50 +17,49 @@ JSEngine::~JSEngine() {
 }
 
 bool JSEngine::initialize() {
+    std::cout << "JSEngine: Starting initialization..." << std::endl;
     std::lock_guard<std::mutex> lock(sessionsMutex_);
 
     if (runtime_) {
+        std::cout << "JSEngine: Already initialized" << std::endl;
         return true;  // Already initialized
     }
 
-    // Create QuickJS runtime
-    runtime_ = JS_NewRuntime();
-    if (!runtime_) {
-        std::cerr << "JSEngine: Failed to create QuickJS runtime" << std::endl;
-        return false;
-    }
+    // JSRuntime will be created in worker thread to ensure thread safety
+    runtime_ = nullptr;
 
     // Start execution thread
     shouldStop_ = false;
     executionThread_ = std::thread(&JSEngine::executionWorker, this);
 
-    std::cout << "JSEngine: Initialized with QuickJS runtime" << std::endl;
+    std::cout << "JSEngine: Successfully initialized with QuickJS runtime" << std::endl;
     return true;
 }
 
 void JSEngine::shutdown() {
-    // Stop execution thread
+    if (shouldStop_) {
+        return; // Already shutting down
+    }
+
+    // Send shutdown request to worker thread
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::SHUTDOWN_ENGINE, "");
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        requestQueue_.push(std::move(request));
+    }
+    queueCondition_.notify_one();
+
+    // Wait for worker thread to process shutdown
+    future.get();
+
+    // Now stop the worker thread
     shouldStop_ = true;
     queueCondition_.notify_all();
 
     if (executionThread_.joinable()) {
         executionThread_.join();
-    }
-
-    std::lock_guard<std::mutex> lock(sessionsMutex_);
-
-    // Cleanup all sessions
-    for (auto& [sessionId, session] : sessions_) {
-        if (session.jsContext) {
-            JS_FreeContext(session.jsContext);
-        }
-    }
-    sessions_.clear();
-
-    // Cleanup runtime
-    if (runtime_) {
-        JS_FreeRuntime(runtime_);
-        runtime_ = nullptr;
     }
 
     std::cout << "JSEngine: Shutdown complete" << std::endl;
@@ -69,34 +68,76 @@ void JSEngine::shutdown() {
 // === Session Management ===
 
 bool JSEngine::createSession(const std::string& sessionId, const std::string& parentSessionId) {
-    auto future = std::async(std::launch::async, [this, sessionId, parentSessionId]() {
-        std::lock_guard<std::mutex> lock(sessionsMutex_);
-        return createSessionInternal(sessionId, parentSessionId);
-    });
-    return future.get();
+    // Runtime is now created in worker thread, so no need to check here
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::CREATE_SESSION, sessionId);
+    request->parentSessionId = parentSessionId;
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        requestQueue_.push(std::move(request));
+    }
+    queueCondition_.notify_one();
+
+    auto result = future.get();
+    return result.success;
 }
 
 bool JSEngine::destroySession(const std::string& sessionId) {
-    auto future = std::async(std::launch::async, [this, sessionId]() {
-        std::lock_guard<std::mutex> lock(sessionsMutex_);
-        return destroySessionInternal(sessionId);
-    });
-    return future.get();
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::DESTROY_SESSION, sessionId);
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        requestQueue_.push(std::move(request));
+    }
+    queueCondition_.notify_one();
+
+    auto result = future.get();
+    return result.success;
 }
 
 bool JSEngine::hasSession(const std::string& sessionId) const {
-    std::lock_guard<std::mutex> lock(sessionsMutex_);
-    return sessions_.find(sessionId) != sessions_.end();
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::HAS_SESSION, sessionId);
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        const_cast<JSEngine*>(this)->requestQueue_.push(std::move(request));
+    }
+    const_cast<JSEngine*>(this)->queueCondition_.notify_one();
+
+    auto result = future.get();
+    return result.success;
 }
 
 std::vector<std::string> JSEngine::getActiveSessions() const {
-    std::lock_guard<std::mutex> lock(sessionsMutex_);
-    std::vector<std::string> result;
-    result.reserve(sessions_.size());
-    for (const auto& [sessionId, _] : sessions_) {
-        result.push_back(sessionId);
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::GET_ACTIVE_SESSIONS, "");
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        const_cast<JSEngine*>(this)->requestQueue_.push(std::move(request));
     }
-    return result;
+    const_cast<JSEngine*>(this)->queueCondition_.notify_one();
+
+    auto result = future.get();
+    
+    // Parse comma-separated session IDs from result
+    std::vector<std::string> sessions;
+    if (result.success && std::holds_alternative<std::string>(result.value)) {
+        std::string sessionIds = std::get<std::string>(result.value);
+        if (!sessionIds.empty()) {
+            std::stringstream ss(sessionIds);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                if (!item.empty()) {
+                    sessions.push_back(item);
+                }
+            }
+        }
+    }
+    return sessions;
 }
 
 // === JavaScript Execution ===
@@ -196,23 +237,48 @@ std::string JSEngine::getEngineInfo() const {
 }
 
 size_t JSEngine::getMemoryUsage() const {
-    if (!runtime_) return 0;
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::GET_MEMORY_USAGE, "");
+    auto future = request->promise.get_future();
 
-    JSMemoryUsage usage;
-    JS_ComputeMemoryUsage(runtime_, &usage);
-    return usage.memory_used_size;
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        const_cast<JSEngine*>(this)->requestQueue_.push(std::move(request));
+    }
+    const_cast<JSEngine*>(this)->queueCondition_.notify_one();
+
+    auto result = future.get();
+    if (result.success && std::holds_alternative<int64_t>(result.value)) {
+        return static_cast<size_t>(std::get<int64_t>(result.value));
+    }
+    return 0;
 }
 
 void JSEngine::collectGarbage() {
-    if (runtime_) {
-        JS_RunGC(runtime_);
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::COLLECT_GARBAGE, "");
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        requestQueue_.push(std::move(request));
     }
+    queueCondition_.notify_one();
+
+    // Wait for completion but ignore result
+    future.get();
 }
 
 // === Thread-safe Execution Worker ===
 
 void JSEngine::executionWorker() {
     std::cout << "JSEngine: Execution worker thread started" << std::endl;
+    
+    // Create QuickJS runtime in worker thread to ensure thread safety
+    runtime_ = JS_NewRuntime();
+    if (!runtime_) {
+        std::cerr << "JSEngine: Failed to create QuickJS runtime in worker thread" << std::endl;
+        return;
+    }
+    std::cout << "JSEngine: QuickJS runtime created in worker thread" << std::endl;
 
     while (!shouldStop_) {
         std::unique_lock<std::mutex> lock(queueMutex_);
@@ -230,6 +296,29 @@ void JSEngine::executionWorker() {
 
             lock.lock();
         }
+    }
+
+    // Cleanup all sessions with forced garbage collection
+    for (auto& pair : sessions_) {
+        if (pair.second.jsContext) {
+            // Force garbage collection before freeing context
+            JS_RunGC(runtime_);
+            JS_FreeContext(pair.second.jsContext);
+        }
+    }
+    sessions_.clear();
+    
+    // Final garbage collection and cleanup
+    if (runtime_) {
+        // Multiple GC passes to ensure all objects are collected
+        for (int i = 0; i < 3; ++i) {
+            JS_RunGC(runtime_);
+        }
+        
+        // Free runtime
+        JS_FreeRuntime(runtime_);
+        runtime_ = nullptr;
+        std::cout << "JSEngine: Worker thread cleaned up QuickJS resources" << std::endl;
     }
 
     std::cout << "JSEngine: Execution worker thread stopped" << std::endl;
@@ -258,6 +347,73 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
             case ExecutionRequest::SETUP_SYSTEM_VARIABLES:
                 result = setupSystemVariablesInternal(request->sessionId, request->sessionName, request->ioProcessors);
                 break;
+            case ExecutionRequest::CREATE_SESSION:
+                {
+                    bool success = createSessionInternal(request->sessionId, request->parentSessionId);
+                    result = success ? JSResult::createSuccess() : JSResult::createError("Failed to create session");
+                }
+                break;
+            case ExecutionRequest::DESTROY_SESSION:
+                {
+                    bool success = destroySessionInternal(request->sessionId);
+                    result = success ? JSResult::createSuccess() : JSResult::createError("Failed to destroy session");
+                }
+                break;
+            case ExecutionRequest::HAS_SESSION:
+                {
+                    bool exists = sessions_.find(request->sessionId) != sessions_.end();
+                    result = exists ? JSResult::createSuccess() : JSResult::createError("Session not found");
+                }
+                break;
+            case ExecutionRequest::GET_ACTIVE_SESSIONS:
+                {
+                    std::string sessionIds;
+                    for (const auto& [sessionId, _] : sessions_) {
+                        if (!sessionIds.empty()) sessionIds += ",";
+                        sessionIds += sessionId;
+                    }
+                    result = JSResult::createSuccess(sessionIds);
+                }
+                break;
+            case ExecutionRequest::GET_MEMORY_USAGE:
+                {
+                    if (runtime_) {
+                        JSMemoryUsage usage;
+                        JS_ComputeMemoryUsage(runtime_, &usage);
+                        result = JSResult::createSuccess(static_cast<int64_t>(usage.memory_used_size));
+                    } else {
+                        result = JSResult::createSuccess(static_cast<int64_t>(0));
+                    }
+                }
+                break;
+            case ExecutionRequest::COLLECT_GARBAGE:
+                {
+                    if (runtime_) {
+                        JS_RunGC(runtime_);
+                    }
+                    result = JSResult::createSuccess();
+                }
+                break;
+            case ExecutionRequest::SHUTDOWN_ENGINE:
+                {
+                    // Cleanup all sessions
+                    for (auto& [sessionId, session] : sessions_) {
+                        if (session.jsContext) {
+                            JS_FreeContext(session.jsContext);
+                        }
+                    }
+                    sessions_.clear();
+
+                    // Cleanup runtime
+                    if (runtime_) {
+                        JS_FreeRuntime(runtime_);
+                        runtime_ = nullptr;
+                    }
+                    
+                    result = JSResult::createSuccess();
+                    std::cout << "JSEngine: Worker thread cleaned up QuickJS resources" << std::endl;
+                }
+                break;
         }
 
         request->promise.set_value(result);
@@ -275,11 +431,7 @@ bool JSEngine::createSessionInternal(const std::string& sessionId, const std::st
         return false;
     }
 
-    if (!runtime_) {
-        std::cerr << "JSEngine: Runtime not initialized" << std::endl;
-        return false;
-    }
-
+    // Runtime is guaranteed to exist in worker thread
     // Create QuickJS context
     JSContext* ctx = JS_NewContext(runtime_);
     if (!ctx) {
@@ -312,6 +464,10 @@ bool JSEngine::destroySessionInternal(const std::string& sessionId) {
     }
 
     if (it->second.jsContext) {
+        // Force garbage collection before freeing context
+        if (runtime_) {
+            JS_RunGC(runtime_);
+        }
         JS_FreeContext(it->second.jsContext);
     }
 
@@ -329,8 +485,7 @@ bool JSEngine::setupQuickJSContext(JSContext* ctx) {
     // Set engine instance as context opaque for callbacks
     JS_SetContextOpaque(ctx, this);
 
-    // Setup SCXML builtins
-    setupSCXMLBuiltins(ctx);
+    // Setup SCXML-specific objects (only if needed)
     setupEventObject(ctx);
 
     return true;
@@ -339,18 +494,8 @@ bool JSEngine::setupQuickJSContext(JSContext* ctx) {
 // === SCXML-specific Setup ===
 
 void JSEngine::setupSCXMLBuiltins(JSContext* ctx) {
-    ::JSValue global = JS_GetGlobalObject(ctx);
-
-    // TODO: Setup In() function for state checking
-    // JSValue inFunction = JS_NewCFunction(ctx, inFunctionWrapper, "In", 1);
-    // JS_SetPropertyStr(ctx, global, "In", inFunction);
-
-    // Setup console.log
-    ::JSValue console = JS_NewObject(ctx);
-    // TODO: Setup console.log function
-    JS_SetPropertyStr(ctx, global, "console", console);
-
-    JS_FreeValue(ctx, global);
+    // Minimal setup - no SCXML-specific functions for now
+    // Just let QuickJS work with its default global objects
 }
 
 void JSEngine::setupEventObject(JSContext* ctx) {

@@ -145,7 +145,33 @@ target_link_libraries(generator_tests
 # CTest에 generator 테스트 추가
 add_test(NAME GeneratorTests COMMAND generator_tests)
 
-# 3. 기존 통합 테스트 (옵션으로 유지)
+# 3. JavaScript Engine 테스트 (js_engine 디렉토리 테스트)
+add_executable(js_engine_tests
+    js_engine/SessionManagementTest.cpp
+    js_engine/DataModelTest.cpp
+    js_engine/EventSystemTest.cpp
+    js_engine/SimpleDebugTest.cpp
+)
+
+target_include_directories(js_engine_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/scxml/include
+        ${CMAKE_SOURCE_DIR}/scxml/runtime
+        ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(js_engine_tests
+    PRIVATE
+        scxml_engine
+        GTest::gtest_main
+        pthread
+)
+
+# CTest에 js_engine 테스트 추가
+add_test(NAME JSEngineTests COMMAND js_engine_tests)
+
+# 4. 기존 통합 테스트 (옵션으로 유지)
 option(BUILD_INTEGRATED_TESTS "Build integrated tests that include both examples and generator" OFF)
 
 if(BUILD_INTEGRATED_TESTS)

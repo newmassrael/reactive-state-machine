@@ -78,6 +78,7 @@ public:
     // Event data management
     bool hasData() const { return !dataString_.empty(); }
     void setData(const std::string& data) { dataString_ = data; }
+    void setDataFromString(const std::string& data) { dataString_ = data; }
     std::string getDataAsString() const { return dataString_; }
 
 private:

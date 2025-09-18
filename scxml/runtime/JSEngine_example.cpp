@@ -68,10 +68,10 @@ void demonstrateSessionIsolation() {
 
     // Create different events for each session
     auto mainEvent = std::make_shared<Event>("temperature.changed", "internal");
-    mainEvent->setData("25.5");
-
+    mainEvent->setDataFromString("\"25.5\"");
+    
     auto child1Event = std::make_shared<Event>("timer.expired", "platform");
-    child1Event->setData("timeout");
+    child1Event->setDataFromString("\"timeout\"");  // JSON string format
 
     engine->setCurrentEvent("main", mainEvent).get();
     engine->setCurrentEvent("child1", child1Event).get();

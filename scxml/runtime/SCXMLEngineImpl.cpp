@@ -2,6 +2,7 @@
 #include "SCXMLEngineImpl.h"
 #include "Event.h"
 #include <sstream>
+#include <iostream>
 
 namespace SCXML {
 
@@ -41,11 +42,14 @@ SCXMLEngineImpl::~SCXMLEngineImpl() {
 }
 
 bool SCXMLEngineImpl::initialize() {
+    std::cout << "SCXMLEngineImpl: Starting initialization..." << std::endl;
     if (initialized_) {
+        std::cout << "SCXMLEngineImpl: Already initialized" << std::endl;
         return true;
     }
 
     bool success = Runtime::JSEngine::instance().initialize();
+    std::cout << "SCXMLEngineImpl: JSEngine initialization result: " << (success ? "SUCCESS" : "FAILED") << std::endl;
     if (success) {
         initialized_ = true;
     }
@@ -183,7 +187,7 @@ std::shared_ptr<Runtime::Event> SCXMLEngineImpl::convertEvent(std::shared_ptr<Ev
     internalEvent->setInvokeId(publicEvent->getInvokeId());
     
     if (publicEvent->hasData()) {
-        internalEvent->setData(publicEvent->getDataAsString());
+        internalEvent->setRawJsonData(publicEvent->getDataAsString());
     }
 
     return internalEvent;
