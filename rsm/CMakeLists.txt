@@ -40,6 +40,9 @@ set(LIBXMLXX_LIBRARIES ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0${CMAKE_SHARED_LI
 # Add QuickJS subdirectory
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/quickjs ${CMAKE_CURRENT_BINARY_DIR}/quickjs)
 
+# Add spdlog subdirectory
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/spdlog ${CMAKE_CURRENT_BINARY_DIR}/spdlog)
+
 add_library(rsm_unified
     # Model implementation
     src/model/SCXMLModel.cpp
@@ -97,6 +100,7 @@ add_dependencies(rsm_unified libxmlxx_external)
 target_link_libraries(rsm_unified
     PUBLIC
         qjs                          # QuickJS library
+        spdlog::spdlog               # spdlog library
     PRIVATE
         ${LIBXMLXX_LIBRARIES}
         ${LIBXML2_LIBRARIES}         # libxml2 dependency for libxml++

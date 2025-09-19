@@ -1,5 +1,7 @@
 #pragma once
 
+namespace RSM {
+
 enum class Type
 {
     ATOMIC,   // 자식 상태가 없는 상태
@@ -16,3 +18,5 @@ enum class HistoryType
     SHALLOW, // Shallow 히스토리
     DEEP     // Deep 히스토리
 };
+
+}  // namespace RSM

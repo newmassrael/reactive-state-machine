@@ -3,6 +3,8 @@
 #include <string>
 #include <variant>
 
+namespace RSM {
+
 /**
  * @brief JavaScript value type for cross-session data exchange
  */
@@ -64,4 +66,6 @@ struct JSResult {
         }, value);
     }
 };
+
+}  // namespace RSM
 

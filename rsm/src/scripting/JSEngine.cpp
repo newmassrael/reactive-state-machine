@@ -1,4 +1,5 @@
 #include "scripting/JSEngine.h"
+#include "common/Logger.h"
 #include "quickjs.h"
 #include <iostream>
 #include <sstream>
@@ -21,12 +22,12 @@ JSEngine::~JSEngine() {
 
 
 bool JSEngine::initialize() {
-    std::cout << "JSEngine: Starting initialization..." << std::endl;
+    Logger::debug("JSEngine: Starting initialization...");
     std::lock_guard<std::mutex> lock(sessionsMutex_);
 
 
     if (runtime_) {
-        std::cout << "JSEngine: Already initialized" << std::endl;
+        Logger::debug("JSEngine: Already initialized");
         return true;  // Already initialized
     }
 
@@ -40,7 +41,7 @@ bool JSEngine::initialize() {
     executionThread_ = std::thread(&JSEngine::executionWorker, this);
 
 
-    std::cout << "JSEngine: Successfully initialized with QuickJS runtime" << std::endl;
+    Logger::debug("JSEngine: Successfully initialized with QuickJS runtime");
     return true;
 }
 
@@ -77,7 +78,7 @@ void JSEngine::shutdown() {
     }
 
 
-    std::cout << "JSEngine: Shutdown complete" << std::endl;
+    Logger::debug("JSEngine: Shutdown complete");
 }
 
 
@@ -326,14 +327,14 @@ void JSEngine::collectGarbage() {
 
 
 void JSEngine::executionWorker() {
-    std::cout << "JSEngine: Execution worker thread started" << std::endl;
+    Logger::debug("JSEngine: Execution worker thread started");
     // Create QuickJS runtime in worker thread to ensure thread safety
     runtime_ = JS_NewRuntime();
     if (!runtime_) {
         std::cerr << "JSEngine: Failed to create QuickJS runtime in worker thread" << std::endl;
         return;
     }
-    std::cout << "JSEngine: QuickJS runtime created in worker thread" << std::endl;
+    Logger::debug("JSEngine: QuickJS runtime created in worker thread");
 
 
     while (!shouldStop_) {
@@ -377,11 +378,11 @@ void JSEngine::executionWorker() {
         // Free runtime
         JS_FreeRuntime(runtime_);
         runtime_ = nullptr;
-        std::cout << "JSEngine: Worker thread cleaned up QuickJS resources" << std::endl;
+        Logger::debug("JSEngine: Worker thread cleaned up QuickJS resources");
     }
 
 
-    std::cout << "JSEngine: Execution worker thread stopped" << std::endl;
+    Logger::debug("JSEngine: Execution worker thread stopped");
 }
 
 
@@ -473,7 +474,7 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
                         runtime_ = nullptr;
                     }
                     result = JSResult::createSuccess();
-                    std::cout << "JSEngine: Worker thread cleaned up QuickJS resources" << std::endl;
+                    Logger::debug("JSEngine: Worker thread cleaned up QuickJS resources");
                 }
                 break;
         }
@@ -530,7 +531,7 @@ bool JSEngine::createSessionInternal(const std::string& sessionId, const std::st
     sessions_[sessionId] = std::move(session);
 
 
-    std::cout << "JSEngine: Created session '" << sessionId << "'" << std::endl;
+    Logger::debug("JSEngine: Created session '" + sessionId + "'");
     return true;
 }
 
@@ -552,7 +553,7 @@ bool JSEngine::destroySessionInternal(const std::string& sessionId) {
 
 
     sessions_.erase(it);
-    std::cout << "JSEngine: Destroyed session '" << sessionId << "'" << std::endl;
+    Logger::debug("JSEngine: Destroyed session '" + sessionId + "'");
     return true;
 }
 

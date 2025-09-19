@@ -1,23 +1,19 @@
 #include "GuardUtils.h"
-using namespace RSM;
 
+namespace RSM {
+namespace GuardUtils {
 
-namespace GuardUtils
-{
+bool isConditionExpression(const std::string &expression) {
+  // 일반적인 조건식에 포함된 연산자들 확인
+  return expression.find('>') != std::string::npos ||
+         expression.find('<') != std::string::npos ||
+         expression.find('=') != std::string::npos ||
+         expression.find('!') != std::string::npos ||
+         expression.find('+') != std::string::npos ||
+         expression.find('-') != std::string::npos ||
+         expression.find('*') != std::string::npos ||
+         expression.find('/') != std::string::npos;
+}
 
-
-    bool isConditionExpression(const std::string &expression)
-    {
-        // 일반적인 조건식에 포함된 연산자들 확인
-        return expression.find('>') != std::string::npos ||
-               expression.find('<') != std::string::npos ||
-               expression.find('=') != std::string::npos ||
-               expression.find('!') != std::string::npos ||
-               expression.find('+') != std::string::npos ||
-               expression.find('-') != std::string::npos ||
-               expression.find('*') != std::string::npos ||
-               expression.find('/') != std::string::npos;
-    }
-
-
-} // namespace GuardUtils
+}  // namespace GuardUtils
+}  // namespace RSM

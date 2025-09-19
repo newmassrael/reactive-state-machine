@@ -1,5 +1,6 @@
 #define SCXML_ENGINE_EXPORTS
 #include "SCXMLEngineImpl.h"
+#include "common/Logger.h"
 #include <sstream>
 #include <iostream>
 
@@ -48,15 +49,15 @@ SCXMLEngineImpl::~SCXMLEngineImpl() {
 
 
 bool SCXMLEngineImpl::initialize() {
-    ::std::cout << "SCXMLEngineImpl: Starting initialization..." << ::std::endl;
+    Logger::debug("SCXMLEngineImpl: Starting initialization...");
     if (initialized_) {
-        ::std::cout << "SCXMLEngineImpl: Already initialized" << ::std::endl;
+        Logger::debug("SCXMLEngineImpl: Already initialized");
         return true;
     }
 
 
     bool success = JSEngine::instance().initialize();
-    ::std::cout << "SCXMLEngineImpl: JSEngine initialization result: " << (success ? "SUCCESS" : "FAILED") << ::std::endl;
+    Logger::debug("SCXMLEngineImpl: JSEngine initialization result: " + std::string(success ? "SUCCESS" : "FAILED"));
     if (success) {
         initialized_ = true;
     }

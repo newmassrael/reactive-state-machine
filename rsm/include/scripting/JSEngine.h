@@ -17,7 +17,7 @@
 struct JSRuntime;
 struct JSContext;
 struct JSValue;
-typedef const JSValue JSValueConst;
+// JSValueConst is defined by QuickJS, no need to redefine
 
 namespace RSM {
 
