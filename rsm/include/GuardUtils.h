@@ -5,6 +5,6 @@
 
 namespace RSM {
 namespace GuardUtils {
-    bool isConditionExpression(const std::string &expression);
+bool isConditionExpression(const std::string &expression);
 }  // namespace GuardUtils
 }  // namespace RSM

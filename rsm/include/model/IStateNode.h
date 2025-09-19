@@ -1,10 +1,10 @@
 #pragma once
 
+#include "DoneData.h"  // 추가된 헤더
+#include "types.h"
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-#include "types.h"
-#include "DoneData.h" // 추가된 헤더
 
 namespace RSM {
 
@@ -12,8 +12,7 @@ class ITransitionNode;
 class IInvokeNode;
 class IDataModelItem;
 
-class IStateNode
-{
+class IStateNode {
 public:
     virtual ~IStateNode() = default;
 

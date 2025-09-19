@@ -1,7 +1,7 @@
-#include <gtest/gtest.h>
-#include "parsing/SCXMLParser.h"
-#include "model/SCXMLModel.h"
 #include "factory/NodeFactory.h"
+#include "model/SCXMLModel.h"
+#include "parsing/SCXMLParser.h"
+#include <gtest/gtest.h>
 #include <sstream>
 
 namespace RSM {
@@ -31,7 +31,7 @@ TEST_F(SCXMLParserBasicTest, ParseSimpleStateMachine) {
     auto model = parser_->parseContent(scxmlContent);
     ASSERT_NE(model, nullptr);
     EXPECT_FALSE(parser_->hasErrors());
-    
+
     // Verify basic model properties
     EXPECT_EQ(model->getInitialState(), "start");
 }
@@ -48,7 +48,7 @@ TEST_F(SCXMLParserBasicTest, ParseInvalidXML) {
     auto model = parser_->parseContent(invalidContent);
     EXPECT_EQ(model, nullptr);
     EXPECT_TRUE(parser_->hasErrors());
-    
+
     auto errors = parser_->getErrorMessages();
     EXPECT_FALSE(errors.empty());
 }
@@ -71,10 +71,10 @@ TEST_F(SCXMLParserBasicTest, ParseNestedStates) {
     auto model = parser_->parseContent(scxmlContent);
     ASSERT_NE(model, nullptr);
     EXPECT_FALSE(parser_->hasErrors());
-    
+
     // Verify nested structure - getAllStates() only returns top-level states
     auto states = model->getAllStates();
-    EXPECT_GE(states.size(), 2); // parent, end (child states are nested within parent)
+    EXPECT_GE(states.size(), 2);  // parent, end (child states are nested within parent)
 }
 
 // Test action parsing
@@ -134,10 +134,10 @@ TEST_F(SCXMLParserBasicTest, ParseDataModel) {
     auto model = parser_->parseContent(scxmlContent);
     ASSERT_NE(model, nullptr);
     EXPECT_FALSE(parser_->hasErrors());
-    
+
     // Verify data model items exist
     auto dataModelItems = model->getDataModelItems();
-    EXPECT_GE(dataModelItems.size(), 3); // name, count, flag
+    EXPECT_GE(dataModelItems.size(), 3);  // name, count, flag
 }
 
 // Test final states
@@ -165,5 +165,5 @@ TEST_F(SCXMLParserBasicTest, ParseFinalStates) {
     EXPECT_FALSE(parser_->hasErrors());
 }
 
-} // namespace Tests
-} // namespace RSM
+}  // namespace Tests
+}  // namespace RSM

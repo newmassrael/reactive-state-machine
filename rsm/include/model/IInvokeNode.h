@@ -1,14 +1,12 @@
 #pragma once
 
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
-
 
 namespace RSM {
 
-class IInvokeNode
-{
+class IInvokeNode {
 public:
     virtual ~IInvokeNode() = default;
 
@@ -29,6 +27,5 @@ public:
     virtual const std::string &getContent() const = 0;
     virtual const std::string &getFinalize() const = 0;
 };
-
 
 }  // namespace RSM

@@ -10,8 +10,7 @@
  * 이 클래스는 상태 전환 시 실행되는 액션을 나타냅니다.
  * SCXML 문서의 <code:action> 요소에 해당합니다.
  */
-class ActionNode : public IActionNode
-{
+class ActionNode : public IActionNode {
 public:
     /**
      * @brief 생성자
@@ -86,23 +85,19 @@ public:
      */
     virtual const std::unordered_map<std::string, std::string> &getAttributes() const override;
 
-    void addChildAction(std::shared_ptr<IActionNode> childAction) override
-    {
+    void addChildAction(std::shared_ptr<IActionNode> childAction) override {
         childActions_.push_back(childAction);
     }
 
-    void setChildActions(const std::vector<std::shared_ptr<IActionNode>> &childActions) override
-    {
+    void setChildActions(const std::vector<std::shared_ptr<IActionNode>> &childActions) override {
         childActions_ = childActions;
     }
 
-    const std::vector<std::shared_ptr<IActionNode>> &getChildActions() const override
-    {
+    const std::vector<std::shared_ptr<IActionNode>> &getChildActions() const override {
         return childActions_;
     }
 
-    bool hasChildActions() const override
-    {
+    bool hasChildActions() const override {
         return !childActions_.empty();
     }
 

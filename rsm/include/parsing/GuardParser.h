@@ -1,11 +1,11 @@
 #pragma once
 
+#include "factory/INodeFactory.h"
+#include "model/IGuardNode.h"
 #include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
 #include <vector>
-#include "model/IGuardNode.h"
-#include "factory/INodeFactory.h"
 
 /**
  * @brief 가드 조건 파싱을 담당하는 클래스
@@ -17,8 +17,7 @@
 
 namespace RSM {
 
-class GuardParser
-{
+class GuardParser {
 public:
     /**
      * @brief 생성자
@@ -44,7 +43,8 @@ public:
      * @param targetState 전환 대상 상태
      * @return 생성된 가드 노드, 가드 속성이 없으면 nullptr
      */
-    std::shared_ptr<IGuardNode> parseGuardFromTransition(const xmlpp::Element *transitionNode, const std::string &targetState);
+    std::shared_ptr<IGuardNode> parseGuardFromTransition(const xmlpp::Element *transitionNode,
+                                                         const std::string &targetState);
 
     /**
      * @brief 반응형 가드 파싱
@@ -110,10 +110,10 @@ private:
      * @param guardObject 가드 객체
      * @param target XML target 속성 값
      */
-    void parseTargetAndCondition(const xmlpp::Element *guardNode, std::shared_ptr<IGuardNode> guardObject, const std::string &target);
+    void parseTargetAndCondition(const xmlpp::Element *guardNode, std::shared_ptr<IGuardNode> guardObject,
+                                 const std::string &target);
 
     std::shared_ptr<INodeFactory> nodeFactory_;
 };
-
 
 }  // namespace RSM

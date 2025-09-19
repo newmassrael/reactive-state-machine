@@ -13,157 +13,153 @@
 namespace fs = std::filesystem;
 
 void printUsage(const char *programName) {
-  std::cout << "SCXML Code Generator\n\n";
-  std::cout << "Usage: " << programName << " [options] <input.scxml>\n\n";
-  std::cout << "Options:\n";
-  std::cout
-      << "  -o, --output <file>    Output file path (default: generated.cpp)\n";
-  std::cout << "  -h, --help            Show this help message\n";
-  std::cout << "  -v, --verbose         Enable verbose logging\n\n";
-  std::cout << "Examples:\n";
-  std::cout << "  " << programName << " state_machine.scxml\n";
-  std::cout << "  " << programName << " -o my_sm.cpp input.scxml\n";
-  std::cout << "  " << programName
-            << " --verbose --output=generated.hpp input.scxml\n";
+    std::cout << "SCXML Code Generator\n\n";
+    std::cout << "Usage: " << programName << " [options] <input.scxml>\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  -o, --output <file>    Output file path (default: generated.cpp)\n";
+    std::cout << "  -h, --help            Show this help message\n";
+    std::cout << "  -v, --verbose         Enable verbose logging\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  " << programName << " state_machine.scxml\n";
+    std::cout << "  " << programName << " -o my_sm.cpp input.scxml\n";
+    std::cout << "  " << programName << " --verbose --output=generated.hpp input.scxml\n";
 }
 
 void printVersion() {
-  std::cout << "scxml-codegen version 1.0.0\n";
-  std::cout << "SCXML-to-C++ Code Generator\n";
+    std::cout << "scxml-codegen version 1.0.0\n";
+    std::cout << "SCXML-to-C++ Code Generator\n";
 }
 
 int main(int argc, char *argv[]) {
-  std::string inputFile;
-  std::string outputFile = "generated.cpp";
-  bool verbose = false;
+    std::string inputFile;
+    std::string outputFile = "generated.cpp";
+    bool verbose = false;
 
-  // Parse command line arguments
-  for (int i = 1; i < argc; ++i) {
-    std::string arg(argv[i]);
+    // Parse command line arguments
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
 
-    if (arg == "-h" || arg == "--help") {
-      printUsage(argv[0]);
-      return 0;
-    } else if (arg == "-v" || arg == "--verbose") {
-      verbose = true;
-    } else if (arg == "--version") {
-      printVersion();
-      return 0;
-    } else if (arg == "-o" || arg == "--output") {
-      if (i + 1 < argc) {
-        outputFile = argv[++i];
-      } else {
-        std::cerr << "Error: --output requires a file path\n";
+        if (arg == "-h" || arg == "--help") {
+            printUsage(argv[0]);
+            return 0;
+        } else if (arg == "-v" || arg == "--verbose") {
+            verbose = true;
+        } else if (arg == "--version") {
+            printVersion();
+            return 0;
+        } else if (arg == "-o" || arg == "--output") {
+            if (i + 1 < argc) {
+                outputFile = argv[++i];
+            } else {
+                std::cerr << "Error: --output requires a file path\n";
+                return 1;
+            }
+        } else if (arg.starts_with("--output=")) {
+            outputFile = arg.substr(9);
+        } else if (arg.starts_with("-")) {
+            std::cerr << "Error: Unknown option " << arg << "\n";
+            printUsage(argv[0]);
+            return 1;
+        } else {
+            if (inputFile.empty()) {
+                inputFile = arg;
+            } else {
+                std::cerr << "Error: Multiple input files specified\n";
+                return 1;
+            }
+        }
+    }
+
+    // Validate arguments
+    if (inputFile.empty()) {
+        std::cerr << "Error: No input file specified\n";
+        printUsage(argv[0]);
         return 1;
-      }
-    } else if (arg.starts_with("--output=")) {
-      outputFile = arg.substr(9);
-    } else if (arg.starts_with("-")) {
-      std::cerr << "Error: Unknown option " << arg << "\n";
-      printUsage(argv[0]);
-      return 1;
-    } else {
-      if (inputFile.empty()) {
-        inputFile = arg;
-      } else {
-        std::cerr << "Error: Multiple input files specified\n";
+    }
+
+    if (!fs::exists(inputFile)) {
+        std::cerr << "Error: Input file '" << inputFile << "' does not exist\n";
         return 1;
-      }
-    }
-  }
-
-  // Validate arguments
-  if (inputFile.empty()) {
-    std::cerr << "Error: No input file specified\n";
-    printUsage(argv[0]);
-    return 1;
-  }
-
-  if (!fs::exists(inputFile)) {
-    std::cerr << "Error: Input file '" << inputFile << "' does not exist\n";
-    return 1;
-  }
-
-  // Set logging level
-  if (verbose) {
-    // Logger는 정적 레벨 설정이 없으므로 현재는 무시
-    Logger::info("Verbose mode enabled");
-  }
-
-  try {
-    Logger::info("Starting SCXML code generation...");
-    Logger::info("Input file: " + inputFile);
-    Logger::info("Output file: " + outputFile);
-
-    // Parse SCXML file
-    auto nodeFactory = std::make_shared<RSM::NodeFactory>();
-    RSM::SCXMLParser parser(nodeFactory);
-    auto model = parser.parseFile(inputFile);
-
-    if (!model) {
-      std::cerr << "Error: Failed to parse SCXML file\n";
-      return 1;
     }
 
-    Logger::info("SCXML parsing completed successfully");
-
-    // Generate C++ code
-    std::ofstream outFile(outputFile);
-    if (!outFile.is_open()) {
-      std::cerr << "Error: Cannot create output file '" << outputFile << "'\n";
-      return 1;
+    // Set logging level
+    if (verbose) {
+        // Logger는 정적 레벨 설정이 없으므로 현재는 무시
+        Logger::info("Verbose mode enabled");
     }
 
-    // Generate header
-    outFile << "// Generated by scxml-codegen from " << inputFile << "\n";
-    outFile << "// Do not edit this file manually\n\n";
-    outFile << "#include \"scxml/SCXMLEngine.h\"\n";
-    outFile << "#include \"scxml/SCXMLTypes.h\"\n\n";
+    try {
+        Logger::info("Starting SCXML code generation...");
+        Logger::info("Input file: " + inputFile);
+        Logger::info("Output file: " + outputFile);
 
-    // Generate state machine class
-    std::string className =
-        fs::path(inputFile).stem().string() + "StateMachine";
-    outFile << "class " << className << " {\n";
-    outFile << "public:\n";
-    outFile << "    " << className << "() {\n";
-    outFile << "        engine = SCXML::createSCXMLEngine();\n";
-    outFile << "        engine->initialize();\n";
-    outFile << "        engine->createSession(\"main\");\n";
-    outFile << "    }\n\n";
-    outFile << "    ~" << className << "() {\n";
-    outFile << "        if (engine) {\n";
-    outFile << "            engine->destroySession(\"main\");\n";
-    outFile << "            engine->shutdown();\n";
-    outFile << "        }\n";
-    outFile << "    }\n\n";
-    outFile << "    void start() {\n";
-    outFile << "        // TODO: Generate state machine logic based on SCXML\n";
-    outFile << "        // This is a placeholder implementation\n";
-    outFile << "    }\n\n";
-    outFile << "    void processEvent(const std::string& eventName) {\n";
-    outFile
-        << "        auto event = std::make_shared<SCXML::Event>(eventName);\n";
-    outFile << "        engine->setCurrentEvent(\"main\", event);\n";
-    outFile << "    }\n\n";
-    outFile << "private:\n";
-    outFile << "    std::unique_ptr<SCXML::SCXMLEngine> engine;\n";
-    outFile << "};\n\n";
+        // Parse SCXML file
+        auto nodeFactory = std::make_shared<RSM::NodeFactory>();
+        RSM::SCXMLParser parser(nodeFactory);
+        auto model = parser.parseFile(inputFile);
 
-    // Generate usage example
-    outFile << "// Usage example:\n";
-    outFile << "// " << className << " sm;\n";
-    outFile << "// sm.start();\n";
-    outFile << "// sm.processEvent(\"user_input\");\n";
+        if (!model) {
+            std::cerr << "Error: Failed to parse SCXML file\n";
+            return 1;
+        }
 
-    outFile.close();
+        Logger::info("SCXML parsing completed successfully");
 
-    Logger::info("Code generation completed successfully");
-    std::cout << "Generated: " << outputFile << "\n";
+        // Generate C++ code
+        std::ofstream outFile(outputFile);
+        if (!outFile.is_open()) {
+            std::cerr << "Error: Cannot create output file '" << outputFile << "'\n";
+            return 1;
+        }
 
-    return 0;
+        // Generate header
+        outFile << "// Generated by scxml-codegen from " << inputFile << "\n";
+        outFile << "// Do not edit this file manually\n\n";
+        outFile << "#include \"scxml/SCXMLEngine.h\"\n";
+        outFile << "#include \"scxml/SCXMLTypes.h\"\n\n";
 
-  } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << "\n";
-    return 1;
-  }
+        // Generate state machine class
+        std::string className = fs::path(inputFile).stem().string() + "StateMachine";
+        outFile << "class " << className << " {\n";
+        outFile << "public:\n";
+        outFile << "    " << className << "() {\n";
+        outFile << "        engine = SCXML::createSCXMLEngine();\n";
+        outFile << "        engine->initialize();\n";
+        outFile << "        engine->createSession(\"main\");\n";
+        outFile << "    }\n\n";
+        outFile << "    ~" << className << "() {\n";
+        outFile << "        if (engine) {\n";
+        outFile << "            engine->destroySession(\"main\");\n";
+        outFile << "            engine->shutdown();\n";
+        outFile << "        }\n";
+        outFile << "    }\n\n";
+        outFile << "    void start() {\n";
+        outFile << "        // TODO: Generate state machine logic based on SCXML\n";
+        outFile << "        // This is a placeholder implementation\n";
+        outFile << "    }\n\n";
+        outFile << "    void processEvent(const std::string& eventName) {\n";
+        outFile << "        auto event = std::make_shared<SCXML::Event>(eventName);\n";
+        outFile << "        engine->setCurrentEvent(\"main\", event);\n";
+        outFile << "    }\n\n";
+        outFile << "private:\n";
+        outFile << "    std::unique_ptr<SCXML::SCXMLEngine> engine;\n";
+        outFile << "};\n\n";
+
+        // Generate usage example
+        outFile << "// Usage example:\n";
+        outFile << "// " << className << " sm;\n";
+        outFile << "// sm.start();\n";
+        outFile << "// sm.processEvent(\"user_input\");\n";
+
+        outFile.close();
+
+        Logger::info("Code generation completed successfully");
+        std::cout << "Generated: " << outputFile << "\n";
+
+        return 0;
+
+    } catch (const std::exception &e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
 }

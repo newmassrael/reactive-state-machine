@@ -2,8 +2,8 @@
 
 #include "IGuardNode.h"
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 /**
  * @brief 가드 노드의 구현 클래스
@@ -14,8 +14,7 @@
 
 namespace RSM {
 
-class GuardNode : public IGuardNode
-{
+class GuardNode : public IGuardNode {
 public:
     /**
      * @brief 생성자
@@ -93,17 +92,16 @@ public:
     const std::string &getCondition() const override;
 
 private:
-    std::string id_;                                          // 가드 ID
-    std::string target_;                                      // 호환성을 위한 기존 필드
-    std::string condition_;                                   // 조건식
-    std::string targetState_;                                 // 타겟 상태 ID
-    std::vector<std::string> dependencies_;                   // 의존성 목록
-    std::string externalClass_;                               // 외부 클래스
-    std::string externalFactory_;                             // 외부 팩토리
-    bool reactive_;                                           // 반응형 여부
-    std::unordered_map<std::string, std::string> attributes_; // 기타 속성
-    const std::string emptyString_;                           // 빈 문자열 반환용
+    std::string id_;                                           // 가드 ID
+    std::string target_;                                       // 호환성을 위한 기존 필드
+    std::string condition_;                                    // 조건식
+    std::string targetState_;                                  // 타겟 상태 ID
+    std::vector<std::string> dependencies_;                    // 의존성 목록
+    std::string externalClass_;                                // 외부 클래스
+    std::string externalFactory_;                              // 외부 팩토리
+    bool reactive_;                                            // 반응형 여부
+    std::unordered_map<std::string, std::string> attributes_;  // 기타 속성
+    const std::string emptyString_;                            // 빈 문자열 반환용
 };
-
 
 }  // namespace RSM

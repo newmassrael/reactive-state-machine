@@ -1,10 +1,10 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include <libxml++/libxml++.h>
 #include "factory/INodeFactory.h"
 #include "model/IStateNode.h"
+#include <libxml++/libxml++.h>
+#include <memory>
+#include <string>
 
 /**
  * @brief <donedata> 요소를 파싱하는 클래스
@@ -15,8 +15,7 @@
 
 namespace RSM {
 
-class DoneDataParser
-{
+class DoneDataParser {
 public:
     /**
      * @brief 생성자
@@ -54,8 +53,7 @@ private:
      */
     bool parseParam(const xmlpp::Element *paramElement, IStateNode *stateNode);
 
-    std::shared_ptr<INodeFactory> factory_; // 노드 생성 팩토리
+    std::shared_ptr<INodeFactory> factory_;  // 노드 생성 팩토리
 };
-
 
 }  // namespace RSM

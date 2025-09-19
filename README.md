@@ -1,196 +1,252 @@
 # reactive-state-machine
 
-SCXML 기반 반응형 상태 머신의 C++ 구현체입니다. 이 프로젝트는 W3C SCXML(State Chart XML) 명세를 확장한 상태 머신 코드 생성기 및 실행 엔진을 제공합니다. 일반적인 상태 머신과 달리, 데이터 변화에 자동으로 반응하는 반응형 컨텍스트 가드 시스템과 의존성 주입 기능을 지원합니다.
+SCXML 기반 C++ 상태 머신 라이브러리로, W3C SCXML 명세를 따르는 파서와 QuickJS 기반 스크립팅 엔진을 제공합니다. **SCXML과 C++ 코드 간의 양방향 연동**을 통해 상태 머신 로직과 비즈니스 로직을 효과적으로 분리할 수 있습니다.
 
-## 개요
+## 핵심 특징
 
-이 프로젝트는 다음 두 가지 주요 구성 요소로 이루어져 있습니다:
+### 🔄 SCXML ↔ C++ 양방향 연동
+- **SCXML → C++**: 상태 전환 시 C++ 함수 자동 호출
+- **C++ → SCXML**: Guard 조건을 C++ 함수로 실시간 평가
+- **런타임 바인딩**: 실행 시점에 C++ 객체와 SCXML 연결
 
-1. **상태 머신 생성기 (Generator)**: SCXML 파일을 파싱하는 모듈로, 현재 파서 부분까지만 구현되어 있습니다. 코드 생성 기능은 아직 구현되지 않았습니다.
-2. **상태 머신 예제 (Examples)**: 코드 생성기가 최종적으로 생성해내야 할 목표 코드의 예시입니다. 실제 동작하는 상태 머신 구현체를 포함합니다.
-
-## 핵심 기능 상세 설명
-
-### 컨텍스트 가드 시스템 (Reactive Context Guards)
-
-컨텍스트 가드 시스템은 상태 머신이 "조건에 따라 자동으로 반응"하도록 해주는 스마트한 기능입니다. 일반적인 조건문(if-else)과 달리, 조건에 사용된 데이터가 변경되면 자동으로 조건을 다시 평가하고 필요한 액션을 취합니다.
-
-```cpp
-// 반응형 컨텍스트의 간단한 예
-struct Context {
-    ReactiveProperty<int> temperature;  // 온도가 변경되면 자동으로 알림
-    ReactiveProperty<bool> doorOpen;    // 문 상태가 변경되면 자동으로 알림
-};
-
-// 반응형 가드 예제
-ReactiveGuard airConditionerGuard("temperature > 30");  // 온도가 30도 초과면 true
-```
-
-이 시스템의 장점:
-1. **자동 재평가**: 관련 데이터가 변경될 때마다 조건이 자동으로 재평가됩니다.
-2. **종속성 추적**: 가드 조건에 사용된 데이터 속성을 자동으로 추적합니다.
-3. **효율성**: 관련 없는 데이터가 변경되면 가드 조건은 재평가되지 않습니다.
-4. **유지보수성**: 데이터 변경에 따른 상태 전환 로직이 한 곳에 집중되어 있어 관리가 용이합니다.
-
-### 의존성 주입 (Dependency Injection, DI)
-
-의존성 주입은 상태 머신 시스템의 구성 요소들을 외부에서 주입할 수 있게 합니다:
-
-```cpp
-// 의존성 주입 예제
-class MyStateMachine : public StateMachineImpl {
-public:
-    // 생성자를 통한 의존성 주입
-    MyStateMachine(
-        std::shared_ptr<ILogger> logger,
-        std::shared_ptr<IEventHandler> eventHandler
-    ) : StateMachineImpl(logger), eventHandler_(eventHandler) {
-        // 가드 조건 등록 (런타임에 주입)
-        registerGuard("temperatureGuard", std::make_shared<TemperatureGuard>());
-        registerGuard("doorGuard", std::make_shared<DoorGuard>());
-    }
-
-private:
-    std::shared_ptr<IEventHandler> eventHandler_;
-};
-```
-
-이 접근 방식의 장점:
-1. **유연성**: 구성 요소를 쉽게 교체할 수 있어 다양한 환경에 적응 가능
-2. **테스트 용이성**: 실제 구현체 대신 모의(mock) 객체를 주입하여 테스트 가능
-3. **느슨한 결합**: 시스템 구성 요소 간 의존성 감소
-4. **재사용성**: 구성 요소를 다른 상태 머신에서도 재사용 가능
+### 🔧 기술적 구성 요소
+- **SCXML 파서**: W3C SCXML 표준 준수 파싱 엔진 (libxml++ 기반)
+- **QuickJS 엔진**: JavaScript 표현식 평가 및 C++ 함수 바인딩
+- **코드 생성기**: SCXML에서 C++ 상태 머신 클래스 자동 생성
+- **런타임 엔진**: 이벤트 처리 및 상태 전환 실행
 
 ## 프로젝트 구조
 
 ```
 reactive-state-machine/
-├── CMakeLists.txt              # 메인 CMake 빌드 파일
-├── build.sh                    # 빌드 스크립트
-├── cmake/                      # CMake 설정 파일
+├── rsm/                           # 핵심 라이브러리
+│   ├── include/                   # 헤더 파일
+│   │   ├── parsing/              # SCXML 파싱 관련
+│   │   ├── model/                # 메모리 모델 (파싱 결과)
+│   │   ├── runtime/              # 상태 머신 실행 엔진
+│   │   ├── scripting/            # QuickJS 스크립팅 엔진
+│   │   └── common/               # 공통 유틸리티
+│   └── src/                      # 구현 파일
 │
-├── examples/                   # 생성기가 만들어야 할 목표 코드 예시
-│   ├── Context.h               # 반응형 컨텍스트 정의
-│   ├── MyStateMachine.h        # 사용자 정의 상태 머신 예시
-│   ├── StateMachineImpl.h/cpp  # 상태 머신 구현 예시
-│   ├── StateMachineInterface.h # 상태 머신 인터페이스
-│   └── main.cpp                # 실행 가능한 예제 코드
+├── tools/codegen/                # 코드 생성기 도구
+│   └── main.cpp                  # SCXML → C++ 코드 생성
 │
-├── generator/                  # SCXML 파서 및 코드 생성기 (현재 파서만 구현됨)
-│   ├── CMakeLists.txt          # 생성기 빌드 파일
-│   ├── include/                # 생성기 헤더 파일
-│   │   ├── Logger.h            # 로깅 유틸리티 헤더
-│   │   ├── factory/            # 노드 팩토리 인터페이스
-│   │   ├── impl/               # 모델 구현 클래스
-│   │   ├── model/              # 모델 인터페이스
-│   │   └── parsing/            # SCXML 파싱 로직
-│   └── src/                    # 생성기 소스 코드
+├── tests/                        # 테스트 스위트
+│   ├── engine/                   # 엔진 기능 테스트
+│   ├── core/                     # 파서 테스트
+│   └── integration/              # 통합 테스트
 │
-├── scxml/                      # SCXML 예제 파일
-│   ├── Main.scxml              # 메인 상태 머신 정의
-│   └── Test2Sub1.xml           # 포함된 서브 상태
-│
-└── tests/                      # 테스트 코드
+└── third_party/                  # 서드파티 라이브러리
+    ├── quickjs/                  # JavaScript 엔진
+    ├── libxml++/                 # XML 파싱
+    ├── spdlog/                   # 로깅
+    └── cpp-httplib/              # HTTP 통신
 ```
 
-## 빌드 요구사항
+## 구현 현황
 
-- CMake 3.14 이상
-- C++17 호환 컴파일러
-- libxml++5.0 (XML 파싱용)
-- Boost 라이브러리 (Signals2)
-- GoogleTest (테스트 빌드 시)
+### ✅ 완료된 기능
+- **SCXML 파서**: W3C 표준 준수, XInclude 지원
+- **메모리 모델**: 파싱된 SCXML의 객체 모델
+- **QuickJS 엔진**: JavaScript 표현식 평가, SCXML 시스템 변수 지원
+- **테스트 프레임워크**: GoogleTest 기반 단위/통합 테스트
 
-## 빌드 방법
+### 🚧 진행중인 기능
+- **코드 생성기**: 기본 구조 완료, 실제 SCXML 기반 생성 로직 구현중
+- **C++ 바인딩 시스템**: QuickJS와 C++ 함수 연동
 
-### 기본 빌드 (파서 및 예제)
+### 📋 계획된 기능
+- **완전한 C++ 콜백 지원**: Action 및 Guard 함수의 완전한 바인딩
+- **전체 SCXML 명세**: 병렬 상태, 이력 상태, 데이터 모델 완전 구현
+- **빌드 도구 통합**: CMake 패키지, pkg-config 지원
+
+## 빌드 및 설치
+
+### 요구사항
+- CMake 3.14+
+- C++20 호환 컴파일러 (GCC 10+, Clang 12+, MSVC 2019+)
+- 서드파티 의존성들은 submodule로 포함됨
+
+### 빌드 방법
 
 ```bash
+# 기본 빌드
 ./build.sh
-```
 
-이 스크립트는 Debug 모드로 빌드하며, 테스트는 포함하지 않습니다.
-
-### 테스트 포함 빌드
-
-```bash
+# 테스트 포함 빌드
 ./build.sh Debug ON
-```
 
-### 릴리스 빌드
-
-```bash
+# 릴리스 빌드
 ./build.sh Release
 ```
 
-### 릴리스 빌드 및 테스트 활성화
+### 테스트 실행
 
 ```bash
-./build.sh Release ON
+cd build
+ctest                                    # 모든 테스트
+ctest -R "engine"                       # 엔진 테스트만
+ctest -R "SimpleSCXMLTest"              # QuickJS 엔진 테스트
 ```
 
-## 사용 방법
+## 사용 예시
 
-### SCXML 파서 사용 방법
+### 1. SCXML 파일 작성 (C++ 콜백 연동)
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="idle">
+  <datamodel>
+    <data id="temperature" expr="25"/>
+  </datamodel>
+  
+  <state id="idle">
+    <!-- C++ Guard 함수로 조건 평가 -->
+    <transition event="temp_change" 
+               cond="hardware.isTemperatureHigh()" 
+               target="cooling"/>
+  </state>
+  
+  <state id="cooling">
+    <onentry>
+      <!-- C++ Action 함수 호출 -->
+      <script>hardware.startAirConditioner()</script>
+      <script>hardware.logEvent("Cooling started")</script>
+    </onentry>
+    
+    <onexit>
+      <script>hardware.stopAirConditioner()</script>
+    </onexit>
+    
+    <!-- 복합 조건: JS 표현식 + C++ Guard -->
+    <transition event="temp_change" 
+               cond="temperature <= 25 && hardware.isSystemStable()" 
+               target="idle"/>
+  </state>
+</scxml>
+```
 
-SCXML 파서를 사용하여 SCXML 파일을 파싱하고 메모리 내 모델로 변환할 수 있습니다:
+### 2. 코드 생성
+```bash
+# SCXML에서 C++ 클래스 생성
+./build/tools/codegen/scxml-codegen -o thermostat.cpp thermostat.scxml
+```
+
+### 3. C++ 콜백 클래스 구현
+```cpp
+#include "thermostat.cpp"  // 생성된 파일
+
+// C++ 콜백 클래스 - SCXML에서 호출될 함수들 정의
+class HardwareController {
+public:
+    // Guard 함수들 (조건 평가용)
+    bool isTemperatureHigh() {
+        double temp = sensor.getCurrentTemperature();
+        return temp > 30.0;
+    }
+    
+    bool isSystemStable() {
+        return !system.hasErrors() && system.getUptime() > 60;
+    }
+    
+    // Action 함수들 (상태 변화 시 실행)
+    void startAirConditioner() {
+        aircon.setPower(true);
+        aircon.setTargetTemp(22.0);
+        logger.info("Air conditioner started");
+    }
+    
+    void stopAirConditioner() {
+        aircon.setPower(false);
+        logger.info("Air conditioner stopped");
+    }
+    
+    void logEvent(const std::string& message) {
+        logger.info("State machine event: " + message);
+    }
+
+private:
+    TemperatureSensor sensor;
+    AirConditioner aircon;
+    SystemMonitor system;
+    Logger logger;
+};
+
+// 메인 애플리케이션
+class ThermostatApp {
+public:
+    ThermostatApp() {
+        // C++ 객체를 SCXML에 바인딩
+        stateMachine.bindObject("hardware", &hardware);
+        stateMachine.start();
+    }
+    
+    void processTemperatureReading(double temp) {
+        stateMachine.setData("temperature", temp);
+        stateMachine.processEvent("temp_change");
+    }
+
+private:
+    ThermostatStateMachine stateMachine;
+    HardwareController hardware;
+};
+```
+
+## 개발 방향성
+
+### "Reactive"의 핵심: SCXML ↔ C++ 양방향 연동
+
+이 프로젝트에서 "Reactive"는 **SCXML과 C++ 코드가 서로 반응하며 상호작용**하는 시스템을 의미합니다:
+
+#### 🔄 양방향 호출 구조
+```
+SCXML (상태 머신 로직) ←→ C++ (비즈니스 로직)
+     ↓                    ↑
+  Action 실행         Guard 조건 평가
+```
+
+#### 💡 실제 동작 예시
+```xml
+<!-- SCXML에서 C++ 함수 직접 호출 -->
+<transition cond="hardware.isTemperatureHigh()" target="cooling">
+  <script>hardware.startAirConditioner()</script>
+</transition>
+```
 
 ```cpp
-#include "parsing/SCXMLParser.h"
-#include "factory/NodeFactory.h"
-#include <memory>
-#include <string>
+// C++ 클래스 정의
+class HardwareController {
+public:
+    bool isTemperatureHigh() { return sensor.getTemp() > 30; }
+    void startAirConditioner() { aircon.start(); }
+};
 
-// 노드 팩토리 생성 (모델 객체를 생성하는 팩토리)
-auto factory = std::make_shared<NodeFactory>();
-
-// SCXML 파서 생성
-SCXMLParser parser(factory);
-
-// 파일에서 SCXML 로드
-auto model = parser.parseFile("path/to/your/statechart.scxml");
-
-// 또는 문자열에서 SCXML 로드
-std::string scxmlContent = "<?xml version=\"1.0\"?><scxml ...>";
-auto modelFromString = parser.parseContent(scxmlContent);
+// SCXML에 바인딩
+stateMachine.bindObject("hardware", &controller);
 ```
 
-## 테스트 실행 방법
-
-프로젝트는 `examples`와 `generator` 모듈 각각에 대한 테스트를 제공합니다. 테스트를 빌드하고 실행하는 방법은 다음과 같습니다:
-
-### 모든 테스트 실행
-
-```bash
-# 테스트를 포함하여 빌드
-./build.sh Debug ON
-
-# 모든 테스트 실행
-cd build
-ctest
-```
-
-### 특정 테스트 그룹만 실행
-
-```bash
-cd build
-ctest -R StateMachineExampleTests  # examples 테스트만 실행
-ctest -R GeneratorTests            # generator 테스트만 실행
-```
-
-## 개발 목표
-
-- **코드 생성 구현**: SCXML 파서가 생성한 모델을 기반으로 C++ 코드를 자동 생성
-- **전체 SCXML 명세 지원**: 모든 SCXML 기능(병렬 상태, 이력 상태, 데이터 모델 등) 구현
-- **사용자 정의 확장**: 커스텀 액션, 가드 조건 등의 사용자 정의 확장 지원
+#### 🎯 장점
+- **실시간 반응**: 센서 값, 시스템 상태 등 실시간 데이터로 조건 평가
+- **관심사 분리**: 상태 로직(SCXML) vs 비즈니스 로직(C++) 명확한 구분
+- **재사용성**: 동일한 C++ 로직을 여러 상태 머신에서 활용
+- **테스트 용이성**: Mock 객체로 SCXML과 C++ 로직을 독립적으로 테스트
 
 ## 기여하기
 
-1. 원하는 기능이나 개선 사항에 대한 이슈 생성
-2. 프로젝트 포크 및 브랜치 생성
-3. 코드 변경 및 테스트 추가
-4. 풀 리퀘스트 제출
+1. 이슈 생성 또는 기존 이슈 확인
+2. 포크 및 브랜치 생성
+3. 코드 작성 및 테스트 추가
+4. clang-format으로 코드 스타일 정리
+5. 풀 리퀘스트 제출
+
+### 개발 환경 설정
+```bash
+# Git hooks 설정 (자동 포맷팅)
+./setup-hooks.sh
+
+# 수동 포맷팅
+find rsm -name '*.cpp' -o -name '*.h' | xargs clang-format -i
+```
 
 ## 라이선스
 
-이 프로젝트는 MIT 라이선스 하에 제공됩니다.
+MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일 참조

@@ -1,14 +1,14 @@
 #pragma once
 
 #include "SCXMLTypes.h"
+#include <future>
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-#include <future>
 
 /**
  * @brief Main SCXML Engine interface
- * 
+ *
  * Thread-safe SCXML state machine engine with session-based JavaScript execution.
  * Supports multiple isolated sessions, each with its own variable space and event context.
  */
@@ -45,22 +45,21 @@ public:
      * @param parentSessionId Optional parent session for hierarchical contexts
      * @return true if session created successfully
      */
-    virtual bool createSession(const std::string& sessionId,
-                              const std::string& parentSessionId = "") = 0;
+    virtual bool createSession(const std::string &sessionId, const std::string &parentSessionId = "") = 0;
 
     /**
      * @brief Destroy a SCXML session and cleanup its context
      * @param sessionId Session to destroy
      * @return true if session destroyed successfully
      */
-    virtual bool destroySession(const std::string& sessionId) = 0;
+    virtual bool destroySession(const std::string &sessionId) = 0;
 
     /**
      * @brief Check if a session exists
      * @param sessionId Session to check
      * @return true if session exists
      */
-    virtual bool hasSession(const std::string& sessionId) const = 0;
+    virtual bool hasSession(const std::string &sessionId) const = 0;
 
     /**
      * @brief Get list of all active sessions
@@ -76,8 +75,7 @@ public:
      * @param script JavaScript code to execute
      * @return Future with execution result
      */
-    virtual std::future<ExecutionResult> executeScript(const std::string& sessionId,
-                                                       const std::string& script) = 0;
+    virtual std::future<ExecutionResult> executeScript(const std::string &sessionId, const std::string &script) = 0;
 
     /**
      * @brief Evaluate JavaScript expression in the specified session (async)
@@ -85,8 +83,8 @@ public:
      * @param expression JavaScript expression to evaluate
      * @return Future with evaluation result
      */
-    virtual std::future<ExecutionResult> evaluateExpression(const std::string& sessionId,
-                                                            const std::string& expression) = 0;
+    virtual std::future<ExecutionResult> evaluateExpression(const std::string &sessionId,
+                                                            const std::string &expression) = 0;
 
     // === Variable Management ===
 
@@ -97,9 +95,8 @@ public:
      * @param value Variable value
      * @return Future indicating success/failure
      */
-    virtual std::future<ExecutionResult> setVariable(const std::string& sessionId,
-                                                     const std::string& name,
-                                                     const ScriptValue& value) = 0;
+    virtual std::future<ExecutionResult> setVariable(const std::string &sessionId, const std::string &name,
+                                                     const ScriptValue &value) = 0;
 
     /**
      * @brief Get a variable from the specified session (async)
@@ -107,8 +104,7 @@ public:
      * @param name Variable name
      * @return Future with variable value or error
      */
-    virtual std::future<ExecutionResult> getVariable(const std::string& sessionId,
-                                                     const std::string& name) = 0;
+    virtual std::future<ExecutionResult> getVariable(const std::string &sessionId, const std::string &name) = 0;
 
     // === SCXML Event System ===
 
@@ -118,7 +114,7 @@ public:
      * @param event Current event to set
      * @return Future indicating success/failure
      */
-    virtual std::future<ExecutionResult> setCurrentEvent(const std::string& sessionId,
+    virtual std::future<ExecutionResult> setCurrentEvent(const std::string &sessionId,
                                                          std::shared_ptr<Event> event) = 0;
 
     /**
@@ -128,9 +124,9 @@ public:
      * @param ioProcessors List of available I/O processors
      * @return Future indicating success/failure
      */
-    virtual std::future<ExecutionResult> setupSystemVariables(const std::string& sessionId,
-                                                              const std::string& sessionName,
-                                                              const std::vector<std::string>& ioProcessors) = 0;
+    virtual std::future<ExecutionResult> setupSystemVariables(const std::string &sessionId,
+                                                              const std::string &sessionName,
+                                                              const std::vector<std::string> &ioProcessors) = 0;
 
     // === Engine Information ===
 
@@ -156,7 +152,5 @@ SCXML_API std::unique_ptr<SCXMLEngine> createSCXMLEngine();
  * @return Version string in format "major.minor.patch"
  */
 SCXML_API std::string getSCXMLVersion();
-
-
 
 }  // namespace RSM

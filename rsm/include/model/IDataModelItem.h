@@ -1,10 +1,10 @@
 // IDataModelItem.h
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <optional>
 
 /**
  * @brief 데이터 모델 항목 인터페이스
@@ -15,8 +15,7 @@
 
 namespace RSM {
 
-class IDataModelItem
-{
+class IDataModelItem {
 public:
     /**
      * @brief 가상 소멸자
@@ -143,6 +142,5 @@ public:
      */
     virtual bool supportsDataModel(const std::string &dataModelType) const = 0;
 };
-
 
 }  // namespace RSM

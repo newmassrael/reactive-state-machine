@@ -1,13 +1,13 @@
 #pragma once
 
+#include "factory/INodeFactory.h"
+#include "model/IStateNode.h"
+#include "model/ITransitionNode.h"
+#include "parsing/ActionParser.h"
 #include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
 #include <vector>
-#include "model/ITransitionNode.h"
-#include "model/IStateNode.h"
-#include "factory/INodeFactory.h"
-#include "parsing/ActionParser.h"
 
 /**
  * @brief 전환 요소 파싱을 담당하는 클래스
@@ -19,8 +19,7 @@
 
 namespace RSM {
 
-class TransitionParser
-{
+class TransitionParser {
 public:
     /**
      * @brief 생성자
@@ -60,9 +59,8 @@ public:
      * @param stateNode 상태 노드
      * @return 파싱된 전환 노드 목록
      */
-    std::vector<std::shared_ptr<ITransitionNode>> parseTransitionsInState(
-        const xmlpp::Element *stateElement,
-        IStateNode *stateNode);
+    std::vector<std::shared_ptr<ITransitionNode>> parseTransitionsInState(const xmlpp::Element *stateElement,
+                                                                          IStateNode *stateNode);
 
     /**
      * @brief 요소가 전환 노드인지 확인
@@ -99,6 +97,5 @@ private:
     std::shared_ptr<INodeFactory> nodeFactory_;
     std::shared_ptr<ActionParser> actionParser_;
 };
-
 
 }  // namespace RSM

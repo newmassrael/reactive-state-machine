@@ -13,8 +13,7 @@
 
 namespace RSM {
 
-class SCXMLContext
-{
+class SCXMLContext {
 public:
     /**
      * @brief 기본 생성자
@@ -74,12 +73,11 @@ public:
     const std::string &getAttribute(const std::string &name) const;
 
 private:
-    std::string datamodelType_;                               ///< 데이터 모델 타입
-    std::string binding_;                                     ///< 바인딩 모드
-    std::unordered_map<std::string, std::string> namespaces_; ///< 네임스페이스 매핑
-    std::unordered_map<std::string, std::string> attributes_; ///< 추가 속성들
-    std::string emptyString_;                                 ///< 빈 문자열 반환용
+    std::string datamodelType_;                                ///< 데이터 모델 타입
+    std::string binding_;                                      ///< 바인딩 모드
+    std::unordered_map<std::string, std::string> namespaces_;  ///< 네임스페이스 매핑
+    std::unordered_map<std::string, std::string> attributes_;  ///< 추가 속성들
+    std::string emptyString_;                                  ///< 빈 문자열 반환용
 };
-
 
 }  // namespace RSM

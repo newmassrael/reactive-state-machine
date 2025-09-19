@@ -1,7 +1,7 @@
-#include <gtest/gtest.h>
 #include "scripting/JSEngine.h"
-#include <thread>
 #include <chrono>
+#include <gtest/gtest.h>
+#include <thread>
 
 namespace RSM {
 namespace Tests {
@@ -25,7 +25,7 @@ protected:
         }
     }
 
-    JSEngine* engine_;
+    JSEngine *engine_;
     std::string sessionId_;
 };
 
@@ -126,10 +126,8 @@ TEST_F(SimpleSCXMLTest, MathObject) {
 
 // Test complex expression
 TEST_F(SimpleSCXMLTest, ComplexExpression) {
-    auto complexResult = engine_->evaluateExpression(
-        sessionId_,
-        "_name.length > 0 && typeof _sessionid === 'string'"
-    ).get();
+    auto complexResult =
+        engine_->evaluateExpression(sessionId_, "_name.length > 0 && typeof _sessionid === 'string'").get();
     ASSERT_TRUE(complexResult.isSuccess());
     auto complexValue = complexResult.getValue<bool>();
     EXPECT_TRUE(complexValue);
@@ -142,5 +140,5 @@ TEST_F(SimpleSCXMLTest, ErrorHandling) {
     EXPECT_FALSE(errorResult.isSuccess());
 }
 
-} // namespace Tests
-} // namespace RSM
+}  // namespace Tests
+}  // namespace RSM

@@ -3,8 +3,8 @@
 #include "IXIncludeProcessor.h"
 #include <libxml++/libxml++.h>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 /**
  * @brief XInclude 처리를 담당하는 클래스
@@ -15,8 +15,7 @@
 
 namespace RSM {
 
-class XIncludeProcessor : public IXIncludeProcessor
-{
+class XIncludeProcessor : public IXIncludeProcessor {
 public:
     /**
      * @brief 생성자
@@ -120,6 +119,5 @@ private:
     int maxRecursionDepth_;
     int currentRecursionDepth_;
 };
-
 
 }  // namespace RSM

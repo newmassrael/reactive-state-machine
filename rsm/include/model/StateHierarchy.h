@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
-#include <memory>
-#include <vector>
-#include <unordered_map>
 #include "model/IStateNode.h"
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 /**
  * @brief 상태 계층 구조 관리 클래스
@@ -15,8 +15,7 @@
 
 namespace RSM {
 
-class StateHierarchy
-{
+class StateHierarchy {
 public:
     /**
      * @brief 생성자
@@ -107,6 +106,5 @@ private:
     std::vector<std::shared_ptr<IStateNode>> allStates_;
     std::unordered_map<std::string, IStateNode *> stateIdMap_;
 };
-
 
 }  // namespace RSM

@@ -13,8 +13,7 @@
 
 namespace RSM {
 
-class ITransitionNode
-{
+class ITransitionNode {
 public:
     /**
      * @brief 가상 소멸자
@@ -124,6 +123,5 @@ public:
      */
     virtual const std::vector<std::string> &getEvents() const = 0;
 };
-
 
 }  // namespace RSM

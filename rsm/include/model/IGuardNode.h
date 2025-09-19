@@ -2,8 +2,8 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 /**
  * @brief 가드 노드 인터페이스
@@ -14,8 +14,7 @@
 
 namespace RSM {
 
-class IGuardNode
-{
+class IGuardNode {
 public:
     /**
      * @brief 가상 소멸자
@@ -120,6 +119,5 @@ public:
      */
     virtual const std::unordered_map<std::string, std::string> &getAttributes() const = 0;
 };
-
 
 }  // namespace RSM

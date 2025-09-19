@@ -1,21 +1,21 @@
 #pragma once
 
+#include "factory/INodeFactory.h"
+#include "model/SCXMLContext.h"
+#include "model/SCXMLModel.h"
+#include "parsing/ActionParser.h"
+#include "parsing/DataModelParser.h"
+#include "parsing/DoneDataParser.h"
+#include "parsing/GuardParser.h"
+#include "parsing/InvokeParser.h"
+#include "parsing/StateNodeParser.h"
+#include "parsing/TransitionParser.h"
+#include "parsing/XIncludeProcessor.h"
 #include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
-#include <vector>
 #include <unordered_map>
-#include "factory/INodeFactory.h"
-#include "model/SCXMLModel.h"
-#include "parsing/StateNodeParser.h"
-#include "parsing/TransitionParser.h"
-#include "parsing/ActionParser.h"
-#include "parsing/GuardParser.h"
-#include "parsing/DataModelParser.h"
-#include "parsing/DoneDataParser.h"
-#include "parsing/XIncludeProcessor.h"
-#include "parsing/InvokeParser.h"
-#include "model/SCXMLContext.h"
+#include <vector>
 
 /**
  * @brief SCXML 파싱을 총괄하는 클래스
@@ -26,8 +26,7 @@
 
 namespace RSM {
 
-class SCXMLParser
-{
+class SCXMLParser {
 public:
     /**
      * @brief 생성자
@@ -78,49 +77,65 @@ public:
      * @brief 상태 노드 파서 반환
      * @return 상태 노드 파서
      */
-    std::shared_ptr<StateNodeParser> getStateNodeParser() const { return stateNodeParser_; }
+    std::shared_ptr<StateNodeParser> getStateNodeParser() const {
+        return stateNodeParser_;
+    }
 
     /**
      * @brief 전환 파서 반환
      * @return 전환 파서
      */
-    std::shared_ptr<TransitionParser> getTransitionParser() const { return transitionParser_; }
+    std::shared_ptr<TransitionParser> getTransitionParser() const {
+        return transitionParser_;
+    }
 
     /**
      * @brief 액션 파서 반환
      * @return 액션 파서
      */
-    std::shared_ptr<ActionParser> getActionParser() const { return actionParser_; }
+    std::shared_ptr<ActionParser> getActionParser() const {
+        return actionParser_;
+    }
 
     /**
      * @brief 가드 파서 반환
      * @return 가드 파서
      */
-    std::shared_ptr<GuardParser> getGuardParser() const { return guardParser_; }
+    std::shared_ptr<GuardParser> getGuardParser() const {
+        return guardParser_;
+    }
 
     /**
      * @brief 데이터 모델 파서 반환
      * @return 데이터 모델 파서
      */
-    std::shared_ptr<DataModelParser> getDataModelParser() const { return dataModelParser_; }
+    std::shared_ptr<DataModelParser> getDataModelParser() const {
+        return dataModelParser_;
+    }
 
     /**
      * @brief InvokeParser 반환
      * @return Invoke 파서
      */
-    std::shared_ptr<InvokeParser> getInvokeParser() const { return invokeParser_; }
+    std::shared_ptr<InvokeParser> getInvokeParser() const {
+        return invokeParser_;
+    }
 
     /**
      * @brief DoneData 파서 반환
      * @return DoneData 파서
      */
-    std::shared_ptr<DoneDataParser> getDoneDataParser() const { return doneDataParser_; }
+    std::shared_ptr<DoneDataParser> getDoneDataParser() const {
+        return doneDataParser_;
+    }
 
     /**
      * @brief XInclude 프로세서 반환
      * @return XInclude 프로세서
      */
-    std::shared_ptr<IXIncludeProcessor> getXIncludeProcessor() const { return xincludeProcessor_; }
+    std::shared_ptr<IXIncludeProcessor> getXIncludeProcessor() const {
+        return xincludeProcessor_;
+    }
 
 private:
     /**
@@ -190,6 +205,5 @@ private:
     std::vector<std::string> errorMessages_;
     std::vector<std::string> warningMessages_;
 };
-
 
 }  // namespace RSM

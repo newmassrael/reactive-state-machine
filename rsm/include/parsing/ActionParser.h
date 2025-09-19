@@ -1,11 +1,11 @@
 #pragma once
 
+#include "factory/INodeFactory.h"
+#include "model/IActionNode.h"
 #include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
 #include <vector>
-#include "model/IActionNode.h"
-#include "factory/INodeFactory.h"
 
 /**
  * @brief 액션 요소 파싱을 담당하는 클래스
@@ -17,8 +17,7 @@
 
 namespace RSM {
 
-class ActionParser
-{
+class ActionParser {
 public:
     /**
      * @brief 생성자
@@ -106,6 +105,5 @@ private:
 
     std::shared_ptr<INodeFactory> nodeFactory_;
 };
-
 
 }  // namespace RSM

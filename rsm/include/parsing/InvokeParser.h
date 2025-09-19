@@ -1,17 +1,15 @@
 // InvokeParser.h
 #pragma once
 
+#include "factory/INodeFactory.h"
+#include "model/IInvokeNode.h"
+#include <libxml++/libxml++.h>
 #include <memory>
 #include <vector>
-#include <libxml++/libxml++.h>
-#include "model/IInvokeNode.h"
-#include "factory/INodeFactory.h"
-
 
 namespace RSM {
 
-class InvokeParser
-{
+class InvokeParser {
 public:
     InvokeParser(std::shared_ptr<INodeFactory> nodeFactory);
     ~InvokeParser();
@@ -23,9 +21,8 @@ public:
     std::vector<std::shared_ptr<IInvokeNode>> parseInvokesInState(const xmlpp::Element *stateElement);
 
     // param 요소를 파싱하고 생성된 DataModelItem 반환
-    std::vector<std::shared_ptr<IDataModelItem>> parseParamElementsAndCreateDataItems(
-        const xmlpp::Element *invokeElement,
-        std::shared_ptr<IInvokeNode> invokeNode);
+    std::vector<std::shared_ptr<IDataModelItem>>
+    parseParamElementsAndCreateDataItems(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);
 
 private:
     std::shared_ptr<INodeFactory> nodeFactory_;
@@ -34,6 +31,5 @@ private:
     void parseParamElements(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);
     void parseContentElement(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);
 };
-
 
 }  // namespace RSM

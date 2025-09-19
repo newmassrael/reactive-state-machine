@@ -1,10 +1,10 @@
-#include <gtest/gtest.h>
+#include "factory/NodeFactory.h"
+#include "model/SCXMLModel.h"
 #include "parsing/SCXMLParser.h"
 #include "scripting/JSEngine.h"
-#include "model/SCXMLModel.h"
-#include "factory/NodeFactory.h"
-#include <thread>
 #include <chrono>
+#include <gtest/gtest.h>
+#include <thread>
 
 namespace RSM {
 namespace Tests {
@@ -14,7 +14,7 @@ protected:
     void SetUp() override {
         engine_ = &JSEngine::instance();
         ASSERT_TRUE(engine_->initialize());
-        
+
         nodeFactory_ = std::make_shared<NodeFactory>();
         parser_ = std::make_unique<SCXMLParser>(nodeFactory_);
         sessionId_ = "integration_test_session";
@@ -27,7 +27,7 @@ protected:
         }
     }
 
-    JSEngine* engine_;
+    JSEngine *engine_;
     std::shared_ptr<NodeFactory> nodeFactory_;
     std::unique_ptr<SCXMLParser> parser_;
     std::string sessionId_;
@@ -66,9 +66,8 @@ TEST_F(StateMachineIntegrationTest, ExecuteSimpleStateMachine) {
 
     // Initialize data model
     auto dataModelItems = model->getDataModelItems();
-    for (const auto& data : dataModelItems) {
-        auto result = engine_->executeScript(sessionId_, 
-            "var " + data->getId() + " = " + data->getExpr() + ";").get();
+    for (const auto &data : dataModelItems) {
+        auto result = engine_->executeScript(sessionId_, "var " + data->getId() + " = " + data->getExpr() + ";").get();
         EXPECT_TRUE(result.isSuccess()) << "Failed to initialize: " + data->getId();
     }
 
@@ -128,7 +127,7 @@ TEST_F(StateMachineIntegrationTest, DataModelOperations) {
 
     // Initialize all data model variables
     auto dataItems = model->getDataModelItems();
-    for (const auto& data : dataItems) {
+    for (const auto &data : dataItems) {
         std::string script = "var " + data->getId() + " = " + data->getExpr() + ";";
         auto result = engine_->executeScript(sessionId_, script).get();
         EXPECT_TRUE(result.isSuccess()) << "Failed to initialize: " + data->getId();
@@ -241,19 +240,17 @@ TEST_F(StateMachineIntegrationTest, EventSystemIntegration) {
     ASSERT_TRUE(success);
 
     // Initialize data model
-    auto initResult = engine_->executeScript(sessionId_, 
-        "var eventCount = 0; var lastEvent = '';").get();
+    auto initResult = engine_->executeScript(sessionId_, "var eventCount = 0; var lastEvent = '';").get();
     EXPECT_TRUE(initResult.isSuccess());
 
     // Simulate event reception and processing
     // Set up event object (this would normally be done by the engine)
-    auto eventSetup = engine_->executeScript(sessionId_, 
-        "_event.name = 'testEvent'; _event.type = 'platform';").get();
+    auto eventSetup = engine_->executeScript(sessionId_, "_event.name = 'testEvent'; _event.type = 'platform';").get();
     EXPECT_TRUE(eventSetup.isSuccess());
 
     // Execute transition script
-    auto transitionScript = engine_->executeScript(sessionId_, 
-        "eventCount = eventCount + 1; lastEvent = _event.name;").get();
+    auto transitionScript =
+        engine_->executeScript(sessionId_, "eventCount = eventCount + 1; lastEvent = _event.name;").get();
     EXPECT_TRUE(transitionScript.isSuccess());
 
     // Verify event processing
@@ -296,39 +293,33 @@ TEST_F(StateMachineIntegrationTest, ComplexStateMachineExecution) {
     ASSERT_TRUE(success);
 
     // Initialize complex data structures
-    auto initResult = engine_->executeScript(sessionId_, 
-        "var steps = []; var currentStep = 'init';").get();
+    auto initResult = engine_->executeScript(sessionId_, "var steps = []; var currentStep = 'init';").get();
     EXPECT_TRUE(initResult.isSuccess());
 
     // Simulate complete state machine execution
     // Init state entry
-    auto initEntry = engine_->executeScript(sessionId_, 
-        "steps.push('entered_init'); currentStep = 'init';").get();
+    auto initEntry = engine_->executeScript(sessionId_, "steps.push('entered_init'); currentStep = 'init';").get();
     EXPECT_TRUE(initEntry.isSuccess());
 
     // Start transition
-    auto startTransition = engine_->executeScript(sessionId_, 
-        "steps.push('start_transition');").get();
+    auto startTransition = engine_->executeScript(sessionId_, "steps.push('start_transition');").get();
     EXPECT_TRUE(startTransition.isSuccess());
 
     // Working state entry
-    auto workingEntry = engine_->executeScript(sessionId_, 
-        "steps.push('entered_working'); currentStep = 'working';").get();
+    auto workingEntry =
+        engine_->executeScript(sessionId_, "steps.push('entered_working'); currentStep = 'working';").get();
     EXPECT_TRUE(workingEntry.isSuccess());
 
     // Step1 entry
-    auto step1Entry = engine_->executeScript(sessionId_, 
-        "steps.push('step1');").get();
+    auto step1Entry = engine_->executeScript(sessionId_, "steps.push('step1');").get();
     EXPECT_TRUE(step1Entry.isSuccess());
 
     // Step2 entry
-    auto step2Entry = engine_->executeScript(sessionId_, 
-        "steps.push('step2');").get();
+    auto step2Entry = engine_->executeScript(sessionId_, "steps.push('step2');").get();
     EXPECT_TRUE(step2Entry.isSuccess());
 
     // Completion
-    auto completion = engine_->executeScript(sessionId_, 
-        "steps.push('completed'); currentStep = 'completed';").get();
+    auto completion = engine_->executeScript(sessionId_, "steps.push('completed'); currentStep = 'completed';").get();
     EXPECT_TRUE(completion.isSuccess());
 
     // Verify execution path
@@ -341,5 +332,5 @@ TEST_F(StateMachineIntegrationTest, ComplexStateMachineExecution) {
     EXPECT_EQ(currentStepResult.getValue<std::string>(), "completed");
 }
 
-} // namespace Tests
-} // namespace RSM
+}  // namespace Tests
+}  // namespace RSM

@@ -1,14 +1,14 @@
 #pragma once
 
+#include "factory/INodeFactory.h"
+#include "model/IDataModelItem.h"
+#include "model/SCXMLContext.h"
+#include <fstream>
 #include <libxml++/libxml++.h>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <fstream>
-#include <sstream>
-#include "model/SCXMLContext.h"
-#include "model/IDataModelItem.h"
-#include "factory/INodeFactory.h"
 
 /**
  * @brief 데이터 모델 요소 파싱을 담당하는 클래스
@@ -20,8 +20,7 @@
 
 namespace RSM {
 
-class DataModelParser
-{
+class DataModelParser {
 public:
     /**
      * @brief 생성자
@@ -39,7 +38,8 @@ public:
      * @param datamodelNode XML datamodel 노드
      * @return 파싱된 데이터 모델 항목 목록
      */
-    std::vector<std::shared_ptr<IDataModelItem>> parseDataModelNode(const xmlpp::Element *datamodelNode, const SCXMLContext &context);
+    std::vector<std::shared_ptr<IDataModelItem>> parseDataModelNode(const xmlpp::Element *datamodelNode,
+                                                                    const SCXMLContext &context);
 
     /**
      * @brief 개별 data 요소 파싱
@@ -53,7 +53,8 @@ public:
      * @param stateNode 상태 노드
      * @return 파싱된 데이터 모델 항목 목록
      */
-    std::vector<std::shared_ptr<IDataModelItem>> parseDataModelInState(const xmlpp::Element *stateNode, const SCXMLContext &context);
+    std::vector<std::shared_ptr<IDataModelItem>> parseDataModelInState(const xmlpp::Element *stateNode,
+                                                                       const SCXMLContext &context);
 
     /**
      * @brief 요소가 데이터 모델 항목인지 확인
@@ -94,6 +95,5 @@ private:
 
     std::shared_ptr<INodeFactory> nodeFactory_;
 };
-
 
 }  // namespace RSM

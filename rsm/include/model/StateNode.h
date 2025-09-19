@@ -1,14 +1,14 @@
 #pragma once
 
+#include "IDataModelItem.h"
+#include "IInvokeNode.h"
 #include "IStateNode.h"
 #include "ITransitionNode.h"
-#include "IInvokeNode.h"
-#include "IDataModelItem.h"
 #include "model/DoneData.h"
 
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
 /**
  * @brief 상태 노드의 구현 클래스
@@ -19,8 +19,7 @@
 
 namespace RSM {
 
-class StateNode : public IStateNode
-{
+class StateNode : public IStateNode {
 public:
     /**
      * @brief 생성자
@@ -155,16 +154,26 @@ public:
     virtual const std::vector<std::shared_ptr<IInvokeNode>> &getInvoke() const override;
 
     // 히스토리 타입 설정
-    void setHistoryType(HistoryType type) { historyType_ = type; }
+    void setHistoryType(HistoryType type) {
+        historyType_ = type;
+    }
 
     // IStateNode 인터페이스 구현
-    void setHistoryType(bool isDeep) override
-    {
+    void setHistoryType(bool isDeep) override {
         historyType_ = isDeep ? HistoryType::DEEP : HistoryType::SHALLOW;
     }
-    HistoryType getHistoryType() const override { return historyType_; }
-    bool isShallowHistory() const override { return historyType_ == HistoryType::SHALLOW; }
-    bool isDeepHistory() const override { return historyType_ == HistoryType::DEEP; }
+
+    HistoryType getHistoryType() const override {
+        return historyType_;
+    }
+
+    bool isShallowHistory() const override {
+        return historyType_ == HistoryType::SHALLOW;
+    }
+
+    bool isDeepHistory() const override {
+        return historyType_ == HistoryType::DEEP;
+    }
 
     // 반응형 가드 ID 추가 메서드
     void addReactiveGuard(const std::string &guardId) override;
@@ -172,12 +181,11 @@ public:
     // IStateNode 인터페이스 구현
     const std::vector<std::string> &getReactiveGuards() const override;
 
-    const std::vector<std::string> &getEntryActions() const override
-    {
+    const std::vector<std::string> &getEntryActions() const override {
         return entryActions_;
     }
-    const std::vector<std::string> &getExitActions() const override
-    {
+
+    const std::vector<std::string> &getExitActions() const override {
         return exitActions_;
     }
 
@@ -240,6 +248,5 @@ private:
     std::vector<std::string> reactiveGuards_;
     std::shared_ptr<ITransitionNode> initialTransition_;
 };
-
 
 }  // namespace RSM

@@ -1,10 +1,10 @@
 // IActionNode.h
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <memory>
 
 /**
  * @brief 액션 노드 인터페이스
@@ -15,8 +15,7 @@
 
 namespace RSM {
 
-class IActionNode
-{
+class IActionNode {
 public:
     /**
      * @brief 가상 소멸자
@@ -109,6 +108,5 @@ public:
      */
     virtual bool hasChildActions() const = 0;
 };
-
 
 }  // namespace RSM

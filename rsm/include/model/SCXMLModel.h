@@ -1,13 +1,13 @@
 #pragma once
 
-#include <string>
-#include <memory>
-#include <vector>
-#include <unordered_map>
-#include <set>
-#include "model/IStateNode.h"
-#include "model/IGuardNode.h"
 #include "model/IDataModelItem.h"
+#include "model/IGuardNode.h"
+#include "model/IStateNode.h"
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 /**
  * @brief SCXML 문서의 객체 모델 표현
@@ -15,8 +15,7 @@
 
 namespace RSM {
 
-class SCXMLModel
-{
+class SCXMLModel {
 public:
     SCXMLModel();
     ~SCXMLModel();
@@ -187,7 +186,8 @@ private:
      * @param id 찾을 상태 ID
      * @return 상태 노드 포인터, 없으면 nullptr
      */
-    IStateNode *findStateByIdRecursive(IStateNode *state, const std::string &id, std::set<std::string> &visitedStates) const;
+    IStateNode *findStateByIdRecursive(IStateNode *state, const std::string &id,
+                                       std::set<std::string> &visitedStates) const;
 
     /**
      * @brief 상태 계층 구조 출력 (디버깅용)
@@ -210,6 +210,5 @@ private:
     std::string binding_;
     std::vector<std::shared_ptr<IDataModelItem>> systemVariables_;
 };
-
 
 }  // namespace RSM

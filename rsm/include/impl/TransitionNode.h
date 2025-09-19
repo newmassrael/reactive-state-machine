@@ -2,10 +2,10 @@
 #pragma once
 
 #include "ITransitionNode.h"
-#include <string>
-#include <vector>
-#include <unordered_map>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 /**
  * @brief 전환 노드의 구현 클래스
@@ -13,8 +13,7 @@
  * 이 클래스는 상태 간 전환을 나타냅니다.
  * SCXML 문서의 <transition> 요소에 해당합니다.
  */
-class TransitionNode : public ITransitionNode
-{
+class TransitionNode : public ITransitionNode {
 public:
     /**
      * @brief 생성자
@@ -115,5 +114,5 @@ private:
     std::unordered_map<std::string, std::string> attributes_;
     std::vector<std::string> events_;
     mutable std::vector<std::string> cachedTargets_;
-    mutable bool targetsDirty_; // 타겟 캐시가 최신 상태인지 표시
+    mutable bool targetsDirty_;  // 타겟 캐시가 최신 상태인지 표시
 };

@@ -2,12 +2,11 @@
 #pragma once
 
 #include "IInvokeNode.h"
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
 
-class InvokeNode : public IInvokeNode
-{
+class InvokeNode : public IInvokeNode {
 public:
     InvokeNode(const std::string &id);
     virtual ~InvokeNode();
@@ -46,5 +45,5 @@ private:
     std::string content_;
     std::string finalize_;
     bool autoForward_;
-    std::vector<std::tuple<std::string, std::string, std::string>> params_; // name, expr, location
+    std::vector<std::tuple<std::string, std::string, std::string>> params_;  // name, expr, location
 };

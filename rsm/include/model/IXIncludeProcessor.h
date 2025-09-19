@@ -10,8 +10,7 @@
 
 namespace RSM {
 
-class IXIncludeProcessor
-{
+class IXIncludeProcessor {
 public:
     /**
      * @brief 가상 소멸자
@@ -37,6 +36,5 @@ public:
      */
     virtual const std::vector<std::string> &getErrorMessages() const = 0;
 };
-
 
 }  // namespace RSM

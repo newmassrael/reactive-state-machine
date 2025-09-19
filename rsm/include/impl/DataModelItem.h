@@ -1,10 +1,10 @@
 #pragma once
 
 #include "IDataModelItem.h"
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <optional>
 
 // xmlpp 헤더 추가
 #include <libxml++/document.h>
@@ -16,8 +16,7 @@
  * 이 클래스는 SCXML 데이터 모델의 항목을 나타냅니다.
  * SCXML 문서의 <data> 요소에 해당합니다.
  */
-class DataModelItem : public IDataModelItem
-{
+class DataModelItem : public IDataModelItem {
 public:
     /**
      * @brief 생성자
@@ -172,6 +171,6 @@ private:
     xmlpp::Document *xmlContent_ = nullptr;
     std::string src_;
     std::unordered_map<std::string, std::string> attributes_;
-    std::vector<std::string> contentItems_; // 추가된 콘텐츠 항목 저장
+    std::vector<std::string> contentItems_;  // 추가된 콘텐츠 항목 저장
     std::string emptyString_;
 };
