@@ -172,6 +172,7 @@ target_link_libraries(core_parser_tests
 # ============================================================================
 add_executable(integration_tests
     integration/StateMachineIntegrationTest.cpp
+    integration/Phase2IntegrationTest.cpp
 )
 
 add_dependencies(integration_tests libxmlxx_external rsm_unified)

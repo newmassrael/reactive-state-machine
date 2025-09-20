@@ -67,6 +67,7 @@ add_library(rsm_unified
     src/runtime/SCXMLModelExtractor.cpp
     src/runtime/ActionExecutorImpl.cpp
     src/runtime/ExecutionContextImpl.cpp
+    src/runtime/StateHierarchyManager.cpp
 
     # Actions implementation
     src/actions/BaseAction.cpp

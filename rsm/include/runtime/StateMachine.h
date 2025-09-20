@@ -2,6 +2,9 @@
 
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
+#include "runtime/IActionExecutor.h"
+#include "runtime/IExecutionContext.h"
+#include "runtime/StateHierarchyManager.h"
 #include "scripting/JSEngine.h"
 #include <functional>
 #include <map>
@@ -135,29 +138,6 @@ public:
     Statistics getStatistics() const;
 
 private:
-    /**
-     * @brief Internal transition data
-     */
-    struct Transition {
-        std::string fromState;
-        std::string toState;
-        std::string event;
-        std::string condition;  // JavaScript expression
-        std::string action;     // JavaScript code to execute
-        int priority = 0;       // For conflict resolution
-    };
-
-    /**
-     * @brief Internal state data
-     */
-    struct State {
-        std::string id;
-        std::string onEntryAction;  // JavaScript code
-        std::string onExitAction;   // JavaScript code
-        bool isFinal = false;
-        std::string parent;  // For hierarchical states (future)
-    };
-
     // Core state
     std::string currentState_;
     std::vector<std::string> activeStates_;
@@ -167,14 +147,17 @@ private:
     // SCXML model
     std::shared_ptr<SCXMLModel> model_;
 
-    // Transitions and states
-    std::vector<Transition> transitions_;
-    std::map<std::string, State> states_;
-
     // JavaScript integration
     std::string sessionId_;
     std::string currentEventData_;
     bool jsEnvironmentReady_ = false;
+
+    // Action execution infrastructure
+    std::shared_ptr<IActionExecutor> actionExecutor_;
+    std::unique_ptr<IExecutionContext> executionContext_;
+
+    // Hierarchical state management
+    std::unique_ptr<StateHierarchyManager> hierarchyManager_;
 
     // Statistics
     mutable Statistics stats_;
@@ -182,12 +165,17 @@ private:
     // Helper methods
     std::string generateSessionId();
     bool initializeFromModel();
-    void extractStatesBasic(std::shared_ptr<IStateNode> stateNode);
-    std::vector<Transition> findTransitions(const std::string &fromState, const std::string &event);
+
     bool evaluateCondition(const std::string &condition);
     bool executeAction(const std::string &action);
     bool enterState(const std::string &stateId);
     bool exitState(const std::string &stateId);
+
+    // New IActionNode-based action execution methods
+    bool initializeActionExecutor();
+    bool executeActionNodes(const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &actions);
+    bool executeEntryActions(const std::string &stateId);
+    bool executeExitActions(const std::string &stateId);
     bool ensureJSEnvironment();
     bool setupJSEnvironment();
     void updateStatistics();

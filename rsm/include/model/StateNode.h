@@ -4,6 +4,7 @@
 #include "IInvokeNode.h"
 #include "IStateNode.h"
 #include "ITransitionNode.h"
+#include "actions/IActionNode.h"
 #include "model/DoneData.h"
 
 #include <memory>
@@ -142,6 +143,30 @@ public:
     virtual void addExitAction(const std::string &actionId) override;
 
     /**
+     * @brief IActionNode 기반 진입 액션 추가
+     * @param action 액션 노드
+     */
+    void addEntryActionNode(std::shared_ptr<RSM::Actions::IActionNode> action);
+
+    /**
+     * @brief IActionNode 기반 종료 액션 추가
+     * @param action 액션 노드
+     */
+    void addExitActionNode(std::shared_ptr<RSM::Actions::IActionNode> action);
+
+    /**
+     * @brief IActionNode 기반 진입 액션들 조회
+     * @return 진입 액션 노드들
+     */
+    const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &getEntryActionNodes() const;
+
+    /**
+     * @brief IActionNode 기반 종료 액션들 조회
+     * @return 종료 액션 노드들
+     */
+    const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &getExitActionNodes() const;
+
+    /**
      * @brief invoke 노드 추가
      * @param invoke invoke 노드
      */
@@ -243,6 +268,10 @@ private:
     std::string onExit_;
     std::vector<std::string> entryActions_;
     std::vector<std::string> exitActions_;
+
+    // New action system (IActionNode-based)
+    std::vector<std::shared_ptr<RSM::Actions::IActionNode>> entryActionNodes_;
+    std::vector<std::shared_ptr<RSM::Actions::IActionNode>> exitActionNodes_;
     std::vector<std::shared_ptr<IInvokeNode>> invokes_;
     DoneData doneData_;
     std::vector<std::string> reactiveGuards_;

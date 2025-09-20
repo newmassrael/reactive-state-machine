@@ -1,0 +1,133 @@
+#pragma once
+
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+namespace RSM {
+
+// Forward declarations
+class SCXMLModel;
+class IStateNode;
+
+/**
+ * @brief 계층적 상태 관리 시스템
+ *
+ * SCXML 복합 상태의 계층적 진입/종료 로직을 담당합니다.
+ * 기존 StateMachine과 독립적으로 작동하여 최소 침습적 통합을 지원합니다.
+ */
+class StateHierarchyManager {
+public:
+    /**
+     * @brief 생성자
+     * @param model SCXML 모델 (상태 정보 참조용)
+     */
+    explicit StateHierarchyManager(std::shared_ptr<SCXMLModel> model);
+
+    /**
+     * @brief 소멸자
+     */
+    ~StateHierarchyManager() = default;
+
+    /**
+     * @brief 계층적 상태 진입
+     *
+     * 대상 상태가 복합 상태인 경우 자동으로 초기 자식 상태로 진입합니다.
+     * 모든 활성화된 상태들을 내부적으로 추적합니다.
+     *
+     * @param stateId 진입할 상태 ID
+     * @return 성공 여부
+     */
+    bool enterState(const std::string &stateId);
+
+    /**
+     * @brief 현재 가장 깊은 활성 상태 반환
+     *
+     * 계층 구조에서 가장 깊이 있는 (자식이 없는) 활성 상태를 반환합니다.
+     * StateMachine::getCurrentState() 호환성을 위해 사용됩니다.
+     *
+     * @return 현재 활성 상태 ID
+     */
+    std::string getCurrentState() const;
+
+    /**
+     * @brief 모든 활성 상태 반환
+     *
+     * 현재 활성화된 모든 상태의 리스트를 반환합니다.
+     * 계층 순서대로 정렬됩니다 (부모 -> 자식 순).
+     *
+     * @return 활성 상태 ID 리스트
+     */
+    std::vector<std::string> getActiveStates() const;
+
+    /**
+     * @brief 특정 상태의 활성 여부 확인
+     *
+     * @param stateId 확인할 상태 ID
+     * @return 활성 상태 여부
+     */
+    bool isStateActive(const std::string &stateId) const;
+
+    /**
+     * @brief 상태 종료
+     *
+     * 지정된 상태와 그 하위 상태들을 비활성화합니다.
+     *
+     * @param stateId 종료할 상태 ID
+     */
+    void exitState(const std::string &stateId);
+
+    /**
+     * @brief 모든 상태 초기화
+     *
+     * 활성 상태 리스트를 모두 비웁니다.
+     */
+    void reset();
+
+    /**
+     * @brief 계층적 모드 필요 여부 확인
+     *
+     * 현재 활성 상태들이 계층적 관리를 필요로 하는지 확인합니다.
+     *
+     * @return 계층적 모드 필요 여부
+     */
+    bool isHierarchicalModeNeeded() const;
+
+private:
+    std::shared_ptr<SCXMLModel> model_;
+    std::vector<std::string> activeStates_;      // 활성 상태 리스트 (계층 순서)
+    std::unordered_set<std::string> activeSet_;  // 빠른 검색용 세트
+
+    /**
+     * @brief 상태를 활성 구성에 추가
+     *
+     * @param stateId 추가할 상태 ID
+     */
+    void addStateToConfiguration(const std::string &stateId);
+
+    /**
+     * @brief 상태를 활성 구성에서 제거
+     *
+     * @param stateId 제거할 상태 ID
+     */
+    void removeStateFromConfiguration(const std::string &stateId);
+
+    /**
+     * @brief 복합 상태의 초기 자식 상태 찾기
+     *
+     * @param stateNode 복합 상태 노드
+     * @return 초기 자식 상태 ID (없으면 빈 문자열)
+     */
+    std::string findInitialChildState(IStateNode *stateNode) const;
+
+    /**
+     * @brief 상태 노드가 복합 상태인지 확인
+     *
+     * @param stateNode 확인할 상태 노드
+     * @return 복합 상태 여부
+     */
+    bool isCompoundState(IStateNode *stateNode) const;
+};
+
+}  // namespace RSM

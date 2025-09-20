@@ -212,28 +212,13 @@ void RSM::TransitionParser::parseActions(const xmlpp::Element *transElement,
         return;
     }
 
-    // 액션 파서가 설정되지 않은 경우 대체 로직 사용
+    // ActionParser는 SCXML 파싱에 필수
     if (!actionParser_) {
-        Logger::warn("RSM::TransitionParser::parseActions() - ActionParser not "
-                     "set, using fallback logic");
+        assert(false && "ActionParser is required for SCXML compliance");
+        return;
+    }
 
-        // code:action 요소 직접 찾기
-        auto actionElements = ParsingCommon::findChildElements(transElement, "action");
-        for (auto *actionElement : actionElements) {
-            auto nameAttr = actionElement->get_attribute("name");
-            if (!nameAttr) {
-                nameAttr = actionElement->get_attribute("id");
-            }
-
-            if (nameAttr) {
-                std::string action = nameAttr->get_value();
-                transition->addAction(action);
-                Logger::debug("RSM::TransitionParser::parseActions() - Added action "
-                              "(fallback): " +
-                              action);
-            }
-        }
-    } else {
+    {
         // ActionParser 사용
         auto actions = actionParser_->parseActionsInElement(transElement);
         for (const auto &action : actions) {

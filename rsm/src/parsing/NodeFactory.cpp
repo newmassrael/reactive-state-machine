@@ -1,4 +1,6 @@
 #include "factory/NodeFactory.h"
+#include "actions/AssignAction.h"
+#include "actions/ScriptAction.h"
 #include "common/Logger.h"
 
 std::shared_ptr<IStateNode> NodeFactory::createStateNode(const std::string &id, const Type type) {
@@ -20,7 +22,17 @@ std::shared_ptr<IGuardNode> NodeFactory::createGuardNode(const std::string &id, 
 
 std::shared_ptr<IActionNode> NodeFactory::createActionNode(const std::string &name) {
     Logger::debug("NodeFactory::createActionNode() - Creating action node: " + name);
-    return std::make_shared<ActionNode>(name);
+
+    // Create specialized action types based on name
+    if (name == "script") {
+        return std::make_shared<RSM::Actions::ScriptAction>("", name);
+    } else if (name == "assign") {
+        return std::make_shared<RSM::Actions::AssignAction>("", "", name);
+    } else {
+        // SCXML 사양에 없는 액션 타입은 에러
+        assert(false && "Unknown action type in SCXML specification");
+        return nullptr;
+    }
 }
 
 std::shared_ptr<IDataModelItem> NodeFactory::createDataModelItem(const std::string &id, const std::string &expr) {

@@ -1,4 +1,6 @@
 #include "parsing/StateNodeParser.h"
+#include "actions/AssignAction.h"
+#include "actions/ScriptAction.h"
 #include "common/Logger.h"
 #include "parsing/ActionParser.h"
 #include "parsing/DataModelParser.h"
@@ -76,8 +78,11 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
     if (stateType == Type::HISTORY) {
         parseHistoryType(stateElement, stateNode);
     } else {
-        // onentry/onexit 요소 파싱 (히스토리 상태가 아닌 경우에만)
-        parseEntryExitElements(stateElement, stateNode);
+        // onentry/onexit 요소 파싱 (히스토리 상태가 아닌 경우에만) - DISABLED for Phase 2
+        // parseEntryExitElements(stateElement, stateNode);
+
+        // 새로운 IActionNode 기반 액션 파싱
+        parseEntryExitActionNodes(stateElement, stateNode);
 
         // 전환 파싱 (히스토리 상태가 아닌 경우에만)
         if (transitionParser_) {
@@ -425,4 +430,144 @@ void RSM::StateNodeParser::parseInitialElement(const xmlpp::Element *initialElem
                           state->getId());
         }
     }
+}
+
+void RSM::StateNodeParser::parseEntryExitActionNodes(const xmlpp::Element *parentElement,
+                                                     std::shared_ptr<RSM::IStateNode> state) {
+    if (!parentElement || !state) {
+        return;
+    }
+
+    // onentry 요소 처리
+    auto onentryElements = ParsingCommon::findChildElements(parentElement, "onentry");
+    for (auto *onentryElement : onentryElements) {
+        parseExecutableContent(onentryElement, state, true);  // true = entry actions
+    }
+
+    // onexit 요소 처리
+    auto onexitElements = ParsingCommon::findChildElements(parentElement, "onexit");
+    for (auto *onexitElement : onexitElements) {
+        parseExecutableContent(onexitElement, state, false);  // false = exit actions
+    }
+}
+
+void RSM::StateNodeParser::parseExecutableContent(const xmlpp::Element *parentElement,
+                                                  std::shared_ptr<RSM::IStateNode> state, bool isEntryAction) {
+    if (!parentElement || !state) {
+        return;
+    }
+
+    auto children = parentElement->get_children();
+    for (auto child : children) {
+        auto element = dynamic_cast<const xmlpp::Element *>(child);
+        if (!element) {
+            continue;
+        }
+
+        std::string nodeName = element->get_name();
+
+        // <script> 요소 파싱
+        if (ParsingCommon::matchNodeName(nodeName, "script")) {
+            auto scriptAction = parseScriptAction(element);
+            if (scriptAction) {
+                if (isEntryAction) {
+                    state->addEntryActionNode(scriptAction);
+                } else {
+                    state->addExitActionNode(scriptAction);
+                }
+                Logger::debug("RSM::StateNodeParser::parseExecutableContent() - Added " +
+                              std::string(isEntryAction ? "entry" : "exit") + " script action");
+            }
+        }
+        // <assign> 요소 파싱
+        else if (ParsingCommon::matchNodeName(nodeName, "assign")) {
+            auto assignAction = parseAssignAction(element);
+            if (assignAction) {
+                if (isEntryAction) {
+                    state->addEntryActionNode(assignAction);
+                } else {
+                    state->addExitActionNode(assignAction);
+                }
+                Logger::debug("RSM::StateNodeParser::parseExecutableContent() - Added " +
+                              std::string(isEntryAction ? "entry" : "exit") + " assign action");
+            }
+        }
+    }
+}
+
+std::shared_ptr<RSM::Actions::IActionNode>
+RSM::StateNodeParser::parseScriptAction(const xmlpp::Element *scriptElement) {
+    if (!scriptElement) {
+        return nullptr;
+    }
+
+    // 스크립트 내용 추출
+    std::string content;
+    auto children = scriptElement->get_children();
+    for (auto child : children) {
+        auto textNode = dynamic_cast<const xmlpp::TextNode *>(child);
+        if (textNode) {
+            content += textNode->get_content();
+        }
+    }
+
+    // src 속성 확인 (현재는 inline content만 지원)
+    auto srcAttr = scriptElement->get_attribute("src");
+    if (srcAttr && !srcAttr->get_value().empty()) {
+        Logger::warn("RSM::StateNodeParser::parseScriptAction() - External script sources not yet supported: " +
+                     srcAttr->get_value());
+        // TODO: 외부 스크립트 파일 로딩 구현
+    }
+
+    // 내용이 비어있으면 빈 스크립트로 생성
+    if (content.empty()) {
+        content = "";  // 빈 스크립트
+    }
+
+    // ScriptAction 생성 (생성자에 content 전달)
+    auto scriptAction = std::make_shared<RSM::Actions::ScriptAction>(content);
+
+    return scriptAction;
+}
+
+std::shared_ptr<RSM::Actions::IActionNode>
+RSM::StateNodeParser::parseAssignAction(const xmlpp::Element *assignElement) {
+    if (!assignElement) {
+        return nullptr;
+    }
+
+    // location 속성 (필수)
+    auto locationAttr = assignElement->get_attribute("location");
+    if (!locationAttr) {
+        Logger::warn("RSM::StateNodeParser::parseAssignAction() - Missing required 'location' attribute");
+        return nullptr;
+    }
+    std::string location = locationAttr->get_value();
+
+    // expr 속성
+    std::string expr;
+    auto exprAttr = assignElement->get_attribute("expr");
+    if (exprAttr) {
+        expr = exprAttr->get_value();
+    } else {
+        // expr 속성이 없으면 텍스트 내용 사용
+        auto children = assignElement->get_children();
+        for (auto child : children) {
+            auto textNode = dynamic_cast<const xmlpp::TextNode *>(child);
+            if (textNode) {
+                expr += textNode->get_content();
+            }
+        }
+    }
+
+    // expr이 비어있으면 경고
+    if (expr.empty()) {
+        Logger::warn("RSM::StateNodeParser::parseAssignAction() - Empty expression for location: " + location);
+        expr = "undefined";  // 기본값
+    }
+
+    // AssignAction 생성 (생성자에 location과 expr 전달)
+    auto assignAction = std::make_shared<RSM::Actions::AssignAction>(location, expr);
+
+    return assignAction;
 }

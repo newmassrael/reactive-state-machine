@@ -4,6 +4,8 @@
 #include "model/SCXMLModel.h"
 #include "parsing/SCXMLParser.h"
 #include "parsing/XIncludeProcessor.h"
+#include "runtime/ActionExecutorImpl.h"
+#include "runtime/ExecutionContextImpl.h"
 #include "scripting/JSEngine.h"
 #include <fstream>
 #include <random>
@@ -14,6 +16,7 @@ namespace RSM {
 StateMachine::StateMachine() : isRunning_(false), jsEnvironmentReady_(false) {
     sessionId_ = generateSessionId();
     // JS 환경은 지연 초기화로 변경
+    // ActionExecutor와 ExecutionContext는 setupJSEnvironment에서 초기화
 }
 
 StateMachine::~StateMachine() {
@@ -140,88 +143,139 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     RSM::JSEngine::instance().setVariable(sessionId_, "_event", ScriptValue{eventData});
     RSM::JSEngine::instance().setVariable(sessionId_, "_eventname", ScriptValue{eventName});
 
-    // Find applicable transitions
-    auto transitions = findTransitions(currentState_, eventName);
-    if (transitions.empty()) {
-        Logger::debug("StateMachine: No transitions found for event: " + eventName + " from state: " + currentState_);
-        stats_.failedTransitions++;
+    // Find applicable transitions from SCXML model
+    if (!model_) {
+        Logger::error("StateMachine: No SCXML model available");
         TransitionResult result;
         result.success = false;
         result.fromState = currentState_;
         result.eventName = eventName;
-        result.errorMessage = "No transitions found";
+        result.errorMessage = "No SCXML model available";
         return result;
     }
 
-    // Execute first valid transition (with priority handling)
-    for (const auto &transition : transitions) {
-        Logger::debug("StateMachine: Checking transition: " + transition.fromState + " -> " + transition.toState +
-                      " with condition: '" + transition.condition + "'");
-        bool conditionResult = transition.condition.empty() || evaluateCondition(transition.condition);
+    auto currentStateNode = model_->findStateById(currentState_);
+    if (!currentStateNode) {
+        Logger::debug("StateMachine: Current state not found in model: " + currentState_);
+        TransitionResult result;
+        result.success = false;
+        result.fromState = currentState_;
+        result.eventName = eventName;
+        result.errorMessage = "Current state not found in model";
+        return result;
+    }
+
+    const auto &transitions = currentStateNode->getTransitions();
+    bool transitionFound = false;
+
+    // Execute first valid transition
+    for (const auto &transitionNode : transitions) {
+        // Check if this transition matches the event
+        if (transitionNode->getEvent() != eventName) {
+            continue;
+        }
+
+        const auto &targets = transitionNode->getTargets();
+        if (targets.empty()) {
+            continue;
+        }
+
+        std::string targetState = targets[0];
+        std::string condition = transitionNode->getGuard();
+
+        Logger::debug("StateMachine: Checking transition: " + currentState_ + " -> " + targetState +
+                      " with condition: '" + condition + "'");
+        bool conditionResult = condition.empty() || evaluateCondition(condition);
         Logger::debug("StateMachine: Condition result: " + std::string(conditionResult ? "true" : "false"));
 
         if (conditionResult) {
-            Logger::debug("StateMachine: Executing transition from " + transition.fromState + " to " +
-                          transition.toState);
+            std::string fromState = currentState_;  // Save the original state
+            Logger::debug("StateMachine: Executing transition from " + fromState + " to " + targetState);
+            transitionFound = true;
 
             // Exit current state
-            if (!exitState(currentState_)) {
-                Logger::error("StateMachine: Failed to exit state: " + currentState_);
+            if (!exitState(fromState)) {
+                Logger::error("StateMachine: Failed to exit state: " + fromState);
                 TransitionResult result;
                 result.success = false;
-                result.fromState = currentState_;
+                result.fromState = fromState;
                 result.eventName = eventName;
-                result.errorMessage = "Failed to exit state: " + currentState_;
+                result.errorMessage = "Failed to exit state: " + fromState;
                 return result;
             }
 
-            // Execute transition action
-            if (!transition.action.empty()) {
-                Logger::debug("StateMachine: Found transition action: " + transition.action);
-                if (!executeAction(transition.action)) {
-                    Logger::warn("StateMachine: Transition action failed, but continuing");
+            // Execute transition actions
+            const auto &actions = transitionNode->getActions();
+            if (!actions.empty()) {
+                Logger::debug("StateMachine: Executing transition actions");
+                for (const auto &action : actions) {
+                    if (!executeAction(action)) {
+                        Logger::warn("StateMachine: Transition action failed: " + action + ", but continuing");
+                    }
                 }
             } else {
                 Logger::debug("StateMachine: No transition action for this transition");
             }
 
             // Enter new state
-            if (!enterState(transition.toState)) {
-                Logger::error("StateMachine: Failed to enter state: " + transition.toState);
+            if (!enterState(targetState)) {
+                Logger::error("StateMachine: Failed to enter state: " + targetState);
                 TransitionResult result;
                 result.success = false;
-                result.fromState = transition.fromState;
-                result.toState = transition.toState;
+                result.fromState = fromState;
+                result.toState = targetState;
                 result.eventName = eventName;
-                result.errorMessage = "Failed to enter state: " + transition.toState;
+                result.errorMessage = "Failed to enter state: " + targetState;
                 return result;
             }
 
             updateStatistics();
             stats_.totalTransitions++;
 
-            Logger::info("StateMachine: Successfully transitioned from " + transition.fromState + " to " +
-                         transition.toState);
-            return TransitionResult(true, transition.fromState, transition.toState, eventName);
+            Logger::info("StateMachine: Successfully transitioned from " + fromState + " to " + targetState);
+            return TransitionResult(true, fromState, targetState, eventName);
         }
     }
 
-    Logger::debug("StateMachine: No valid transitions found (conditions not met)");
-    stats_.failedTransitions++;
+    if (!transitionFound) {
+        Logger::debug("StateMachine: No valid transitions found for event: " + eventName +
+                      " from state: " + currentState_);
+        stats_.failedTransitions++;
+        TransitionResult result;
+        result.success = false;
+        result.fromState = currentState_;
+        result.eventName = eventName;
+        result.errorMessage = "No valid transitions found";
+        return result;
+    }
+
+    // This should not be reached, but just in case
     TransitionResult result;
     result.success = false;
     result.fromState = currentState_;
     result.eventName = eventName;
-    result.errorMessage = "No valid transitions found (conditions not met)";
+    result.errorMessage = "Unexpected end of transition processing";
     return result;
 }
 
 std::string StateMachine::getCurrentState() const {
-    return currentState_;
+    // 계층 관리자는 SCXML 표준에 필수
+    if (!hierarchyManager_) {
+        assert(false && "StateHierarchyManager is required for SCXML compliance");
+        return "";
+    }
+
+    return hierarchyManager_->getCurrentState();
 }
 
 std::vector<std::string> StateMachine::getActiveStates() const {
-    return activeStates_;
+    // 계층 관리자는 SCXML 표준에 필수
+    if (!hierarchyManager_) {
+        assert(false && "StateHierarchyManager is required for SCXML compliance");
+        return {};
+    }
+
+    return hierarchyManager_->getActiveStates();
 }
 
 bool StateMachine::isRunning() const {
@@ -251,8 +305,6 @@ bool StateMachine::initializeFromModel() {
     Logger::debug("StateMachine: Initializing from SCXML model");
 
     // Clear existing state
-    transitions_.clear();
-    states_.clear();
     initialState_.clear();
 
     // Get initial state
@@ -270,36 +322,16 @@ bool StateMachine::initializeFromModel() {
     }
 
     try {
-        // Extract each state individually
-        for (const auto &state : allStates) {
-            extractStatesBasic(state);
-        }
+        // Initialize hierarchy manager for hierarchical state support
+        hierarchyManager_ = std::make_unique<StateHierarchyManager>(model_);
 
         Logger::debug("StateMachine: Model initialized with initial state: " + initialState_);
-        Logger::info("StateMachine: Extracted " + std::to_string(states_.size()) + " states and " +
-                     std::to_string(transitions_.size()) + " transitions");
+        Logger::info("StateMachine: Model initialized with " + std::to_string(allStates.size()) + " states");
         return true;
     } catch (const std::exception &e) {
         Logger::error("StateMachine: Failed to extract model: " + std::string(e.what()));
         return false;
     }
-}
-
-std::vector<StateMachine::Transition> StateMachine::findTransitions(const std::string &fromState,
-                                                                    const std::string &event) {
-    std::vector<Transition> result;
-
-    for (const auto &transition : transitions_) {
-        if (transition.fromState == fromState && (transition.event.empty() || transition.event == event)) {
-            result.push_back(transition);
-        }
-    }
-
-    // Sort by priority (higher priority first)
-    std::sort(result.begin(), result.end(),
-              [](const Transition &a, const Transition &b) { return a.priority > b.priority; });
-
-    return result;
 }
 
 bool StateMachine::evaluateCondition(const std::string &condition) {
@@ -381,21 +413,34 @@ bool StateMachine::executeAction(const std::string &action) {
 bool StateMachine::enterState(const std::string &stateId) {
     Logger::debug("StateMachine: Entering state: " + stateId);
 
-    auto stateIt = states_.find(stateId);
-    if (stateIt == states_.end()) {
-        // Create basic state if not found
-        State newState;
-        newState.id = stateId;
-        states_[stateId] = newState;
-        stateIt = states_.find(stateId);
-    }
+    // Use hierarchy manager for SCXML-compliant state entry
+    if (hierarchyManager_) {
+        if (hierarchyManager_->enterState(stateId)) {
+            // Update legacy currentState_ for compatibility
+            currentState_ = hierarchyManager_->getCurrentState();
+            activeStates_ = hierarchyManager_->getActiveStates();
 
-    // Execute onEntry action
-    if (!stateIt->second.onEntryAction.empty()) {
-        if (!executeAction(stateIt->second.onEntryAction)) {
-            Logger::error("StateMachine: Failed to execute onEntry action for state: " + stateId);
+            // Execute entry actions for all entered states
+            for (const auto &activeState : activeStates_) {
+                executeEntryActions(activeState);
+            }
+
+            // Set state variable in JavaScript context
+            RSM::JSEngine::instance().setVariable(sessionId_, "_state", ScriptValue{currentState_});
+
+            Logger::debug("StateMachine: Successfully entered state using hierarchy manager: " + stateId +
+                          " (current: " + currentState_ + ")");
+            return true;
+        } else {
+            Logger::error("StateMachine: Failed to enter state via hierarchy manager: " + stateId);
             return false;
         }
+    }
+
+    // Execute IActionNode-based entry actions
+    if (!executeEntryActions(stateId)) {
+        Logger::error("StateMachine: Failed to execute IActionNode-based entry actions for state: " + stateId);
+        return false;
     }
 
     // Update current state
@@ -415,15 +460,18 @@ bool StateMachine::enterState(const std::string &stateId) {
 bool StateMachine::exitState(const std::string &stateId) {
     Logger::debug("StateMachine: Exiting state: " + stateId);
 
-    auto stateIt = states_.find(stateId);
-    if (stateIt != states_.end()) {
-        // Execute onExit action
-        if (!stateIt->second.onExitAction.empty()) {
-            if (!executeAction(stateIt->second.onExitAction)) {
-                Logger::error("StateMachine: Failed to execute onExit action for state: " + stateId);
-                return false;
-            }
-        }
+    // Use hierarchy manager for SCXML-compliant state exit
+    if (hierarchyManager_) {
+        hierarchyManager_->exitState(stateId);
+        // Update legacy state variables for compatibility
+        currentState_ = hierarchyManager_->getCurrentState();
+        activeStates_ = hierarchyManager_->getActiveStates();
+    }
+
+    // Execute IActionNode-based exit actions
+    if (!executeExitActions(stateId)) {
+        Logger::error("StateMachine: Failed to execute IActionNode-based exit actions for state: " + stateId);
+        return false;
     }
 
     Logger::debug("StateMachine: Successfully exited state: " + stateId);
@@ -479,6 +527,12 @@ bool StateMachine::setupJSEnvironment() {
         }
     }
 
+    // Initialize ActionExecutor and ExecutionContext
+    if (!initializeActionExecutor()) {
+        Logger::error("StateMachine: Failed to initialize action executor");
+        return false;
+    }
+
     jsEnvironmentReady_ = true;
     Logger::debug("StateMachine: JavaScript environment setup completed");
     return true;
@@ -489,81 +543,103 @@ void StateMachine::updateStatistics() {
     stats_.isRunning = isRunning_;
 }
 
-void StateMachine::extractStatesBasic(std::shared_ptr<IStateNode> stateNode) {
+bool StateMachine::initializeActionExecutor() {
+    try {
+        // Create ActionExecutor using the same session as StateMachine
+        actionExecutor_ = std::make_shared<ActionExecutorImpl>(sessionId_);
+
+        // Create ExecutionContext with shared_ptr and sessionId
+        executionContext_ = std::make_unique<ExecutionContextImpl>(actionExecutor_, sessionId_);
+
+        Logger::debug("StateMachine: ActionExecutor and ExecutionContext initialized for session: " + sessionId_);
+        return true;
+    } catch (const std::exception &e) {
+        Logger::error("StateMachine: Failed to initialize ActionExecutor: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool StateMachine::executeActionNodes(const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &actions) {
+    if (!executionContext_) {
+        Logger::warn("StateMachine: ExecutionContext not initialized, skipping action node execution");
+        return true;  // Not a failure, just no actions to execute
+    }
+
+    bool anySuccess = false;
+    bool allSucceeded = true;
+
+    for (const auto &action : actions) {
+        if (!action) {
+            Logger::warn("StateMachine: Null action node encountered, skipping");
+            continue;
+        }
+
+        try {
+            Logger::debug("StateMachine: Executing action: " + action->getActionType());
+            if (action->execute(*executionContext_)) {
+                Logger::debug("StateMachine: Successfully executed action: " + action->getActionType());
+                anySuccess = true;
+            } else {
+                Logger::warn("StateMachine: Failed to execute action: " + action->getActionType() +
+                             " (continuing with remaining actions)");
+                allSucceeded = false;
+            }
+        } catch (const std::exception &e) {
+            Logger::warn("StateMachine: Exception executing action " + action->getActionType() + ": " +
+                         std::string(e.what()) + " (continuing with remaining actions)");
+            allSucceeded = false;
+        }
+    }
+
+    // Return true if we had no actions or if at least some actions succeeded
+    // This allows the state machine to continue even if some actions fail
+    return actions.empty() || anySuccess || allSucceeded;
+}
+
+bool StateMachine::executeEntryActions(const std::string &stateId) {
+    if (!model_) {
+        return true;  // No model, no actions to execute
+    }
+
+    // Find the StateNode in the SCXML model
+    auto stateNode = model_->findStateById(stateId);
     if (!stateNode) {
-        return;
+        Logger::debug("StateMachine: State " + stateId + " not found in SCXML model, skipping entry actions");
+        return true;  // Not an error if state not found in model
     }
 
-    // Create basic state
-    State state;
-    state.id = stateNode->getId();
-    state.isFinal = stateNode->isFinalState();
-
-    // Extract onEntry/onExit actions
-    auto entryActions = stateNode->getEntryActions();
+    // Execute IActionNode-based entry actions
+    const auto &entryActions = stateNode->getEntryActionNodes();
     if (!entryActions.empty()) {
-        // Combine multiple actions into single script
-        std::string combinedEntry;
-        for (size_t i = 0; i < entryActions.size(); ++i) {
-            if (i > 0) {
-                combinedEntry += "; ";
-            }
-            combinedEntry += entryActions[i];
-        }
-        state.onEntryAction = combinedEntry;
+        Logger::debug("StateMachine: Executing " + std::to_string(entryActions.size()) +
+                      " entry action nodes for state: " + stateId);
+        return executeActionNodes(entryActions);
     }
 
-    auto exitActions = stateNode->getExitActions();
+    return true;
+}
+
+bool StateMachine::executeExitActions(const std::string &stateId) {
+    if (!model_) {
+        return true;  // No model, no actions to execute
+    }
+
+    // Find the StateNode in the SCXML model
+    auto stateNode = model_->findStateById(stateId);
+    if (!stateNode) {
+        Logger::debug("StateMachine: State " + stateId + " not found in SCXML model, skipping exit actions");
+        return true;  // Not an error if state not found in model
+    }
+
+    // Execute IActionNode-based exit actions
+    const auto &exitActions = stateNode->getExitActionNodes();
     if (!exitActions.empty()) {
-        std::string combinedExit;
-        for (size_t i = 0; i < exitActions.size(); ++i) {
-            if (i > 0) {
-                combinedExit += "; ";
-            }
-            combinedExit += exitActions[i];
-        }
-        state.onExitAction = combinedExit;
+        Logger::debug("StateMachine: Executing " + std::to_string(exitActions.size()) +
+                      " exit action nodes for state: " + stateId);
+        return executeActionNodes(exitActions);
     }
 
-    states_[state.id] = state;
-
-    // Extract transitions from this state
-    auto transitions = stateNode->getTransitions();
-    for (const auto &transitionNode : transitions) {
-        Transition transition;
-        transition.fromState = state.id;
-        transition.event = transitionNode->getEvent();
-
-        auto targets = transitionNode->getTargets();
-        if (!targets.empty()) {
-            transition.toState = targets[0];  // Use first target
-        }
-
-        transition.condition = transitionNode->getGuard();
-
-        // Extract and combine transition actions
-        auto actions = transitionNode->getActions();
-        if (!actions.empty()) {
-            std::string combinedAction;
-            for (size_t i = 0; i < actions.size(); ++i) {
-                if (i > 0) {
-                    combinedAction += "; ";
-                }
-                combinedAction += actions[i];
-            }
-            transition.action = combinedAction;
-        }
-
-        transition.priority = 0;  // Could be enhanced with actual priority
-
-        transitions_.push_back(transition);
-    }
-
-    // Recursively process children
-    auto children = stateNode->getChildren();
-    for (const auto &child : children) {
-        extractStatesBasic(child);  // Use shared_ptr directly
-    }
+    return true;
 }
 
 }  // namespace RSM

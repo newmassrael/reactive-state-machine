@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SCXMLContext.h"
+#include "actions/IActionNode.h"
 #include "factory/INodeFactory.h"
 #include "model/IStateNode.h"
 #include <libxml++/libxml++.h>
@@ -43,6 +44,15 @@ private:
 
     // onentry/onexit 요소 파싱
     void parseEntryExitElements(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);
+
+    // onentry/onexit 요소를 새로운 IActionNode 기반으로 파싱
+    void parseEntryExitActionNodes(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);
+
+    // 실행 가능한 콘텐츠 파싱 헬퍼 메서드
+    void parseExecutableContent(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state,
+                                bool isEntryAction);
+    std::shared_ptr<RSM::Actions::IActionNode> parseScriptAction(const xmlpp::Element *scriptElement);
+    std::shared_ptr<RSM::Actions::IActionNode> parseAssignAction(const xmlpp::Element *assignElement);
 
     // invoke 요소 파싱
     void parseInvokeElements(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);
