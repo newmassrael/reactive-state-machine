@@ -19,8 +19,8 @@ void RSM::SCXMLModel::setRootState(std::shared_ptr<RSM::IStateNode> rootState) {
     rootState_ = rootState;
 }
 
-RSM::IStateNode *RSM::SCXMLModel::getRootState() const {
-    return rootState_.get();
+std::shared_ptr<RSM::IStateNode> RSM::SCXMLModel::getRootState() const {
+    return rootState_;
 }
 
 void RSM::SCXMLModel::setName(const std::string &name) {

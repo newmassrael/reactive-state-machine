@@ -294,3 +294,87 @@ TEST_F(DataModelTest, JSONOperations) {
     ASSERT_TRUE(parsedNumResult.isSuccess());
     EXPECT_EQ(parsedNumResult.getValue<double>(), 123.0);
 }
+
+// Test global variable persistence and modification (StateMachine pattern)
+TEST_F(DataModelTest, GlobalVariablePersistence) {
+    // Initialize global counter variable
+    auto initResult = engine_->executeScript(sessionId_, "var counter = 0; counter").get();
+    ASSERT_TRUE(initResult.isSuccess());
+    EXPECT_EQ(initResult.getValue<double>(), 0.0);
+
+    // Test increment operation (StateMachine pattern)
+    auto increment1Result = engine_->executeScript(sessionId_, "counter = counter + 1; counter").get();
+    ASSERT_TRUE(increment1Result.isSuccess());
+    EXPECT_EQ(increment1Result.getValue<double>(), 1.0);
+
+    // Verify persistence with separate evaluation
+    auto check1Result = engine_->evaluateExpression(sessionId_, "counter").get();
+    ASSERT_TRUE(check1Result.isSuccess());
+    EXPECT_EQ(check1Result.getValue<double>(), 1.0);
+
+    // Second increment
+    auto increment2Result = engine_->executeScript(sessionId_, "counter = counter + 1").get();
+    ASSERT_TRUE(increment2Result.isSuccess());
+
+    auto check2Result = engine_->evaluateExpression(sessionId_, "counter").get();
+    ASSERT_TRUE(check2Result.isSuccess());
+    EXPECT_EQ(check2Result.getValue<double>(), 2.0);
+
+    // Third increment
+    auto increment3Result = engine_->executeScript(sessionId_, "counter = counter + 1").get();
+    ASSERT_TRUE(increment3Result.isSuccess());
+
+    auto check3Result = engine_->evaluateExpression(sessionId_, "counter").get();
+    ASSERT_TRUE(check3Result.isSuccess());
+    EXPECT_EQ(check3Result.getValue<double>(), 3.0);
+
+    // Fourth increment
+    auto increment4Result = engine_->executeScript(sessionId_, "counter = counter + 1").get();
+    ASSERT_TRUE(increment4Result.isSuccess());
+
+    auto check4Result = engine_->evaluateExpression(sessionId_, "counter").get();
+    ASSERT_TRUE(check4Result.isSuccess());
+    EXPECT_EQ(check4Result.getValue<double>(), 4.0);
+
+    // Fifth increment
+    auto increment5Result = engine_->executeScript(sessionId_, "counter = counter + 1").get();
+    ASSERT_TRUE(increment5Result.isSuccess());
+
+    auto check5Result = engine_->evaluateExpression(sessionId_, "counter").get();
+    ASSERT_TRUE(check5Result.isSuccess());
+    EXPECT_EQ(check5Result.getValue<double>(), 5.0);
+
+    // Test guard conditions (StateMachine pattern)
+    auto lessThan5Result = engine_->evaluateExpression(sessionId_, "counter < 5").get();
+    ASSERT_TRUE(lessThan5Result.isSuccess());
+    EXPECT_FALSE(lessThan5Result.getValue<bool>());
+
+    auto greaterEqual5Result = engine_->evaluateExpression(sessionId_, "counter >= 5").get();
+    ASSERT_TRUE(greaterEqual5Result.isSuccess());
+    EXPECT_TRUE(greaterEqual5Result.getValue<bool>());
+}
+
+// Test variable reset pattern (StateMachine onentry pattern)
+TEST_F(DataModelTest, VariableResetPattern) {
+    // Set initial value
+    auto setupResult = engine_->executeScript(sessionId_, "var testVar = 100; testVar").get();
+    ASSERT_TRUE(setupResult.isSuccess());
+    EXPECT_EQ(setupResult.getValue<double>(), 100.0);
+
+    // Reset variable (onentry pattern)
+    auto resetResult = engine_->executeScript(sessionId_, "testVar = 0").get();
+    ASSERT_TRUE(resetResult.isSuccess());
+
+    // Verify reset
+    auto checkResetResult = engine_->evaluateExpression(sessionId_, "testVar").get();
+    ASSERT_TRUE(checkResetResult.isSuccess());
+    EXPECT_EQ(checkResetResult.getValue<double>(), 0.0);
+
+    // Increment from reset
+    auto incrementResult = engine_->executeScript(sessionId_, "testVar = testVar + 1").get();
+    ASSERT_TRUE(incrementResult.isSuccess());
+
+    auto finalCheckResult = engine_->evaluateExpression(sessionId_, "testVar").get();
+    ASSERT_TRUE(finalCheckResult.isSuccess());
+    EXPECT_EQ(finalCheckResult.getValue<double>(), 1.0);
+}

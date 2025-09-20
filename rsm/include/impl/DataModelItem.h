@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IDataModelItem.h"
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -168,7 +169,7 @@ private:
     std::string type_;
     std::string scope_;
     std::string content_;
-    xmlpp::Document *xmlContent_ = nullptr;
+    std::unique_ptr<xmlpp::Document> xmlContent_;
     std::string src_;
     std::unordered_map<std::string, std::string> attributes_;
     std::vector<std::string> contentItems_;  // 추가된 콘텐츠 항목 저장

@@ -243,10 +243,17 @@ void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentEl
     for (auto *onentryElement : onentryElements) {
         auto actions = actionParser_->parseActionsInElement(onentryElement);
         for (const auto &action : actions) {
-            state->addEntryAction(action->getId());
+            // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
+            std::string actionContent;
+            if (action->getType() == "script" && !action->getAttribute("textContent").empty()) {
+                actionContent = action->getAttribute("textContent");
+            } else {
+                actionContent = action->getId();
+            }
+            state->addEntryAction(actionContent);
             Logger::debug("RSM::StateNodeParser::parseEntryExitElements() - Added "
                           "entry action: " +
-                          action->getId());
+                          actionContent);
         }
     }
 
@@ -255,10 +262,17 @@ void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentEl
     for (auto *onexitElement : onexitElements) {
         auto actions = actionParser_->parseActionsInElement(onexitElement);
         for (const auto &action : actions) {
-            state->addExitAction(action->getId());
+            // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
+            std::string actionContent;
+            if (action->getType() == "script" && !action->getAttribute("textContent").empty()) {
+                actionContent = action->getAttribute("textContent");
+            } else {
+                actionContent = action->getId();
+            }
+            state->addExitAction(actionContent);
             Logger::debug("RSM::StateNodeParser::parseEntryExitElements() - Added "
                           "exit action: " +
-                          action->getId());
+                          actionContent);
         }
     }
 }

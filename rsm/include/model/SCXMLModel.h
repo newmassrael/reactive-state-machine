@@ -30,7 +30,7 @@ public:
      * @brief 루트 상태 노드 반환
      * @return 루트 상태 노드
      */
-    IStateNode *getRootState() const;
+    std::shared_ptr<IStateNode> getRootState() const;
 
     /**
      * @brief SCXML 문서 이름 설정

@@ -83,7 +83,28 @@ target_link_libraries(js_engine_tests
 )
 
 # ============================================================================
-# 3. Core Parser Tests (RSM namespace updated)
+# 3. StateMachine Tests
+# ============================================================================
+add_executable(state_machine_tests
+    engine/StateMachineTest.cpp
+)
+
+target_include_directories(state_machine_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(state_machine_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        pthread
+)
+
+# ============================================================================
+# 4. Core Parser Tests (RSM namespace updated)
 # ============================================================================
 
 # Use same libxml++ configuration as RSM
@@ -119,7 +140,7 @@ target_link_libraries(core_parser_tests
 )
 
 # ============================================================================
-# 4. Integration Tests (RSM architecture)
+# 5. Integration Tests (RSM architecture)
 # ============================================================================
 add_executable(integration_tests
     integration/StateMachineIntegrationTest.cpp
@@ -147,6 +168,7 @@ target_link_libraries(integration_tests
 
 # CTest에 모든 테스트들 추가
 add_test(NAME JSEngineTests COMMAND js_engine_tests)
+add_test(NAME StateMachineTests COMMAND state_machine_tests)
 add_test(NAME CoreParserTests COMMAND core_parser_tests)
 add_test(NAME IntegrationTests COMMAND integration_tests)
 

@@ -23,6 +23,9 @@ RSM::SCXMLParser::SCXMLParser(std::shared_ptr<RSM::INodeFactory> nodeFactory,
     stateNodeParser_->setRelatedParsers(transitionParser_, actionParser_, dataModelParser_, invokeParser_,
                                         doneDataParser_);
 
+    // TransitionParser에 ActionParser 설정
+    transitionParser_->setActionParser(actionParser_);
+
     // XInclude 프로세서 설정
     if (xincludeProcessor) {
         xincludeProcessor_ = xincludeProcessor;

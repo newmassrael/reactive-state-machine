@@ -10,8 +10,7 @@ RSM::DataModelItem::DataModelItem(const std::string &id, const std::string &expr
 
 RSM::DataModelItem::~DataModelItem() {
     Logger::debug("RSM::DataModelItem::Destructor - Destroying data model item: " + id_);
-    delete xmlContent_;
-    xmlContent_ = nullptr;
+    // unique_ptr automatically manages memory - no manual delete needed
 }
 
 const std::string &RSM::DataModelItem::getId() const {
@@ -56,8 +55,7 @@ void RSM::DataModelItem::setContent(const std::string &content) {
         content_ = content;
 
         // XML 콘텐츠가 있었다면 제거
-        delete xmlContent_;
-        xmlContent_ = nullptr;
+        xmlContent_.reset();
     }
 
     // 모든 경우에 contentItems_에 추가
@@ -72,7 +70,7 @@ void RSM::DataModelItem::addContent(const std::string &content) {
 
     // XML 타입이면 DOM에 추가 시도
     if (type_ == "xpath" || type_ == "xml") {
-        if (xmlContent_ != nullptr) {
+        if (xmlContent_) {
             try {
                 // 임시 XML 문서로 파싱
                 xmlpp::DomParser parser;
@@ -157,8 +155,7 @@ void RSM::DataModelItem::setXmlContent(const std::string &content) {
     Logger::debug("RSM::DataModelItem::setXmlContent() - Setting XML content for " + id_);
 
     // 기존 XML 문서가 있다면 삭제
-    delete xmlContent_;
-    xmlContent_ = nullptr;
+    xmlContent_.reset();
 
     try {
         // XML 파싱
@@ -166,7 +163,7 @@ void RSM::DataModelItem::setXmlContent(const std::string &content) {
         parser.parse_memory(content);
 
         // 새 문서 생성 후 내용 가져오기 (Document는 복사 불가)
-        xmlContent_ = new xmlpp::Document();
+        xmlContent_ = std::make_unique<xmlpp::Document>();
         if (parser.get_document() && parser.get_document()->get_root_node()) {
             xmlContent_->create_root_node_by_import(parser.get_document()->get_root_node());
         }
@@ -175,8 +172,7 @@ void RSM::DataModelItem::setXmlContent(const std::string &content) {
         content_ = "";
     } catch (const std::exception &ex) {
         Logger::error("RSM::DataModelItem::setXmlContent() - Failed to parse XML content: " + std::string(ex.what()));
-        delete xmlContent_;
-        xmlContent_ = nullptr;
+        xmlContent_.reset();
 
         // 파싱 실패 시 일반 문자열로 저장
         content_ = content;

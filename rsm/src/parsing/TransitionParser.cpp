@@ -237,8 +237,15 @@ void RSM::TransitionParser::parseActions(const xmlpp::Element *transElement,
         // ActionParser 사용
         auto actions = actionParser_->parseActionsInElement(transElement);
         for (const auto &action : actions) {
-            transition->addAction(action->getId());
-            Logger::debug("RSM::TransitionParser::parseActions() - Added action: " + action->getId());
+            // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
+            std::string actionContent;
+            if (action->getType() == "script" && !action->getAttribute("textContent").empty()) {
+                actionContent = action->getAttribute("textContent");
+            } else {
+                actionContent = action->getId();
+            }
+            transition->addAction(actionContent);
+            Logger::debug("RSM::TransitionParser::parseActions() - Added action: " + actionContent);
         }
     }
 }
