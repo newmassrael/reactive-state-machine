@@ -73,6 +73,9 @@ add_library(rsm_unified
     src/actions/BaseAction.cpp
     src/actions/ScriptAction.cpp
     src/actions/AssignAction.cpp
+    src/actions/LogAction.cpp
+    src/actions/RaiseAction.cpp
+    src/actions/IfAction.cpp
 
     # Scripting implementation
     src/scripting/JSEngine.cpp

@@ -83,10 +83,10 @@ public:
     virtual const std::vector<std::string> &getExitActions() const = 0;
 
     // New IActionNode-based action methods
-    virtual void addEntryActionNode(std::shared_ptr<RSM::Actions::IActionNode> action) = 0;
-    virtual void addExitActionNode(std::shared_ptr<RSM::Actions::IActionNode> action) = 0;
-    virtual const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &getEntryActionNodes() const = 0;
-    virtual const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &getExitActionNodes() const = 0;
+    virtual void addEntryActionNode(std::shared_ptr<RSM::IActionNode> action) = 0;
+    virtual void addExitActionNode(std::shared_ptr<RSM::IActionNode> action) = 0;
+    virtual const std::vector<std::shared_ptr<RSM::IActionNode>> &getEntryActionNodes() const = 0;
+    virtual const std::vector<std::shared_ptr<RSM::IActionNode>> &getExitActionNodes() const = 0;
 
     virtual bool isFinalState() const = 0;
 

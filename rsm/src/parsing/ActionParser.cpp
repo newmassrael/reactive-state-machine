@@ -10,7 +10,7 @@ RSM::ActionParser::~ActionParser() {
     Logger::debug("RSM::ActionParser::Destructor - Destroying action parser");
 }
 
-std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp::Element *actionNode) {
+std::shared_ptr<RSM::IModelActionNode> RSM::ActionParser::parseActionNode(const xmlpp::Element *actionNode) {
     if (!actionNode) {
         Logger::warn("RSM::ActionParser::parseActionNode() - Null action node");
         return nullptr;
@@ -84,7 +84,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
     }
 
     // 자식 요소를 단순 텍스트로 취급하는 대신 계층적으로 처리
-    std::vector<std::shared_ptr<RSM::IActionNode>> childActions;
+    std::vector<std::shared_ptr<RSM::IModelActionNode>> childActions;
     auto children = actionNode->get_children();
     for (auto child : children) {
         auto textNode = dynamic_cast<const xmlpp::TextNode *>(child);
@@ -116,7 +116,8 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
     return action;
 }
 
-std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(const xmlpp::Element *externalActionNode) {
+std::shared_ptr<RSM::IModelActionNode>
+RSM::ActionParser::parseExternalActionNode(const xmlpp::Element *externalActionNode) {
     if (!externalActionNode) {
         Logger::warn("RSM::ActionParser::parseExternalActionNode() - Null external "
                      "action node");
@@ -191,9 +192,9 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
     return action;
 }
 
-std::vector<std::shared_ptr<RSM::IActionNode>>
+std::vector<std::shared_ptr<RSM::IModelActionNode>>
 RSM::ActionParser::parseActionsInElement(const xmlpp::Element *parentElement) {
-    std::vector<std::shared_ptr<IActionNode>> actions;
+    std::vector<std::shared_ptr<IModelActionNode>> actions;
 
     if (!parentElement) {
         Logger::warn("RSM::ActionParser::parseActionsInElement() - Null parent element");
@@ -238,7 +239,7 @@ RSM::ActionParser::parseActionsInElement(const xmlpp::Element *parentElement) {
 }
 
 void RSM::ActionParser::parseSpecialExecutableContent(const xmlpp::Element *element,
-                                                      std::vector<std::shared_ptr<IActionNode>> &actions) {
+                                                      std::vector<std::shared_ptr<IModelActionNode>> &actions) {
     if (!element) {
         return;
     }
@@ -264,7 +265,7 @@ void RSM::ActionParser::parseSpecialExecutableContent(const xmlpp::Element *elem
     }
 
     // if/elseif/else 또는 foreach 내의 자식 요소 처리
-    std::vector<std::shared_ptr<RSM::IActionNode>> childActions;
+    std::vector<std::shared_ptr<RSM::IModelActionNode>> childActions;
     auto children = element->get_children();
 
     for (auto child : children) {
@@ -331,7 +332,7 @@ bool RSM::ActionParser::isExternalActionNode(const xmlpp::Element *element) cons
 }
 
 void RSM::ActionParser::parseExternalImplementation(const xmlpp::Element *element,
-                                                    std::shared_ptr<IActionNode> actionNode) {
+                                                    std::shared_ptr<IModelActionNode> actionNode) {
     if (!element || !actionNode) {
         return;
     }

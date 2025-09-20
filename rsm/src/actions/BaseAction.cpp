@@ -3,7 +3,6 @@
 #include <cctype>
 
 namespace RSM {
-namespace Actions {
 
 BaseAction::BaseAction(const std::string &id) : id_(id) {}
 
@@ -64,5 +63,4 @@ std::string BaseAction::trimString(const std::string &str) const {
     return std::string(start, end);
 }
 
-}  // namespace Actions
 }  // namespace RSM

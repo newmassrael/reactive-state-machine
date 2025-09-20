@@ -173,7 +173,7 @@ private:
 
     // New IActionNode-based action execution methods
     bool initializeActionExecutor();
-    bool executeActionNodes(const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &actions);
+    bool executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions);
     bool executeEntryActions(const std::string &stateId);
     bool executeExitActions(const std::string &stateId);
     bool ensureJSEnvironment();

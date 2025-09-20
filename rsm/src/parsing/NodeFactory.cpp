@@ -1,5 +1,8 @@
 #include "factory/NodeFactory.h"
 #include "actions/AssignAction.h"
+#include "actions/IfAction.h"
+#include "actions/LogAction.h"
+#include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "common/Logger.h"
 
@@ -25,9 +28,15 @@ std::shared_ptr<IActionNode> NodeFactory::createActionNode(const std::string &na
 
     // Create specialized action types based on name
     if (name == "script") {
-        return std::make_shared<RSM::Actions::ScriptAction>("", name);
+        return std::make_shared<ScriptAction>("", name);
     } else if (name == "assign") {
-        return std::make_shared<RSM::Actions::AssignAction>("", "", name);
+        return std::make_shared<AssignAction>("", "", name);
+    } else if (name == "log") {
+        return std::make_shared<LogAction>(name);
+    } else if (name == "raise") {
+        return std::make_shared<RaiseAction>(name);
+    } else if (name == "if") {
+        return std::make_shared<IfAction>(name);
     } else {
         // SCXML 사양에 없는 액션 타입은 에러
         assert(false && "Unknown action type in SCXML specification");

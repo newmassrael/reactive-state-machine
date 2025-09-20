@@ -8,8 +8,6 @@ namespace RSM {
 
 class IExecutionContext;
 
-namespace Actions {
-
 /**
  * @brief Interface for all SCXML executable content actions
  *
@@ -86,5 +84,4 @@ struct ActionResult {
     }
 };
 
-}  // namespace Actions
 }  // namespace RSM

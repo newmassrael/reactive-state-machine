@@ -559,7 +559,7 @@ bool StateMachine::initializeActionExecutor() {
     }
 }
 
-bool StateMachine::executeActionNodes(const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &actions) {
+bool StateMachine::executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions) {
     if (!executionContext_) {
         Logger::warn("StateMachine: ExecutionContext not initialized, skipping action node execution");
         return true;  // Not a failure, just no actions to execute

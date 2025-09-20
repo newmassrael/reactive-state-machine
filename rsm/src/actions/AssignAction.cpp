@@ -4,7 +4,6 @@
 #include <regex>
 
 namespace RSM {
-namespace Actions {
 
 AssignAction::AssignAction(const std::string &location, const std::string &expr, const std::string &id)
     : BaseAction(id), location_(location), expr_(expr) {}
@@ -106,5 +105,4 @@ bool AssignAction::isValidLocation(const std::string &location) const {
     return std::regex_match(location, locationPattern);
 }
 
-}  // namespace Actions
 }  // namespace RSM

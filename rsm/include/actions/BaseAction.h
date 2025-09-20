@@ -4,7 +4,6 @@
 #include <string>
 
 namespace RSM {
-namespace Actions {
 
 /**
  * @brief Base implementation for common action functionality
@@ -62,5 +61,4 @@ private:
     std::string id_;
 };
 
-}  // namespace Actions
 }  // namespace RSM

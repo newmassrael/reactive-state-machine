@@ -1,4 +1,4 @@
-// IActionNode.h
+// IModelActionNode.h
 #pragma once
 
 #include <memory>
@@ -15,12 +15,12 @@
 
 namespace RSM {
 
-class IActionNode {
+class IModelActionNode {
 public:
     /**
      * @brief 가상 소멸자
      */
-    virtual ~IActionNode() {}
+    virtual ~IModelActionNode() {}
 
     /**
      * @brief 액션 ID 반환
@@ -88,19 +88,19 @@ public:
      * @brief 자식 액션 노드 추가
      * @param childAction 추가할 자식 액션 노드
      */
-    virtual void addChildAction(std::shared_ptr<IActionNode> childAction) = 0;
+    virtual void addChildAction(std::shared_ptr<IModelActionNode> childAction) = 0;
 
     /**
      * @brief 자식 액션 노드 목록 설정
      * @param childActions 자식 액션 노드 목록
      */
-    virtual void setChildActions(const std::vector<std::shared_ptr<IActionNode>> &childActions) = 0;
+    virtual void setChildActions(const std::vector<std::shared_ptr<IModelActionNode>> &childActions) = 0;
 
     /**
      * @brief 자식 액션 노드 목록 반환
      * @return 자식 액션 노드 목록
      */
-    virtual const std::vector<std::shared_ptr<IActionNode>> &getChildActions() const = 0;
+    virtual const std::vector<std::shared_ptr<IModelActionNode>> &getChildActions() const = 0;
 
     /**
      * @brief 자식 액션 노드가 있는지 확인

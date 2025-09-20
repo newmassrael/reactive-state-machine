@@ -1,5 +1,11 @@
 #include "runtime/ActionExecutorImpl.h"
+#include "actions/AssignAction.h"
+#include "actions/IfAction.h"
+#include "actions/LogAction.h"
+#include "actions/RaiseAction.h"
+#include "actions/ScriptAction.h"
 #include "common/Logger.h"
+#include "runtime/ExecutionContextImpl.h"
 #include "scripting/JSEngine.h"
 #include <regex>
 #include <sstream>
@@ -269,6 +275,159 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
 
     } catch (const std::exception &e) {
         Logger::debug("Error setting current event: {}", e.what());
+        return false;
+    }
+}
+
+// High-level action execution methods (Command pattern)
+
+bool ActionExecutorImpl::executeScriptAction(const ScriptAction &action) {
+    Logger::debug("ActionExecutorImpl::executeScriptAction - Executing script action: {}", action.getId());
+    return executeScript(action.getContent());
+}
+
+bool ActionExecutorImpl::executeAssignAction(const AssignAction &action) {
+    Logger::debug("ActionExecutorImpl::executeAssignAction - Executing assign action: {}", action.getId());
+    return assignVariable(action.getLocation(), action.getExpr());
+}
+
+bool ActionExecutorImpl::executeLogAction(const LogAction &action) {
+    Logger::debug("ActionExecutorImpl::executeLogAction - Executing log action: {}", action.getId());
+
+    try {
+        // Evaluate the expression to get the log message
+        std::string message;
+        if (!action.getExpr().empty()) {
+            message = evaluateExpression(action.getExpr());
+            if (message.empty()) {
+                Logger::warn("Log expression evaluated to empty string: {}", action.getExpr());
+                message = action.getExpr();  // Fallback to raw expression
+            }
+        }
+
+        // Add label prefix if specified
+        if (!action.getLabel().empty()) {
+            message = action.getLabel() + ": " + message;
+        }
+
+        // Log with specified level
+        std::string level = action.getLevel().empty() ? "info" : action.getLevel();
+        log(level, message);
+
+        return true;
+    } catch (const std::exception &e) {
+        Logger::error("Failed to execute log action: {}", e.what());
+        return false;
+    }
+}
+
+bool ActionExecutorImpl::executeRaiseAction(const RaiseAction &action) {
+    Logger::debug("ActionExecutorImpl::executeRaiseAction - Executing raise action: {}", action.getId());
+
+    if (action.getEvent().empty()) {
+        Logger::error("Raise action has empty event name");
+        return false;
+    }
+
+    try {
+        // Evaluate data expression if provided
+        std::string eventData;
+        if (!action.getData().empty()) {
+            eventData = evaluateExpression(action.getData());
+            if (eventData.empty()) {
+                Logger::warn("Raise action data expression evaluated to empty: {}", action.getData());
+                eventData = action.getData();  // Fallback to raw data
+            }
+        }
+
+        return raiseEvent(action.getEvent(), eventData);
+    } catch (const std::exception &e) {
+        Logger::error("Failed to execute raise action: {}", e.what());
+        return false;
+    }
+}
+
+bool ActionExecutorImpl::executeIfAction(const IfAction &action) {
+    Logger::debug("ActionExecutorImpl::executeIfAction - Executing if action: {}", action.getId());
+
+    try {
+        const auto &branches = action.getBranches();
+        if (branches.empty()) {
+            Logger::warn("If action has no branches");
+            return true;  // Empty if is valid but does nothing
+        }
+
+        // Evaluate conditions in order and execute first matching branch
+        for (const auto &branch : branches) {
+            bool shouldExecute = false;
+
+            if (branch.isElseBranch) {
+                // Else branch - always execute
+                shouldExecute = true;
+                Logger::debug("Executing else branch");
+            } else if (!branch.condition.empty()) {
+                // Evaluate condition
+                shouldExecute = evaluateCondition(branch.condition);
+                Logger::debug("Condition '{}' evaluated to: {}", branch.condition, shouldExecute);
+            } else {
+                Logger::warn("Branch has empty condition and is not else branch");
+                continue;
+            }
+
+            if (shouldExecute) {
+                // Execute all actions in this branch
+                bool allSucceeded = true;
+
+                // Create execution context for nested actions
+                auto sharedThis = std::shared_ptr<IActionExecutor>(this, [](IActionExecutor *) {});
+                ExecutionContextImpl context(sharedThis, sessionId_);
+
+                for (const auto &branchAction : branch.actions) {
+                    if (branchAction && !branchAction->execute(context)) {
+                        Logger::error("Failed to execute action in if branch");
+                        allSucceeded = false;
+                    }
+                }
+                return allSucceeded;  // Stop after first matching branch
+            }
+        }
+
+        // No branch matched
+        Logger::debug("No branch condition matched in if action");
+        return true;
+    } catch (const std::exception &e) {
+        Logger::error("Failed to execute if action: {}", e.what());
+        return false;
+    }
+}
+
+bool ActionExecutorImpl::evaluateCondition(const std::string &condition) {
+    if (condition.empty()) {
+        return true;  // Empty condition is always true
+    }
+
+    try {
+        auto result = JSEngine::instance().evaluateExpression(sessionId_, condition).get();
+
+        if (!result.success) {
+            Logger::error("Failed to evaluate condition '{}': {}", condition, result.errorMessage);
+            return false;
+        }
+
+        // Convert result to boolean
+        if (std::holds_alternative<bool>(result.value)) {
+            return std::get<bool>(result.value);
+        } else if (std::holds_alternative<long>(result.value)) {
+            return std::get<long>(result.value) != 0;
+        } else if (std::holds_alternative<double>(result.value)) {
+            return std::get<double>(result.value) != 0.0;
+        } else if (std::holds_alternative<std::string>(result.value)) {
+            return !std::get<std::string>(result.value).empty();
+        }
+
+        return false;
+    } catch (const std::exception &e) {
+        Logger::error("Exception evaluating condition '{}': {}", condition, e.what());
         return false;
     }
 }

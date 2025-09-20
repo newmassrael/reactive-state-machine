@@ -38,6 +38,14 @@ public:
     bool hasVariable(const std::string &location) override;
     std::string getSessionId() const override;
 
+    // New action execution methods
+    bool executeScriptAction(const ScriptAction &action) override;
+    bool executeAssignAction(const AssignAction &action) override;
+    bool executeLogAction(const LogAction &action) override;
+    bool executeRaiseAction(const RaiseAction &action) override;
+    bool executeIfAction(const IfAction &action) override;
+    bool evaluateCondition(const std::string &condition) override;
+
     // Test verification methods
 
     /**
@@ -111,6 +119,13 @@ public:
     void setVariableExists(const std::string &location, bool exists);
 
     /**
+     * @brief Set result for condition evaluation
+     * @param condition Condition expression to configure
+     * @param result Boolean result to return
+     */
+    void setConditionResult(const std::string &condition, bool result);
+
+    /**
      * @brief Clear all recorded operations
      */
     void clearHistory();
@@ -139,6 +154,7 @@ private:
     bool eventRaisingResult_ = true;
     std::map<std::string, std::string> expressionResults_;
     std::map<std::string, bool> variableExistence_;
+    std::map<std::string, bool> conditionResults_;
 };
 
 /**

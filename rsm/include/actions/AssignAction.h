@@ -4,7 +4,6 @@
 #include <string>
 
 namespace RSM {
-namespace Actions {
 
 /**
  * @brief SCXML <assign> action implementation
@@ -86,5 +85,4 @@ private:
     bool isValidLocation(const std::string &location) const;
 };
 
-}  // namespace Actions
 }  // namespace RSM

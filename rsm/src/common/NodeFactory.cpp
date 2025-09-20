@@ -18,7 +18,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::NodeFactory::createGuardNode(const std::st
     return std::make_shared<RSM::GuardNode>(id, target);
 }
 
-std::shared_ptr<RSM::IActionNode> RSM::NodeFactory::createActionNode(const std::string &name) {
+std::shared_ptr<RSM::IModelActionNode> RSM::NodeFactory::createActionNode(const std::string &name) {
     Logger::debug("RSM::NodeFactory::createActionNode() - Creating action node: " + name);
     return std::make_shared<RSM::ActionNode>(name);
 }

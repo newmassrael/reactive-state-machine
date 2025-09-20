@@ -13,7 +13,7 @@ namespace RSM {
 class IStateNode;
 class ITransitionNode;
 class IGuardNode;
-class IActionNode;
+class IModelActionNode;
 class IDataModelItem;
 class IInvokeNode;
 
@@ -25,7 +25,7 @@ public:
     virtual std::shared_ptr<ITransitionNode> createTransitionNode(const std::string &event,
                                                                   const std::string &target) = 0;
     virtual std::shared_ptr<IGuardNode> createGuardNode(const std::string &id, const std::string &target) = 0;
-    virtual std::shared_ptr<IActionNode> createActionNode(const std::string &name) = 0;
+    virtual std::shared_ptr<IModelActionNode> createActionNode(const std::string &name) = 0;
     virtual std::shared_ptr<IDataModelItem> createDataModelItem(const std::string &id,
                                                                 const std::string &expr = "") = 0;
     virtual std::shared_ptr<IInvokeNode> createInvokeNode(const std::string &id) = 0;

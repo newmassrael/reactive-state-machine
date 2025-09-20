@@ -146,25 +146,25 @@ public:
      * @brief IActionNode 기반 진입 액션 추가
      * @param action 액션 노드
      */
-    void addEntryActionNode(std::shared_ptr<RSM::Actions::IActionNode> action);
+    void addEntryActionNode(std::shared_ptr<RSM::IActionNode> action);
 
     /**
      * @brief IActionNode 기반 종료 액션 추가
      * @param action 액션 노드
      */
-    void addExitActionNode(std::shared_ptr<RSM::Actions::IActionNode> action);
+    void addExitActionNode(std::shared_ptr<RSM::IActionNode> action);
 
     /**
      * @brief IActionNode 기반 진입 액션들 조회
      * @return 진입 액션 노드들
      */
-    const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &getEntryActionNodes() const;
+    const std::vector<std::shared_ptr<RSM::IActionNode>> &getEntryActionNodes() const;
 
     /**
      * @brief IActionNode 기반 종료 액션들 조회
      * @return 종료 액션 노드들
      */
-    const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &getExitActionNodes() const;
+    const std::vector<std::shared_ptr<RSM::IActionNode>> &getExitActionNodes() const;
 
     /**
      * @brief invoke 노드 추가
@@ -270,8 +270,8 @@ private:
     std::vector<std::string> exitActions_;
 
     // New action system (IActionNode-based)
-    std::vector<std::shared_ptr<RSM::Actions::IActionNode>> entryActionNodes_;
-    std::vector<std::shared_ptr<RSM::Actions::IActionNode>> exitActionNodes_;
+    std::vector<std::shared_ptr<RSM::IActionNode>> entryActionNodes_;
+    std::vector<std::shared_ptr<RSM::IActionNode>> exitActionNodes_;
     std::vector<std::shared_ptr<IInvokeNode>> invokes_;
     DoneData doneData_;
     std::vector<std::string> reactiveGuards_;

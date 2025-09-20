@@ -495,8 +495,7 @@ void RSM::StateNodeParser::parseExecutableContent(const xmlpp::Element *parentEl
     }
 }
 
-std::shared_ptr<RSM::Actions::IActionNode>
-RSM::StateNodeParser::parseScriptAction(const xmlpp::Element *scriptElement) {
+std::shared_ptr<RSM::IActionNode> RSM::StateNodeParser::parseScriptAction(const xmlpp::Element *scriptElement) {
     if (!scriptElement) {
         return nullptr;
     }
@@ -525,13 +524,12 @@ RSM::StateNodeParser::parseScriptAction(const xmlpp::Element *scriptElement) {
     }
 
     // ScriptAction 생성 (생성자에 content 전달)
-    auto scriptAction = std::make_shared<RSM::Actions::ScriptAction>(content);
+    auto scriptAction = std::make_shared<RSM::ScriptAction>(content);
 
     return scriptAction;
 }
 
-std::shared_ptr<RSM::Actions::IActionNode>
-RSM::StateNodeParser::parseAssignAction(const xmlpp::Element *assignElement) {
+std::shared_ptr<RSM::IActionNode> RSM::StateNodeParser::parseAssignAction(const xmlpp::Element *assignElement) {
     if (!assignElement) {
         return nullptr;
     }
@@ -567,7 +565,7 @@ RSM::StateNodeParser::parseAssignAction(const xmlpp::Element *assignElement) {
     }
 
     // AssignAction 생성 (생성자에 location과 expr 전달)
-    auto assignAction = std::make_shared<RSM::Actions::AssignAction>(location, expr);
+    auto assignAction = std::make_shared<RSM::AssignAction>(location, expr);
 
     return assignAction;
 }

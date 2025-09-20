@@ -35,21 +35,21 @@ public:
      * @param actionNode XML 액션 노드
      * @return 생성된 액션 노드
      */
-    std::shared_ptr<IActionNode> parseActionNode(const xmlpp::Element *actionNode);
+    std::shared_ptr<IModelActionNode> parseActionNode(const xmlpp::Element *actionNode);
 
     /**
      * @brief 외부 실행 액션 노드 파싱
      * @param externalActionNode XML 외부 실행 액션 노드
      * @return 생성된 액션 노드
      */
-    std::shared_ptr<IActionNode> parseExternalActionNode(const xmlpp::Element *externalActionNode);
+    std::shared_ptr<IModelActionNode> parseExternalActionNode(const xmlpp::Element *externalActionNode);
 
     /**
      * @brief onentry/onexit 요소 내의 액션 파싱
      * @param parentElement 부모 요소 (onentry 또는 onexit)
      * @return 파싱된 액션 목록
      */
-    std::vector<std::shared_ptr<IActionNode>> parseActionsInElement(const xmlpp::Element *parentElement);
+    std::vector<std::shared_ptr<IModelActionNode>> parseActionsInElement(const xmlpp::Element *parentElement);
 
     /**
      * @brief 요소가 액션 노드인지 확인
@@ -78,7 +78,7 @@ private:
      * @param element XML 요소
      * @param actionNode 액션 노드
      */
-    void parseExternalImplementation(const xmlpp::Element *element, std::shared_ptr<IActionNode> actionNode);
+    void parseExternalImplementation(const xmlpp::Element *element, std::shared_ptr<IModelActionNode> actionNode);
 
     /**
      * @brief 특수 실행 가능 콘텐츠 파싱
@@ -86,7 +86,7 @@ private:
      * @param actions 파싱된 액션 목록 (수정됨)
      */
     void parseSpecialExecutableContent(const xmlpp::Element *element,
-                                       std::vector<std::shared_ptr<IActionNode>> &actions);
+                                       std::vector<std::shared_ptr<IModelActionNode>> &actions);
 
     /**
      * @brief 네임스페이스 문제 처리

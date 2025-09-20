@@ -4,7 +4,6 @@
 #include <string>
 
 namespace RSM {
-namespace Actions {
 
 /**
  * @brief SCXML <script> action implementation
@@ -58,5 +57,4 @@ private:
     std::string content_;
 };
 
-}  // namespace Actions
 }  // namespace RSM

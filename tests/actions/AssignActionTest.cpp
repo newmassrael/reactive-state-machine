@@ -4,7 +4,6 @@
 #include <memory>
 
 using namespace RSM;
-using namespace RSM::Actions;
 using namespace RSM::Test;
 
 class AssignActionTest : public ::testing::Test {

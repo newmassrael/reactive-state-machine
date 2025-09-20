@@ -1,4 +1,9 @@
 #include "MockActionExecutor.h"
+#include "actions/AssignAction.h"
+#include "actions/IfAction.h"
+#include "actions/LogAction.h"
+#include "actions/RaiseAction.h"
+#include "actions/ScriptAction.h"
 #include <algorithm>
 
 namespace RSM {
@@ -109,6 +114,10 @@ void MockActionExecutor::setVariableExists(const std::string &location, bool exi
     variableExistence_[location] = exists;
 }
 
+void MockActionExecutor::setConditionResult(const std::string &condition, bool result) {
+    conditionResults_[condition] = result;
+}
+
 void MockActionExecutor::clearHistory() {
     executedScripts_.clear();
     assignedVariables_.clear();
@@ -133,6 +142,97 @@ int MockActionExecutor::getOperationCount(const std::string &operation) const {
         return static_cast<int>(variableChecks_.size());
     }
     return 0;
+}
+
+// New action execution methods (Command pattern implementations)
+
+bool MockActionExecutor::executeScriptAction(const ScriptAction &action) {
+    return executeScript(action.getContent());
+}
+
+bool MockActionExecutor::executeAssignAction(const AssignAction &action) {
+    return assignVariable(action.getLocation(), action.getExpr());
+}
+
+bool MockActionExecutor::executeLogAction(const LogAction &action) {
+    std::string message;
+    if (!action.getExpr().empty()) {
+        message = evaluateExpression(action.getExpr());
+    }
+
+    if (!action.getLabel().empty()) {
+        message = action.getLabel() + ": " + message;
+    }
+
+    std::string level = action.getLevel().empty() ? "info" : action.getLevel();
+    log(level, message);
+    return true;
+}
+
+bool MockActionExecutor::executeRaiseAction(const RaiseAction &action) {
+    std::string eventData;
+    if (!action.getData().empty()) {
+        eventData = evaluateExpression(action.getData());
+    }
+
+    return raiseEvent(action.getEvent(), eventData);
+}
+
+bool MockActionExecutor::executeIfAction(const IfAction &action) {
+    const auto &branches = action.getBranches();
+    if (branches.empty()) {
+        return true;
+    }
+
+    for (const auto &branch : branches) {
+        bool shouldExecute = false;
+
+        if (branch.isElseBranch) {
+            shouldExecute = true;
+        } else if (!branch.condition.empty()) {
+            shouldExecute = evaluateCondition(branch.condition);
+        }
+
+        if (shouldExecute) {
+            // For mock, we just return true - actual execution would happen in real context
+            return true;
+        }
+    }
+
+    return true;
+}
+
+bool MockActionExecutor::evaluateCondition(const std::string &condition) {
+    if (condition.empty()) {
+        return true;
+    }
+
+    // Check if we have a preset result for this condition
+    auto it = conditionResults_.find(condition);
+    if (it != conditionResults_.end()) {
+        return it->second;
+    }
+
+    // Simple mock evaluation - evaluate as expression and convert to boolean
+    std::string result = evaluateExpression(condition);
+
+    if (result == "true") {
+        return true;
+    }
+    if (result == "false") {
+        return false;
+    }
+    if (result == "1") {
+        return true;
+    }
+    if (result == "0") {
+        return false;
+    }
+    if (!result.empty() && result != "undefined") {
+        return true;
+    }
+
+    return false;
 }
 
 // MockExecutionContext implementation

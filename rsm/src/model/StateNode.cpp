@@ -183,7 +183,7 @@ void RSM::StateNode::setInitialTransition(std::shared_ptr<RSM::ITransitionNode> 
 }
 
 // IActionNode-based action methods
-void RSM::StateNode::addEntryActionNode(std::shared_ptr<RSM::Actions::IActionNode> action) {
+void RSM::StateNode::addEntryActionNode(std::shared_ptr<RSM::IActionNode> action) {
     if (action) {
         Logger::debug("RSM::StateNode::addEntryActionNode() - Adding entry action node to " + id_ + ": " +
                       action->getActionType());
@@ -193,7 +193,7 @@ void RSM::StateNode::addEntryActionNode(std::shared_ptr<RSM::Actions::IActionNod
     }
 }
 
-void RSM::StateNode::addExitActionNode(std::shared_ptr<RSM::Actions::IActionNode> action) {
+void RSM::StateNode::addExitActionNode(std::shared_ptr<RSM::IActionNode> action) {
     if (action) {
         Logger::debug("RSM::StateNode::addExitActionNode() - Adding exit action node to " + id_ + ": " +
                       action->getActionType());
@@ -203,10 +203,10 @@ void RSM::StateNode::addExitActionNode(std::shared_ptr<RSM::Actions::IActionNode
     }
 }
 
-const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &RSM::StateNode::getEntryActionNodes() const {
+const std::vector<std::shared_ptr<RSM::IActionNode>> &RSM::StateNode::getEntryActionNodes() const {
     return entryActionNodes_;
 }
 
-const std::vector<std::shared_ptr<RSM::Actions::IActionNode>> &RSM::StateNode::getExitActionNodes() const {
+const std::vector<std::shared_ptr<RSM::IActionNode>> &RSM::StateNode::getExitActionNodes() const {
     return exitActionNodes_;
 }

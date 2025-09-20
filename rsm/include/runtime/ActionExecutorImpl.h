@@ -30,10 +30,18 @@ public:
      */
     virtual ~ActionExecutorImpl() = default;
 
-    // IActionExecutor implementation
+    // High-level action execution methods (Command pattern)
+    bool executeScriptAction(const ScriptAction &action) override;
+    bool executeAssignAction(const AssignAction &action) override;
+    bool executeLogAction(const LogAction &action) override;
+    bool executeRaiseAction(const RaiseAction &action) override;
+    bool executeIfAction(const IfAction &action) override;
+
+    // Low-level primitives
     bool executeScript(const std::string &script) override;
     bool assignVariable(const std::string &location, const std::string &expr) override;
     std::string evaluateExpression(const std::string &expression) override;
+    bool evaluateCondition(const std::string &condition) override;
     void log(const std::string &level, const std::string &message) override;
     bool raiseEvent(const std::string &eventName, const std::string &eventData = "") override;
     bool hasVariable(const std::string &location) override;

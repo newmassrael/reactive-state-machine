@@ -5,17 +5,64 @@
 
 namespace RSM {
 
+// Forward declarations
+class LogAction;
+class RaiseAction;
+class IfAction;
+class ScriptAction;
+class AssignAction;
+
 /**
  * @brief Interface for executing SCXML actions
  *
  * This interface provides the core operations needed to execute
  * SCXML executable content like <script>, <assign>, <log>, etc.
  * It abstracts the underlying JavaScript engine and state management.
+ *
+ * Uses the Command pattern with typed execution methods for type safety
+ * and better error handling.
  */
 class IActionExecutor {
 public:
     virtual ~IActionExecutor() = default;
 
+    // High-level action execution methods (Command pattern)
+    /**
+     * @brief Execute a script action
+     * @param action ScriptAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeScriptAction(const ScriptAction &action) = 0;
+
+    /**
+     * @brief Execute an assign action
+     * @param action AssignAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeAssignAction(const AssignAction &action) = 0;
+
+    /**
+     * @brief Execute a log action
+     * @param action LogAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeLogAction(const LogAction &action) = 0;
+
+    /**
+     * @brief Execute a raise action
+     * @param action RaiseAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeRaiseAction(const RaiseAction &action) = 0;
+
+    /**
+     * @brief Execute an if action (conditional execution)
+     * @param action IfAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeIfAction(const IfAction &action) = 0;
+
+    // Low-level primitives (for internal use)
     /**
      * @brief Execute JavaScript script code
      * @param script JavaScript code to execute
@@ -37,6 +84,13 @@ public:
      * @return Evaluation result as string, empty if failed
      */
     virtual std::string evaluateExpression(const std::string &expression) = 0;
+
+    /**
+     * @brief Evaluate a boolean condition
+     * @param condition Boolean expression to evaluate
+     * @return true if condition evaluates to true
+     */
+    virtual bool evaluateCondition(const std::string &condition) = 0;
 
     /**
      * @brief Log a message with specified level

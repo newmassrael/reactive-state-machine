@@ -5,7 +5,6 @@
 #include <memory>
 
 using namespace RSM;
-using namespace RSM::Actions;
 using namespace RSM::Test;
 
 class ScriptActionTest : public ::testing::Test {
