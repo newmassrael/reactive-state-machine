@@ -6,11 +6,17 @@
 #include <thread>
 #include <vector>
 
+#include "events/EventDispatcherImpl.h"
+#include "events/EventSchedulerImpl.h"
+#include "events/EventTargetFactoryImpl.h"
+#include "runtime/ActionExecutorImpl.h"
+
 class SessionManagementTest : public ::testing::Test {
 protected:
     void SetUp() override {
         engine_ = &RSM::JSEngine::instance();
-        ASSERT_TRUE(engine_->initialize());
+        // JSEngine 리셋으로 테스트 간 격리 보장
+        engine_->reset();
     }
 
     void TearDown() override {
@@ -224,7 +230,7 @@ TEST_F(SessionManagementTest, SessionCleanupOnShutdown) {
     engine_->shutdown();
 
     // Re-initialize for TearDown
-    ASSERT_TRUE(engine_->initialize());
+    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
 }
 
 // Test max sessions stress test
@@ -270,4 +276,131 @@ TEST_F(SessionManagementTest, InvalidSessionOperations) {
     // Try to create session with empty ID
     bool createResult = engine_->createSession("", "");
     EXPECT_FALSE(createResult) << "Should fail for empty session ID";
+}
+
+// Test event scheduling specific scenario: rapid sequential session creation like in EventSchedulingTest
+TEST_F(SessionManagementTest, EventSchedulingPatternTest) {
+    // This test reproduces the exact pattern from EventSchedulingTest.SetUp()
+    // to verify if rapid sequential session creation causes deadlock
+
+    // Step 1: Create first session (like test_session in event scheduling)
+    bool result1 = engine_->createSession("test_session", "");
+    EXPECT_TRUE(result1) << "Failed to create first session";
+
+    // Step 2: Immediately create second session (like temp_session in event scheduling)
+    bool result2 = engine_->createSession("temp_session", "");
+    EXPECT_TRUE(result2) << "Failed to create second session";
+
+    // Step 3: Verify both sessions work
+    auto eval1 = engine_->evaluateExpression("test_session", "1 + 1").get();
+    EXPECT_TRUE(eval1.isSuccess()) << "First session should work";
+
+    auto eval2 = engine_->evaluateExpression("temp_session", "2 + 2").get();
+    EXPECT_TRUE(eval2.isSuccess()) << "Second session should work";
+
+    // Step 4: Cleanup
+    engine_->destroySession("test_session");
+    engine_->destroySession("temp_session");
+}
+
+// Test ActionExecutor pattern from event scheduling: create session then ActionExecutor
+TEST_F(SessionManagementTest, ActionExecutorCreationPatternTest) {
+    // This test reproduces the ActionExecutor creation pattern
+
+    // Step 1: Create session first (like JSEngine createSession in event scheduling)
+    bool sessionResult = engine_->createSession("test_session", "");
+    EXPECT_TRUE(sessionResult) << "Failed to create session";
+
+    // Step 2: Simulate ActionExecutorImpl creation (this would internally check JSEngine)
+    // In real ActionExecutorImpl, this calls isSessionReady() which calls hasSession()
+    // We simulate this by checking if session exists
+    auto checkResult = engine_->evaluateExpression("test_session", "typeof undefined").get();
+    EXPECT_TRUE(checkResult.isSuccess()) << "Session should be accessible";
+
+    // Step 3: Try to create another ActionExecutor with different session
+    // This simulates the temp_session creation in EventTargetFactoryImpl
+    bool tempSessionResult = engine_->createSession("temp_session", "");
+    EXPECT_TRUE(tempSessionResult) << "Failed to create temp session";
+
+    // Step 4: Verify original session still works
+    auto originalCheck = engine_->evaluateExpression("test_session", "1 + 1").get();
+    EXPECT_TRUE(originalCheck.isSuccess()) << "Original session should still work";
+
+    // Step 5: Cleanup
+    engine_->destroySession("test_session");
+    engine_->destroySession("temp_session");
+}
+
+// Test event scheduling component creation step by step to isolate hanging issue
+TEST_F(SessionManagementTest, EventSchedulingComponentCreationStepByStepTest) {
+    // This test reproduces event scheduling component creation step by step
+
+    // Step 1: Create JSEngine session (this works)
+    bool sessionResult = engine_->createSession("test_session", "");
+    EXPECT_TRUE(sessionResult) << "Failed to create JSEngine session";
+
+    // Step 2: Create ActionExecutor (potential hang point?)
+    try {
+        auto actionExecutor = std::make_shared<RSM::ActionExecutorImpl>("test_session");
+        EXPECT_TRUE(actionExecutor != nullptr) << "ActionExecutor creation failed";
+
+        // Step 3: Create EventTargetFactory (potential hang point?)
+        auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(actionExecutor->getEventRaiser());
+        EXPECT_TRUE(targetFactory != nullptr) << "EventTargetFactory creation failed";
+
+        // If we get here, the problem is NOT in basic component creation
+        SUCCEED() << "All basic components created successfully - issue must be elsewhere";
+
+    } catch (const std::exception &e) {
+        FAIL() << "Exception during component creation: " << e.what();
+    }
+
+    // Cleanup
+    engine_->destroySession("test_session");
+}
+
+// Test EventScheduler and EventDispatcher creation
+TEST_F(SessionManagementTest, EventSchedulerCreationTest) {
+    // Step 1: Basic setup (we know this works)
+    bool sessionResult = engine_->createSession("test_session", "");
+    EXPECT_TRUE(sessionResult);
+
+    auto actionExecutor = std::make_shared<RSM::ActionExecutorImpl>("test_session");
+    auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(actionExecutor->getEventRaiser());
+
+    try {
+        // Step 2: Create EventExecutionCallback (potential hang point?)
+        RSM::EventExecutionCallback callback = [](const RSM::EventDescriptor &event,
+                                                  std::shared_ptr<RSM::IEventTarget> target,
+                                                  const std::string &sendId) -> bool {
+            (void)event;
+            (void)target;
+            (void)sendId;  // Suppress unused parameter warnings
+            return true;
+        };
+
+        // Step 3: Create EventSchedulerImpl (major potential hang point!)
+        auto scheduler = std::make_shared<RSM::EventSchedulerImpl>(callback);
+        EXPECT_TRUE(scheduler != nullptr) << "EventSchedulerImpl creation failed";
+
+        // Step 4: Create EventDispatcherImpl (potential hang point?)
+        auto dispatcher = std::make_shared<RSM::EventDispatcherImpl>(scheduler, targetFactory);
+        EXPECT_TRUE(dispatcher != nullptr) << "EventDispatcherImpl creation failed";
+
+        // Step 5: Test if we can create ActionExecutor with dispatcher
+        auto actionExecutorWithDispatcher = std::make_shared<RSM::ActionExecutorImpl>("test_session", dispatcher);
+        EXPECT_TRUE(actionExecutorWithDispatcher != nullptr) << "ActionExecutor with dispatcher failed";
+
+        SUCCEED() << "All event scheduling components created successfully!";
+
+        // Cleanup scheduler and dispatcher properly
+        scheduler->shutdown();
+        dispatcher->shutdown();
+
+    } catch (const std::exception &e) {
+        FAIL() << "Exception during event scheduling component creation: " << e.what();
+    }
+
+    // Cleanup
+    engine_->destroySession("test_session");
 }

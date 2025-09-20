@@ -44,6 +44,8 @@ public:
     bool executeLogAction(const LogAction &action) override;
     bool executeRaiseAction(const RaiseAction &action) override;
     bool executeIfAction(const IfAction &action) override;
+    bool executeSendAction(const SendAction &action) override;
+    bool executeCancelAction(const CancelAction &action) override;
     bool evaluateCondition(const std::string &condition) override;
 
     // Test verification methods
@@ -102,7 +104,7 @@ public:
      * @brief Set whether event raising should succeed
      * @param success True for success, false for failure
      */
-    void setEventRaisingResult(bool success);
+    // REMOVED: setEventRaisingResult was deprecated and violated SCXML fire-and-forget model
 
     /**
      * @brief Set result for expression evaluation
@@ -151,7 +153,7 @@ private:
     // Test configuration
     bool scriptExecutionResult_ = true;
     bool variableAssignmentResult_ = true;
-    bool eventRaisingResult_ = true;
+    // REMOVED: eventRaisingResult_ was legacy variable for deprecated setEventRaisingResult method
     std::map<std::string, std::string> expressionResults_;
     std::map<std::string, bool> variableExistence_;
     std::map<std::string, bool> conditionResults_;

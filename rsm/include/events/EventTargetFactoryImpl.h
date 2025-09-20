@@ -1,0 +1,78 @@
+#pragma once
+
+#include "IEventTarget.h"
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+
+namespace RSM {
+
+// Forward declarations
+class IActionExecutor;
+class IEventRaiser;
+
+/**
+ * @brief Concrete implementation of IEventTargetFactory
+ *
+ * This factory creates appropriate event targets based on target URIs.
+ * It supports registration of target creators and automatic target
+ * selection based on URI schemes.
+ *
+ * Supported target types:
+ * - "#_internal" - Internal events using action executor
+ * - Future: "http://", "https://", "scxml:", etc.
+ */
+class EventTargetFactoryImpl : public IEventTargetFactory {
+public:
+    /**
+     * @brief Target creator function type
+     */
+    /**
+     * @brief Construct factory with event raiser for internal events
+     *
+     * @param eventRaiser Event raiser for internal event delivery
+     */
+    explicit EventTargetFactoryImpl(std::shared_ptr<IEventRaiser> eventRaiser);
+
+    /**
+     * @brief Destructor
+     */
+    virtual ~EventTargetFactoryImpl() = default;
+
+    // IEventTargetFactory implementation
+    std::shared_ptr<IEventTarget> createTarget(const std::string &targetUri) override;
+    void registerTargetType(const std::string &scheme,
+                            std::function<std::shared_ptr<IEventTarget>(const std::string &)> creator) override;
+    bool isSchemeSupported(const std::string &scheme) const override;
+    std::vector<std::string> getSupportedSchemes() const override;
+
+    /**
+     * @brief Unregister a target creator for a URI scheme
+     *
+     * @param scheme URI scheme to unregister
+     */
+    void unregisterTargetCreator(const std::string &scheme);
+
+private:
+    /**
+     * @brief Extract scheme from target URI
+     *
+     * @param targetUri URI to parse
+     * @return Scheme part (e.g., "http" from "http://example.com")
+     */
+    std::string extractScheme(const std::string &targetUri) const;
+
+    /**
+     * @brief Create internal event target
+     *
+     * @param targetUri Target URI (should be "#_internal")
+     * @return Internal event target
+     */
+    std::shared_ptr<IEventTarget> createInternalTarget(const std::string &targetUri);
+
+    std::shared_ptr<IEventRaiser> eventRaiser_;
+    std::map<std::string, std::function<std::shared_ptr<IEventTarget>(const std::string &)>> targetCreators_;
+};
+
+}  // namespace RSM

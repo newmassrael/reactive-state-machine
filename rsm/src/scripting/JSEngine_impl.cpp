@@ -60,6 +60,28 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
     return JSResult::createSuccess(jsResult);
 }
 
+JSResult JSEngine::validateExpressionInternal(const std::string &sessionId, const std::string &expression) {
+    SessionContext *session = getSession(sessionId);
+    if (!session || !session->jsContext) {
+        return JSResult::createError("Session not found: " + sessionId);
+    }
+
+    JSContext *ctx = session->jsContext;
+
+    // Try compiling as JavaScript expression to check for syntax errors
+    ::JSValue result = JS_Eval(ctx, ("(function(){return (" + expression + ");})").c_str(), expression.length() + 23,
+                               "<validation>", JS_EVAL_FLAG_COMPILE_ONLY);
+
+    if (JS_IsException(result)) {
+        JSResult error = createErrorFromException(ctx);
+        JS_FreeValue(ctx, result);
+        return error;
+    }
+
+    JS_FreeValue(ctx, result);
+    return JSResult::createSuccess();
+}
+
 JSResult JSEngine::setVariableInternal(const std::string &sessionId, const std::string &name,
                                        const ScriptValue &value) {
     SessionContext *session = getSession(sessionId);

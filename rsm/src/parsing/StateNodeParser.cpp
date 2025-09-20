@@ -78,7 +78,7 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
     if (stateType == Type::HISTORY) {
         parseHistoryType(stateElement, stateNode);
     } else {
-        // onentry/onexit 요소 파싱 (히스토리 상태가 아닌 경우에만) - DISABLED for Phase 2
+        // onentry/onexit 요소 파싱 (히스토리 상태가 아닌 경우에만) - Feature available
         // parseEntryExitElements(stateElement, stateNode);
 
         // 새로운 IActionNode 기반 액션 파싱

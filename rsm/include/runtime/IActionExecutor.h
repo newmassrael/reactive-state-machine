@@ -11,6 +11,8 @@ class RaiseAction;
 class IfAction;
 class ScriptAction;
 class AssignAction;
+class SendAction;
+class CancelAction;
 
 /**
  * @brief Interface for executing SCXML actions
@@ -61,6 +63,20 @@ public:
      * @return true if execution was successful
      */
     virtual bool executeIfAction(const IfAction &action) = 0;
+
+    /**
+     * @brief Execute a send action (external event sending)
+     * @param action SendAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeSendAction(const SendAction &action) = 0;
+
+    /**
+     * @brief Execute a cancel action (delayed event cancellation)
+     * @param action CancelAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeCancelAction(const CancelAction &action) = 0;
 
     // Low-level primitives (for internal use)
     /**

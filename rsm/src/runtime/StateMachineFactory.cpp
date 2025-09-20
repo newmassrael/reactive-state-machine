@@ -107,11 +107,9 @@ bool JSEngineAdapter::initialize() {
         return true;
     }
 
-    // Initialize the legacy JSEngine
-    if (!JSEngine::instance().initialize()) {
-        Logger::error("JSEngineAdapter: Failed to initialize legacy JSEngine");
-        return false;
-    }
+    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
+    JSEngine::instance();  // RAII 보장
+    Logger::debug("JSEngineAdapter: JSEngine automatically initialized via RAII");
 
     // Create default session
     if (!JSEngine::instance().createSession(defaultSessionId_)) {

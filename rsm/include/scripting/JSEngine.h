@@ -37,10 +37,10 @@ public:
     static JSEngine &instance();
 
     /**
-     * @brief Initialize the JavaScript engine
-     * @return true if initialization successful
+     * @brief Reset the JavaScript engine for test isolation
+     * Reinitializes the engine after shutdown, allowing fresh start between tests
      */
-    bool initialize();
+    void reset();
 
     /**
      * @brief Shutdown the JavaScript engine and cleanup all sessions
@@ -160,8 +160,16 @@ public:
      */
     void collectGarbage();
 
+    /**
+     * @brief Validate JavaScript expression syntax without executing it
+     * @param sessionId Target session for context
+     * @param expression JavaScript expression to validate
+     * @return Future with validation result (true if syntax is valid)
+     */
+    std::future<JSResult> validateExpression(const std::string &sessionId, const std::string &expression);
+
 private:
-    JSEngine() = default;
+    JSEngine();  // 생성자에서 완전 초기화
     ~JSEngine();
 
     // Non-copyable, non-movable
@@ -185,6 +193,7 @@ private:
         enum Type {
             EXECUTE_SCRIPT,
             EVALUATE_EXPRESSION,
+            VALIDATE_EXPRESSION,
             SET_VARIABLE,
             GET_VARIABLE,
             SET_CURRENT_EVENT,
@@ -231,10 +240,12 @@ private:
     // === Internal Methods ===
     void executionWorker();
     void processExecutionRequest(std::unique_ptr<ExecutionRequest> request);
+    void initializeInternal();  // 공통 초기화 로직
 
     // QuickJS helpers
     JSResult executeScriptInternal(const std::string &sessionId, const std::string &script);
     JSResult evaluateExpressionInternal(const std::string &sessionId, const std::string &expression);
+    JSResult validateExpressionInternal(const std::string &sessionId, const std::string &expression);
     JSResult setVariableInternal(const std::string &sessionId, const std::string &name, const ScriptValue &value);
     JSResult getVariableInternal(const std::string &sessionId, const std::string &name);
     JSResult setCurrentEventInternal(const std::string &sessionId, const std::shared_ptr<Event> &event);

@@ -10,7 +10,8 @@ class SimpleSCXMLTest : public ::testing::Test {
 protected:
     void SetUp() override {
         engine_ = &JSEngine::instance();
-        ASSERT_TRUE(engine_->initialize());
+        // JSEngine 리셋으로 테스트 간 격리 보장
+        engine_->reset();
 
         // Create test session
         sessionId_ = "test_session";

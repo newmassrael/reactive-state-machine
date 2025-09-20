@@ -1,0 +1,285 @@
+#include <chrono>
+#include <future>
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include <thread>
+
+#include "actions/SendAction.h"
+#include "common/Logger.h"
+#include "events/EventTargetFactoryImpl.h"
+#include "events/HttpEventTarget.h"
+#include "runtime/ActionExecutorImpl.h"
+#include "runtime/ExecutionContextImpl.h"
+
+namespace RSM {
+
+/**
+ * @brief Test fixture for HTTP event target functionality
+ */
+class HttpEventTargetTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // Create basic infrastructure
+        actionExecutor_ = std::make_shared<ActionExecutorImpl>("test_session");
+        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(actionExecutor_->getEventRaiser());
+    }
+
+    void TearDown() override {
+        // Cleanup
+    }
+
+protected:
+    std::shared_ptr<ActionExecutorImpl> actionExecutor_;
+    std::shared_ptr<EventTargetFactoryImpl> targetFactory_;
+};
+
+/**
+ * @brief Test HTTP target creation and validation
+ */
+TEST_F(HttpEventTargetTest, HttpTargetCreation) {
+    // Test HTTP target creation
+    auto httpTarget = std::make_shared<HttpEventTarget>("http://httpbin.org/post");
+
+    EXPECT_EQ(httpTarget->getTargetType(), "http");
+    EXPECT_TRUE(httpTarget->canHandle("http://example.com"));
+    EXPECT_TRUE(httpTarget->canHandle("https://example.com"));
+    EXPECT_FALSE(httpTarget->canHandle("ftp://example.com"));
+    EXPECT_FALSE(httpTarget->canHandle("invalid-url"));
+
+    // Validate target
+    auto errors = httpTarget->validate();
+    EXPECT_TRUE(errors.empty()) << "HttpEventTarget should be valid";
+
+    // Test debug info
+    std::string debugInfo = httpTarget->getDebugInfo();
+    EXPECT_FALSE(debugInfo.empty());
+    EXPECT_NE(debugInfo.find("HttpEventTarget"), std::string::npos);
+    EXPECT_NE(debugInfo.find("http://httpbin.org/post"), std::string::npos);
+}
+
+/**
+ * @brief Test HTTPS target creation
+ */
+TEST_F(HttpEventTargetTest, HttpsTargetCreation) {
+    // Test HTTPS target creation
+    auto httpsTarget = std::make_shared<HttpEventTarget>("https://httpbin.org/post");
+
+    EXPECT_EQ(httpsTarget->getTargetType(), "https");
+
+    // Validate target
+    auto errors = httpsTarget->validate();
+    EXPECT_TRUE(errors.empty()) << "HttpsEventTarget should be valid";
+}
+
+/**
+ * @brief Test invalid URL handling
+ */
+TEST_F(HttpEventTargetTest, InvalidUrlHandling) {
+    // Test invalid URLs
+    std::vector<std::string> invalidUrls = {"",        "not-a-url", "ftp://example.com",
+                                            "http://", "https://",  "http:///path"};
+
+    for (const auto &invalidUrl : invalidUrls) {
+        auto target = std::make_shared<HttpEventTarget>(invalidUrl);
+
+        // Should have validation errors
+        auto errors = target->validate();
+        EXPECT_FALSE(errors.empty()) << "URL '" << invalidUrl << "' should be invalid";
+    }
+}
+
+/**
+ * @brief Test factory integration
+ */
+TEST_F(HttpEventTargetTest, FactoryIntegration) {
+    // Test HTTP target creation via factory
+    auto httpTarget = targetFactory_->createTarget("http://httpbin.org/post");
+    ASSERT_NE(httpTarget, nullptr);
+    EXPECT_EQ(httpTarget->getTargetType(), "http");
+
+    // Test HTTPS target creation via factory
+    auto httpsTarget = targetFactory_->createTarget("https://httpbin.org/post");
+    ASSERT_NE(httpsTarget, nullptr);
+    EXPECT_EQ(httpsTarget->getTargetType(), "https");
+
+    // Test unsupported scheme
+    auto ftpTarget = targetFactory_->createTarget("ftp://example.com");
+    EXPECT_EQ(ftpTarget, nullptr);
+
+    // Check supported schemes
+    auto schemes = targetFactory_->getSupportedSchemes();
+    EXPECT_TRUE(std::find(schemes.begin(), schemes.end(), "http") != schemes.end());
+    EXPECT_TRUE(std::find(schemes.begin(), schemes.end(), "https") != schemes.end());
+    EXPECT_TRUE(std::find(schemes.begin(), schemes.end(), "internal") != schemes.end());
+
+    // Check scheme support
+    EXPECT_TRUE(targetFactory_->isSchemeSupported("http"));
+    EXPECT_TRUE(targetFactory_->isSchemeSupported("https"));
+    EXPECT_TRUE(targetFactory_->isSchemeSupported("internal"));
+    EXPECT_FALSE(targetFactory_->isSchemeSupported("ftp"));
+}
+
+/**
+ * @brief Test HTTP event sending with mock server
+ *
+ * Note: This test uses httpbin.org as a test server. In a real production
+ * environment, you would use a local mock server for reliable testing.
+ */
+TEST_F(HttpEventTargetTest, BasicHttpEventSending) {
+    // Create HTTP target
+    auto httpTarget = std::make_shared<HttpEventTarget>("http://httpbin.org/post");
+
+    // Create test event
+    EventDescriptor event;
+    event.eventName = "test.event";
+    event.data = R"({"message": "hello world", "timestamp": 12345})";
+    event.sendId = "test_001";
+    event.target = "http://httpbin.org/post";
+
+    // Send event (async)
+    auto resultFuture = httpTarget->send(event);
+
+    // Wait for result with timeout
+    auto status = resultFuture.wait_for(std::chrono::seconds(10));
+
+    if (status == std::future_status::ready) {
+        auto result = resultFuture.get();
+
+        // Check if successful (might fail due to network issues in test environment)
+        if (result.isSuccess) {
+            EXPECT_EQ(result.sendId, "test_001");
+            EXPECT_TRUE(result.errorMessage.empty());
+            Logger::info("HTTP test successful - sent event to httpbin.org");
+        } else {
+            // Log the failure but don't fail the test (network issues)
+            Logger::warn("HTTP test failed (network issue?): {}", result.errorMessage);
+            EXPECT_FALSE(result.errorMessage.empty());
+        }
+    } else {
+        FAIL() << "HTTP request timed out";
+    }
+}
+
+/**
+ * @brief Test HTTPS event sending with mock server
+ */
+TEST_F(HttpEventTargetTest, BasicHttpsEventSending) {
+    // Create HTTPS target
+    auto httpsTarget = std::make_shared<HttpEventTarget>("https://httpbin.org/post");
+
+    // Create test event
+    EventDescriptor event;
+    event.eventName = "test.https.event";
+    event.data = "test data";
+    event.sendId = "https_test_001";
+    event.target = "https://httpbin.org/post";
+
+    // Send event (async)
+    auto resultFuture = httpsTarget->send(event);
+
+    // Wait for result with timeout
+    auto status = resultFuture.wait_for(std::chrono::seconds(10));
+
+    if (status == std::future_status::ready) {
+        auto result = resultFuture.get();
+
+        // Check if successful (might fail due to network issues in test environment)
+        if (result.isSuccess) {
+            EXPECT_EQ(result.sendId, "https_test_001");
+            EXPECT_TRUE(result.errorMessage.empty());
+            Logger::info("HTTPS test successful - sent event to httpbin.org");
+        } else {
+            // Log the failure but don't fail the test (network issues)
+            Logger::warn("HTTPS test failed (network issue?): {}", result.errorMessage);
+            EXPECT_FALSE(result.errorMessage.empty());
+        }
+    } else {
+        FAIL() << "HTTPS request timed out";
+    }
+}
+
+/**
+ * @brief Test HTTP error handling
+ */
+TEST_F(HttpEventTargetTest, HttpErrorHandling) {
+    // Create target pointing to non-existent server
+    auto httpTarget = std::make_shared<HttpEventTarget>("http://non-existent-server-12345.com/");
+
+    // Create test event
+    EventDescriptor event;
+    event.eventName = "test.error";
+    event.data = "test";
+    event.sendId = "error_test_001";
+
+    // Send event (should fail)
+    auto resultFuture = httpTarget->send(event);
+
+    // Wait for result with timeout
+    auto status = resultFuture.wait_for(std::chrono::seconds(5));
+
+    ASSERT_EQ(status, std::future_status::ready);
+
+    auto result = resultFuture.get();
+
+    // Should fail
+    EXPECT_FALSE(result.isSuccess);
+    EXPECT_FALSE(result.errorMessage.empty());
+    EXPECT_EQ(result.errorType, SendResult::ErrorType::NETWORK_ERROR);
+
+    Logger::debug("Expected error for non-existent server: {}", result.errorMessage);
+}
+
+/**
+ * @brief Test SendAction integration with HTTP targets
+ */
+TEST_F(HttpEventTargetTest, SendActionIntegration) {
+    // Create action executor with HTTP dispatcher
+    // Note: For this test, we'll just test the action creation and validation
+
+    SendAction sendAction("http.test.event");
+    sendAction.setTarget("http://httpbin.org/post");
+    sendAction.setData("'integration test data'");
+    sendAction.setSendId("integration_001");
+
+    // Validate the action
+    auto errors = sendAction.validate();
+    EXPECT_TRUE(errors.empty()) << "SendAction should be valid";
+
+    // Check properties
+    EXPECT_EQ(sendAction.getEvent(), "http.test.event");
+    EXPECT_EQ(sendAction.getTarget(), "http://httpbin.org/post");
+    EXPECT_EQ(sendAction.getData(), "'integration test data'");
+    EXPECT_EQ(sendAction.getSendId(), "integration_001");
+}
+
+/**
+ * @brief Test custom headers and timeout settings
+ */
+TEST_F(HttpEventTargetTest, CustomConfiguration) {
+    auto httpTarget = std::make_shared<HttpEventTarget>("http://httpbin.org/post");
+
+    // Set custom timeout
+    httpTarget->setTimeout(std::chrono::milliseconds(2000));
+
+    // Set custom headers
+    std::map<std::string, std::string> headers = {{"X-Custom-Header", "test-value"}, {"X-API-Key", "secret-key"}};
+    httpTarget->setCustomHeaders(headers);
+
+    // Set max retries
+    httpTarget->setMaxRetries(3);
+
+    // Set SSL verification
+    httpTarget->setSSLVerification(false);
+
+    // Validate configuration
+    auto errors = httpTarget->validate();
+    EXPECT_TRUE(errors.empty());
+
+    // Check debug info includes configuration
+    std::string debugInfo = httpTarget->getDebugInfo();
+    EXPECT_NE(debugInfo.find("timeout=2000"), std::string::npos);
+    EXPECT_NE(debugInfo.find("retries=3"), std::string::npos);
+    EXPECT_NE(debugInfo.find("ssl_verify=false"), std::string::npos);
+}
+
+}  // namespace RSM

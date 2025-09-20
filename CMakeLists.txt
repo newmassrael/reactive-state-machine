@@ -67,9 +67,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # 컴파일 옵션 설정
 if(MSVC)
-    add_compile_options(/W4)
+    add_compile_options(/W4 /WX)  # /WX: treat warnings as errors
 else()
-    add_compile_options(-Wall -Wextra -pedantic)
+    add_compile_options(-Wall -Wextra -pedantic -Werror)  # -Werror: treat warnings as errors
 endif()
 
 # libxml++5.0 찾기

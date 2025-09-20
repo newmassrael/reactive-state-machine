@@ -6,7 +6,8 @@ class DataModelTest : public ::testing::Test {
 protected:
     void SetUp() override {
         engine_ = &RSM::JSEngine::instance();
-        ASSERT_TRUE(engine_->initialize());
+        // JSEngine 리셋으로 테스트 간 격리 보장
+        engine_->reset();
 
         sessionId_ = "test_session_datamodel";
         bool result = engine_->createSession(sessionId_, "");

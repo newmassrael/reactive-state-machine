@@ -10,9 +10,11 @@
 
 using namespace RSM;
 
-class Phase2IntegrationTest : public ::testing::Test {
+class ActionIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // JSEngine 리셋으로 테스트 간 격리 보장
+        RSM::JSEngine::instance().reset();
         stateMachine_ = std::make_unique<StateMachine>();
     }
 
@@ -39,7 +41,7 @@ protected:
     std::unique_ptr<StateMachine> stateMachine_;
 };
 
-TEST_F(Phase2IntegrationTest, ScriptActionInOnEntryOnExit) {
+TEST_F(ActionIntegrationTest, ScriptActionInOnEntryOnExit) {
     std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="init">
     <state id="init">
@@ -85,7 +87,7 @@ TEST_F(Phase2IntegrationTest, ScriptActionInOnEntryOnExit) {
     removeTestFile(filename);
 }
 
-TEST_F(Phase2IntegrationTest, AssignActionInOnEntryOnExit) {
+TEST_F(ActionIntegrationTest, AssignActionInOnEntryOnExit) {
     std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="setup">
     <state id="setup">
@@ -135,7 +137,7 @@ TEST_F(Phase2IntegrationTest, AssignActionInOnEntryOnExit) {
     removeTestFile(filename);
 }
 
-TEST_F(Phase2IntegrationTest, MixedScriptAndAssignActions) {
+TEST_F(ActionIntegrationTest, MixedScriptAndAssignActions) {
     std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="mixed">
     <state id="mixed">
@@ -174,7 +176,7 @@ TEST_F(Phase2IntegrationTest, MixedScriptAndAssignActions) {
     removeTestFile(filename);
 }
 
-TEST_F(Phase2IntegrationTest, ErrorHandlingWithInvalidActions) {
+TEST_F(ActionIntegrationTest, ErrorHandlingWithInvalidActions) {
     std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="error_test">
     <state id="error_test">
@@ -215,7 +217,7 @@ TEST_F(Phase2IntegrationTest, ErrorHandlingWithInvalidActions) {
     removeTestFile(filename);
 }
 
-TEST_F(Phase2IntegrationTest, EmptyActionsHandling) {
+TEST_F(ActionIntegrationTest, EmptyActionsHandling) {
     std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="empty">
     <state id="empty">
@@ -254,7 +256,7 @@ TEST_F(Phase2IntegrationTest, EmptyActionsHandling) {
     removeTestFile(filename);
 }
 
-TEST_F(Phase2IntegrationTest, CompoundStateWithActions) {
+TEST_F(ActionIntegrationTest, CompoundStateWithActions) {
     std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="parent">
     <state id="parent" initial="child1">
@@ -314,7 +316,7 @@ TEST_F(Phase2IntegrationTest, CompoundStateWithActions) {
     removeTestFile(filename);
 }
 
-TEST_F(Phase2IntegrationTest, BackwardCompatibilityWithLegacyActions) {
+TEST_F(ActionIntegrationTest, BackwardCompatibilityWithLegacyActions) {
     // This test verifies that both old string-based actions and new IActionNode actions work together
     std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="compatibility">

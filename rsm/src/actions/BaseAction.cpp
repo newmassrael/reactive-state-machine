@@ -1,6 +1,8 @@
 #include "actions/BaseAction.h"
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 
 namespace RSM {
 
@@ -61,6 +63,20 @@ std::string BaseAction::trimString(const std::string &str) const {
           }).base();
 
     return std::string(start, end);
+}
+
+std::string BaseAction::generateUniqueId(const std::string &prefix) {
+    // SCXML Compliance: Generate unique ID each time action is executed
+    // Use timestamp + atomic counter for uniqueness across sessions
+    static std::atomic<uint64_t> counter{0};
+
+    auto timestamp =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+
+    auto currentCounter = counter.fetch_add(1);
+
+    return prefix + "_" + std::to_string(timestamp) + "_" + std::to_string(currentCounter);
 }
 
 }  // namespace RSM

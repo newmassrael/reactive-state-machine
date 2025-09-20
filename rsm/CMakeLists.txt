@@ -43,6 +43,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/quickjs ${CMAKE_CURR
 # Add spdlog subdirectory
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/spdlog ${CMAKE_CURRENT_BINARY_DIR}/spdlog)
 
+# Add cpp-httplib subdirectory
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cpp-httplib ${CMAKE_CURRENT_BINARY_DIR}/cpp-httplib)
+
 add_library(rsm_unified
     # Model implementation
     src/model/SCXMLModel.cpp
@@ -68,6 +71,7 @@ add_library(rsm_unified
     src/runtime/ActionExecutorImpl.cpp
     src/runtime/ExecutionContextImpl.cpp
     src/runtime/StateHierarchyManager.cpp
+    src/runtime/EventRaiserImpl.cpp
 
     # Actions implementation
     src/actions/BaseAction.cpp
@@ -76,6 +80,15 @@ add_library(rsm_unified
     src/actions/LogAction.cpp
     src/actions/RaiseAction.cpp
     src/actions/IfAction.cpp
+    src/actions/SendAction.cpp
+    src/actions/CancelAction.cpp
+
+    # Events implementation
+    src/events/InternalEventTarget.cpp
+    src/events/HttpEventTarget.cpp
+    src/events/EventSchedulerImpl.cpp
+    src/events/EventDispatcherImpl.cpp
+    src/events/EventTargetFactoryImpl.cpp
 
     # Scripting implementation
     src/scripting/JSEngine.cpp
@@ -104,6 +117,7 @@ target_include_directories(rsm_unified
         include/common
         include/parsing
         include/actions
+        include/events
     PRIVATE
         ${LIBXMLPP_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}
@@ -116,6 +130,7 @@ target_link_libraries(rsm_unified
     PUBLIC
         qjs                          # QuickJS library
         spdlog::spdlog               # spdlog library
+        httplib::httplib             # cpp-httplib library
     PRIVATE
         ${LIBXMLXX_LIBRARIES}
         ${LIBXML2_LIBRARIES}         # libxml2 dependency for libxml++

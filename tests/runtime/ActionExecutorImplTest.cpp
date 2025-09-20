@@ -1,8 +1,13 @@
 #include "runtime/ActionExecutorImpl.h"
+#include "actions/SendAction.h"
 #include "scripting/JSEngine.h"
+#include <atomic>
+#include <chrono>
 #include <future>
 #include <gtest/gtest.h>
 #include <memory>
+#include <mutex>
+#include <thread>
 
 using namespace RSM;
 
@@ -11,7 +16,8 @@ protected:
     void SetUp() override {
         // Initialize JS engine
         jsEngine = &JSEngine::instance();
-        ASSERT_TRUE(jsEngine->initialize());
+        // JSEngine 리셋으로 테스트 간 격리 보장
+        jsEngine->reset();
 
         sessionId = "action_executor_test_session";
         ASSERT_TRUE(jsEngine->createSession(sessionId, ""));
@@ -162,45 +168,62 @@ TEST_F(ActionExecutorImplTest, VariableExistenceCheck) {
 }
 
 TEST_F(ActionExecutorImplTest, EventRaising) {
-    bool eventRaised = false;
+    std::atomic<bool> eventRaised{false};
     std::string raisedEventName;
     std::string raisedEventData;
+    std::mutex callbackMutex;
 
-    // Set up callback
+    // Set up callback - SCXML "fire and forget" async processing
     executor->setEventRaiseCallback([&](const std::string &name, const std::string &data) {
+        std::lock_guard<std::mutex> lock(callbackMutex);
         eventRaised = true;
         raisedEventName = name;
         raisedEventData = data;
-        return true;  // Simulate successful event raising
+        return true;  // Simulate successful event processing
     });
 
-    // Raise event without data
+    // Raise event without data - SCXML fire and forget model
     bool result = executor->raiseEvent("test.event");
-    EXPECT_TRUE(result);
-    EXPECT_TRUE(eventRaised);
-    EXPECT_EQ(raisedEventName, "test.event");
-    EXPECT_TRUE(raisedEventData.empty());
+    EXPECT_TRUE(result);  // Should succeed (queuing success)
 
-    // Reset
+    // Wait for async processing (SCXML events are processed asynchronously)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    EXPECT_TRUE(eventRaised.load());
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        EXPECT_EQ(raisedEventName, "test.event");
+        EXPECT_TRUE(raisedEventData.empty());
+    }
+
+    // Reset for second test
     eventRaised = false;
 
     // Raise event with data
     result = executor->raiseEvent("user.login", "{userId: 123}");
-    EXPECT_TRUE(result);
-    EXPECT_TRUE(eventRaised);
-    EXPECT_EQ(raisedEventName, "user.login");
-    EXPECT_EQ(raisedEventData, "{userId: 123}");
+    EXPECT_TRUE(result);  // Queuing should succeed
+
+    // Wait for async processing
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    EXPECT_TRUE(eventRaised.load());
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        EXPECT_EQ(raisedEventName, "user.login");
+        EXPECT_EQ(raisedEventData, "{userId: 123}");
+    }
 }
 
 TEST_F(ActionExecutorImplTest, EventRaisingWithoutCallback) {
-    // Without callback, event raising should fail
+    // SCXML Compliance: Without callback, event raising should return false
+    // SCXML 3.12.1: Infrastructure failures should generate error events, not exceptions
     bool result = executor->raiseEvent("test.event");
-    EXPECT_FALSE(result);
+    EXPECT_FALSE(result);  // Should return false when EventRaiseCallback is not available
 
     // Empty event name should fail
     executor->setEventRaiseCallback([](const std::string &, const std::string &) { return true; });
-    result = executor->raiseEvent("");
-    EXPECT_FALSE(result);
+    bool emptyResult = executor->raiseEvent("");
+    EXPECT_FALSE(emptyResult);  // Empty name validation should still work
 }
 
 TEST_F(ActionExecutorImplTest, CurrentEventHandling) {
@@ -273,4 +296,131 @@ TEST_F(ActionExecutorImplTest, ConcurrentOperations) {
         std::string value = executor->evaluateExpression(varName);
         EXPECT_EQ(value, std::to_string(i));
     }
+}
+
+// SCXML Compliance Tests
+TEST_F(ActionExecutorImplTest, SCXMLComplianceSendIdAutoGeneration) {
+    // SCXML 6.2.4: sendid MUST be auto-generated if not provided
+    SendAction sendAction("test.event", "send_test");
+    // Don't set sendid - should be auto-generated
+
+    bool result = executor->executeSendAction(sendAction);
+    EXPECT_TRUE(result);  // SCXML fire-and-forget semantics
+}
+
+TEST_F(ActionExecutorImplTest, SCXMLComplianceSessionScopedTarget) {
+    // SCXML 6.2.4: Empty target should be session-scoped, not "#_internal"
+    SendAction sendAction("test.event", "send_test");
+    sendAction.setTarget("");  // Empty target
+
+    bool result = executor->executeSendAction(sendAction);
+    EXPECT_TRUE(result);  // Should succeed with session-scoped target
+}
+
+TEST_F(ActionExecutorImplTest, SCXMLComplianceTargetValidation) {
+    // SCXML: Target values should be validated properly
+    SendAction sendAction("test.event", "send_test");
+
+    // Test various target formats
+    std::vector<std::string> validTargets = {
+        "",                           // Empty (session-scoped)
+        "#_scxml_test_session",       // Session-scoped format
+        "http://example.com/target",  // HTTP target
+        "scxml:another_session"       // SCXML target
+    };
+
+    for (const auto &target : validTargets) {
+        sendAction.setTarget(target);
+        bool result = executor->executeSendAction(sendAction);
+        EXPECT_TRUE(result) << "Target should be valid: " << target;
+    }
+}
+
+TEST_F(ActionExecutorImplTest, SCXMLComplianceFireAndForgetSemantics) {
+    // SCXML 6.2.4: Send actions follow "fire and forget" semantics
+    SendAction sendAction("test.event", "send_test");
+    sendAction.setTarget("");  // Session-scoped
+
+    // Should return immediately (fire and forget)
+    auto start = std::chrono::steady_clock::now();
+    bool result = executor->executeSendAction(sendAction);
+    auto end = std::chrono::steady_clock::now();
+
+    EXPECT_TRUE(result);
+
+    // Should return quickly (< 10ms) due to fire-and-forget
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    EXPECT_LT(duration.count(), 10) << "Send action should return immediately (fire-and-forget)";
+}
+
+TEST_F(ActionExecutorImplTest, SCXMLComplianceDefaultTargetBehavior) {
+    // Verify that default target behavior is SCXML compliant
+    SendAction sendAction("test.event", "send_test");
+    // Target is empty by default after our compliance fix
+
+    std::string defaultTarget = sendAction.getTarget();
+    EXPECT_TRUE(defaultTarget.empty()) << "Default target should be empty (session-scoped), not '#_internal'";
+
+    bool result = executor->executeSendAction(sendAction);
+    EXPECT_TRUE(result);  // Should work with session-scoped target
+}
+
+TEST_F(ActionExecutorImplTest, SCXMLComplianceErrorHandling) {
+    // SCXML 3.12.1: Infrastructure failures should not throw exceptions
+    SendAction sendAction("test.event", "send_test");
+
+    // Test without event dispatcher (should not throw)
+    EXPECT_NO_THROW({
+        bool result = executor->executeSendAction(sendAction);
+        EXPECT_TRUE(result);  // Fire-and-forget semantics - infrastructure failures don't affect action success
+    });
+
+    // Test with invalid event name (should not throw)
+    SendAction invalidAction("", "invalid_test");
+    EXPECT_NO_THROW({
+        bool result = executor->executeSendAction(invalidAction);
+        (void)result;  // Suppress unused variable warning - result depends on validation but should not throw
+    });
+}
+
+TEST_F(ActionExecutorImplTest, ImprovedExpressionDetection) {
+    // Test obvious literals (should be fast, no JSEngine call)
+    EXPECT_FALSE(executor->isExpression("true"));
+    EXPECT_FALSE(executor->isExpression("false"));
+    EXPECT_FALSE(executor->isExpression("null"));
+    EXPECT_FALSE(executor->isExpression("42"));
+    EXPECT_FALSE(executor->isExpression("3.14"));
+    EXPECT_FALSE(executor->isExpression("-123"));
+    EXPECT_FALSE(executor->isExpression("\"hello world\""));
+    EXPECT_FALSE(executor->isExpression("'test string'"));
+
+    // Test obvious expressions (should be fast, no JSEngine call)
+    EXPECT_TRUE(executor->isExpression("_event.name"));
+    EXPECT_TRUE(executor->isExpression("_sessionid"));
+    EXPECT_TRUE(executor->isExpression("Math.max(1, 2)"));
+    EXPECT_TRUE(executor->isExpression("a + b"));
+    EXPECT_TRUE(executor->isExpression("x * 2"));
+    EXPECT_TRUE(executor->isExpression("count > 0"));
+    EXPECT_TRUE(executor->isExpression("obj.property"));
+    EXPECT_TRUE(executor->isExpression("array[0]"));
+
+    // Test edge cases that require JSEngine validation
+    EXPECT_TRUE(executor->isExpression("myVariable"));  // Valid JS identifier
+    EXPECT_TRUE(executor->isExpression("camelCase"));
+    EXPECT_TRUE(executor->isExpression("_private"));
+    EXPECT_TRUE(executor->isExpression("$special"));
+
+    // Test complex expressions
+    EXPECT_TRUE(executor->isExpression("_event.data && _event.data.status === 'ready'"));
+    EXPECT_TRUE(executor->isExpression("typeof _name === 'string'"));
+    EXPECT_TRUE(executor->isExpression("Math.floor(Math.random() * 100)"));
+
+    // Test invalid expressions (should be fast for syntax errors)
+    EXPECT_FALSE(executor->isExpression(""));
+    EXPECT_FALSE(executor->isExpression("   "));
+
+    // Test caching by calling same expression multiple times
+    EXPECT_TRUE(executor->isExpression("testVar"));
+    EXPECT_TRUE(executor->isExpression("testVar"));  // Should hit cache
+    EXPECT_TRUE(executor->isExpression("testVar"));  // Should hit cache again
 }

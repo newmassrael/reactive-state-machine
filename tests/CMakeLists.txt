@@ -65,7 +65,7 @@ add_executable(js_engine_tests
     engine/SessionManagementTest.cpp
     engine/DataModelTest.cpp
     engine/EventSystemTest.cpp
-    engine/SimpleDebugTest.cpp
+    engine/JSEngineBasicTest.cpp
 )
 
 target_include_directories(js_engine_tests
@@ -128,8 +128,7 @@ target_link_libraries(action_tests
         pthread
 )
 
-# Register action_tests with CTest
-add_test(NAME ActionTests COMMAND action_tests)
+# Note: ActionTests will be registered below with all other tests
 
 # ============================================================================
 # 5. Core Parser Tests (RSM namespace updated)
@@ -172,7 +171,10 @@ target_link_libraries(core_parser_tests
 # ============================================================================
 add_executable(integration_tests
     integration/StateMachineIntegrationTest.cpp
-    integration/Phase2IntegrationTest.cpp
+    integration/ActionIntegrationTest.cpp
+    integration/SCXMLEventTest.cpp
+    integration/EventSchedulingTest.cpp
+    integration/HttpEventTargetTest.cpp
 )
 
 add_dependencies(integration_tests libxmlxx_external rsm_unified)
@@ -190,16 +192,41 @@ target_link_libraries(integration_tests
     PRIVATE
         rsm_unified
         GTest::gtest_main
+        GTest::gmock
         ${LIBXMLXX_LIBRARIES}
         xml2
+        pthread
+)
+
+# ============================================================================
+# 6. Concurrency and Deadlock Tests
+# ============================================================================
+add_executable(concurrency_tests
+    concurrency/DeadlockReproductionTest.cpp
+)
+
+target_include_directories(concurrency_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(concurrency_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        GTest::gmock
         pthread
 )
 
 # CTest에 모든 테스트들 추가
 add_test(NAME JSEngineTests COMMAND js_engine_tests)
 add_test(NAME StateMachineTests COMMAND state_machine_tests)
+add_test(NAME ActionTests COMMAND action_tests)
 add_test(NAME CoreParserTests COMMAND core_parser_tests)
 add_test(NAME IntegrationTests COMMAND integration_tests)
+add_test(NAME ConcurrencyTests COMMAND concurrency_tests)
 
 message(STATUS "✅ RSM SCXML tests enabled")
 message(STATUS "✅ JavaScript Engine tests enabled")

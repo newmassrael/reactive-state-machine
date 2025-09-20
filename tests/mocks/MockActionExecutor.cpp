@@ -1,9 +1,12 @@
 #include "MockActionExecutor.h"
 #include "actions/AssignAction.h"
+#include "actions/CancelAction.h"
 #include "actions/IfAction.h"
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
+#include "actions/SendAction.h"
+#include "common/Logger.h"
 #include <algorithm>
 
 namespace RSM {
@@ -50,8 +53,17 @@ void MockActionExecutor::log(const std::string &level, const std::string &messag
 }
 
 bool MockActionExecutor::raiseEvent(const std::string &eventName, const std::string &eventData) {
+    // SCXML Compliance: raiseEvent must always succeed if properly configured
+    // Mock records the event and returns success (fire and forget model)
     raisedEvents_.emplace_back(eventName, eventData);
-    return eventRaisingResult_;
+
+    // SCXML compliance: only fail if eventName is empty (validation error)
+    if (eventName.empty()) {
+        return false;
+    }
+
+    // Always return success for valid events (SCXML fire and forget)
+    return true;  // Mock simulates successful event queuing
 }
 
 bool MockActionExecutor::hasVariable(const std::string &location) {
@@ -102,9 +114,7 @@ void MockActionExecutor::setVariableAssignmentResult(bool success) {
     variableAssignmentResult_ = success;
 }
 
-void MockActionExecutor::setEventRaisingResult(bool success) {
-    eventRaisingResult_ = success;
-}
+// REMOVED: setEventRaisingResult method was deprecated and violated SCXML fire-and-forget model
 
 void MockActionExecutor::setExpressionResult(const std::string &expression, const std::string &result) {
     expressionResults_[expression] = result;
@@ -233,6 +243,51 @@ bool MockActionExecutor::evaluateCondition(const std::string &condition) {
     }
 
     return false;
+}
+
+bool MockActionExecutor::executeSendAction(const SendAction &action) {
+    // For mock, just record that send action was called
+    std::string eventName;
+    if (!action.getEvent().empty()) {
+        eventName = action.getEvent();
+    } else if (!action.getEventExpr().empty()) {
+        eventName = evaluateExpression(action.getEventExpr());
+    }
+
+    std::string eventData;
+    if (!action.getData().empty()) {
+        eventData = evaluateExpression(action.getData());
+    }
+
+    // Record as a special "send" event
+    raisedEvents_.emplace_back("SEND:" + eventName, eventData);
+
+    // SCXML Compliance: Send actions always succeed for internal events (fire and forget)
+    // Only fail for validation errors (empty event name)
+    if (eventName.empty()) {
+        return false;
+    }
+    return true;
+}
+
+bool MockActionExecutor::executeCancelAction(const CancelAction &action) {
+    // For mock, just record that cancel action was called
+    std::string sendId;
+    if (!action.getSendId().empty()) {
+        sendId = action.getSendId();
+    } else if (!action.getSendIdExpr().empty()) {
+        sendId = evaluateExpression(action.getSendIdExpr());
+    }
+
+    // Record as a special "cancel" event
+    raisedEvents_.emplace_back("CANCEL:" + sendId, "");
+
+    // SCXML Compliance: Cancel actions always succeed (even if target event doesn't exist)
+    // Only fail for validation errors (empty sendId)
+    if (sendId.empty()) {
+        return false;
+    }
+    return true;
 }
 
 // MockExecutionContext implementation

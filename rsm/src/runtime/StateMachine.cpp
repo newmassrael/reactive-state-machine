@@ -487,11 +487,9 @@ bool StateMachine::ensureJSEnvironment() {
 }
 
 bool StateMachine::setupJSEnvironment() {
-    // JSEngine 초기화 보장
-    if (!RSM::JSEngine::instance().initialize()) {
-        Logger::error("StateMachine: Failed to initialize JavaScript engine");
-        return false;
-    }
+    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
+    RSM::JSEngine::instance();  // RAII 보장
+    Logger::debug("StateMachine: JSEngine automatically initialized via RAII");
 
     // Create JavaScript session
     if (!RSM::JSEngine::instance().createSession(sessionId_)) {

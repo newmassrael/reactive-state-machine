@@ -13,7 +13,8 @@ class StateMachineIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
         engine_ = &JSEngine::instance();
-        ASSERT_TRUE(engine_->initialize());
+        // JSEngine 리셋으로 테스트 간 격리 보장
+        engine_->reset();
 
         nodeFactory_ = std::make_shared<NodeFactory>();
         parser_ = std::make_unique<SCXMLParser>(nodeFactory_);

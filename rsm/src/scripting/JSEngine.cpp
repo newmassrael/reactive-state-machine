@@ -14,34 +14,22 @@ JSEngine &JSEngine::instance() {
     return instance;
 }
 
-JSEngine::~JSEngine() {
-    shutdown();
+JSEngine::JSEngine() {
+    Logger::debug("JSEngine: Starting initialization in constructor...");
+    initializeInternal();
+    Logger::debug("JSEngine: Constructor completed - fully initialized");
 }
 
-bool JSEngine::initialize() {
-    Logger::debug("JSEngine: Starting initialization...");
-    std::lock_guard<std::mutex> lock(sessionsMutex_);
-
-    if (runtime_) {
-        Logger::debug("JSEngine: Already initialized");
-        return true;  // Already initialized
-    }
-
-    // JSRuntime will be created in worker thread to ensure thread safety
-    runtime_ = nullptr;
-
-    // Start execution thread
-    shouldStop_ = false;
-    executionThread_ = std::thread(&JSEngine::executionWorker, this);
-
-    Logger::debug("JSEngine: Successfully initialized with QuickJS runtime");
-    return true;
+JSEngine::~JSEngine() {
+    shutdown();
 }
 
 void JSEngine::shutdown() {
     if (shouldStop_) {
         return;  // Already shutting down
     }
+
+    // RAII: No need to reset worker state
 
     // Send shutdown request to worker thread
     auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::SHUTDOWN_ENGINE, "");
@@ -65,6 +53,50 @@ void JSEngine::shutdown() {
     }
 
     Logger::debug("JSEngine: Shutdown complete");
+}
+
+void JSEngine::reset() {
+    Logger::debug("JSEngine: Starting reset for test isolation...");
+
+    // First ensure complete shutdown
+    shutdown();
+
+    // Clear any remaining state
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex_);
+        sessions_.clear();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(globalFunctionsMutex_);
+        globalFunctions_.clear();
+    }
+
+    // Clear request queue
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        while (!requestQueue_.empty()) {
+            requestQueue_.pop();
+        }
+    }
+
+    // Reinitialize
+    initializeInternal();
+
+    Logger::debug("JSEngine: Reset completed - ready for fresh start");
+}
+
+void JSEngine::initializeInternal() {
+    // Initialize member variables
+    runtime_ = nullptr;
+    shouldStop_ = false;
+
+    // Start execution thread and wait for complete initialization
+    executionThread_ = std::thread(&JSEngine::executionWorker, this);
+
+    // Wait for worker thread to be fully ready
+    std::unique_lock<std::mutex> lock(queueMutex_);
+    queueCondition_.wait(lock, [this] { return runtime_ != nullptr; });
 }
 
 // === Session Management ===
@@ -159,6 +191,20 @@ std::future<JSResult> JSEngine::executeScript(const std::string &sessionId, cons
 
 std::future<JSResult> JSEngine::evaluateExpression(const std::string &sessionId, const std::string &expression) {
     auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::EVALUATE_EXPRESSION, sessionId);
+    request->code = expression;
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        requestQueue_.push(std::move(request));
+    }
+    queueCondition_.notify_one();
+
+    return future;
+}
+
+std::future<JSResult> JSEngine::validateExpression(const std::string &sessionId, const std::string &expression) {
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::VALIDATE_EXPRESSION, sessionId);
     request->code = expression;
     auto future = request->promise.get_future();
 
@@ -272,6 +318,7 @@ void JSEngine::collectGarbage() {
 
 void JSEngine::executionWorker() {
     Logger::debug("JSEngine: Execution worker thread started");
+
     // Create QuickJS runtime in worker thread to ensure thread safety
     runtime_ = JS_NewRuntime();
     if (!runtime_) {
@@ -279,6 +326,10 @@ void JSEngine::executionWorker() {
         return;
     }
     Logger::debug("JSEngine: QuickJS runtime created in worker thread");
+
+    // RAII: Signal constructor that initialization is complete
+    queueCondition_.notify_all();
+    Logger::debug("JSEngine: Worker thread initialization complete");
 
     while (!shouldStop_) {
         std::unique_lock<std::mutex> lock(queueMutex_);
@@ -330,6 +381,9 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
             break;
         case ExecutionRequest::EVALUATE_EXPRESSION:
             result = evaluateExpressionInternal(request->sessionId, request->code);
+            break;
+        case ExecutionRequest::VALIDATE_EXPRESSION:
+            result = validateExpressionInternal(request->sessionId, request->code);
             break;
         case ExecutionRequest::SET_VARIABLE:
             result = setVariableInternal(request->sessionId, request->variableName, request->variableValue);

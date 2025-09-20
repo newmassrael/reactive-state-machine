@@ -48,12 +48,12 @@ bool SCXMLEngineImpl::initialize() {
         return true;
     }
 
-    bool success = JSEngine::instance().initialize();
-    Logger::debug("SCXMLEngineImpl: JSEngine initialization result: " + std::string(success ? "SUCCESS" : "FAILED"));
-    if (success) {
-        initialized_ = true;
-    }
-    return success;
+    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
+    // instance() 호출만으로 완전 초기화된 엔진을 얻을 수 있음
+    JSEngine::instance();  // RAII 보장
+    Logger::debug("SCXMLEngineImpl: JSEngine automatically initialized via RAII");
+    initialized_ = true;
+    return true;
 }
 
 void SCXMLEngineImpl::shutdown() {
