@@ -65,6 +65,13 @@ add_library(rsm_unified
     src/runtime/StateMachine.cpp
     src/runtime/StateMachineFactory.cpp
     src/runtime/SCXMLModelExtractor.cpp
+    src/runtime/ActionExecutorImpl.cpp
+    src/runtime/ExecutionContextImpl.cpp
+
+    # Actions implementation
+    src/actions/BaseAction.cpp
+    src/actions/ScriptAction.cpp
+    src/actions/AssignAction.cpp
 
     # Scripting implementation
     src/scripting/JSEngine.cpp
@@ -92,6 +99,7 @@ target_include_directories(rsm_unified
         include/factory
         include/common
         include/parsing
+        include/actions
     PRIVATE
         ${LIBXMLPP_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}

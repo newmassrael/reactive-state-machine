@@ -104,7 +104,35 @@ target_link_libraries(state_machine_tests
 )
 
 # ============================================================================
-# 4. Core Parser Tests (RSM namespace updated)
+# 4. Action System Tests (SCXML Executable Content)
+# ============================================================================
+
+add_executable(action_tests
+    actions/ScriptActionTest.cpp
+    actions/AssignActionTest.cpp
+    runtime/ActionExecutorImplTest.cpp
+    mocks/MockActionExecutor.cpp
+)
+
+target_include_directories(action_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(action_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        pthread
+)
+
+# Register action_tests with CTest
+add_test(NAME ActionTests COMMAND action_tests)
+
+# ============================================================================
+# 5. Core Parser Tests (RSM namespace updated)
 # ============================================================================
 
 # Use same libxml++ configuration as RSM
