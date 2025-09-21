@@ -125,6 +125,12 @@ public:
     std::string getCurrentEventData() const;
 
     /**
+     * @brief Get session ID for SCXML data model access
+     * @return Current session ID
+     */
+    const std::string &getSessionId() const;
+
+    /**
      * @brief Get state machine statistics
      */
     struct Statistics {
@@ -138,9 +144,9 @@ public:
     Statistics getStatistics() const;
 
 private:
-    // Core state
-    std::string currentState_;
-    std::vector<std::string> activeStates_;
+    // Core state - now delegated to StateHierarchyManager
+    // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
+    // Removed: std::vector<std::string> activeStates_ (use hierarchyManager_->getActiveStates())
     bool isRunning_ = false;
     std::string initialState_;
 
@@ -154,7 +160,7 @@ private:
 
     // Action execution infrastructure
     std::shared_ptr<IActionExecutor> actionExecutor_;
-    std::unique_ptr<IExecutionContext> executionContext_;
+    std::shared_ptr<IExecutionContext> executionContext_;
 
     // Hierarchical state management
     std::unique_ptr<StateHierarchyManager> hierarchyManager_;
@@ -171,7 +177,6 @@ private:
     void setupParallelStateCallbacks();
 
     bool evaluateCondition(const std::string &condition);
-    bool executeAction(const std::string &action);
     bool enterState(const std::string &stateId);
     bool exitState(const std::string &stateId);
 
@@ -183,6 +188,10 @@ private:
     bool ensureJSEnvironment();
     bool setupJSEnvironment();
     void updateStatistics();
+
+    // SCXML W3C compliant state transition processing
+    TransitionResult processStateTransitions(IStateNode *stateNode, const std::string &eventName,
+                                             const std::string &eventData);
 };
 
 // Template implementation

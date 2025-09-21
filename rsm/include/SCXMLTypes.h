@@ -1,7 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -20,17 +22,51 @@
 #endif
 #endif
 
-namespace RSM {
+/**
+ * @brief Forward declarations for complex types
+ */
+struct ScriptArray;
+struct ScriptObject;
 
 /**
  * @brief JavaScript value types for SCXML data model
  */
-using ScriptValue = std::variant<std::monostate,  // undefined/null
-                                 bool,            // boolean
-                                 int64_t,         // integer
-                                 double,          // number
-                                 std::string      // string
+using ScriptValue = std::variant<std::monostate,                // undefined/null
+                                 bool,                          // boolean
+                                 int64_t,                       // integer
+                                 double,                        // number
+                                 std::string,                   // string
+                                 std::shared_ptr<ScriptArray>,  // array
+                                 std::shared_ptr<ScriptObject>  // object
                                  >;
+
+/**
+ * @brief JavaScript array type
+ */
+struct ScriptArray {
+    std::vector<ScriptValue> elements;
+
+    ScriptArray() = default;
+
+    ScriptArray(std::initializer_list<ScriptValue> init) : elements(init) {}
+
+    ScriptArray(const std::vector<ScriptValue> &elems) : elements(elems) {}
+};
+
+/**
+ * @brief JavaScript object type
+ */
+struct ScriptObject {
+    std::unordered_map<std::string, ScriptValue> properties;
+
+    ScriptObject() = default;
+
+    ScriptObject(std::initializer_list<std::pair<const std::string, ScriptValue>> init) : properties(init) {}
+
+    ScriptObject(const std::unordered_map<std::string, ScriptValue> &props) : properties(props) {}
+};
+
+namespace RSM {
 
 /**
  * @brief JavaScript execution result
@@ -106,9 +142,9 @@ public:
         invokeId_ = invokeId;
     }
 
-    // Event data management
+    // Event data management - Enhanced version with raw JSON support
     bool hasData() const {
-        return !dataString_.empty();
+        return rawJsonData_.has_value() || !dataString_.empty();
     }
 
     void setData(const std::string &data) {
@@ -119,8 +155,15 @@ public:
         dataString_ = data;
     }
 
+    void setRawJsonData(const std::string &json) {
+        rawJsonData_ = json;
+    }
+
     std::string getDataAsString() const {
-        return dataString_;
+        if (rawJsonData_.has_value()) {
+            return rawJsonData_.value();
+        }
+        return dataString_.empty() ? "null" : dataString_;
     }
 
 private:
@@ -131,6 +174,7 @@ private:
     std::string originType_;
     std::string invokeId_;
     std::string dataString_;
+    mutable std::optional<std::string> rawJsonData_;  // Raw JSON storage
 };
 
 /**

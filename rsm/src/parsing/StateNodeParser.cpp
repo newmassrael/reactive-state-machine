@@ -250,8 +250,8 @@ void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentEl
         for (const auto &action : actions) {
             // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
             std::string actionContent;
-            if (action->getType() == "script" && !action->getAttribute("textContent").empty()) {
-                actionContent = action->getAttribute("textContent");
+            if (action->getActionType() == "script") {
+                // Script content is handled during action parsing
             } else {
                 actionContent = action->getId();
             }
@@ -269,8 +269,8 @@ void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentEl
         for (const auto &action : actions) {
             // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
             std::string actionContent;
-            if (action->getType() == "script" && !action->getAttribute("textContent").empty()) {
-                actionContent = action->getAttribute("textContent");
+            if (action->getActionType() == "script") {
+                // Script content is handled during action parsing
             } else {
                 actionContent = action->getId();
             }

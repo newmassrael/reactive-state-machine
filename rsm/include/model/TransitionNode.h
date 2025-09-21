@@ -2,6 +2,8 @@
 #pragma once
 
 #include "ITransitionNode.h"
+#include "actions/IActionNode.h"
+#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -73,15 +75,15 @@ public:
 
     /**
      * @brief 액션 추가
-     * @param action 액션 ID
+     * @param actionNode ActionNode 객체
      */
-    virtual void addAction(const std::string &action) override;
+    virtual void addActionNode(std::shared_ptr<RSM::IActionNode> actionNode) override;
 
     /**
-     * @brief 액션 목록 반환
-     * @return 액션 ID 목록
+     * @brief ActionNode 목록 반환 (SCXML 사양 준수)
+     * @return ActionNode 객체 목록
      */
-    virtual const std::vector<std::string> &getActions() const override;
+    virtual const std::vector<std::shared_ptr<RSM::IActionNode>> &getActionNodes() const override;
 
     /**
      * @brief 반응형 여부 설정
@@ -111,7 +113,7 @@ private:
     std::string event_;
     std::string target_;
     std::string guard_;
-    std::vector<std::string> actions_;
+    std::vector<std::shared_ptr<RSM::IActionNode>> actionNodes_;  // SCXML 사양 준수 ActionNode 저장
     bool reactive_;
     bool internal_;
     std::unordered_map<std::string, std::string> attributes_;

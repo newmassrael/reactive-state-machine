@@ -1,4 +1,11 @@
 #include "factory/NodeFactory.h"
+#include "actions/AssignAction.h"
+#include "actions/CancelAction.h"
+#include "actions/IfAction.h"
+#include "actions/LogAction.h"
+#include "actions/RaiseAction.h"
+#include "actions/ScriptAction.h"
+#include "actions/SendAction.h"
 #include "common/Logger.h"
 #include "states/ConcurrentStateNode.h"
 
@@ -28,9 +35,30 @@ std::shared_ptr<RSM::IGuardNode> RSM::NodeFactory::createGuardNode(const std::st
     return std::make_shared<RSM::GuardNode>(id, target);
 }
 
-std::shared_ptr<RSM::IModelActionNode> RSM::NodeFactory::createActionNode(const std::string &name) {
+std::shared_ptr<RSM::IActionNode> RSM::NodeFactory::createActionNode(const std::string &name) {
     Logger::debug("RSM::NodeFactory::createActionNode() - Creating action node: " + name);
-    return std::make_shared<RSM::ActionNode>(name);
+
+    // Create specific action types based on SCXML element names
+    if (name == "script") {
+        return std::make_shared<RSM::ScriptAction>("");
+    } else if (name == "assign") {
+        return std::make_shared<RSM::AssignAction>("", "");
+    } else if (name == "log") {
+        return std::make_shared<RSM::LogAction>("");
+    } else if (name == "raise") {
+        return std::make_shared<RSM::RaiseAction>("");
+    } else if (name == "if") {
+        return std::make_shared<RSM::IfAction>("");
+    } else if (name == "send") {
+        return std::make_shared<RSM::SendAction>("");
+    } else if (name == "cancel") {
+        return std::make_shared<RSM::CancelAction>("");
+    } else {
+        // Default to ScriptAction for unknown types
+        Logger::warn("RSM::NodeFactory::createActionNode() - Unknown action type: " + name +
+                     ", defaulting to ScriptAction");
+        return std::make_shared<RSM::ScriptAction>("");
+    }
 }
 
 std::shared_ptr<RSM::IDataModelItem> RSM::NodeFactory::createDataModelItem(const std::string &id,

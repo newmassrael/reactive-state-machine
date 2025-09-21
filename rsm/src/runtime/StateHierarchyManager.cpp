@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
+#include "states/ConcurrentStateNode.h"
 #include <algorithm>
 
 namespace RSM {
@@ -29,10 +30,51 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
 
     // SCXML W3C specification section 3.4: parallel states behave differently from compound states
     if (stateNode->getType() == Type::PARALLEL) {
-        // For parallel states, do NOT enter child regions automatically
-        // The parallel state itself is the current state, regions are managed separately
-        Logger::debug("StateHierarchyManager::enterState - Parallel state entered: " + stateId +
-                      " (regions managed by ConcurrentStateNode)");
+        // SCXML W3C specification section 3.4: ALL child regions MUST be activated when entering parallel state
+        auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
+        assert(parallelState && "SCXML violation: PARALLEL type state must be ConcurrentStateNode");
+
+        Logger::debug("StateHierarchyManager::enterState - Entering parallel state with region activation: " + stateId);
+
+        auto result = parallelState->enterParallelState();
+        if (!result.isSuccess) {
+            Logger::error("StateHierarchyManager::enterState - Failed to enter parallel state '" + stateId +
+                          "': " + result.errorMessage);
+            return false;
+        }
+
+        // SCXML W3C specification: Add ALL child regions to active configuration
+        const auto &regions = parallelState->getRegions();
+        assert(!regions.empty() && "SCXML violation: parallel state must have at least one region");
+
+        for (const auto &region : regions) {
+            assert(region && "SCXML violation: parallel state cannot have null regions");
+
+            // Add region's root state to active configuration
+            auto rootState = region->getRootState();
+            assert(rootState && "SCXML violation: region must have root state");
+
+            std::string regionStateId = rootState->getId();
+            addStateToConfiguration(regionStateId);
+            Logger::debug("StateHierarchyManager::enterState - Added region state to configuration: " + regionStateId);
+
+            // SCXML W3C specification: Enter initial child state of each region
+            const auto &children = rootState->getChildren();
+            if (!children.empty()) {
+                std::string initialChild = rootState->getInitialState();
+                if (initialChild.empty()) {
+                    // SCXML W3C: Use first child as default initial state
+                    initialChild = children[0]->getId();
+                }
+
+                addStateToConfiguration(initialChild);
+                Logger::debug("StateHierarchyManager::enterState - Added initial child state to configuration: " +
+                              initialChild);
+            }
+        }
+
+        Logger::debug("StateHierarchyManager::enterState - Successfully activated all regions in parallel state: " +
+                      stateId);
     } else if (isCompoundState(stateNode)) {
         // Only for non-parallel compound states: enter initial child state
         std::string initialChild = findInitialChildState(stateNode);
@@ -54,6 +96,17 @@ std::string StateHierarchyManager::getCurrentState() const {
         return "";
     }
 
+    // SCXML W3C specification: parallel states define the current state context
+    // Find the first parallel state in the active configuration
+    if (model_) {
+        for (const auto &stateId : activeStates_) {
+            auto stateNode = model_->findStateById(stateId);
+            if (stateNode && stateNode->getType() == Type::PARALLEL) {
+                return stateId;  // Return the parallel state as current state
+            }
+        }
+    }
+
     // 가장 마지막에 추가된 상태가 가장 깊은 상태
     return activeStates_.back();
 }
@@ -72,6 +125,23 @@ void StateHierarchyManager::exitState(const std::string &stateId) {
     }
 
     Logger::debug("StateHierarchyManager::exitState - Exiting state: " + stateId);
+
+    // SCXML W3C specification section 3.4: parallel states need special exit handling
+    if (model_) {
+        auto stateNode = model_->findStateById(stateId);
+        if (stateNode && stateNode->getType() == Type::PARALLEL) {
+            auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
+            if (parallelState) {
+                Logger::debug("StateHierarchyManager::exitState - Exiting parallel state with region deactivation: " +
+                              stateId);
+                auto result = parallelState->exitParallelState();
+                if (!result.isSuccess) {
+                    Logger::warn("StateHierarchyManager::exitState - Warning during parallel state exit '" + stateId +
+                                 "': " + result.errorMessage);
+                }
+            }
+        }
+    }
 
     // 해당 상태와 그 하위 상태들을 찾아서 제거
     std::vector<std::string> statesToRemove;

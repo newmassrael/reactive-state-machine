@@ -80,8 +80,18 @@ SCXMLModelExtractor::extractTransition(std::shared_ptr<ITransitionNode> transiti
     info.condition = transitionNode->getGuard();
 
     // Extract actions
-    const auto &actions = transitionNode->getActions();
-    info.action = extractScriptFromActions(actions);
+    const auto &actionNodes = transitionNode->getActionNodes();
+    // ActionNode에서 스크립트 추출 (임시 구현)
+    std::string actionScript;
+    for (const auto &actionNode : actionNodes) {
+        if (actionNode) {
+            if (!actionScript.empty()) {
+                actionScript += "; ";
+            }
+            actionScript += actionNode->getActionType();
+        }
+    }
+    info.action = actionScript;
 
     info.priority = 0;  // Default priority
     info.type = transitionNode->isInternal() ? "internal" : "external";

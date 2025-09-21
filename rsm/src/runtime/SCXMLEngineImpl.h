@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime/SCXMLEngine.h"
+#include "../SCXMLEngine.h"
 
 #include "scripting/JSEngine.h"
 

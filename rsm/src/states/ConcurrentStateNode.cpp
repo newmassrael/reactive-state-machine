@@ -1,6 +1,7 @@
 #include "states/ConcurrentStateNode.h"
 #include "common/Logger.h"
 #include "model/DoneData.h"
+#include "states/ConcurrentRegion.h"
 #include <algorithm>
 #include <cassert>
 
@@ -43,6 +44,19 @@ void ConcurrentStateNode::addChild(std::shared_ptr<IStateNode> child) {
     if (child) {
         Logger::debug("ConcurrentStateNode::addChild() - Adding child to " + id_ + ": " + child->getId());
         children_.push_back(child);
+
+        // SCXML W3C specification section 3.4: child states in parallel states become regions
+        // Automatically create ConcurrentRegion wrapper for SCXML compliance
+        std::string regionId = child->getId();
+        auto region = std::make_shared<ConcurrentRegion>(regionId, child);
+
+        auto result = addRegion(region);
+        if (!result.isSuccess) {
+            Logger::error("ConcurrentStateNode::addChild() - Failed to create region for child '" + child->getId() +
+                          "': " + result.errorMessage);
+        } else {
+            Logger::debug("ConcurrentStateNode::addChild() - Successfully created region: " + regionId);
+        }
     } else {
         Logger::warn("ConcurrentStateNode::addChild() - Attempt to add null child to " + id_);
     }
@@ -279,6 +293,58 @@ std::shared_ptr<IConcurrentRegion> ConcurrentStateNode::getRegion(const std::str
     return (it != regions_.end()) ? *it : nullptr;
 }
 
+ConcurrentOperationResult ConcurrentStateNode::enterParallelState() {
+    Logger::debug("ConcurrentStateNode::enterParallelState() - Entering parallel state: " + id_);
+
+    // SCXML W3C specification section 3.4: parallel states MUST have regions
+    if (regions_.empty()) {
+        std::string error = "SCXML violation: parallel state '" + id_ +
+                            "' has no regions. SCXML specification requires at least one region.";
+        Logger::error("ConcurrentStateNode::enterParallelState() - " + error);
+        assert(false && "SCXML violation: parallel state must have at least one region");
+        return ConcurrentOperationResult::failure(id_, error);
+    }
+
+    // SCXML W3C specification section 3.4: ALL child regions MUST be activated simultaneously
+    Logger::debug("ConcurrentStateNode::enterParallelState() - Activating " + std::to_string(regions_.size()) +
+                  " regions simultaneously");
+
+    auto results = activateAllRegions();
+
+    // Check if any region failed to activate
+    for (const auto &result : results) {
+        if (!result.isSuccess) {
+            std::string error = "Failed to activate region '" + result.regionId + "': " + result.errorMessage;
+            Logger::error("ConcurrentStateNode::enterParallelState() - " + error);
+            return ConcurrentOperationResult::failure(id_, error);
+        }
+    }
+
+    Logger::debug("ConcurrentStateNode::enterParallelState() - Successfully entered parallel state: " + id_);
+    return ConcurrentOperationResult::success(id_);
+}
+
+ConcurrentOperationResult ConcurrentStateNode::exitParallelState() {
+    Logger::debug("ConcurrentStateNode::exitParallelState() - Exiting parallel state: " + id_);
+
+    // SCXML W3C specification section 3.4: ALL child regions MUST be deactivated when exiting
+    auto results = deactivateAllRegions();
+
+    // Log warnings for any deactivation issues but continue (exit should not fail)
+    for (const auto &result : results) {
+        if (!result.isSuccess) {
+            Logger::warn("ConcurrentStateNode::exitParallelState() - Warning during region deactivation '" +
+                         result.regionId + "': " + result.errorMessage);
+        }
+    }
+
+    // Reset completion notification state when exiting
+    hasNotifiedCompletion_ = false;
+
+    Logger::debug("ConcurrentStateNode::exitParallelState() - Successfully exited parallel state: " + id_);
+    return ConcurrentOperationResult::success(id_);
+}
+
 std::vector<ConcurrentOperationResult> ConcurrentStateNode::activateAllRegions() {
     std::vector<ConcurrentOperationResult> results;
     results.reserve(regions_.size());
@@ -398,6 +464,14 @@ std::vector<ConcurrentOperationResult> ConcurrentStateNode::processEventInAllReg
         }
     }
 
+    // SCXML W3C specification section 3.4: Check for parallel state completion
+    // "When all of the children reach final states, the <parallel> element itself is considered to be in a final state"
+    if (areAllRegionsInFinalState()) {
+        Logger::info(
+            "ConcurrentStateNode::processEventInAllRegions() - All regions completed, generating done.state event");
+        generateDoneStateEvent();
+    }
+
     return results;
 }
 
@@ -442,6 +516,77 @@ std::vector<std::string> ConcurrentStateNode::validateConcurrentState() const {
 void ConcurrentStateNode::setCompletionCallback(const ParallelStateCompletionCallback &callback) {
     Logger::debug("ConcurrentStateNode::setCompletionCallback() - Setting completion callback for " + id_);
     completionCallback_ = callback;
+}
+
+void ConcurrentStateNode::setExecutionContextForRegions(std::shared_ptr<IExecutionContext> executionContext) {
+    Logger::debug("ConcurrentStateNode::setExecutionContextForRegions() - Setting ExecutionContext for " +
+                  std::to_string(regions_.size()) + " regions in " + id_);
+
+    // SOLID: Dependency Injection - provide ExecutionContext to all existing regions
+    for (auto &region : regions_) {
+        if (region) {
+            // Cast to ConcurrentRegion to access setExecutionContext method
+            auto concreteRegion = std::dynamic_pointer_cast<ConcurrentRegion>(region);
+            if (concreteRegion) {
+                concreteRegion->setExecutionContext(executionContext);
+                Logger::debug(
+                    "ConcurrentStateNode::setExecutionContextForRegions() - Set ExecutionContext for region: " +
+                    region->getId());
+            }
+        }
+    }
+}
+
+bool ConcurrentStateNode::areAllRegionsInFinalState() const {
+    if (regions_.empty()) {
+        Logger::warn("ConcurrentStateNode::areAllRegionsInFinalState() - No regions in parallel state: " + id_);
+        return false;
+    }
+
+    // SCXML W3C specification section 3.4: All child regions must be in final state
+    for (const auto &region : regions_) {
+        assert(region && "SCXML violation: parallel state cannot have null regions");
+
+        if (!region->isInFinalState()) {
+            Logger::debug("ConcurrentStateNode::areAllRegionsInFinalState() - Region " + region->getId() +
+                          " not in final state yet");
+            return false;
+        }
+    }
+
+    Logger::info("ConcurrentStateNode::areAllRegionsInFinalState() - All " + std::to_string(regions_.size()) +
+                 " regions in parallel state " + id_ + " have reached final states");
+    return true;
+}
+
+void ConcurrentStateNode::generateDoneStateEvent() {
+    // SCXML W3C specification section 3.4: Generate done.state.{stateId} event
+    // "When all of the children reach final states, the <parallel> element itself is considered to be in a final state"
+
+    if (hasNotifiedCompletion_) {
+        Logger::debug("ConcurrentStateNode::generateDoneStateEvent() - Already notified completion for " + id_);
+        return;
+    }
+
+    std::string doneEventName = "done.state." + id_;
+    Logger::info("ConcurrentStateNode::generateDoneStateEvent() - Generating SCXML-compliant done.state event: " +
+                 doneEventName + " for completed parallel state: " + id_);
+
+    // Use completion callback to notify StateMachine
+    if (completionCallback_) {
+        try {
+            completionCallback_(id_);
+            hasNotifiedCompletion_ = true;
+            Logger::debug(
+                "ConcurrentStateNode::generateDoneStateEvent() - Successfully notified completion via callback");
+        } catch (const std::exception &e) {
+            Logger::error("ConcurrentStateNode::generateDoneStateEvent() - Exception in completion callback: " +
+                          std::string(e.what()));
+        }
+    } else {
+        Logger::warn("ConcurrentStateNode::generateDoneStateEvent() - No completion callback set for parallel state: " +
+                     id_);
+    }
 }
 
 }  // namespace RSM

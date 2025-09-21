@@ -120,7 +120,7 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
 
     Logger::debug("RSM::TransitionParser::parseTransitionNode() - Transition "
                   "parsed successfully with " +
-                  std::to_string(transition->getActions().size()) + " actions");
+                  std::to_string(transition->getActionNodes().size()) + " ActionNodes");
     return transition;
 }
 
@@ -219,18 +219,14 @@ void RSM::TransitionParser::parseActions(const xmlpp::Element *transElement,
     }
 
     {
-        // ActionParser 사용
-        auto actions = actionParser_->parseActionsInElement(transElement);
-        for (const auto &action : actions) {
-            // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
-            std::string actionContent;
-            if (action->getType() == "script" && !action->getAttribute("textContent").empty()) {
-                actionContent = action->getAttribute("textContent");
-            } else {
-                actionContent = action->getId();
+        // SCXML 사양 준수: ActionNode 객체를 직접 저장
+        auto actionNodes = actionParser_->parseActionsInElement(transElement);
+        for (const auto &actionNode : actionNodes) {
+            if (actionNode) {
+                transition->addActionNode(actionNode);
+                Logger::debug("RSM::TransitionParser::parseActions() - Added ActionNode: " +
+                              actionNode->getActionType());
             }
-            transition->addAction(actionContent);
-            Logger::debug("RSM::TransitionParser::parseActions() - Added action: " + actionContent);
         }
     }
 }

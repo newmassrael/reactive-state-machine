@@ -1,4 +1,4 @@
-#include "common/GuardUtils.h"
+#include "GuardUtils.h"
 
 namespace RSM {
 namespace GuardUtils {

@@ -25,7 +25,10 @@ JSEngine::~JSEngine() {
 }
 
 void JSEngine::shutdown() {
+    Logger::debug("JSEngine: shutdown() called - shouldStop: {}", shouldStop_.load());
+
     if (shouldStop_) {
+        Logger::debug("JSEngine: Already shutting down, returning");
         return;  // Already shutting down
     }
 
@@ -37,7 +40,9 @@ void JSEngine::shutdown() {
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -45,11 +50,25 @@ void JSEngine::shutdown() {
     future.get();
 
     // Now stop the worker thread
+    Logger::debug("JSEngine: Setting shouldStop = true");
     shouldStop_ = true;
     queueCondition_.notify_all();
 
     if (executionThread_.joinable()) {
-        executionThread_.join();
+        Logger::debug("JSEngine: Attempting to join worker thread...");
+        auto start = std::chrono::steady_clock::now();
+
+        // Try join with timeout using future
+        std::future<void> joinFuture = std::async(std::launch::async, [this]() { executionThread_.join(); });
+
+        if (joinFuture.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
+            Logger::error("JSEngine: Worker thread join TIMEOUT - thread is stuck!");
+            // Cannot force terminate, but at least we know what happened
+        } else {
+            auto elapsed = std::chrono::steady_clock::now() - start;
+            Logger::debug("JSEngine: Worker thread joined successfully in {}ms",
+                          std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+        }
     }
 
     Logger::debug("JSEngine: Shutdown complete");
@@ -75,9 +94,12 @@ void JSEngine::reset() {
     // Clear request queue
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        size_t queueSize = requestQueue_.size();
+        Logger::debug("JSEngine: Clearing request queue - size: {}", queueSize);
         while (!requestQueue_.empty()) {
             requestQueue_.pop();
         }
+        Logger::debug("JSEngine: Request queue cleared");
     }
 
     // Reinitialize
@@ -109,7 +131,9 @@ bool JSEngine::createSession(const std::string &sessionId, const std::string &pa
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -123,7 +147,9 @@ bool JSEngine::destroySession(const std::string &sessionId) {
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -182,7 +208,9 @@ std::future<JSResult> JSEngine::executeScript(const std::string &sessionId, cons
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -196,7 +224,9 @@ std::future<JSResult> JSEngine::evaluateExpression(const std::string &sessionId,
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -210,7 +240,9 @@ std::future<JSResult> JSEngine::validateExpression(const std::string &sessionId,
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -226,7 +258,9 @@ std::future<JSResult> JSEngine::setVariable(const std::string &sessionId, const 
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -240,7 +274,9 @@ std::future<JSResult> JSEngine::getVariable(const std::string &sessionId, const 
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -254,7 +290,9 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -270,7 +308,9 @@ std::future<JSResult> JSEngine::setupSystemVariables(const std::string &sessionI
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -306,7 +346,9 @@ void JSEngine::collectGarbage() {
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
+        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -317,7 +359,8 @@ void JSEngine::collectGarbage() {
 // === Thread-safe Execution Worker ===
 
 void JSEngine::executionWorker() {
-    Logger::debug("JSEngine: Execution worker thread started");
+    Logger::debug("JSEngine: Worker LOOP START - Thread ID: {}",
+                  static_cast<size_t>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
 
     // Create QuickJS runtime in worker thread to ensure thread safety
     runtime_ = JS_NewRuntime();
@@ -332,16 +375,27 @@ void JSEngine::executionWorker() {
     Logger::debug("JSEngine: Worker thread initialization complete");
 
     while (!shouldStop_) {
-        std::unique_lock<std::mutex> lock(queueMutex_);
+        Logger::debug("JSEngine: Worker loop iteration - shouldStop: {}, queue size: {}", shouldStop_.load(),
+                      requestQueue_.size());
 
+        std::unique_lock<std::mutex> lock(queueMutex_);
         queueCondition_.wait(lock, [this] { return !requestQueue_.empty() || shouldStop_; });
+
+        Logger::debug("JSEngine: Worker woke up - shouldStop: {}, queue size: {}", shouldStop_.load(),
+                      requestQueue_.size());
 
         while (!requestQueue_.empty() && !shouldStop_) {
             auto request = std::move(requestQueue_.front());
             requestQueue_.pop();
             lock.unlock();
 
-            processExecutionRequest(std::move(request));
+            Logger::debug("JSEngine: Processing request type: {}", static_cast<int>(request->type));
+            try {
+                processExecutionRequest(std::move(request));
+                Logger::debug("JSEngine: Request processed successfully");
+            } catch (const std::exception &e) {
+                Logger::error("JSEngine: EXCEPTION in worker thread: {}", e.what());
+            }
 
             lock.lock();
         }
@@ -368,7 +422,7 @@ void JSEngine::executionWorker() {
         Logger::debug("JSEngine: Worker thread cleaned up QuickJS resources");
     }
 
-    Logger::debug("JSEngine: Execution worker thread stopped");
+    Logger::debug("JSEngine: Worker LOOP END - shouldStop: {}", shouldStop_.load());
 }
 
 void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request) {
@@ -406,7 +460,10 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
             result = success ? JSResult::createSuccess() : JSResult::createError("Failed to destroy session");
         } break;
         case ExecutionRequest::HAS_SESSION: {
+            Logger::debug("JSEngine: HAS_SESSION check for '{}' - sessions_ map size: {}", request->sessionId,
+                          sessions_.size());
             bool exists = sessions_.find(request->sessionId) != sessions_.end();
+            Logger::debug("JSEngine: Session '{}' exists: {}", request->sessionId, exists);
             result = exists ? JSResult::createSuccess() : JSResult::createError("Session not found");
         } break;
         case ExecutionRequest::GET_ACTIVE_SESSIONS: {
@@ -496,7 +553,7 @@ bool JSEngine::createSessionInternal(const std::string &sessionId, const std::st
 
     sessions_[sessionId] = std::move(session);
 
-    Logger::debug("JSEngine: Created session '" + sessionId + "'");
+    Logger::debug("JSEngine: Created session '{}' - sessions_ map size now: {}", sessionId, sessions_.size());
     return true;
 }
 

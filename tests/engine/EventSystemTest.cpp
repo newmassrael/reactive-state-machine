@@ -1,4 +1,4 @@
-#include "runtime/SCXMLTypes.h"
+#include "SCXMLTypes.h"
 #include "scripting/JSEngine.h"
 #include <gtest/gtest.h>
 #include <memory>

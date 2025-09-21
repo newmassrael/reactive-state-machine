@@ -1,7 +1,7 @@
 #pragma once
 
+#include "../SCXMLTypes.h"
 #include "JSResult.h"
-#include "runtime/SCXMLTypes.h"
 #include <atomic>
 #include <condition_variable>
 #include <future>

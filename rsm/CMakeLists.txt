@@ -51,7 +51,7 @@ add_library(rsm_unified
     src/model/SCXMLModel.cpp
     src/model/StateNode.cpp
     src/model/TransitionNode.cpp
-    src/model/ActionNode.cpp
+
     src/model/GuardNode.cpp
     src/model/InvokeNode.cpp
     src/model/StateHierarchy.cpp
@@ -92,6 +92,7 @@ add_library(rsm_unified
 
     # Concurrent states implementation
     src/states/ConcurrentStateNode.cpp
+    src/states/ConcurrentRegion.cpp
     src/states/ParallelRegionOrchestrator.cpp
     src/states/ConcurrentEventTypes.cpp
     src/states/ConcurrentEventBroadcaster.cpp
@@ -100,7 +101,7 @@ add_library(rsm_unified
 
     # Scripting implementation
     src/scripting/JSEngine.cpp
-    src/scripting/JSEngine_impl.cpp
+    src/scripting/JSEngineImpl.cpp
 
     # Parsing implementation
     src/parsing/StateNodeParser.cpp

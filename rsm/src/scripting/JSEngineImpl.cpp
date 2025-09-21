@@ -47,7 +47,17 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
     }
 
     JSContext *ctx = session->jsContext;
+    
+    // First try to evaluate as-is
     ::JSValue result = JS_Eval(ctx, expression.c_str(), expression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
+
+    // If it failed and the expression starts with '{', try wrapping in parentheses for object literals
+    if (JS_IsException(result) && !expression.empty() && expression[0] == '{') {
+        JS_FreeValue(ctx, result);  // Free the exception
+        
+        std::string wrappedExpression = "(" + expression + ")";
+        result = JS_Eval(ctx, wrappedExpression.c_str(), wrappedExpression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
+    }
 
     if (JS_IsException(result)) {
         JSResult error = createErrorFromException(ctx);
@@ -241,6 +251,39 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
             JS_FreeCString(ctx, str);
         }
         return result;
+    } else if (JS_IsArray(qjsValue)) {
+        auto scriptArray = std::make_shared<ScriptArray>();
+        JSValue lengthVal = JS_GetPropertyStr(ctx, qjsValue, "length");
+        int64_t length = 0;
+        JS_ToInt64(ctx, &length, lengthVal);
+        JS_FreeValue(ctx, lengthVal);
+        
+        scriptArray->elements.reserve(static_cast<size_t>(length));
+        for (int64_t i = 0; i < length; ++i) {
+            JSValue element = JS_GetPropertyUint32(ctx, qjsValue, static_cast<uint32_t>(i));
+            scriptArray->elements.push_back(quickJSToJSValue(ctx, element));
+            JS_FreeValue(ctx, element);
+        }
+        return scriptArray;
+    } else if (JS_IsObject(qjsValue) && !JS_IsFunction(ctx, qjsValue)) {
+        auto scriptObject = std::make_shared<ScriptObject>();
+        JSPropertyEnum *props = nullptr;
+        uint32_t propCount = 0;
+        
+        if (JS_GetOwnPropertyNames(ctx, &props, &propCount, qjsValue, JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
+            for (uint32_t i = 0; i < propCount; ++i) {
+                const char *key = JS_AtomToCString(ctx, props[i].atom);
+                if (key) {
+                    JSValue propValue = JS_GetProperty(ctx, qjsValue, props[i].atom);
+                    scriptObject->properties[key] = quickJSToJSValue(ctx, propValue);
+                    JS_FreeValue(ctx, propValue);
+                    JS_FreeCString(ctx, key);
+                }
+                JS_FreeAtom(ctx, props[i].atom);
+            }
+            js_free(ctx, props);
+        }
+        return scriptObject;
     }
 
     return std::monostate{};  // undefined/null
@@ -248,7 +291,7 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
 
 JSValue JSEngine::jsValueToQuickJS(JSContext *ctx, const ScriptValue &value) {
     return std::visit(
-        [ctx](const auto &v) -> JSValue {
+        [this, ctx](const auto &v) -> JSValue {
             using T = std::decay_t<decltype(v)>;
             if constexpr (std::is_same_v<T, bool>) {
                 return JS_NewBool(ctx, v);
@@ -258,6 +301,20 @@ JSValue JSEngine::jsValueToQuickJS(JSContext *ctx, const ScriptValue &value) {
                 return JS_NewFloat64(ctx, v);
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return JS_NewString(ctx, v.c_str());
+            } else if constexpr (std::is_same_v<T, std::shared_ptr<ScriptArray>>) {
+                JSValue jsArray = JS_NewArray(ctx);
+                for (size_t i = 0; i < v->elements.size(); ++i) {
+                    JSValue element = jsValueToQuickJS(ctx, v->elements[i]);
+                    JS_SetPropertyUint32(ctx, jsArray, static_cast<uint32_t>(i), element);
+                }
+                return jsArray;
+            } else if constexpr (std::is_same_v<T, std::shared_ptr<ScriptObject>>) {
+                JSValue jsObject = JS_NewObject(ctx);
+                for (const auto &[key, val] : v->properties) {
+                    JSValue propValue = jsValueToQuickJS(ctx, val);
+                    JS_SetPropertyStr(ctx, jsObject, key.c_str(), propValue);
+                }
+                return jsObject;
             } else {
                 return JS_UNDEFINED;
             }

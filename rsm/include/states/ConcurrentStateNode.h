@@ -1,8 +1,10 @@
 #pragma once
 
+#include "ConcurrentRegion.h"
 #include "ConcurrentStateTypes.h"
 #include "IConcurrentRegion.h"
 #include "model/IStateNode.h"
+#include "runtime/IExecutionContext.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -146,6 +148,20 @@ public:
     std::shared_ptr<IConcurrentRegion> getRegion(const std::string &regionId) const;
 
     /**
+     * @brief Enter this parallel state according to SCXML semantics
+     * Automatically activates all child regions as required by SCXML W3C spec
+     * @return Operation result indicating success/failure of entry
+     */
+    ConcurrentOperationResult enterParallelState();
+
+    /**
+     * @brief Exit this parallel state according to SCXML semantics
+     * Automatically deactivates all child regions
+     * @return Operation result indicating success/failure of exit
+     */
+    ConcurrentOperationResult exitParallelState();
+
+    /**
      * @brief Activate all regions in this concurrent state
      * @return Vector of operation results for each region
      */
@@ -204,6 +220,16 @@ public:
      */
     void setCompletionCallback(const ParallelStateCompletionCallback &callback);
 
+    /**
+     * @brief Set ExecutionContext for all regions in this parallel state
+     *
+     * SOLID: Dependency Injection - allows StateMachine to provide ExecutionContext
+     * for proper action execution in transition processing
+     *
+     * @param executionContext Shared execution context from StateMachine
+     */
+    void setExecutionContextForRegions(std::shared_ptr<IExecutionContext> executionContext);
+
 private:
     std::string id_;
     IStateNode *parent_;
@@ -240,6 +266,20 @@ private:
 
     // Initial transition for compound states (stored but not typically used for concurrent states)
     std::shared_ptr<ITransitionNode> initialTransition_;
+
+    // SCXML W3C parallel state completion monitoring
+
+    /**
+     * @brief Check if all regions are in final state
+     * @return true if all regions have reached final states
+     */
+    bool areAllRegionsInFinalState() const;
+
+    /**
+     * @brief Generate done.state event when parallel state completes
+     * According to SCXML W3C specification section 3.4
+     */
+    void generateDoneStateEvent();
 };
 
 }  // namespace RSM

@@ -33,7 +33,7 @@ protected:
 };
 
 // W3C SCXML 사양 3.4: 병렬 상태 기본 동작 테스트
-TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_BasicBehavior) {
+TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_BasicBehavior_ShouldParseAndEnterCorrectly) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="parallel1" datamodel="ecmascript">
@@ -78,7 +78,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_BasicBehavior) {
 }
 
 // W3C SCXML 사양 3.4: done.state 이벤트 생성 테스트
-TEST_F(SCXMLParallelComplianceTest, W3C_DoneStateEvent_Generation) {
+TEST_F(SCXMLParallelComplianceTest, W3C_DoneStateEvent_Generation_ShouldProcessDoneStateEvents) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="parallel1" datamodel="ecmascript">
@@ -136,8 +136,8 @@ TEST_F(SCXMLParallelComplianceTest, W3C_DoneStateEvent_Generation) {
     ASSERT_EQ(sm.getCurrentState(), "completed") << "StateMachine must transition to completed state";
 }
 
-// W3C SCXML 사양 3.4: done.state 이벤트 자동 생성 실패 테스트 (핵심 누락 기능)
-TEST_F(SCXMLParallelComplianceTest, MISSING_DoneStateEvent_AutoGeneration) {
+// W3C SCXML 사양 3.4: done.state 이벤트 자동 생성 테스트 (부분 구현됨 - 자동 생성 로직 미구현)
+TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_DoneStateEvent_Generation_UNIMPLEMENTED) {
     // 이 테스트는 현재 누락된 기능을 명시적으로 테스트함
 
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -180,7 +180,7 @@ TEST_F(SCXMLParallelComplianceTest, MISSING_DoneStateEvent_AutoGeneration) {
 }
 
 // W3C SCXML 사양 3.4: 병렬 상태 완료 조건 테스트
-TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_CompletionCriteria) {
+TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_CompletionCriteria_ShouldCompleteWhenAllRegionsFinal) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="parallel1" datamodel="ecmascript">
@@ -215,7 +215,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_CompletionCriteria) {
 }
 
 // W3C SCXML 사양 3.4: 병렬 상태에서 외부 전이 테스트
-TEST_F(SCXMLParallelComplianceTest, W3C_ExternalTransition_FromParallelState) {
+TEST_F(SCXMLParallelComplianceTest, W3C_ExternalTransition_FromParallelState_ShouldExitAllRegions) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="parallel1" datamodel="ecmascript">
@@ -249,7 +249,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_ExternalTransition_FromParallelState) {
 }
 
 // W3C SCXML 사양 3.4: 지역 독립성 테스트
-TEST_F(SCXMLParallelComplianceTest, W3C_RegionIndependence) {
+TEST_F(SCXMLParallelComplianceTest, W3C_RegionIndependence_ShouldProcessEventsIndependently) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="parallel1" datamodel="ecmascript">
@@ -398,8 +398,8 @@ TEST_F(SCXMLParallelComplianceTest, W3C_EventPriority) {
     EXPECT_EQ(stateMachine->getInitialState(), "parallel1");
 }
 
-// W3C SCXML 사양 3.4: 동시 지역 활성화 테스트 (핵심 누락 기능)
-TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_SimultaneousRegionActivation) {
+// W3C SCXML 사양 3.4: 동시 지역 활성화 테스트 (구현됨)
+TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_RegionActivation_Simultaneous) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="test_parallel" datamodel="ecmascript">
@@ -437,12 +437,60 @@ TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_SimultaneousRegionActivation) {
     ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
 
     // W3C 사양: "When a <parallel> element is active, ALL of its children are active"
-    FAIL() << "CRITICAL MISSING W3C COMPLIANCE: 병렬 상태 진입 시 모든 자식 지역이 동시에 활성화되지 않음. "
-           << "ConcurrentStateNode::activateAllRegions()가 호출되지 않거나 제대로 작동하지 않음";
+    // Test actual region activation through StateMachine integration
+    RSM::StateMachine sm;
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine 로딩 실패";
+    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+
+    // Verify parallel state is active
+    EXPECT_EQ(sm.getCurrentState(), "test_parallel") << "Parallel state not entered";
+
+    // Check if StateMachine has successfully activated regions through data model
+    // The onentry actions should have executed, setting region variables to true
+    // For now, this is infrastructure verification - actual data model execution
+    // requires full StateMachine integration with ConcurrentRegion
+
+    // SCXML W3C specification section 3.4 compliance verification:
+    // "When a <parallel> element is active, ALL of its children are active"
+
+    // Verify all child regions have their entry actions executed
+    // This should result in region1_active, region2_active, region3_active being set to true
+
+    // Check data model variables that should be set by onentry actions
+    auto &jsEngine = RSM::JSEngine::instance();
+
+    try {
+        // Verify region1_active was set to true by onentry action
+        auto region1Future = jsEngine.evaluateExpression(sm.getSessionId(), "region1_active");
+        auto region1Result = region1Future.get();
+        EXPECT_EQ(region1Result.getValueAsString(), "true")
+            << "SCXML violation: region1 onentry action not executed. Expected true, got: "
+            << region1Result.getValueAsString();
+
+        // Verify region2_active was set to true by onentry action
+        auto region2Future = jsEngine.evaluateExpression(sm.getSessionId(), "region2_active");
+        auto region2Result = region2Future.get();
+        EXPECT_EQ(region2Result.getValueAsString(), "true")
+            << "SCXML violation: region2 onentry action not executed. Expected true, got: "
+            << region2Result.getValueAsString();
+
+        // Verify region3_active was set to true by onentry action
+        auto region3Future = jsEngine.evaluateExpression(sm.getSessionId(), "region3_active");
+        auto region3Result = region3Future.get();
+        EXPECT_EQ(region3Result.getValueAsString(), "true")
+            << "SCXML violation: region3 onentry action not executed. Expected true, got: "
+            << region3Result.getValueAsString();
+
+        Logger::info("W3C COMPLIANCE VERIFIED: All parallel regions executed onentry actions simultaneously");
+
+    } catch (const std::exception &e) {
+        FAIL() << "SCXML violation: Failed to verify parallel region activation. "
+               << "Entry actions were not executed properly. Error: " << e.what();
+    }
 }
 
-// W3C SCXML 사양 3.4: 이벤트 브로드캐스팅 테스트 (핵심 누락 기능)
-TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_EventBroadcastingToAllRegions) {
+// W3C SCXML 사양 3.4: 이벤트 브로드캐스팅 테스트 (구현됨)
+TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EventBroadcasting_AllRegions) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="broadcast_test" datamodel="ecmascript">
@@ -485,13 +533,51 @@ TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_EventBroadcastingToAllRegions) {
     auto stateMachine = parser_->parseContent(scxmlContent);
     ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
 
-    // W3C 사양: "Events are processed in each child state independently"
-    FAIL() << "CRITICAL MISSING W3C COMPLIANCE: 이벤트가 모든 활성 지역에 동시에 브로드캐스트되지 않음. "
-           << "ConcurrentStateNode::processEventInAllRegions()가 실제로 호출되지 않거나 제대로 작동하지 않음";
+    RSM::StateMachine sm;
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "SCXML 로딩 실패";
+    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+
+    // Verify initial state is parallel state
+    EXPECT_EQ(sm.getCurrentState(), "broadcast_test") << "Parallel state not entered correctly";
+
+    // Note: JSEngine reset removed - StateMachine needs its session for action execution
+
+    try {
+        // SCXML W3C specification section 3.4: Event broadcasting to all regions
+        Logger::info("W3C COMPLIANCE TEST: Broadcasting 'test_event' to all parallel regions");
+
+        auto result = sm.processEvent("test_event", "");
+        EXPECT_TRUE(result.success) << "SCXML violation: Event broadcasting failed: " << result.errorMessage;
+
+        // Verify all regions received and processed the event
+        auto region1Future = RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "region1_received");
+        auto region1Result = region1Future.get();
+        EXPECT_EQ(region1Result.getValueAsString(), "true")
+            << "SCXML violation: region1 did not receive broadcast event. Expected true, got: "
+            << region1Result.getValueAsString();
+
+        auto region2Future = RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "region2_received");
+        auto region2Result = region2Future.get();
+        EXPECT_EQ(region2Result.getValueAsString(), "true")
+            << "SCXML violation: region2 did not receive broadcast event. Expected true, got: "
+            << region2Result.getValueAsString();
+
+        auto region3Future = RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "region3_received");
+        auto region3Result = region3Future.get();
+        EXPECT_EQ(region3Result.getValueAsString(), "true")
+            << "SCXML violation: region3 did not receive broadcast event. Expected true, got: "
+            << region3Result.getValueAsString();
+
+        Logger::info(
+            "W3C COMPLIANCE VERIFIED: All parallel regions received and processed the broadcast event simultaneously");
+
+    } catch (const std::exception &e) {
+        FAIL() << "SCXML violation: Failed to verify event broadcasting. " << e.what();
+    }
 }
 
-// W3C SCXML 사양 3.4: 병렬 상태 완료 기준 테스트 (핵심 누락 기능)
-TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_ParallelCompletionCriteria) {
+// W3C SCXML 사양 3.4: 병렬 상태 완료 기준 테스트 (미구현 - done.state 자동 생성 필요)
+TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_CompletionCriteria_UNIMPLEMENTED) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="completion_test" datamodel="ecmascript">
@@ -525,15 +611,49 @@ TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_ParallelCompletionCriteria) {
     auto stateMachine = parser_->parseContent(scxmlContent);
     ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
 
-    // W3C 사양: "When all of the children reach final states, the <parallel> element itself is considered to be in a
-    // final state" 모든 자식이 최종 상태에 도달해야만 done.state 이벤트가 자동 생성되어야 함
-    FAIL()
-        << "CRITICAL MISSING W3C COMPLIANCE: 모든 지역이 최종 상태에 도달할 때 done.state 이벤트가 자동 생성되지 않음. "
-        << "ConcurrentStateNode::areAllRegionsComplete()에서 done.state 이벤트를 자동 생성하고 전송하는 기능이 누락됨";
+    RSM::StateMachine sm;
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "SCXML 로딩 실패";
+    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+
+    // Verify initial state is parallel state
+    EXPECT_EQ(sm.getCurrentState(), "completion_test") << "Parallel state not entered correctly";
+
+    try {
+        // SCXML W3C specification section 3.4: Parallel completion criteria
+        Logger::info("W3C COMPLIANCE TEST: Testing parallel state completion with done.state auto-generation");
+
+        // Complete region 1
+        auto result1 = sm.processEvent("complete_r1", "");
+        EXPECT_TRUE(result1.success) << "Failed to complete region 1: " << result1.errorMessage;
+
+        // Complete region 2 - this should trigger done.state.completion_test event
+        auto result2 = sm.processEvent("complete_r2", "");
+        EXPECT_TRUE(result2.success) << "Failed to complete region 2: " << result2.errorMessage;
+
+        // Verify done.state event was automatically generated and processed
+        auto parallelCompleteResult =
+            RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "parallel_complete").get();
+        EXPECT_EQ(parallelCompleteResult.getValueAsString(), "true")
+            << "SCXML violation: done.state event not automatically generated when all regions completed. Expected "
+               "true, got: "
+            << parallelCompleteResult.getValueAsString();
+
+        auto doneEventResult =
+            RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "done_event_fired").get();
+        EXPECT_EQ(doneEventResult.getValueAsString(), "true")
+            << "SCXML violation: done.state.completion_test event not processed. Expected true, got: "
+            << doneEventResult.getValueAsString();
+
+        Logger::info(
+            "W3C COMPLIANCE VERIFIED: Parallel state completion criteria with automatic done.state event generation");
+
+    } catch (const std::exception &e) {
+        FAIL() << "SCXML violation: Failed to verify parallel completion criteria. " << e.what();
+    }
 }
 
-// W3C SCXML 사양 3.4: 진입/종료 시퀀스 테스트 (핵심 누락 기능)
-TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_EntryExitSequence) {
+// W3C SCXML 사양 3.4: 진입/종료 시퀀스 테스트 (미구현 - 병렬 상태 entry/exit 순서 보장 필요)
+TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EntryExitSequence_UNIMPLEMENTED) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="entry_test" datamodel="ecmascript">
@@ -581,13 +701,71 @@ TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_EntryExitSequence) {
     auto stateMachine = parser_->parseContent(scxmlContent);
     ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
 
-    // W3C 사양: 진입 시 모든 자식이 동시에 진입, 종료 시 모든 자식이 먼저 종료 후 부모 종료
-    FAIL() << "CRITICAL MISSING W3C COMPLIANCE: 병렬 상태의 진입/종료 시퀀스가 W3C 사양을 따르지 않음. "
-           << "자식 상태들의 onentry/onexit 핸들러가 올바른 순서로 실행되지 않거나 실행되지 않음";
+    // W3C SCXML specification section 3.4: Entry/exit sequence compliance test
+    RSM::StateMachine sm;
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine loading failed";
+    ASSERT_TRUE(sm.start()) << "StateMachine start failed";
+
+    try {
+        // Enter parallel state and verify entry sequence
+        auto enterResult = sm.processEvent("enter_parallel");
+        ASSERT_TRUE(enterResult.success) << "Failed to enter parallel state: " << enterResult.errorMessage;
+
+        // SCXML W3C 3.4: Entry sequence must be: parallel_entry -> child1_entry, child2_entry
+        auto entrySequenceResult =
+            RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "entry_sequence").get();
+        std::string entrySequence = entrySequenceResult.getValueAsString();
+        EXPECT_TRUE(entrySequence.find("parallel_entry") != std::string::npos)
+            << "SCXML violation: parallel state onentry action not executed. Expected 'parallel_entry' in: "
+            << entrySequence;
+        EXPECT_TRUE(entrySequence.find("child1_entry") != std::string::npos)
+            << "SCXML violation: child1 onentry action not executed. Expected 'child1_entry' in: " << entrySequence;
+        EXPECT_TRUE(entrySequence.find("child2_entry") != std::string::npos)
+            << "SCXML violation: child2 onentry action not executed. Expected 'child2_entry' in: " << entrySequence;
+
+        // Verify entry order: parallel_entry should come before children
+        size_t parallelPos = entrySequence.find("parallel_entry");
+        size_t child1Pos = entrySequence.find("child1_entry");
+        size_t child2Pos = entrySequence.find("child2_entry");
+
+        EXPECT_LT(parallelPos, child1Pos)
+            << "SCXML violation: parallel onentry must execute BEFORE child onentry. Entry sequence: " << entrySequence;
+        EXPECT_LT(parallelPos, child2Pos)
+            << "SCXML violation: parallel onentry must execute BEFORE child onentry. Entry sequence: " << entrySequence;
+
+        // Trigger exit from parallel state
+        auto exitResult = sm.processEvent("exit_parallel");
+        ASSERT_TRUE(exitResult.success) << "Failed to exit parallel state: " << exitResult.errorMessage;
+
+        // SCXML W3C 3.4: Exit sequence must be: child1_exit, child2_exit -> parallel_exit
+        auto exitSequenceResult =
+            RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "exit_sequence").get();
+        std::string exitSequence = exitSequenceResult.getValueAsString();
+        EXPECT_TRUE(exitSequence.find("child1_exit") != std::string::npos)
+            << "SCXML violation: child1 onexit action not executed. Expected 'child1_exit' in: " << exitSequence;
+        EXPECT_TRUE(exitSequence.find("child2_exit") != std::string::npos)
+            << "SCXML violation: child2 onexit action not executed. Expected 'child2_exit' in: " << exitSequence;
+        EXPECT_TRUE(exitSequence.find("parallel_exit") != std::string::npos)
+            << "SCXML violation: parallel state onexit action not executed. Expected 'parallel_exit' in: "
+            << exitSequence;
+
+        // Verify exit order: children should exit before parallel
+        size_t parallelExitPos = exitSequence.find("parallel_exit");
+        size_t child1ExitPos = exitSequence.find("child1_exit");
+        size_t child2ExitPos = exitSequence.find("child2_exit");
+
+        EXPECT_LT(child1ExitPos, parallelExitPos)
+            << "SCXML violation: child onexit must execute BEFORE parallel onexit. Exit sequence: " << exitSequence;
+        EXPECT_LT(child2ExitPos, parallelExitPos)
+            << "SCXML violation: child onexit must execute BEFORE parallel onexit. Exit sequence: " << exitSequence;
+
+    } catch (const std::exception &e) {
+        FAIL() << "SCXML violation: Failed to verify parallel entry/exit sequence. " << e.what();
+    }
 }
 
-// W3C SCXML 사양 3.4: 독립적 전환 처리 테스트 (핵심 누락 기능)
-TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_IndependentTransitionProcessing) {
+// W3C SCXML 사양 3.4: 독립적 전환 처리 테스트 (미구현 - 병렬 지역 간 독립적 전환 처리 필요)
+TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_TransitionProcessing_Independent_UNIMPLEMENTED) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
            initial="independent_test" datamodel="ecmascript">
@@ -622,9 +800,86 @@ TEST_F(SCXMLParallelComplianceTest, MISSING_W3C_IndependentTransitionProcessing)
     auto stateMachine = parser_->parseContent(scxmlContent);
     ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
 
-    // W3C 사양: "Each child state may take a different transition in response to the event"
-    FAIL() << "CRITICAL MISSING W3C COMPLIANCE: 각 지역이 이벤트에 대해 독립적으로 전환을 처리하지 않음. "
-           << "병렬 지역 간의 상태 전환이 서로 영향을 미치거나 독립적으로 처리되지 않음";
+    // W3C SCXML specification section 3.4: Independent transition processing test
+    RSM::StateMachine sm;
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine 로딩 실패";
+    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+
+    // Verify initial state is parallel state
+    EXPECT_EQ(sm.getCurrentState(), "independent_test") << "Parallel state not entered correctly";
+
+    auto &jsEngine = RSM::JSEngine::instance();
+
+    try {
+        // Initial state verification: both regions should be in initial states
+        auto region1InitialFuture = jsEngine.evaluateExpression(sm.getSessionId(), "region1_state");
+        auto region1InitialResult = region1InitialFuture.get();
+        EXPECT_EQ(region1InitialResult.getValueAsString(), "s1")
+            << "region1 should start in s1 state, got: " << region1InitialResult.getValueAsString();
+
+        auto region2InitialFuture = jsEngine.evaluateExpression(sm.getSessionId(), "region2_state");
+        auto region2InitialResult = region2InitialFuture.get();
+        EXPECT_EQ(region2InitialResult.getValueAsString(), "s1")
+            << "region2 should start in s1 state, got: " << region2InitialResult.getValueAsString();
+
+        // W3C Test 1: Send "move" event - should only affect region1
+        Logger::info("W3C COMPLIANCE TEST: Sending 'move' event - should only affect region1");
+        Logger::info("Current StateMachine state before move: {}", sm.getCurrentState());
+        Logger::info("StateMachine is running: {}", sm.isRunning());
+
+        auto moveResult = sm.processEvent("move", "");
+        Logger::info("Move event result - success: {}, from: {}, to: {}, error: {}", moveResult.success,
+                     moveResult.fromState, moveResult.toState, moveResult.errorMessage);
+        ASSERT_TRUE(moveResult.success) << "SCXML violation: 'move' event processing failed: "
+                                        << moveResult.errorMessage;
+
+        // Verify region1 transitioned to s2 (independent response)
+        auto region1AfterMoveFuture = jsEngine.evaluateExpression(sm.getSessionId(), "region1_state");
+        auto region1AfterMoveResult = region1AfterMoveFuture.get();
+        EXPECT_EQ(region1AfterMoveResult.getValueAsString(), "s2")
+            << "SCXML violation: region1 did not transition independently to s2. Expected 's2', got: "
+            << region1AfterMoveResult.getValueAsString();
+
+        // Verify region2 remained in s1 (independence preserved)
+        auto region2AfterMoveFuture = jsEngine.evaluateExpression(sm.getSessionId(), "region2_state");
+        auto region2AfterMoveResult = region2AfterMoveFuture.get();
+        EXPECT_EQ(region2AfterMoveResult.getValueAsString(), "s1")
+            << "SCXML violation: region2 was affected by region1's event. Expected 's1', got: "
+            << region2AfterMoveResult.getValueAsString();
+
+        // W3C Test 2: Send "different_event" - should only affect region2
+        Logger::info("W3C COMPLIANCE TEST: Sending 'different_event' - should only affect region2");
+        Logger::info("Current StateMachine state before different_event: {}", sm.getCurrentState());
+
+        auto differentResult = sm.processEvent("different_event", "");
+        Logger::info("Different event result - success: {}, from: {}, to: {}, error: {}", differentResult.success,
+                     differentResult.fromState, differentResult.toState, differentResult.errorMessage);
+        ASSERT_TRUE(differentResult.success)
+            << "SCXML violation: 'different_event' processing failed: " << differentResult.errorMessage;
+
+        // Verify region1 remained in s2 (independence preserved)
+        auto region1AfterDifferentFuture = jsEngine.evaluateExpression(sm.getSessionId(), "region1_state");
+        auto region1AfterDifferentResult = region1AfterDifferentFuture.get();
+        EXPECT_EQ(region1AfterDifferentResult.getValueAsString(), "s2")
+            << "SCXML violation: region1 was affected by region2's event. Expected 's2', got: "
+            << region1AfterDifferentResult.getValueAsString();
+
+        // Verify region2 transitioned to s2 (independent response)
+        auto region2AfterDifferentFuture = jsEngine.evaluateExpression(sm.getSessionId(), "region2_state");
+        auto region2AfterDifferentResult = region2AfterDifferentFuture.get();
+        EXPECT_EQ(region2AfterDifferentResult.getValueAsString(), "s2")
+            << "SCXML violation: region2 did not transition independently to s2. Expected 's2', got: "
+            << region2AfterDifferentResult.getValueAsString();
+
+        Logger::info("W3C COMPLIANCE VERIFIED: Independent transition processing works correctly");
+        Logger::info("  - region1 responded only to 'move' event (s1->s2)");
+        Logger::info("  - region2 responded only to 'different_event' event (s1->s2)");
+        Logger::info("  - Each region processed events independently without interference");
+
+    } catch (const std::exception &e) {
+        FAIL() << "SCXML violation: Failed to verify independent transition processing. "
+               << "Parallel regions did not process events independently. Error: " << e.what();
+    }
 }
 
 }  // namespace RSM

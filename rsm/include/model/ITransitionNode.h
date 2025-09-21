@@ -1,8 +1,13 @@
 // ITransitionNode.h
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
+
+namespace RSM {
+class IActionNode;
+}
 
 /**
  * @brief 전환 노드 인터페이스
@@ -62,16 +67,16 @@ public:
     virtual const std::string &getGuard() const = 0;
 
     /**
-     * @brief 액션 추가
-     * @param action 액션 ID
+     * @brief ActionNode 추가 (SCXML 사양 준수)
+     * @param actionNode ActionNode 객체
      */
-    virtual void addAction(const std::string &action) = 0;
+    virtual void addActionNode(std::shared_ptr<RSM::IActionNode> actionNode) = 0;
 
     /**
-     * @brief 액션 목록 반환
-     * @return 액션 ID 목록
+     * @brief ActionNode 목록 반환 (SCXML 사양 준수)
+     * @return ActionNode 객체 목록
      */
-    virtual const std::vector<std::string> &getActions() const = 0;
+    virtual const std::vector<std::shared_ptr<RSM::IActionNode>> &getActionNodes() const = 0;
 
     /**
      * @brief 반응형 여부 설정

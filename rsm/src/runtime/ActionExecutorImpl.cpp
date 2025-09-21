@@ -23,7 +23,7 @@ ActionExecutorImpl::ActionExecutorImpl(const std::string &sessionId, std::shared
     : sessionId_(sessionId), eventDispatcher_(std::move(eventDispatcher)) {
     // Create EventRaiser instance
     eventRaiser_ = std::make_shared<EventRaiserImpl>();
-    Logger::debug("ActionExecutorImpl created for session: {}", sessionId_);
+    Logger::debug("ActionExecutorImpl created for session: {} at address: {}", sessionId_, static_cast<void *>(this));
 }
 
 bool ActionExecutorImpl::executeScript(const std::string &script) {
@@ -275,9 +275,20 @@ bool ActionExecutorImpl::isSessionReady() const {
     // SCXML Compliance: Check if JSEngine is available without blocking
     try {
         auto &jsEngine = JSEngine::instance();
+        Logger::debug("ActionExecutorImpl: Using JSEngine at address: {}", static_cast<void *>(&jsEngine));
         // Use a non-blocking check - if JSEngine is not properly initialized,
         // we should not block indefinitely
-        return jsEngine.hasSession(sessionId_);
+        bool hasSessionResult = jsEngine.hasSession(sessionId_);
+        Logger::debug("ActionExecutorImpl: hasSession({}) returned: {}", sessionId_, hasSessionResult);
+
+        // Additional verification: check active sessions
+        auto activeSessions = jsEngine.getActiveSessions();
+        Logger::debug("ActionExecutorImpl: Active sessions count: {}", activeSessions.size());
+        for (const auto &session : activeSessions) {
+            Logger::debug("ActionExecutorImpl: Active session: {}", session);
+        }
+
+        return hasSessionResult;
     } catch (const std::exception &e) {
         // If JSEngine is not available, consider session not ready
         Logger::warn("JSEngine not available for session check: {}", e.what());

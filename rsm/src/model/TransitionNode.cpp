@@ -88,14 +88,17 @@ const std::string &RSM::TransitionNode::getGuard() const {
     return guard_;
 }
 
-void RSM::TransitionNode::addAction(const std::string &action) {
-    Logger::debug("RSM::TransitionNode::addAction() - Adding action to transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " + action);
-    actions_.push_back(action);
+void RSM::TransitionNode::addActionNode(std::shared_ptr<RSM::IActionNode> actionNode) {
+    Logger::debug("RSM::TransitionNode::addActionNode() - Adding ActionNode to transition " +
+                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " +
+                  (actionNode ? actionNode->getActionType() : "null"));
+    if (actionNode) {
+        actionNodes_.push_back(actionNode);
+    }
 }
 
-const std::vector<std::string> &RSM::TransitionNode::getActions() const {
-    return actions_;
+const std::vector<std::shared_ptr<RSM::IActionNode>> &RSM::TransitionNode::getActionNodes() const {
+    return actionNodes_;
 }
 
 void RSM::TransitionNode::setReactive(bool reactive) {
