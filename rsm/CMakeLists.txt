@@ -90,6 +90,14 @@ add_library(rsm_unified
     src/events/EventDispatcherImpl.cpp
     src/events/EventTargetFactoryImpl.cpp
 
+    # Concurrent states implementation
+    src/states/ConcurrentStateNode.cpp
+    src/states/ParallelRegionOrchestrator.cpp
+    src/states/ConcurrentEventTypes.cpp
+    src/states/ConcurrentEventBroadcaster.cpp
+    src/states/ConcurrentCompletionMonitor.cpp
+    src/states/ExternalTransitionHandler.cpp
+
     # Scripting implementation
     src/scripting/JSEngine.cpp
     src/scripting/JSEngine_impl.cpp
@@ -118,6 +126,7 @@ target_include_directories(rsm_unified
         include/parsing
         include/actions
         include/events
+        include/states
     PRIVATE
         ${LIBXMLPP_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}

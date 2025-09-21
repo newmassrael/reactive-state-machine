@@ -166,6 +166,10 @@ private:
     std::string generateSessionId();
     bool initializeFromModel();
 
+    // Parallel state completion handling
+    void handleParallelStateCompletion(const std::string &stateId);
+    void setupParallelStateCallbacks();
+
     bool evaluateCondition(const std::string &condition);
     bool executeAction(const std::string &action);
     bool enterState(const std::string &stateId);

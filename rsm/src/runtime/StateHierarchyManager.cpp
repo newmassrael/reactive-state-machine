@@ -27,8 +27,14 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
     // 상태를 활성 구성에 추가
     addStateToConfiguration(stateId);
 
-    // 복합 상태인 경우 초기 자식 상태로 진입
-    if (isCompoundState(stateNode)) {
+    // SCXML W3C specification section 3.4: parallel states behave differently from compound states
+    if (stateNode->getType() == Type::PARALLEL) {
+        // For parallel states, do NOT enter child regions automatically
+        // The parallel state itself is the current state, regions are managed separately
+        Logger::debug("StateHierarchyManager::enterState - Parallel state entered: " + stateId +
+                      " (regions managed by ConcurrentStateNode)");
+    } else if (isCompoundState(stateNode)) {
+        // Only for non-parallel compound states: enter initial child state
         std::string initialChild = findInitialChildState(stateNode);
         if (!initialChild.empty()) {
             Logger::debug("StateHierarchyManager::enterState - Entering initial child: " + initialChild);
@@ -157,8 +163,9 @@ bool StateHierarchyManager::isCompoundState(IStateNode *stateNode) const {
         return false;
     }
 
-    // Type::COMPOUND 또는 자식 상태가 있는 경우 복합 상태로 판단
-    return stateNode->getType() == Type::COMPOUND || !stateNode->getChildren().empty();
+    // SCXML W3C specification: only COMPOUND types are compound states, not PARALLEL
+    // Parallel states have different semantics and should not auto-enter children
+    return stateNode->getType() == Type::COMPOUND;
 }
 
 }  // namespace RSM

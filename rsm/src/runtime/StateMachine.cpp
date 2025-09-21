@@ -7,6 +7,7 @@
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "scripting/JSEngine.h"
+#include "states/ConcurrentStateNode.h"
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -325,6 +326,9 @@ bool StateMachine::initializeFromModel() {
         // Initialize hierarchy manager for hierarchical state support
         hierarchyManager_ = std::make_unique<StateHierarchyManager>(model_);
 
+        // Set up completion callbacks for parallel states (SCXML W3C compliance)
+        setupParallelStateCallbacks();
+
         Logger::debug("StateMachine: Model initialized with initial state: " + initialState_);
         Logger::info("StateMachine: Model initialized with " + std::to_string(allStates.size()) + " states");
         return true;
@@ -638,6 +642,63 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
     }
 
     return true;
+}
+
+void StateMachine::handleParallelStateCompletion(const std::string &stateId) {
+    Logger::debug("StateMachine: Handling parallel state completion for: " + stateId);
+
+    // Generate done.state.{stateId} event according to SCXML W3C specification section 3.4
+    std::string doneEventName = "done.state." + stateId;
+
+    Logger::info("StateMachine: Generating done.state event: " + doneEventName +
+                 " for completed parallel state: " + stateId);
+
+    // Process the done.state event to trigger any transitions waiting for it
+    if (isRunning_) {
+        auto result = processEvent(doneEventName, "");
+        if (result.success) {
+            Logger::debug("StateMachine: Successfully processed done.state event: " + doneEventName);
+        } else {
+            Logger::debug("StateMachine: No transitions found for done.state event: " + doneEventName +
+                          " (this is normal if no transitions are waiting for this event)");
+        }
+    } else {
+        Logger::warn("StateMachine: Cannot process done.state event " + doneEventName +
+                     " - state machine is not running");
+    }
+}
+
+void StateMachine::setupParallelStateCallbacks() {
+    if (!model_) {
+        Logger::warn("StateMachine: Cannot setup parallel state callbacks - no model available");
+        return;
+    }
+
+    Logger::debug("StateMachine: Setting up completion callbacks for parallel states");
+
+    const auto &allStates = model_->getAllStates();
+    int parallelStateCount = 0;
+
+    for (const auto &state : allStates) {
+        if (state && state->getType() == Type::PARALLEL) {
+            // Cast to ConcurrentStateNode to access the callback method
+            auto parallelState = std::dynamic_pointer_cast<ConcurrentStateNode>(state);
+            if (parallelState) {
+                // Set up the completion callback using a lambda that captures this StateMachine
+                parallelState->setCompletionCallback([this](const std::string &completedStateId) {
+                    this->handleParallelStateCompletion(completedStateId);
+                });
+
+                parallelStateCount++;
+                Logger::debug("StateMachine: Set up completion callback for parallel state: " + state->getId());
+            } else {
+                Logger::warn("StateMachine: Found parallel state that is not a ConcurrentStateNode: " + state->getId());
+            }
+        }
+    }
+
+    Logger::info("StateMachine: Set up completion callbacks for " + std::to_string(parallelStateCount) +
+                 " parallel states");
 }
 
 }  // namespace RSM

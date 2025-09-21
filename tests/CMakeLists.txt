@@ -167,7 +167,50 @@ target_link_libraries(core_parser_tests
 )
 
 # ============================================================================
-# 5. Integration Tests (RSM architecture)
+# 5. Concurrent States Foundation Tests
+# ============================================================================
+# 테스트 파일들이 제거되어 비활성화됨
+# add_executable(concurrent_foundation_tests
+#     states/concurrent/foundation/ConcurrentStateFoundationTest.cpp
+#     mocks/MockActionExecutor.cpp
+# )
+
+# ============================================================================
+# 6. Concurrent States Orchestration Tests
+# ============================================================================
+# add_executable(concurrent_orchestration_tests
+#     states/concurrent/orchestration/ParallelRegionOrchestratorTest.cpp
+#     mocks/MockActionExecutor.cpp
+# )
+
+# ============================================================================
+# 7. Concurrent Event Broadcasting Tests
+# ============================================================================
+# add_executable(concurrent_event_tests
+#     states/concurrent/events/ConcurrentEventBroadcasterTest.cpp
+#     mocks/MockActionExecutor.cpp
+# )
+
+# ============================================================================
+# 8. Concurrent Completion Monitoring Tests
+# ============================================================================
+# add_executable(concurrent_monitoring_tests
+#     states/concurrent/monitoring/ConcurrentCompletionMonitorTest.cpp
+#     mocks/MockActionExecutor.cpp
+# )
+
+# ============================================================================
+# 9. External Transition Handling Tests
+# ============================================================================
+# add_executable(external_transition_tests
+#     states/concurrent/transitions/ExternalTransitionHandlerTest.cpp
+#     mocks/MockActionExecutor.cpp
+# )
+
+# 테스트 설정들이 제거되어 비활성화됨
+
+# ============================================================================
+# 6. Integration Tests (RSM architecture)
 # ============================================================================
 add_executable(integration_tests
     integration/StateMachineIntegrationTest.cpp
@@ -175,6 +218,11 @@ add_executable(integration_tests
     integration/SCXMLEventTest.cpp
     integration/EventSchedulingTest.cpp
     integration/HttpEventTargetTest.cpp
+    integration/ParallelStateIntegrationTest.cpp
+    integration/SCXMLParallelParsingTest.cpp
+    integration/ParallelStateEndToEndTest.cpp
+    integration/SCXMLParallelComplianceTest.cpp
+
 )
 
 add_dependencies(integration_tests libxmlxx_external rsm_unified)
@@ -225,6 +273,12 @@ add_test(NAME JSEngineTests COMMAND js_engine_tests)
 add_test(NAME StateMachineTests COMMAND state_machine_tests)
 add_test(NAME ActionTests COMMAND action_tests)
 add_test(NAME CoreParserTests COMMAND core_parser_tests)
+# 테스트 등록이 제거되어 비활성화됨
+# add_test(NAME ConcurrentFoundationTests COMMAND concurrent_foundation_tests)
+# add_test(NAME ConcurrentOrchestrationTests COMMAND concurrent_orchestration_tests)
+# add_test(NAME ConcurrentEventTests COMMAND concurrent_event_tests)
+# add_test(NAME ConcurrentMonitoringTests COMMAND concurrent_monitoring_tests)
+# add_test(NAME ExternalTransitionTests COMMAND external_transition_tests)
 add_test(NAME IntegrationTests COMMAND integration_tests)
 add_test(NAME ConcurrencyTests COMMAND concurrency_tests)
 

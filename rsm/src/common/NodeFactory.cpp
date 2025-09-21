@@ -1,8 +1,18 @@
 #include "factory/NodeFactory.h"
 #include "common/Logger.h"
+#include "states/ConcurrentStateNode.h"
 
 std::shared_ptr<RSM::IStateNode> RSM::NodeFactory::createStateNode(const std::string &id, const Type type) {
     Logger::debug("RSM::NodeFactory::createStateNode() - Creating state node: " + id);
+
+    // SCXML W3C specification section 3.4: parallel states require ConcurrentStateNode
+    if (type == Type::PARALLEL) {
+        // Create ConcurrentStateNode with default configuration for SCXML compliance
+        ConcurrentStateConfig config;  // Uses SCXML W3C compliant defaults
+        Logger::debug("RSM::NodeFactory::createStateNode() - Creating ConcurrentStateNode for parallel state: " + id);
+        return std::make_shared<RSM::ConcurrentStateNode>(id, config);
+    }
+
     return std::make_shared<RSM::StateNode>(id, type);
 }
 
