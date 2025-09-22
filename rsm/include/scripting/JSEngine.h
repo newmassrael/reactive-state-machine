@@ -248,6 +248,28 @@ private:
     std::unordered_map<std::string, StateMachine *> stateMachines_;  // sessionId -> StateMachine*
     mutable std::mutex stateMachinesMutex_;
 
+    // === Internal Event System ===
+    struct InternalEventQueue {
+        std::queue<std::string> events;
+        std::unique_ptr<std::mutex> mutex;
+
+        InternalEventQueue() : mutex(std::make_unique<std::mutex>()) {}
+
+        InternalEventQueue(InternalEventQueue &&other) noexcept
+            : events(std::move(other.events)), mutex(std::move(other.mutex)) {}
+
+        InternalEventQueue &operator=(InternalEventQueue &&other) noexcept {
+            if (this != &other) {
+                events = std::move(other.events);
+                mutex = std::move(other.mutex);
+            }
+            return *this;
+        }
+    };
+
+    std::unordered_map<std::string, InternalEventQueue> internalEventQueues_;  // sessionId -> event queue
+    mutable std::mutex internalEventQueuesMutex_;
+
     // === Internal Methods ===
     void executionWorker();
     void processExecutionRequest(std::unique_ptr<ExecutionRequest> request);
@@ -269,9 +291,9 @@ private:
     SessionContext *getSession(const std::string &sessionId);
 
     // QuickJS setup
-    bool setupQuickJSContext(JSContext *ctx);
-    void setupSCXMLBuiltins(JSContext *ctx);
-    void setupEventObject(JSContext *ctx);
+    bool setupQuickJSContext(JSContext *ctx, const std::string &sessionId);
+    void setupSCXMLBuiltins(JSContext *ctx, const std::string &sessionId);
+    void setupEventObject(JSContext *ctx, const std::string &sessionId);
     void setupConsoleObject(JSContext *ctx);
     void setupMathObject(JSContext *ctx);
     void setupSystemVariables(JSContext *ctx);
@@ -282,6 +304,10 @@ private:
     // Helper method for In() function
     bool checkStateActive(const std::string &stateName) const;
     static JSValue consoleFunctionWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
+    static JSValue queueErrorEventWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
+
+    // SCXML W3C Compliance - Read-only system variables
+    void queueInternalEvent(const std::string &sessionId, const std::string &eventName);
 
     // Type conversion
     ScriptValue quickJSToJSValue(JSContext *ctx, JSValue qjsValue);

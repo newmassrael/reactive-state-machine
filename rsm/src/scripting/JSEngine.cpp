@@ -541,7 +541,7 @@ bool JSEngine::createSessionInternal(const std::string &sessionId, const std::st
     }
 
     // Setup context
-    if (!setupQuickJSContext(ctx)) {
+    if (!setupQuickJSContext(ctx, sessionId)) {
         JS_FreeContext(ctx);
         return false;
     }
@@ -582,22 +582,19 @@ JSEngine::SessionContext *JSEngine::getSession(const std::string &sessionId) {
     return (it != sessions_.end()) ? &it->second : nullptr;
 }
 
-bool JSEngine::setupQuickJSContext(JSContext *ctx) {
+bool JSEngine::setupQuickJSContext(JSContext *ctx, const std::string &sessionId) {
     // Set engine instance as context opaque for callbacks
     JS_SetContextOpaque(ctx, this);
 
     // Setup SCXML-specific builtin functions and objects
-    setupSCXMLBuiltins(ctx);
-
-    // Setup _event object (this is called within setupSCXMLBuiltins now)
-    // setupEventObject(ctx);
+    setupSCXMLBuiltins(ctx, sessionId);
 
     return true;
 }
 
 // === SCXML-specific Setup ===
 
-void JSEngine::setupSCXMLBuiltins(JSContext *ctx) {
+void JSEngine::setupSCXMLBuiltins(JSContext *ctx, const std::string &sessionId) {
     ::JSValue global = JS_GetGlobalObject(ctx);
 
     // Setup In() function for state checking
@@ -614,25 +611,95 @@ void JSEngine::setupSCXMLBuiltins(JSContext *ctx) {
     setupSystemVariables(ctx);
 
     // Setup _event object
-    setupEventObject(ctx);
+    setupEventObject(ctx, sessionId);
 
     JS_FreeValue(ctx, global);
 }
 
-void JSEngine::setupEventObject(JSContext *ctx) {
+void JSEngine::setupEventObject(JSContext *ctx, const std::string &sessionId) {
     ::JSValue global = JS_GetGlobalObject(ctx);
-    ::JSValue eventObj = JS_NewObject(ctx);
 
-    // Initialize _event with default properties per SCXML spec
-    JS_SetPropertyStr(ctx, eventObj, "name", JS_NewString(ctx, ""));
-    JS_SetPropertyStr(ctx, eventObj, "type", JS_NewString(ctx, ""));
-    JS_SetPropertyStr(ctx, eventObj, "sendid", JS_NewString(ctx, ""));
-    JS_SetPropertyStr(ctx, eventObj, "origin", JS_NewString(ctx, ""));
-    JS_SetPropertyStr(ctx, eventObj, "origintype", JS_NewString(ctx, ""));
-    JS_SetPropertyStr(ctx, eventObj, "invokeid", JS_NewString(ctx, ""));
-    JS_SetPropertyStr(ctx, eventObj, "data", JS_NULL);
+    // Register native function for error event queueing (SOLID: Interface Segregation)
+    ::JSValue queueErrorFunc = JS_NewCFunction(ctx, queueErrorEventWrapper, "_queueErrorEvent", 2);
+    JS_SetPropertyStr(ctx, global, "_queueErrorEvent", queueErrorFunc);
 
-    JS_SetPropertyStr(ctx, global, "_event", eventObj);
+    // Create a SCXML W3C compliant read-only _event object using JavaScript
+    // This approach uses Object.defineProperty with getters to enforce read-only behavior
+    std::string eventSetupCode = R"(
+        (function() {
+            var sessionId = ')" + sessionId +
+                                 R"(';  // SOLID: Dependency Injection
+            var eventData = {
+                name: '',
+                type: '',
+                sendid: '',
+                origin: '',
+                origintype: '',
+                invokeid: '',
+                data: null
+            };
+
+            // Create the _event object with read-only properties
+            var eventObject = {};
+            Object.defineProperty(this, '_event', {
+                get: function() { return eventObject; },
+                set: function(value) {
+                    // SCXML W3C Spec: Attempts to modify system variables should fail
+                    console.log('RSM Error: Attempt to assign to read-only system variable _event');
+                    // Queue error.execution event per SCXML W3C specification
+                    _queueErrorEvent(sessionId, 'error.execution');
+                    throw new Error('Cannot assign to read-only system variable _event');
+                },
+                enumerable: true,
+                configurable: false
+            });
+
+            // Define each property with getter only to make them read-only
+            var eventProps = ['name', 'type', 'sendid', 'origin', 'origintype', 'invokeid', 'data'];
+            for (var i = 0; i < eventProps.length; i++) {
+                (function(propName) {
+                    Object.defineProperty(_event, propName, {
+                        get: function() { return eventData[propName]; },
+                        set: function(value) {
+                            // SCXML W3C Spec: Attempts to modify system variables should fail
+                            // and place 'error.execution' on internal event queue
+                            console.log('RSM Error: Attempt to modify read-only system variable _event.' + propName);
+                            // Queue error.execution event per SCXML W3C specification
+                            _queueErrorEvent(sessionId, 'error.execution');
+                            throw new Error('Cannot modify read-only system variable _event.' + propName);
+                        },
+                        enumerable: true,
+                        configurable: false
+                    });
+                })(eventProps[i]);
+            }
+
+            // Helper function to update _event (used internally by JSEngine)
+            this._updateEvent = function(newEventData) {
+                for (var prop in newEventData) {
+                    if (eventData.hasOwnProperty(prop)) {
+                        eventData[prop] = newEventData[prop];
+                    }
+                }
+            };
+
+            return true;
+        }).call(this);
+    )";
+
+    ::JSValue result =
+        JS_Eval(ctx, eventSetupCode.c_str(), eventSetupCode.length(), "<event_setup>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(result)) {
+        Logger::error("JSEngine: Failed to setup _event object");
+        ::JSValue exception = JS_GetException(ctx);
+        const char *errorStr = JS_ToCString(ctx, exception);
+        if (errorStr) {
+            Logger::error("JSEngine: _event setup error: {}", errorStr);
+            JS_FreeCString(ctx, errorStr);
+        }
+        JS_FreeValue(ctx, exception);
+    }
+    JS_FreeValue(ctx, result);
     JS_FreeValue(ctx, global);
 }
 
@@ -746,6 +813,32 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
     return JS_UNDEFINED;
 }
 
+::JSValue JSEngine::queueErrorEventWrapper(JSContext *ctx, JSValue /*this_val*/, int argc, JSValue *argv) {
+    if (argc < 2) {
+        return JS_UNDEFINED;
+    }
+
+    // Get sessionId from first argument
+    const char *sessionId = JS_ToCString(ctx, argv[0]);
+    // Get event name from second argument
+    const char *eventName = JS_ToCString(ctx, argv[1]);
+
+    if (sessionId && eventName) {
+        // Get JSEngine instance through static access (SOLID: Dependency Inversion)
+        JSEngine::instance().queueInternalEvent(std::string(sessionId), std::string(eventName));
+        Logger::debug("JSEngine: Queued internal event '{}' for session '{}'", eventName, sessionId);
+    }
+
+    if (sessionId) {
+        JS_FreeCString(ctx, sessionId);
+    }
+    if (eventName) {
+        JS_FreeCString(ctx, eventName);
+    }
+
+    return JS_UNDEFINED;
+}
+
 bool JSEngine::checkStateActive(const std::string &stateName) const {
     std::lock_guard<std::mutex> lock(stateMachinesMutex_);
 
@@ -757,6 +850,20 @@ bool JSEngine::checkStateActive(const std::string &stateName) const {
         }
     }
     return false;
+}
+
+void JSEngine::queueInternalEvent(const std::string &sessionId, const std::string &eventName) {
+    std::lock_guard<std::mutex> lock(internalEventQueuesMutex_);
+
+    // Create queue for session if it doesn't exist
+    if (internalEventQueues_.find(sessionId) == internalEventQueues_.end()) {
+        internalEventQueues_[sessionId] = InternalEventQueue{};
+    }
+
+    std::lock_guard<std::mutex> queueLock(*internalEventQueues_[sessionId].mutex);
+    internalEventQueues_[sessionId].events.push(eventName);
+
+    Logger::debug("JSEngine: Queued internal event '{}' for session '{}'", eventName, sessionId);
 }
 
 void JSEngine::setStateMachine(StateMachine *stateMachine, const std::string &sessionId) {

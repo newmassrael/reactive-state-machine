@@ -62,95 +62,125 @@ TEST_F(EventSystemTest, DefaultEventValues) {
     EXPECT_TRUE(dataResult.getValue<bool>());
 }
 
-// Test event object is read-only in proper implementation
-TEST_F(EventSystemTest, EventObjectModification) {
-    // Try to modify _event properties
-    auto modifyResult = engine_->executeScript(sessionId_, "_event.name = 'modified'; _event.name").get();
-    ASSERT_TRUE(modifyResult.isSuccess());
+// Test event object is read-only per SCXML W3C specification
+TEST_F(EventSystemTest, W3C_EventObjectReadOnlyCompliance) {
+    // Verify _event object exists and is read-only
+    auto eventTypeResult = engine_->evaluateExpression(sessionId_, "typeof _event").get();
+    ASSERT_TRUE(eventTypeResult.isSuccess());
+    EXPECT_EQ(eventTypeResult.getValue<std::string>(), "object");
 
-    // In current implementation, modification works (not enforcing read-only yet)
-    // This documents current behavior - in full SCXML implementation, _event
-    // should be read-only
-    EXPECT_EQ(modifyResult.getValue<std::string>(), "modified");
+    // Test that _event properties cannot be modified
+    std::vector<std::string> properties = {"name", "type", "sendid", "origin", "origintype", "invokeid", "data"};
 
-    // TODO: In complete SCXML implementation, _event should be read-only
-    // and attempts to modify should trigger 'error.execution' event
+    for (const auto &prop : properties) {
+        // Try to modify property - should throw error
+        std::string modifyScript = "_event." + prop + " = 'modified_value'; _event." + prop;
+        auto modifyResult = engine_->executeScript(sessionId_, modifyScript).get();
+
+        // SCXML W3C compliant: modification should fail
+        EXPECT_FALSE(modifyResult.isSuccess())
+            << "Modification of _event." << prop << " should fail per SCXML W3C spec";
+
+        // Verify property remains unchanged
+        std::string checkScript = "_event." + prop;
+        auto checkResult = engine_->evaluateExpression(sessionId_, checkScript).get();
+        ASSERT_TRUE(checkResult.isSuccess());
+
+        // Properties should still have their default values
+        if (prop == "data") {
+            auto dataCheck = engine_->evaluateExpression(sessionId_, "_event.data === null").get();
+            ASSERT_TRUE(dataCheck.isSuccess());
+            EXPECT_TRUE(dataCheck.getValue<bool>()) << "_event.data should remain null";
+        } else {
+            EXPECT_EQ(checkResult.getValue<std::string>(), "") << "_event." << prop << " should remain empty string";
+        }
+    }
 }
 
-// Test event data handling
-TEST_F(EventSystemTest, EventDataHandling) {
-    // Test setting simple data
-    auto simpleDataResult = engine_->executeScript(sessionId_, "_event.data = 'simple_data'; _event.data").get();
-    ASSERT_TRUE(simpleDataResult.isSuccess());
-    EXPECT_EQ(simpleDataResult.getValue<std::string>(), "simple_data");
+// Test internal event updating (used by StateMachine)
+TEST_F(EventSystemTest, InternalEventDataUpdating) {
+    // Test internal _updateEvent function (used by JSEngine internally)
+    auto updateResult =
+        engine_
+            ->executeScript(sessionId_,
+                            "_updateEvent({name: 'test.event', data: 'test_data'}); _event.name + '|' + _event.data")
+            .get();
+    ASSERT_TRUE(updateResult.isSuccess());
+    EXPECT_EQ(updateResult.getValue<std::string>(), "test.event|test_data");
 
-    // Test setting object data
-    auto objectDataResult = engine_
-                                ->executeScript(sessionId_, "_event.data = {key: 'value', number: 42}; "
-                                                            "_event.data.key + '_' + _event.data.number")
-                                .get();
-    ASSERT_TRUE(objectDataResult.isSuccess());
-    EXPECT_EQ(objectDataResult.getValue<std::string>(), "value_42");
+    // Test updating with object data
+    auto objectUpdateResult =
+        engine_
+            ->executeScript(
+                sessionId_,
+                "_updateEvent({data: {key: 'value', number: 42}}); _event.data.key + '_' + _event.data.number")
+            .get();
+    ASSERT_TRUE(objectUpdateResult.isSuccess());
+    EXPECT_EQ(objectUpdateResult.getValue<std::string>(), "value_42");
 
-    // Test setting array data
-    auto arrayDataResult = engine_->executeScript(sessionId_, "_event.data = [1, 2, 3]; _event.data.length").get();
-    ASSERT_TRUE(arrayDataResult.isSuccess());
-    EXPECT_EQ(arrayDataResult.getValue<double>(), 3.0);
+    // Test updating with array data
+    auto arrayUpdateResult =
+        engine_->executeScript(sessionId_, "_updateEvent({data: [1, 2, 3]}); _event.data.length").get();
+    ASSERT_TRUE(arrayUpdateResult.isSuccess());
+    EXPECT_EQ(arrayUpdateResult.getValue<double>(), 3.0);
 }
 
-// Test event name and type handling
-TEST_F(EventSystemTest, EventNameAndType) {
-    // Test setting event name
-    auto nameResult = engine_->executeScript(sessionId_, "_event.name = 'user.login'; _event.name").get();
+// Test event name and type handling via internal updates
+TEST_F(EventSystemTest, InternalEventNameAndTypeUpdating) {
+    // Test updating event name internally
+    auto nameResult = engine_->executeScript(sessionId_, "_updateEvent({name: 'user.login'}); _event.name").get();
     ASSERT_TRUE(nameResult.isSuccess());
     EXPECT_EQ(nameResult.getValue<std::string>(), "user.login");
 
-    // Test setting event type
-    auto typeResult = engine_->executeScript(sessionId_, "_event.type = 'platform'; _event.type").get();
+    // Test updating event type internally
+    auto typeResult = engine_->executeScript(sessionId_, "_updateEvent({type: 'platform'}); _event.type").get();
     ASSERT_TRUE(typeResult.isSuccess());
     EXPECT_EQ(typeResult.getValue<std::string>(), "platform");
 
     // Test complex event names with dots
     auto complexNameResult =
-        engine_->executeScript(sessionId_, "_event.name = 'error.execution.timeout'; _event.name").get();
+        engine_->executeScript(sessionId_, "_updateEvent({name: 'error.execution.timeout'}); _event.name").get();
     ASSERT_TRUE(complexNameResult.isSuccess());
     EXPECT_EQ(complexNameResult.getValue<std::string>(), "error.execution.timeout");
 }
 
-// Test event origin and invocation properties
-TEST_F(EventSystemTest, EventOriginProperties) {
-    // Test setting origin
-    auto originResult = engine_->executeScript(sessionId_, "_event.origin = '#_internal'; _event.origin").get();
+// Test event origin and invocation properties via internal updates
+TEST_F(EventSystemTest, InternalEventOriginPropertiesUpdating) {
+    // Test updating origin internally
+    auto originResult = engine_->executeScript(sessionId_, "_updateEvent({origin: '#_internal'}); _event.origin").get();
     ASSERT_TRUE(originResult.isSuccess());
     EXPECT_EQ(originResult.getValue<std::string>(), "#_internal");
 
-    // Test setting origintype
-    auto origintypeResult = engine_
-                                ->executeScript(sessionId_, "_event.origintype = "
-                                                            "'http://www.w3.org/TR/scxml/#SCXMLEventProcessor'; "
-                                                            "_event.origintype")
-                                .get();
+    // Test updating origintype internally
+    auto origintypeResult =
+        engine_
+            ->executeScript(
+                sessionId_,
+                "_updateEvent({origintype: 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor'}); _event.origintype")
+            .get();
     ASSERT_TRUE(origintypeResult.isSuccess());
     EXPECT_EQ(origintypeResult.getValue<std::string>(), "http://www.w3.org/TR/scxml/#SCXMLEventProcessor");
 
-    // Test setting invokeid
-    auto invokeidResult = engine_->executeScript(sessionId_, "_event.invokeid = 'invoke_123'; _event.invokeid").get();
+    // Test updating invokeid internally
+    auto invokeidResult =
+        engine_->executeScript(sessionId_, "_updateEvent({invokeid: 'invoke_123'}); _event.invokeid").get();
     ASSERT_TRUE(invokeidResult.isSuccess());
     EXPECT_EQ(invokeidResult.getValue<std::string>(), "invoke_123");
 
-    // Test setting sendid
-    auto sendidResult = engine_->executeScript(sessionId_, "_event.sendid = 'send_456'; _event.sendid").get();
+    // Test updating sendid internally
+    auto sendidResult = engine_->executeScript(sessionId_, "_updateEvent({sendid: 'send_456'}); _event.sendid").get();
     ASSERT_TRUE(sendidResult.isSuccess());
     EXPECT_EQ(sendidResult.getValue<std::string>(), "send_456");
 }
 
 // Test event object in expressions
 TEST_F(EventSystemTest, EventInExpressions) {
-    // Set up event data
-    auto setupResult = engine_
-                           ->executeScript(sessionId_, "_event.name = 'user.action'; _event.data = {userId: "
-                                                       "123, action: 'click'}; true")
-                           .get();
+    // Set up event data using internal update
+    auto setupResult =
+        engine_
+            ->executeScript(sessionId_,
+                            "_updateEvent({name: 'user.action', data: {userId: 123, action: 'click'}}); true")
+            .get();
     ASSERT_TRUE(setupResult.isSuccess());
 
     // Test using event in conditional expressions
@@ -172,12 +202,13 @@ TEST_F(EventSystemTest, EventInExpressions) {
 
 // Test event object serialization
 TEST_F(EventSystemTest, EventSerialization) {
-    // Set up event with complex data
-    auto setupResult = engine_
-                           ->executeScript(sessionId_, "_event.name = 'complex.event'; "
-                                                       "_event.data = {user: {id: 1, name: "
-                                                       "'test'}, items: [1, 2, 3]}; true")
-                           .get();
+    // Set up event with complex data using internal update
+    auto setupResult =
+        engine_
+            ->executeScript(
+                sessionId_,
+                "_updateEvent({name: 'complex.event', data: {user: {id: 1, name: 'test'}, items: [1, 2, 3]}}); true")
+            .get();
     ASSERT_TRUE(setupResult.isSuccess());
 
     // Test JSON serialization of event data
@@ -199,11 +230,10 @@ TEST_F(EventSystemTest, EventSerialization) {
 
 // Test event object across multiple evaluations
 TEST_F(EventSystemTest, EventPersistence) {
-    // Set event data in first evaluation
-    auto setResult = engine_
-                         ->executeScript(sessionId_, "_event.name = 'persistent.event'; "
-                                                     "_event.data = 'persistent_data'; true")
-                         .get();
+    // Set event data in first evaluation using internal update
+    auto setResult =
+        engine_->executeScript(sessionId_, "_updateEvent({name: 'persistent.event', data: 'persistent_data'}); true")
+            .get();
     ASSERT_TRUE(setResult.isSuccess());
 
     // Check event data persists in subsequent evaluations
@@ -215,8 +245,8 @@ TEST_F(EventSystemTest, EventPersistence) {
     ASSERT_TRUE(checkDataResult.isSuccess());
     EXPECT_EQ(checkDataResult.getValue<std::string>(), "persistent_data");
 
-    // Modify in another evaluation
-    auto modifyResult = engine_->executeScript(sessionId_, "_event.data = 'modified_data'; _event.data").get();
+    // Modify in another evaluation using internal update
+    auto modifyResult = engine_->executeScript(sessionId_, "_updateEvent({data: 'modified_data'}); _event.data").get();
     ASSERT_TRUE(modifyResult.isSuccess());
     EXPECT_EQ(modifyResult.getValue<std::string>(), "modified_data");
 
@@ -224,4 +254,30 @@ TEST_F(EventSystemTest, EventPersistence) {
     auto verifyResult = engine_->evaluateExpression(sessionId_, "_event.data").get();
     ASSERT_TRUE(verifyResult.isSuccess());
     EXPECT_EQ(verifyResult.getValue<std::string>(), "modified_data");
+}
+
+// Test SCXML W3C compliant error handling for _event modification attempts
+TEST_F(EventSystemTest, W3C_EventModificationErrorHandling) {
+    // First verify _event object exists
+    auto typeCheckResult = engine_->evaluateExpression(sessionId_, "typeof _event").get();
+    ASSERT_TRUE(typeCheckResult.isSuccess());
+    EXPECT_EQ(typeCheckResult.getValue<std::string>(), "object");
+
+    // Test that _event properties are enumerable
+    auto keysResult = engine_->evaluateExpression(sessionId_, "Object.keys(_event).sort().join(',')").get();
+    ASSERT_TRUE(keysResult.isSuccess());
+    EXPECT_EQ(keysResult.getValue<std::string>(), "data,invokeid,name,origin,origintype,sendid,type");
+
+    // Test that direct assignment to _event object fails (the object itself should be protected)
+    auto directAssignResult =
+        engine_->executeScript(sessionId_, "try { _event = {}; 'success'; } catch(e) { 'error: ' + e.message; }").get();
+    ASSERT_TRUE(directAssignResult.isSuccess());
+    std::string assignResult = directAssignResult.getValue<std::string>();
+    EXPECT_TRUE(assignResult.find("error:") == 0 || assignResult.find("Cannot") != std::string::npos)
+        << "Direct assignment to _event should fail, got: " << assignResult;
+
+    // Test that delete operations on _event properties fail
+    auto deleteResult = engine_->executeScript(sessionId_, "delete _event.name; _event.hasOwnProperty('name')").get();
+    ASSERT_TRUE(deleteResult.isSuccess());
+    EXPECT_TRUE(deleteResult.getValue<bool>()) << "_event.name property should still exist after delete attempt";
 }

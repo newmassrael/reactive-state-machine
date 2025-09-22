@@ -447,9 +447,9 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
     }
 
     try {
-        // Create _event object with current event data
+        // Create _event object using internal _updateEvent function (SCXML W3C compliance)
         std::ostringstream eventScript;
-        eventScript << "_event = { name: '" << currentEventName_ << "', data: ";
+        eventScript << "_updateEvent({ name: '" << currentEventName_ << "', data: ";
 
         if (currentEventData_.empty()) {
             eventScript << "null";
@@ -458,7 +458,7 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
             eventScript << currentEventData_;
         }
 
-        eventScript << ", type: '', sendid: '', origin: '', origintype: '', invokeid: '' };";
+        eventScript << ", type: '', sendid: '', origin: '', origintype: '', invokeid: '' });";
 
         auto result = JSEngine::instance().executeScript(sessionId_, eventScript.str()).get();
         return result.isSuccess();

@@ -245,8 +245,11 @@ TEST_F(StateMachineIntegrationTest, EventSystemIntegration) {
     EXPECT_TRUE(initResult.isSuccess());
 
     // Simulate event reception and processing
-    // Set up event object (this would normally be done by the engine)
-    auto eventSetup = engine_->executeScript(sessionId_, "_event.name = 'testEvent'; _event.type = 'platform';").get();
+    // Set up event object using internal _updateEvent function (SCXML W3C compliance)
+    auto eventSetup = engine_
+                          ->executeScript(sessionId_, "_updateEvent({ name: 'testEvent', type: 'platform', sendid: '', "
+                                                      "origin: '', origintype: '', invokeid: '', data: null });")
+                          .get();
     EXPECT_TRUE(eventSetup.isSuccess());
 
     // Execute transition script
