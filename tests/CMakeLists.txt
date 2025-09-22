@@ -218,6 +218,7 @@ add_executable(integration_tests
     integration/SCXMLEventTest.cpp
     integration/EventSchedulingTest.cpp
     integration/HttpEventTargetTest.cpp
+    integration/SimpleMockHttpServer.cpp
     integration/ParallelStateIntegrationTest.cpp
     integration/SCXMLParallelParsingTest.cpp
     integration/ParallelStateEndToEndTest.cpp

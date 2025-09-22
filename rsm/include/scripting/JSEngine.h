@@ -21,6 +21,7 @@ struct JSValue;
 // JSValueConst is defined by QuickJS, no need to redefine
 
 namespace RSM {
+class StateMachine;
 
 /**
  * @brief Thread-safe session-based JavaScript engine
@@ -143,6 +144,13 @@ public:
     bool registerGlobalFunction(const std::string &functionName,
                                 std::function<ScriptValue(const std::vector<ScriptValue> &)> callback);
 
+    /**
+     * @brief Set the StateMachine instance for In() function integration
+     * @param stateMachine Pointer to the StateMachine instance
+     * @param sessionId Session ID to associate with this state machine
+     */
+    void setStateMachine(StateMachine *stateMachine, const std::string &sessionId);
+
     // === Engine Information ===
 
     /**
@@ -236,6 +244,9 @@ private:
     // === Global Functions ===
     std::unordered_map<std::string, std::function<ScriptValue(const std::vector<ScriptValue> &)>> globalFunctions_;
     std::mutex globalFunctionsMutex_;
+    // === StateMachine Integration ===
+    std::unordered_map<std::string, StateMachine *> stateMachines_;  // sessionId -> StateMachine*
+    mutable std::mutex stateMachinesMutex_;
 
     // === Internal Methods ===
     void executionWorker();
@@ -267,6 +278,9 @@ private:
 
     // Static callback functions for QuickJS
     static JSValue inFunctionWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
+
+    // Helper method for In() function
+    bool checkStateActive(const std::string &stateName) const;
     static JSValue consoleFunctionWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
 
     // Type conversion

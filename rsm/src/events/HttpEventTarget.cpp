@@ -1,5 +1,6 @@
 #include "events/HttpEventTarget.h"
 #include "common/Logger.h"
+#include <algorithm>
 #include <regex>
 #include <sstream>
 #include <thread>
@@ -51,8 +52,17 @@ std::string HttpEventTarget::getTargetType() const {
 }
 
 bool HttpEventTarget::canHandle(const std::string &targetUri) const {
-    std::regex httpPattern(R"(^https?://[^\s/$.?#].[^\s]*$)", std::regex_constants::icase);
-    return std::regex_match(targetUri, httpPattern);
+    // Extract scheme from target URI
+    std::string targetScheme;
+    size_t schemeEnd = targetUri.find("://");
+    if (schemeEnd != std::string::npos) {
+        targetScheme = targetUri.substr(0, schemeEnd);
+        // Convert to lowercase for comparison
+        std::transform(targetScheme.begin(), targetScheme.end(), targetScheme.begin(), ::tolower);
+    }
+
+    // Only handle URLs that match our specific scheme
+    return targetScheme == scheme_;
 }
 
 std::vector<std::string> HttpEventTarget::validate() const {

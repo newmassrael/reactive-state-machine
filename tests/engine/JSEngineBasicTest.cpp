@@ -1,3 +1,4 @@
+#include "runtime/StateMachine.h"
 #include "scripting/JSEngine.h"
 #include <gtest/gtest.h>
 #include <iostream>
@@ -332,4 +333,72 @@ TEST_F(JSEngineBasicTest, ECMAScript_DataTypes_ObjectLiterals) {
     auto secondEntry = entryArray->elements[1];
     EXPECT_TRUE(std::holds_alternative<std::string>(secondEntry)) << "Second entry should be string";
     EXPECT_EQ(std::get<std::string>(secondEntry), "child1_entry") << "Second entry should be 'child1_entry'";
+}
+
+TEST_F(JSEngineBasicTest, W3C_InFunction_StateMachineIntegration_ShouldReturnCorrectStateStatus) {
+    // Test that In() function can correctly check StateMachine state status
+
+    // First, verify In() function exists and returns false when no StateMachine is registered
+    auto inTypeResult = engine_->evaluateExpression(sessionId_, "typeof In").get();
+    ASSERT_TRUE(inTypeResult.isSuccess());
+    EXPECT_EQ(inTypeResult.getValue<std::string>(), "function");
+
+    // Should return false for any state when no StateMachine is connected
+    auto noStateMachineResult = engine_->evaluateExpression(sessionId_, "In('idle')").get();
+    ASSERT_TRUE(noStateMachineResult.isSuccess());
+    EXPECT_FALSE(noStateMachineResult.getValue<bool>())
+        << "In() should return false when no StateMachine is registered";
+
+    // Create a simple SCXML for testing
+    std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="idle">
+    <state id="idle">
+        <transition event="start" target="running"/>
+    </state>
+    <state id="running">
+        <transition event="stop" target="idle"/>
+    </state>
+</scxml>)";
+
+    // Create and start StateMachine
+    RSM::StateMachine sm;
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxml)) << "Failed to load SCXML";
+    ASSERT_TRUE(sm.start()) << "Failed to start StateMachine";
+
+    // Now In() should correctly reflect the StateMachine state
+    auto idleCheckResult = engine_->evaluateExpression(sessionId_, "In('idle')").get();
+    ASSERT_TRUE(idleCheckResult.isSuccess()) << "In('idle') evaluation failed";
+    EXPECT_TRUE(idleCheckResult.getValue<bool>()) << "StateMachine should be in 'idle' state initially";
+
+    auto runningCheckResult = engine_->evaluateExpression(sessionId_, "In('running')").get();
+    ASSERT_TRUE(runningCheckResult.isSuccess()) << "In('running') evaluation failed";
+    EXPECT_FALSE(runningCheckResult.getValue<bool>()) << "StateMachine should NOT be in 'running' state initially";
+
+    // Trigger state transition
+    auto transitionResult = sm.processEvent("start");
+    ASSERT_TRUE(transitionResult.success) << "Failed to process 'start' event: " << transitionResult.errorMessage;
+    EXPECT_EQ(transitionResult.toState, "running") << "Should transition to 'running' state";
+
+    // Verify In() function reflects the new state
+    auto idleAfterTransition = engine_->evaluateExpression(sessionId_, "In('idle')").get();
+    ASSERT_TRUE(idleAfterTransition.isSuccess()) << "In('idle') evaluation failed after transition";
+    EXPECT_FALSE(idleAfterTransition.getValue<bool>()) << "StateMachine should NOT be in 'idle' state after transition";
+
+    auto runningAfterTransition = engine_->evaluateExpression(sessionId_, "In('running')").get();
+    ASSERT_TRUE(runningAfterTransition.isSuccess()) << "In('running') evaluation failed after transition";
+    EXPECT_TRUE(runningAfterTransition.getValue<bool>())
+        << "StateMachine should be in 'running' state after transition";
+
+    // Test with non-existent state
+    auto nonExistentResult = engine_->evaluateExpression(sessionId_, "In('nonexistent')").get();
+    ASSERT_TRUE(nonExistentResult.isSuccess()) << "In('nonexistent') evaluation failed";
+    EXPECT_FALSE(nonExistentResult.getValue<bool>()) << "In() should return false for non-existent states";
+
+    // Stop StateMachine and verify cleanup
+    sm.stop();
+
+    // After stopping, In() should return false again (StateMachine unregistered)
+    auto afterStopResult = engine_->evaluateExpression(sessionId_, "In('idle')").get();
+    ASSERT_TRUE(afterStopResult.isSuccess()) << "In('idle') evaluation failed after stop";
+    EXPECT_FALSE(afterStopResult.getValue<bool>()) << "In() should return false after StateMachine is stopped";
 }

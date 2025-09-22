@@ -1,6 +1,7 @@
 #include "scripting/JSEngine.h"
 #include "common/Logger.h"
 #include "quickjs.h"
+#include "runtime/StateMachine.h"
 #include <chrono>
 #include <cstring>
 #include <iostream>
@@ -714,12 +715,9 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
         return JS_EXCEPTION;
     }
 
-    // For now, always return false as we don't have state machine integration yet
-    // In a real implementation, this would check the current state machine state
-    bool result = false;
-
-    // TODO: Integrate with actual state machine to check if we're in the specified state
-    // This would require access to the current state machine context
+    // SCXML W3C Section 5.9.2: In() predicate function
+    std::string stateNameStr(stateName);
+    bool result = JSEngine::instance().checkStateActive(stateNameStr);
 
     JS_FreeCString(ctx, stateName);
     return JS_NewBool(ctx, result);
@@ -746,6 +744,33 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
     // For now, just print to stderr for testing
     std::cerr << "RSM console.log: " << ss.str() << std::endl;
     return JS_UNDEFINED;
+}
+
+bool JSEngine::checkStateActive(const std::string &stateName) const {
+    std::lock_guard<std::mutex> lock(stateMachinesMutex_);
+
+    // Check all registered StateMachines for the given state
+    for (const auto &pair : stateMachines_) {
+        StateMachine *sm = pair.second;
+        if (sm && sm->isStateActive(stateName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void JSEngine::setStateMachine(StateMachine *stateMachine, const std::string &sessionId) {
+    std::lock_guard<std::mutex> lock(stateMachinesMutex_);
+    if (stateMachine) {
+        stateMachines_[sessionId] = stateMachine;
+        Logger::debug("JSEngine: StateMachine set for session: {}", sessionId);
+    } else {
+        auto it = stateMachines_.find(sessionId);
+        if (it != stateMachines_.end()) {
+            stateMachines_.erase(it);
+            Logger::debug("JSEngine: StateMachine removed for session: {}", sessionId);
+        }
+    }
 }
 
 }  // namespace RSM

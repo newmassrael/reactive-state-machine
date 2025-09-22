@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include <thread>
 
+#include "SimpleMockHttpServer.h"
 #include "actions/SendAction.h"
 #include "common/Logger.h"
 #include "events/EventTargetFactoryImpl.h"
@@ -19,30 +20,43 @@ namespace RSM {
 class HttpEventTargetTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // Start embedded mock HTTP server
+        mockServer_ = std::make_unique<SimpleMockHttpServer>();
+        mockServerUrl_ = mockServer_->start();
+        ASSERT_FALSE(mockServerUrl_.empty()) << "Failed to start mock HTTP server";
+
+        Logger::info("HttpEventTargetTest: Mock server started at {}", mockServerUrl_);
+
         // Create basic infrastructure
         actionExecutor_ = std::make_shared<ActionExecutorImpl>("test_session");
         targetFactory_ = std::make_shared<EventTargetFactoryImpl>(actionExecutor_->getEventRaiser());
     }
 
     void TearDown() override {
-        // Cleanup
+        // Stop mock server
+        if (mockServer_) {
+            mockServer_->stop();
+            Logger::info("HttpEventTargetTest: Mock server stopped");
+        }
     }
 
 protected:
     std::shared_ptr<ActionExecutorImpl> actionExecutor_;
     std::shared_ptr<EventTargetFactoryImpl> targetFactory_;
+    std::unique_ptr<SimpleMockHttpServer> mockServer_;
+    std::string mockServerUrl_;
 };
 
 /**
  * @brief Test HTTP target creation and validation
  */
 TEST_F(HttpEventTargetTest, HttpTargetCreation) {
-    // Test HTTP target creation
-    auto httpTarget = std::make_shared<HttpEventTarget>("http://httpbin.org/post");
+    // Test HTTP target creation with mock server
+    auto httpTarget = std::make_shared<HttpEventTarget>(mockServerUrl_ + "/post");
 
     EXPECT_EQ(httpTarget->getTargetType(), "http");
     EXPECT_TRUE(httpTarget->canHandle("http://example.com"));
-    EXPECT_TRUE(httpTarget->canHandle("https://example.com"));
+    EXPECT_FALSE(httpTarget->canHandle("https://example.com"));  // Different scheme
     EXPECT_FALSE(httpTarget->canHandle("ftp://example.com"));
     EXPECT_FALSE(httpTarget->canHandle("invalid-url"));
 
@@ -54,15 +68,16 @@ TEST_F(HttpEventTargetTest, HttpTargetCreation) {
     std::string debugInfo = httpTarget->getDebugInfo();
     EXPECT_FALSE(debugInfo.empty());
     EXPECT_NE(debugInfo.find("HttpEventTarget"), std::string::npos);
-    EXPECT_NE(debugInfo.find("http://httpbin.org/post"), std::string::npos);
+    EXPECT_NE(debugInfo.find("127.0.0.1"), std::string::npos);
 }
 
 /**
  * @brief Test HTTPS target creation
  */
 TEST_F(HttpEventTargetTest, HttpsTargetCreation) {
-    // Test HTTPS target creation
-    auto httpsTarget = std::make_shared<HttpEventTarget>("https://httpbin.org/post");
+    // Test HTTPS target creation (mock server only supports HTTP)
+    // This test only validates the target creation, not actual HTTPS communication
+    auto httpsTarget = std::make_shared<HttpEventTarget>("https://example.com/post");
 
     EXPECT_EQ(httpsTarget->getTargetType(), "https");
 
@@ -92,13 +107,13 @@ TEST_F(HttpEventTargetTest, InvalidUrlHandling) {
  * @brief Test factory integration
  */
 TEST_F(HttpEventTargetTest, FactoryIntegration) {
-    // Test HTTP target creation via factory
-    auto httpTarget = targetFactory_->createTarget("http://httpbin.org/post");
+    // Test HTTP target creation via factory with mock server
+    auto httpTarget = targetFactory_->createTarget(mockServerUrl_ + "/post");
     ASSERT_NE(httpTarget, nullptr);
     EXPECT_EQ(httpTarget->getTargetType(), "http");
 
-    // Test HTTPS target creation via factory
-    auto httpsTarget = targetFactory_->createTarget("https://httpbin.org/post");
+    // Test HTTPS target creation via factory (validation only)
+    auto httpsTarget = targetFactory_->createTarget("https://example.com/post");
     ASSERT_NE(httpsTarget, nullptr);
     EXPECT_EQ(httpsTarget->getTargetType(), "https");
 
@@ -120,82 +135,60 @@ TEST_F(HttpEventTargetTest, FactoryIntegration) {
 }
 
 /**
- * @brief Test HTTP event sending with mock server
+ * @brief Test HTTP event sending with embedded mock server
  *
- * Note: This test uses httpbin.org as a test server. In a real production
- * environment, you would use a local mock server for reliable testing.
+ * This test uses an embedded mock HTTP server for reliable testing
+ * without external network dependencies.
  */
 TEST_F(HttpEventTargetTest, BasicHttpEventSending) {
-    // Create HTTP target
-    auto httpTarget = std::make_shared<HttpEventTarget>("http://httpbin.org/post");
+    // Create HTTP target with mock server URL
+    auto httpTarget = std::make_shared<HttpEventTarget>(mockServerUrl_ + "/post");
 
     // Create test event
     EventDescriptor event;
     event.eventName = "test.event";
     event.data = R"({"message": "hello world", "timestamp": 12345})";
     event.sendId = "test_001";
-    event.target = "http://httpbin.org/post";
+    event.target = mockServerUrl_ + "/post";
 
     // Send event (async)
     auto resultFuture = httpTarget->send(event);
 
-    // Wait for result with timeout
-    auto status = resultFuture.wait_for(std::chrono::seconds(10));
+    // Wait for result with shorter timeout (local server should be fast)
+    auto status = resultFuture.wait_for(std::chrono::seconds(5));
 
-    if (status == std::future_status::ready) {
-        auto result = resultFuture.get();
+    ASSERT_EQ(status, std::future_status::ready) << "HTTP request should complete quickly with mock server";
 
-        // Check if successful (might fail due to network issues in test environment)
-        if (result.isSuccess) {
-            EXPECT_EQ(result.sendId, "test_001");
-            EXPECT_TRUE(result.errorMessage.empty());
-            Logger::info("HTTP test successful - sent event to httpbin.org");
-        } else {
-            // Log the failure but don't fail the test (network issues)
-            Logger::warn("HTTP test failed (network issue?): {}", result.errorMessage);
-            EXPECT_FALSE(result.errorMessage.empty());
-        }
-    } else {
-        FAIL() << "HTTP request timed out";
-    }
+    auto result = resultFuture.get();
+
+    // Should always succeed with mock server
+    EXPECT_TRUE(result.isSuccess) << "Mock server should always respond successfully: " << result.errorMessage;
+    EXPECT_EQ(result.sendId, "test_001");
+    EXPECT_TRUE(result.errorMessage.empty());
+
+    Logger::info("HTTP test successful - sent event to mock server at {}", mockServerUrl_);
 }
 
 /**
- * @brief Test HTTPS event sending with mock server
+ * @brief Test HTTPS target functionality (validation only)
+ *
+ * Note: Our embedded mock server only supports HTTP, so this test
+ * focuses on HTTPS target creation and validation rather than actual communication.
  */
-TEST_F(HttpEventTargetTest, BasicHttpsEventSending) {
-    // Create HTTPS target
-    auto httpsTarget = std::make_shared<HttpEventTarget>("https://httpbin.org/post");
+TEST_F(HttpEventTargetTest, BasicHttpsTargetValidation) {
+    // Create HTTPS target (for validation testing)
+    auto httpsTarget = std::make_shared<HttpEventTarget>("https://example.com/post");
 
-    // Create test event
-    EventDescriptor event;
-    event.eventName = "test.https.event";
-    event.data = "test data";
-    event.sendId = "https_test_001";
-    event.target = "https://httpbin.org/post";
+    // Validate target properties
+    EXPECT_EQ(httpsTarget->getTargetType(), "https");
+    EXPECT_TRUE(httpsTarget->canHandle("https://example.com"));
+    EXPECT_FALSE(httpsTarget->canHandle("http://example.com"));  // Different scheme
 
-    // Send event (async)
-    auto resultFuture = httpsTarget->send(event);
+    // Validate target
+    auto errors = httpsTarget->validate();
+    EXPECT_TRUE(errors.empty()) << "HTTPS target should be valid";
 
-    // Wait for result with timeout
-    auto status = resultFuture.wait_for(std::chrono::seconds(10));
-
-    if (status == std::future_status::ready) {
-        auto result = resultFuture.get();
-
-        // Check if successful (might fail due to network issues in test environment)
-        if (result.isSuccess) {
-            EXPECT_EQ(result.sendId, "https_test_001");
-            EXPECT_TRUE(result.errorMessage.empty());
-            Logger::info("HTTPS test successful - sent event to httpbin.org");
-        } else {
-            // Log the failure but don't fail the test (network issues)
-            Logger::warn("HTTPS test failed (network issue?): {}", result.errorMessage);
-            EXPECT_FALSE(result.errorMessage.empty());
-        }
-    } else {
-        FAIL() << "HTTPS request timed out";
-    }
+    Logger::info("HTTPS target validation successful");
 }
 
 /**

@@ -114,6 +114,10 @@ void StateMachine::stop() {
         hierarchyManager_->reset();
     }
 
+    // Unregister from JSEngine
+    RSM::JSEngine::instance().setStateMachine(nullptr, sessionId_);
+    Logger::debug("StateMachine: Unregistered from JSEngine");
+
     updateStatistics();
     Logger::info("StateMachine: Stopped");
 }
@@ -586,6 +590,10 @@ bool StateMachine::setupJSEnvironment() {
     // Set up basic variables
     RSM::JSEngine::instance().setVariable(sessionId_, "_sessionid", ScriptValue{sessionId_});
     RSM::JSEngine::instance().setVariable(sessionId_, "_name", ScriptValue{std::string("StateMachine")});
+
+    // Register this StateMachine instance with JSEngine for In() function support
+    RSM::JSEngine::instance().setStateMachine(this, sessionId_);
+    Logger::debug("StateMachine: Registered with JSEngine for In() function support");
 
     // Initialize data model variables from SCXML model
     if (model_) {
