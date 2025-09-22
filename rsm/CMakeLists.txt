@@ -98,6 +98,7 @@ add_library(rsm_unified
     src/states/ConcurrentEventBroadcaster.cpp
     src/states/ConcurrentCompletionMonitor.cpp
     src/states/ExternalTransitionHandler.cpp
+    src/states/StateExitExecutor.cpp
 
     # Scripting implementation
     src/scripting/JSEngine.cpp

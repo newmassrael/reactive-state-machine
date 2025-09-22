@@ -5,6 +5,7 @@
 #include "events/EventDescriptor.h"
 #include "model/IStateNode.h"
 #include "runtime/IExecutionContext.h"
+#include "states/IStateExitHandler.h"
 #include <cassert>
 #include <memory>
 #include <string>
@@ -153,7 +154,7 @@ public:
     /**
      * @brief Set ExecutionContext for action execution
      *
-     * SOLID: Dependency Injection - allows runtime injection of ExecutionContext
+     * Dependency Injection - allows runtime injection of ExecutionContext
      * from StateMachine for proper JavaScript action execution
      *
      * @param executionContext Execution context from StateMachine
@@ -172,6 +173,9 @@ private:
     // SCXML state tracking
     std::vector<std::string> activeStates_;
     bool isInFinalState_;
+
+    // Depends on IStateExitHandler abstraction, not concrete implementation
+    std::shared_ptr<IStateExitHandler> exitHandler_;
 
     // Private methods for internal state management
 

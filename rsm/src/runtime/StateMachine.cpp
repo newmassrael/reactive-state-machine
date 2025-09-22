@@ -721,7 +721,7 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
             }
         }
 
-        // SOLID: Dependency Injection - provide ExecutionContext to all regions for action execution
+        // provide ExecutionContext to all regions for action execution
         if (executionContext_) {
             parallelState->setExecutionContextForRegions(executionContext_);
             Logger::debug("StateMachine: Injected ExecutionContext into all regions of parallel state: " + stateId);

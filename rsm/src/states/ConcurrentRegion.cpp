@@ -7,6 +7,7 @@
 #include "model/ITransitionNode.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
+#include "states/StateExitExecutor.h"
 #include <algorithm>
 
 namespace RSM {
@@ -14,7 +15,7 @@ namespace RSM {
 ConcurrentRegion::ConcurrentRegion(const std::string &id, std::shared_ptr<IStateNode> rootState,
                                    std::shared_ptr<IExecutionContext> executionContext)
     : id_(id), status_(ConcurrentRegionStatus::INACTIVE), rootState_(rootState), executionContext_(executionContext),
-      isInFinalState_(false) {
+      isInFinalState_(false), exitHandler_(std::make_shared<StateExitExecutor>()) {
     // SCXML W3C specification section 3.4: regions must have valid identifiers
     assert(!id_.empty() && "SCXML violation: concurrent region must have non-empty ID");
 
@@ -554,19 +555,63 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
 ConcurrentOperationResult ConcurrentRegion::exitAllStates() {
     Logger::debug("ConcurrentRegion::exitAllStates - Exiting all states in region: " + id_);
 
-    // TODO: Implement proper state exit with state machine integration
-    // This would involve:
-    // 1. Executing exit actions for all active states
-    // 2. Clearing the active configuration
-    // 3. Notifying parent states of exit
+    try {
+        // SCXML W3C Specification compliance: Exit sequence for parallel states
 
-    // For now, basic state cleanup
-    currentState_.clear();
-    activeStates_.clear();
-    isInFinalState_ = false;
+        bool exitActionsSuccess = true;
 
-    Logger::debug("ConcurrentRegion::exitAllStates - Successfully exited all states in region: " + id_);
-    return ConcurrentOperationResult::success(id_);
+        if (exitHandler_ && !activeStates_.empty()) {
+            // Step 1: Execute exit actions for all active states in document order
+            Logger::debug("ConcurrentRegion::exitAllStates - Executing exit actions for active states");
+
+            exitActionsSuccess = exitHandler_->executeMultipleStateExits(activeStates_, rootState_, executionContext_);
+
+            if (!exitActionsSuccess) {
+                Logger::warn("ConcurrentRegion::exitAllStates - Some exit actions failed, continuing with cleanup");
+            }
+
+            // Step 2: Execute parent region's exit actions (root state exit actions)
+            if (rootState_) {
+                Logger::debug("ConcurrentRegion::exitAllStates - Executing root state exit actions");
+                bool rootExitSuccess = exitHandler_->executeStateExitActions(rootState_, executionContext_);
+                if (!rootExitSuccess) {
+                    Logger::warn("ConcurrentRegion::exitAllStates - Root state exit actions failed");
+                    exitActionsSuccess = false;
+                }
+            }
+        } else {
+            Logger::debug("ConcurrentRegion::exitAllStates - No exit handler or active states, skipping exit actions");
+        }
+
+        // Step 3: Clear the active configuration (always perform cleanup)
+        // SCXML spec: Maintain legal state configuration after transition
+        Logger::debug("ConcurrentRegion::exitAllStates - Clearing active configuration");
+        activeStates_.clear();
+        currentState_.clear();
+        isInFinalState_ = false;
+
+        // Step 4: Parent state notification would be handled by orchestrator
+        // SOLID: Single Responsibility - ConcurrentRegion only manages its own state
+
+        std::string resultMsg = "Successfully exited all states in region: " + id_;
+        if (!exitActionsSuccess) {
+            resultMsg += " (with exit action warnings)";
+        }
+
+        Logger::debug("ConcurrentRegion::exitAllStates - " + resultMsg);
+        return ConcurrentOperationResult::success(id_);
+
+    } catch (const std::exception &e) {
+        std::string errorMsg = "Failed to exit states in region " + id_ + ": " + e.what();
+        Logger::error("ConcurrentRegion::exitAllStates - " + errorMsg);
+
+        // Ensure cleanup even on failure
+        activeStates_.clear();
+        currentState_.clear();
+        isInFinalState_ = false;
+
+        return ConcurrentOperationResult::failure(id_, errorMsg);
+    }
 }
 
 }  // namespace RSM

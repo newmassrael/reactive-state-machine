@@ -223,7 +223,7 @@ public:
     /**
      * @brief Set ExecutionContext for all regions in this parallel state
      *
-     * SOLID: Dependency Injection - allows StateMachine to provide ExecutionContext
+     * Allows StateMachine to provide ExecutionContext
      * for proper action execution in transition processing
      *
      * @param executionContext Shared execution context from StateMachine

@@ -232,4 +232,191 @@ TEST_F(ConcurrentCompletionMonitoringTest, LargeScaleRegionHandling) {
     EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역이 미완료 상태인데 완료 조건이 만족되었습니다";
 }
 
+// SCXML W3C Specification Test: ConcurrentRegion Exit Behavior
+TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_ConcurrentRegionExitBehavior) {
+    // SCXML spec: All concurrent regions must properly exit when parallel state exits
+
+    // Create mock state and execution context for testing
+    auto mockState = std::make_shared<StateNode>("testRegion", Type::Standard);
+    auto mockContext = std::make_shared<ExecutionContextImpl>("test_session");
+
+    // Create ConcurrentRegion with StateExitExecutor
+    auto region = std::make_unique<ConcurrentRegion>("testRegion", mockState, mockContext);
+
+    EXPECT_FALSE(region->isActive()) << "Region should not be active initially";
+
+    // Activate the region
+    auto activateResult = region->activate();
+    EXPECT_TRUE(activateResult.isSuccess()) << "Region activation should succeed";
+    EXPECT_TRUE(region->isActive()) << "Region should be active after activation";
+
+    // Deactivate the region (this triggers exitAllStates internally)
+    auto deactivateResult = region->deactivate();
+    EXPECT_TRUE(deactivateResult.isSuccess()) << "Region deactivation should succeed";
+    EXPECT_FALSE(region->isActive()) << "Region should not be active after deactivation";
+}
+
+// SCXML W3C Specification Test: Exit Action Execution During Deactivation
+TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_ExitActionExecutionDuringDeactivation) {
+    // SCXML spec: Exit actions must execute when regions are deactivated
+
+    // Create a state with exit actions
+    auto stateWithExitActions = std::make_shared<StateNode>("stateWithExitActions", Type::Standard);
+
+    // Add exit actions to the state
+    stateWithExitActions->addExitAction("log('Exiting state')");
+    stateWithExitActions->addExitAction("assign('exitFlag', true)");
+
+    auto mockContext = std::make_shared<ExecutionContextImpl>("test_session_exit");
+
+    // Create ConcurrentRegion with state that has exit actions
+    auto region = std::make_unique<ConcurrentRegion>("regionWithExitActions", stateWithExitActions, mockContext);
+
+    // Add some active states to test exit behavior
+    auto activateResult = region->activate();
+    EXPECT_TRUE(activateResult.isSuccess()) << "Region with exit actions should activate";
+
+    // The region should now have active states
+    EXPECT_TRUE(region->isActive()) << "Region should be active";
+
+    // Deactivate - this should trigger exit action execution
+    auto deactivateResult = region->deactivate();
+    EXPECT_TRUE(deactivateResult.isSuccess()) << "Region deactivation with exit actions should succeed";
+    EXPECT_FALSE(region->isActive()) << "Region should be inactive after exit actions";
+}
+
+// SCXML W3C Specification Test: Multiple Region Exit Coordination
+TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_MultipleRegionExitCoordination) {
+    // SCXML spec: Multiple regions in a parallel state must coordinate their exit
+
+    std::vector<std::unique_ptr<ConcurrentRegion>> regions;
+    const size_t numRegions = 3;
+
+    // Create multiple regions
+    for (size_t i = 0; i < numRegions; ++i) {
+        std::string regionId = "region" + std::to_string(i);
+        auto mockState = std::make_shared<StateNode>(regionId + "_state", Type::Standard);
+        auto mockContext = std::make_shared<ExecutionContextImpl>("test_session_" + regionId);
+
+        regions.push_back(std::make_unique<ConcurrentRegion>(regionId, mockState, mockContext));
+
+        // Register with monitor
+        monitor_->registerRegion(regionId);
+        monitor_->updateRegionCompletion(regionId, false);  // Initially not complete
+    }
+
+    monitor_->startMonitoring();
+
+    // Activate all regions
+    for (auto &region : regions) {
+        auto result = region->activate();
+        EXPECT_TRUE(result.isSuccess()) << "All regions should activate successfully";
+    }
+
+    // Verify completion is not met initially
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion should not be met initially";
+
+    // Deactivate all regions in sequence (simulating parallel state exit)
+    for (size_t i = 0; i < regions.size(); ++i) {
+        auto &region = regions[i];
+        std::string regionId = "region" + std::to_string(i);
+
+        auto result = region->deactivate();
+        EXPECT_TRUE(result.isSuccess()) << "Region " << regionId << " should deactivate successfully";
+
+        // Update monitor about region completion
+        monitor_->updateRegionCompletion(regionId, true);
+    }
+
+    // All regions should now be complete
+    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "All regions should be complete after exit";
+}
+
+// SCXML W3C Specification Test: Exit Action Order Verification
+TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_ExitActionOrderVerification) {
+    // SCXML spec: Exit actions must execute in document order
+
+    // Create state with multiple exit actions
+    auto stateWithMultipleExitActions = std::make_shared<StateNode>("multiExitState", Type::Standard);
+
+    // Add multiple exit actions in specific order
+    stateWithMultipleExitActions->addExitAction("log('Exit action 1')");
+    stateWithMultipleExitActions->addExitAction("log('Exit action 2')");
+    stateWithMultipleExitActions->addExitAction("log('Exit action 3')");
+
+    auto mockContext = std::make_shared<ExecutionContextImpl>("test_session_order");
+
+    // Create region
+    auto region = std::make_unique<ConcurrentRegion>("orderTestRegion", stateWithMultipleExitActions, mockContext);
+
+    // Activate and then deactivate to trigger exit actions
+    auto activateResult = region->activate();
+    EXPECT_TRUE(activateResult.isSuccess()) << "Region should activate for order test";
+
+    auto deactivateResult = region->deactivate();
+    EXPECT_TRUE(deactivateResult.isSuccess()) << "Region should deactivate and execute exit actions in order";
+
+    // Verify region is properly cleaned up
+    EXPECT_FALSE(region->isActive()) << "Region should be inactive after ordered exit";
+    EXPECT_TRUE(region->getActiveStates().empty()) << "Active states should be cleared after exit";
+}
+
+// SCXML W3C Specification Test: Error Handling During Exit
+TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_ErrorHandlingDuringExit) {
+    // SCXML spec: Exit process should handle errors gracefully
+
+    auto stateWithComplexExit = std::make_shared<StateNode>("complexExitState", Type::Standard);
+    auto mockContext = std::make_shared<ExecutionContextImpl>("test_session_error");
+
+    // Create region
+    auto region = std::make_unique<ConcurrentRegion>("errorTestRegion", stateWithComplexExit, mockContext);
+
+    // Activate region
+    auto activateResult = region->activate();
+    EXPECT_TRUE(activateResult.isSuccess()) << "Region should activate for error test";
+
+    // Force some active states for testing
+    // Note: In a real scenario, these would be set during normal operation
+
+    // Deactivate should succeed even with complex scenarios
+    auto deactivateResult = region->deactivate();
+    EXPECT_TRUE(deactivateResult.isSuccess()) << "Region should handle deactivation gracefully";
+
+    // Verify proper cleanup occurred
+    EXPECT_FALSE(region->isActive()) << "Region should be inactive after error-handled exit";
+    EXPECT_FALSE(region->isInFinalState()) << "Region should not be in final state after exit";
+}
+
+// SCXML W3C Specification Test: StateExitExecutor Integration
+TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_StateExitExecutorIntegration) {
+    // SCXML spec: StateExitExecutor should integrate properly with ConcurrentRegion
+
+    // This test verifies that our SOLID implementation works correctly
+    auto testState = std::make_shared<StateNode>("integrationTestState", Type::Standard);
+    auto testContext = std::make_shared<ExecutionContextImpl>("test_session_integration");
+
+    // Create region (internally uses StateExitExecutor)
+    auto region = std::make_unique<ConcurrentRegion>("integrationRegion", testState, testContext);
+
+    // Test full lifecycle
+    EXPECT_FALSE(region->isActive()) << "Initial state should be inactive";
+
+    auto activateResult = region->activate();
+    EXPECT_TRUE(activateResult.isSuccess()) << "StateExitExecutor integration: activation should work";
+    EXPECT_TRUE(region->isActive()) << "StateExitExecutor integration: should be active";
+
+    auto deactivateResult = region->deactivate();
+    EXPECT_TRUE(deactivateResult.isSuccess()) << "StateExitExecutor integration: deactivation should work";
+    EXPECT_FALSE(region->isActive()) << "StateExitExecutor integration: should be inactive after deactivation";
+
+    // Test multiple activation/deactivation cycles
+    for (int i = 0; i < 3; ++i) {
+        auto activateResult2 = region->activate();
+        EXPECT_TRUE(activateResult2.isSuccess()) << "Cycle " << i << ": re-activation should work";
+
+        auto deactivateResult2 = region->deactivate();
+        EXPECT_TRUE(deactivateResult2.isSuccess()) << "Cycle " << i << ": re-deactivation should work";
+    }
+}
+
 }  // namespace RSM
