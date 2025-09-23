@@ -47,16 +47,17 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
     }
 
     JSContext *ctx = session->jsContext;
-    
+
     // First try to evaluate as-is
     ::JSValue result = JS_Eval(ctx, expression.c_str(), expression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
 
     // If it failed and the expression starts with '{', try wrapping in parentheses for object literals
     if (JS_IsException(result) && !expression.empty() && expression[0] == '{') {
         JS_FreeValue(ctx, result);  // Free the exception
-        
+
         std::string wrappedExpression = "(" + expression + ")";
-        result = JS_Eval(ctx, wrappedExpression.c_str(), wrappedExpression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
+        result =
+            JS_Eval(ctx, wrappedExpression.c_str(), wrappedExpression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
     }
 
     if (JS_IsException(result)) {
@@ -195,7 +196,47 @@ JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const s
         session->currentEvent.reset();
     }
 
-    JS_SetPropertyStr(ctx, global, "_event", eventObj);
+    // Update internal __eventData object (bypasses read-only _event protection)
+    ::JSValue eventDataProperty = JS_GetPropertyStr(ctx, global, "__eventData");
+    if (!JS_IsObject(eventDataProperty)) {
+        JS_FreeValue(ctx, eventDataProperty);
+        JS_FreeValue(ctx, eventObj);
+        JS_FreeValue(ctx, global);
+        return JSResult::createError("__eventData object not found");
+    }
+
+    if (event) {
+        // Set event properties on the internal data object
+        JS_SetPropertyStr(ctx, eventDataProperty, "name", JS_NewString(ctx, event->getName().c_str()));
+        JS_SetPropertyStr(ctx, eventDataProperty, "type", JS_NewString(ctx, event->getType().c_str()));
+        JS_SetPropertyStr(ctx, eventDataProperty, "sendid", JS_NewString(ctx, event->getSendId().c_str()));
+        JS_SetPropertyStr(ctx, eventDataProperty, "origin", JS_NewString(ctx, event->getOrigin().c_str()));
+        JS_SetPropertyStr(ctx, eventDataProperty, "origintype", JS_NewString(ctx, event->getOriginType().c_str()));
+        JS_SetPropertyStr(ctx, eventDataProperty, "invokeid", JS_NewString(ctx, event->getInvokeId().c_str()));
+
+        // Parse and set event data as JSON or fallback to undefined
+        if (event->hasData()) {
+            std::string dataStr = event->getDataAsString();
+            ::JSValue dataValue = JS_ParseJSON(ctx, dataStr.c_str(), dataStr.length(), "<event-data>");
+            if (!JS_IsException(dataValue)) {
+                JS_SetPropertyStr(ctx, eventDataProperty, "data", dataValue);
+            } else {
+                JS_SetPropertyStr(ctx, eventDataProperty, "data", JS_UNDEFINED);
+            }
+        } else {
+            JS_SetPropertyStr(ctx, eventDataProperty, "data", JS_UNDEFINED);
+        }
+    } else {
+        // Reset all event properties to empty/undefined values
+        const char *props[] = {"name", "type", "sendid", "origin", "origintype", "invokeid"};
+        for (int i = 0; i < 6; i++) {
+            JS_SetPropertyStr(ctx, eventDataProperty, props[i], JS_NewString(ctx, ""));
+        }
+        JS_SetPropertyStr(ctx, eventDataProperty, "data", JS_UNDEFINED);
+    }
+
+    JS_FreeValue(ctx, eventDataProperty);
+    JS_FreeValue(ctx, eventObj);
     JS_FreeValue(ctx, global);
 
     return JSResult::createSuccess();
@@ -257,7 +298,7 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
         int64_t length = 0;
         JS_ToInt64(ctx, &length, lengthVal);
         JS_FreeValue(ctx, lengthVal);
-        
+
         scriptArray->elements.reserve(static_cast<size_t>(length));
         for (int64_t i = 0; i < length; ++i) {
             JSValue element = JS_GetPropertyUint32(ctx, qjsValue, static_cast<uint32_t>(i));
@@ -269,7 +310,7 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
         auto scriptObject = std::make_shared<ScriptObject>();
         JSPropertyEnum *props = nullptr;
         uint32_t propCount = 0;
-        
+
         if (JS_GetOwnPropertyNames(ctx, &props, &propCount, qjsValue, JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
             for (uint32_t i = 0; i < propCount; ++i) {
                 const char *key = JS_AtomToCString(ctx, props[i].atom);

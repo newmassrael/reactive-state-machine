@@ -628,8 +628,9 @@ void JSEngine::setupEventObject(JSContext *ctx, const std::string &sessionId) {
     std::string eventSetupCode = R"(
         (function() {
             var sessionId = ')" + sessionId +
-                                 R"(';  // SOLID: Dependency Injection
-            var eventData = {
+                                 R"(';
+            // Global event data object that C++ can access directly
+            this.__eventData = {
                 name: '',
                 type: '',
                 sendid: '',
@@ -659,7 +660,7 @@ void JSEngine::setupEventObject(JSContext *ctx, const std::string &sessionId) {
             for (var i = 0; i < eventProps.length; i++) {
                 (function(propName) {
                     Object.defineProperty(_event, propName, {
-                        get: function() { return eventData[propName]; },
+                        get: function() { return __eventData[propName]; },
                         set: function(value) {
                             // SCXML W3C Spec: Attempts to modify system variables should fail
                             // and place 'error.execution' on internal event queue
@@ -674,14 +675,7 @@ void JSEngine::setupEventObject(JSContext *ctx, const std::string &sessionId) {
                 })(eventProps[i]);
             }
 
-            // Helper function to update _event (used internally by JSEngine)
-            this._updateEvent = function(newEventData) {
-                for (var prop in newEventData) {
-                    if (eventData.hasOwnProperty(prop)) {
-                        eventData[prop] = newEventData[prop];
-                    }
-                }
-            };
+            // C++ directly accesses __eventData, no helper function needed
 
             return true;
         }).call(this);
@@ -879,5 +873,7 @@ void JSEngine::setStateMachine(StateMachine *stateMachine, const std::string &se
         }
     }
 }
+
+// JSEngine internal functions are implemented in JSEngineImpl.cpp
 
 }  // namespace RSM

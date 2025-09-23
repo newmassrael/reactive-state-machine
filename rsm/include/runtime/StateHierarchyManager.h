@@ -78,6 +78,32 @@ public:
      */
     void exitState(const std::string &stateId);
 
+private:
+    /**
+     * @brief SCXML W3C: Specialized cleanup for parallel states
+     *
+     * Exits a parallel state and all its descendant regions simultaneously
+     * @param parallelStateId The parallel state to exit
+     */
+    void exitParallelStateAndDescendants(const std::string &parallelStateId);
+
+    /**
+     * @brief SCXML W3C: Traditional hierarchical state cleanup
+     *
+     * Removes a state and all its child states from the active configuration
+     * @param stateId The hierarchical state to exit
+     */
+    void exitHierarchicalState(const std::string &stateId);
+
+    /**
+     * @brief Recursively collects all descendant states of a given parent state
+     *
+     * @param parentId Parent state ID
+     * @param collector Vector to collect descendant state IDs
+     */
+    void collectDescendantStates(const std::string &parentId, std::vector<std::string> &collector);
+
+public:
     /**
      * @brief 모든 상태 초기화
      *

@@ -67,15 +67,17 @@ ConcurrentOperationResult ConcurrentRegion::activate() {
 
     Logger::debug("ConcurrentRegion::activate - Activating region: " + id_);
 
+    // Mark region as active before entering initial state to enable final state detection
+    status_ = ConcurrentRegionStatus::ACTIVE;
+
     // Enter initial state according to SCXML semantics
     auto result = enterInitialState();
     if (!result.isSuccess) {
         Logger::error("ConcurrentRegion::activate - Failed to enter initial state: " + result.errorMessage);
+        status_ = ConcurrentRegionStatus::ERROR;  // Rollback on failure
         setErrorState(result.errorMessage);
         return result;
     }
-
-    status_ = ConcurrentRegionStatus::ACTIVE;
     updateCurrentState();
 
     Logger::debug("ConcurrentRegion::activate - Successfully activated region: " + id_);
@@ -488,13 +490,10 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
         if (!entryActionNodes.empty()) {
             for (const auto &actionNode : entryActionNodes) {
                 if (actionNode) {
-                    // Execute the action through the execution context
                     try {
-                        // For assign actions, we need to execute them properly
-                        // This requires integration with StateMachine's action execution system
                         Logger::debug("ConcurrentRegion::enterInitialState - Executing entry action: " +
                                       actionNode->getId());
-                        // IActionNode-based action execution is properly handled by StateMachine::executeActionNodes()
+                        executeActionNode(actionNode, "enterInitialState");
                     } catch (const std::exception &e) {
                         Logger::warn("ConcurrentRegion::enterInitialState - Entry action failed: " +
                                      std::string(e.what()));
@@ -514,10 +513,24 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
     // Check if we need to enter child states
     const auto &children = rootState_->getChildren();
     if (!children.empty()) {
-        // Find and enter the initial child state
-        std::string initialChild = rootState_->getInitialState();
-        if (initialChild.empty() && !children.empty()) {
-            initialChild = children[0]->getId();
+        // SCXML W3C specification: Handle initial transitions
+        // Check if root state has initial transition that targets a specific state
+        const auto &initialTransition = rootState_->getInitialTransition();
+        std::string initialChild;
+
+        if (initialTransition && !initialTransition->getTargets().empty()) {
+            // SCXML initial transition: <initial><transition target="final_state"/></initial>
+            initialChild = initialTransition->getTargets()[0];
+            Logger::debug("ConcurrentRegion::enterInitialState - Found initial transition targeting: " + initialChild +
+                          " in region: " + id_);
+        } else {
+            // Fallback: Use getInitialState() or first child
+            initialChild = rootState_->getInitialState();
+            if (initialChild.empty() && !children.empty()) {
+                initialChild = children[0]->getId();
+            }
+            Logger::debug("ConcurrentRegion::enterInitialState - Using fallback initial state: " + initialChild +
+                          " in region: " + id_);
         }
 
         if (!initialChild.empty()) {
@@ -525,7 +538,7 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
             activeStates_.push_back(initialChild);
             currentState_ = initialChild;
 
-            // Execute entry actions for child state if needed
+            // Execute entry actions for child state and handle recursive nesting
             if (executionContext_) {
                 auto childState = std::find_if(children.begin(), children.end(),
                                                [&initialChild](const std::shared_ptr<IStateNode> &child) {
@@ -533,12 +546,49 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
                                                });
 
                 if (childState != children.end() && *childState) {
+                    // Execute child state's entry actions
                     const auto &childEntryActions = (*childState)->getEntryActionNodes();
                     for (const auto &actionNode : childEntryActions) {
                         if (actionNode) {
                             Logger::debug("ConcurrentRegion::enterInitialState - Executing child entry action: " +
                                           actionNode->getId());
-                            // TODO: Execute child entry actions
+                            executeActionNode(actionNode, "enterInitialState");
+                        }
+                    }
+
+                    // SCXML spec: If child state is compound, recursively enter its initial state
+                    const auto &grandchildren = (*childState)->getChildren();
+                    if (!grandchildren.empty()) {
+                        std::string childInitialState = (*childState)->getInitialState();
+                        if (childInitialState.empty() && !grandchildren.empty()) {
+                            childInitialState = grandchildren[0]->getId();
+                        }
+
+                        if (!childInitialState.empty()) {
+                            Logger::debug(
+                                "ConcurrentRegion::enterInitialState - Child state is compound, entering grandchild: " +
+                                childInitialState);
+                            activeStates_.push_back(childInitialState);
+                            currentState_ = childInitialState;
+
+                            // Execute grandchild entry actions
+                            auto grandchildState =
+                                std::find_if(grandchildren.begin(), grandchildren.end(),
+                                             [&childInitialState](const std::shared_ptr<IStateNode> &grandchild) {
+                                                 return grandchild && grandchild->getId() == childInitialState;
+                                             });
+
+                            if (grandchildState != grandchildren.end() && *grandchildState) {
+                                const auto &grandchildEntryActions = (*grandchildState)->getEntryActionNodes();
+                                for (const auto &actionNode : grandchildEntryActions) {
+                                    if (actionNode) {
+                                        Logger::debug("ConcurrentRegion::enterInitialState - Executing grandchild "
+                                                      "entry action: " +
+                                                      actionNode->getId());
+                                        executeActionNode(actionNode, "enterInitialState");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -547,6 +597,13 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
     }
 
     isInFinalState_ = determineIfInFinalState();
+
+    // Update region status to FINAL if we entered a final state immediately
+    if (isInFinalState_) {
+        status_ = ConcurrentRegionStatus::FINAL;
+        Logger::debug("ConcurrentRegion::enterInitialState - Region " + id_ +
+                      " immediately entered final state, updating status to FINAL");
+    }
 
     Logger::debug("ConcurrentRegion::enterInitialState - Successfully entered initial state: " + currentState_);
     return ConcurrentOperationResult::success(id_);
@@ -611,6 +668,31 @@ ConcurrentOperationResult ConcurrentRegion::exitAllStates() {
         isInFinalState_ = false;
 
         return ConcurrentOperationResult::failure(id_, errorMsg);
+    }
+}
+
+bool ConcurrentRegion::executeActionNode(const std::shared_ptr<IActionNode> &actionNode, const std::string &context) {
+    if (!actionNode) {
+        Logger::warn("ConcurrentRegion::" + context + " - Null ActionNode encountered, skipping");
+        return false;
+    }
+
+    try {
+        Logger::debug("ConcurrentRegion::" + context + " - Executing ActionNode: " + actionNode->getActionType() +
+                      " (ID: " + actionNode->getId() + ")");
+
+        if (actionNode->execute(*executionContext_)) {
+            Logger::debug("ConcurrentRegion::" + context +
+                          " - Successfully executed ActionNode: " + actionNode->getActionType());
+            return true;
+        } else {
+            Logger::warn("ConcurrentRegion::" + context + " - ActionNode failed: " + actionNode->getActionType());
+            return false;
+        }
+    } catch (const std::exception &e) {
+        Logger::warn("ConcurrentRegion::" + context + " - ActionNode exception: " + actionNode->getActionType() +
+                     " Error: " + std::string(e.what()));
+        return false;
     }
 }
 

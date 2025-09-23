@@ -1,3 +1,4 @@
+#include "SCXMLTypes.h"
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
 #include "parsing/SCXMLParser.h"
@@ -244,12 +245,9 @@ TEST_F(StateMachineIntegrationTest, EventSystemIntegration) {
     auto initResult = engine_->executeScript(sessionId_, "var eventCount = 0; var lastEvent = '';").get();
     EXPECT_TRUE(initResult.isSuccess());
 
-    // Simulate event reception and processing
-    // Set up event object using internal _updateEvent function (SCXML W3C compliance)
-    auto eventSetup = engine_
-                          ->executeScript(sessionId_, "_updateEvent({ name: 'testEvent', type: 'platform', sendid: '', "
-                                                      "origin: '', origintype: '', invokeid: '', data: null });")
-                          .get();
+    // Simulate event reception and processing using C++ API (SCXML W3C compliance)
+    // Create and set event using the proper setCurrentEvent API
+    auto eventSetup = engine_->setCurrentEvent(sessionId_, std::make_shared<Event>("testEvent", "platform")).get();
     EXPECT_TRUE(eventSetup.isSuccess());
 
     // Execute transition script

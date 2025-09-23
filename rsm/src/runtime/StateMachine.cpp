@@ -83,12 +83,14 @@ bool StateMachine::start() {
 
     Logger::debug("StateMachine: Starting with initial state: " + initialState_);
 
+    // Set running state before entering initial state to handle immediate done.state events
+    isRunning_ = true;
+
     if (!enterState(initialState_)) {
         Logger::error("StateMachine: Failed to enter initial state: " + initialState_);
+        isRunning_ = false;  // Rollback on failure
         return false;
     }
-
-    isRunning_ = true;
     updateStatistics();
 
     Logger::info("StateMachine: Started successfully");
@@ -501,15 +503,15 @@ bool StateMachine::enterState(const std::string &stateId) {
     assert(stateNode && "SCXML violation: state must exist in model");
 
     if (stateNode->getType() == Type::PARALLEL) {
-        // SCXML W3C section 3.4: Execute parallel state's onentry FIRST, then children
-        Logger::debug("StateMachine: SCXML W3C compliant - executing parallel state entry actions in correct order");
+        // SCXML W3C section 3.4: Execute parallel state entry in proper phases
+        Logger::debug("StateMachine: Executing parallel state entry in proper phases");
 
-        // 1. Execute parallel state's own onentry actions FIRST
+        // Phase 1: Execute entry actions (parallel state first, then regions)
         bool parallelEntryResult = executeEntryActions(stateId);
         assert(parallelEntryResult && "SCXML violation: parallel state entry actions must succeed");
         (void)parallelEntryResult;
 
-        // 2. Then execute entry actions for all child regions
+        // Phase 2: Execute entry actions for all child regions
         auto activeStates = getActiveStates();
         for (const auto &activeState : activeStates) {
             if (activeState != stateId) {  // Skip the parallel state itself (already executed)
@@ -518,6 +520,14 @@ bool StateMachine::enterState(const std::string &stateId) {
                 (void)childEntryResult;
             }
         }
+
+        // Parallel state entry phases completed
+        Logger::debug("StateMachine: Parallel state entry phases completed");
+
+        // SCXML W3C specification: Check for completion after initial entry
+        // If all regions are immediately in final states, generate done.state event
+        auto parallelState = static_cast<ConcurrentStateNode *>(stateNode);
+        parallelState->areAllRegionsComplete();  // Completion check after initial entry
     } else {
         // For non-parallel states: Execute entry actions for all entered states
         auto activeStates = getActiveStates();

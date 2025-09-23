@@ -2,6 +2,7 @@
 
 #include "ConcurrentStateTypes.h"
 #include "IConcurrentRegion.h"
+#include "actions/IActionNode.h"
 #include "events/EventDescriptor.h"
 #include "model/IStateNode.h"
 #include "runtime/IExecutionContext.h"
@@ -207,6 +208,14 @@ private:
      * @return Operation result for state exit
      */
     ConcurrentOperationResult exitAllStates();
+
+    /**
+     * @brief Execute an action node with consistent logging and error handling
+     * @param actionNode Action node to execute
+     * @param context Context description for logging
+     * @return true if action executed successfully
+     */
+    bool executeActionNode(const std::shared_ptr<IActionNode> &actionNode, const std::string &context);
 };
 
 }  // namespace RSM

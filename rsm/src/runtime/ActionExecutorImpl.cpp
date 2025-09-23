@@ -74,7 +74,8 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
     }
 
     try {
-        // First evaluate the expression
+        // Assign actions should not trigger _event updates
+        // Use direct JSEngine evaluation without ActionExecutor context
         auto evalResult = JSEngine::instance().evaluateExpression(sessionId_, expr).get();
         if (!evalResult.isSuccess()) {
             handleJSError("expression evaluation for assignment", evalResult.errorMessage);
@@ -132,6 +133,8 @@ std::string ActionExecutorImpl::evaluateExpression(const std::string &expression
             }
         }
 
+        // For literal values, we don't need to ensure current event is set
+        // This prevents unnecessary _event updates that violate read-only specification
         return expression;
     }
 
@@ -267,8 +270,17 @@ void ActionExecutorImpl::clearCurrentEvent() {
     currentEventName_.clear();
     currentEventData_.clear();
 
-    // Update _event variable in JavaScript context
-    ensureCurrentEventSet();
+    // Clear _event variable in JavaScript context by setting null event
+    if (isSessionReady()) {
+        try {
+            auto result = JSEngine::instance().setCurrentEvent(sessionId_, nullptr).get();
+            if (!result.isSuccess()) {
+                Logger::debug("Failed to clear current event: {}", result.errorMessage);
+            }
+        } catch (const std::exception &e) {
+            Logger::debug("Error clearing current event: {}", e.what());
+        }
+    }
 }
 
 bool ActionExecutorImpl::isSessionReady() const {
@@ -447,20 +459,25 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
     }
 
     try {
-        // Create _event object using internal _updateEvent function (SCXML W3C compliance)
-        std::ostringstream eventScript;
-        eventScript << "_updateEvent({ name: '" << currentEventName_ << "', data: ";
+        // _event should only be updated during event processing
+        // For assign actions, we should not update _event as it's not related to current event context
+        // This prevents violating the read-only _event specification during variable assignments
 
-        if (currentEventData_.empty()) {
-            eventScript << "null";
-        } else {
-            // Try to parse as JSON, fallback to string
-            eventScript << currentEventData_;
+        // Skip _event update during assign actions - only update when processing actual events
+        if (currentEventName_.empty()) {
+            Logger::debug("Skipping _event update - no current event in context");
+            return true;
         }
 
-        eventScript << ", type: '', sendid: '', origin: '', origintype: '', invokeid: '' });";
+        // Create Event object and use setCurrentEvent API
+        auto event = std::make_shared<Event>(currentEventName_, "internal");
 
-        auto result = JSEngine::instance().executeScript(sessionId_, eventScript.str()).get();
+        if (!currentEventData_.empty()) {
+            // Set raw JSON data for the new architecture
+            event->setRawJsonData(currentEventData_);
+        }
+
+        auto result = JSEngine::instance().setCurrentEvent(sessionId_, event).get();
         return result.isSuccess();
 
     } catch (const std::exception &e) {

@@ -99,88 +99,119 @@ TEST_F(EventSystemTest, W3C_EventObjectReadOnlyCompliance) {
 
 // Test internal event updating (used by StateMachine)
 TEST_F(EventSystemTest, InternalEventDataUpdating) {
-    // Test internal _updateEvent function (used by JSEngine internally)
-    auto updateResult =
-        engine_
-            ->executeScript(sessionId_,
-                            "_updateEvent({name: 'test.event', data: 'test_data'}); _event.name + '|' + _event.data")
-            .get();
-    ASSERT_TRUE(updateResult.isSuccess());
-    EXPECT_EQ(updateResult.getValue<std::string>(), "test.event|test_data");
+    // Test setCurrentEvent API with string data (JSON formatted)
+    auto testEvent = std::make_shared<RSM::Event>("test.event", "internal");
+    testEvent->setRawJsonData("\"test_data\"");  // JSON string format
+
+    auto setResult = engine_->setCurrentEvent(sessionId_, testEvent).get();
+    ASSERT_TRUE(setResult.isSuccess());
+
+    auto checkResult = engine_->executeScript(sessionId_, "_event.name + '|' + _event.data").get();
+    ASSERT_TRUE(checkResult.isSuccess());
+    EXPECT_EQ(checkResult.getValue<std::string>(), "test.event|test_data");
 
     // Test updating with object data
-    auto objectUpdateResult =
-        engine_
-            ->executeScript(
-                sessionId_,
-                "_updateEvent({data: {key: 'value', number: 42}}); _event.data.key + '_' + _event.data.number")
-            .get();
-    ASSERT_TRUE(objectUpdateResult.isSuccess());
-    EXPECT_EQ(objectUpdateResult.getValue<std::string>(), "value_42");
+    auto objectEvent = std::make_shared<RSM::Event>("object.event", "internal");
+    objectEvent->setRawJsonData("{\"key\": \"value\", \"number\": 42}");
+
+    auto objectSetResult = engine_->setCurrentEvent(sessionId_, objectEvent).get();
+    ASSERT_TRUE(objectSetResult.isSuccess());
+
+    auto objectCheckResult = engine_->executeScript(sessionId_, "_event.data.key + '_' + _event.data.number").get();
+    ASSERT_TRUE(objectCheckResult.isSuccess());
+    EXPECT_EQ(objectCheckResult.getValue<std::string>(), "value_42");
 
     // Test updating with array data
-    auto arrayUpdateResult =
-        engine_->executeScript(sessionId_, "_updateEvent({data: [1, 2, 3]}); _event.data.length").get();
-    ASSERT_TRUE(arrayUpdateResult.isSuccess());
-    EXPECT_EQ(arrayUpdateResult.getValue<double>(), 3.0);
+    auto arrayEvent = std::make_shared<RSM::Event>("array.event", "internal");
+    arrayEvent->setRawJsonData("[1, 2, 3]");
+
+    auto arraySetResult = engine_->setCurrentEvent(sessionId_, arrayEvent).get();
+    ASSERT_TRUE(arraySetResult.isSuccess());
+
+    auto arrayCheckResult = engine_->executeScript(sessionId_, "_event.data.length").get();
+    ASSERT_TRUE(arrayCheckResult.isSuccess());
+    EXPECT_EQ(arrayCheckResult.getValue<double>(), 3.0);
 }
 
-// Test event name and type handling via internal updates
+// Test event name and type handling via setCurrentEvent API
 TEST_F(EventSystemTest, InternalEventNameAndTypeUpdating) {
-    // Test updating event name internally
-    auto nameResult = engine_->executeScript(sessionId_, "_updateEvent({name: 'user.login'}); _event.name").get();
+    // Test setting event name via setCurrentEvent API
+    auto loginEvent = std::make_shared<RSM::Event>("user.login", "internal");
+    auto nameSetResult = engine_->setCurrentEvent(sessionId_, loginEvent).get();
+    ASSERT_TRUE(nameSetResult.isSuccess());
+
+    auto nameResult = engine_->executeScript(sessionId_, "_event.name").get();
     ASSERT_TRUE(nameResult.isSuccess());
     EXPECT_EQ(nameResult.getValue<std::string>(), "user.login");
 
-    // Test updating event type internally
-    auto typeResult = engine_->executeScript(sessionId_, "_updateEvent({type: 'platform'}); _event.type").get();
+    // Test setting event type via setCurrentEvent API
+    auto platformEvent = std::make_shared<RSM::Event>("platform.event", "platform");
+    auto typeSetResult = engine_->setCurrentEvent(sessionId_, platformEvent).get();
+    ASSERT_TRUE(typeSetResult.isSuccess());
+
+    auto typeResult = engine_->executeScript(sessionId_, "_event.type").get();
     ASSERT_TRUE(typeResult.isSuccess());
     EXPECT_EQ(typeResult.getValue<std::string>(), "platform");
 
     // Test complex event names with dots
-    auto complexNameResult =
-        engine_->executeScript(sessionId_, "_updateEvent({name: 'error.execution.timeout'}); _event.name").get();
+    auto complexEvent = std::make_shared<RSM::Event>("error.execution.timeout", "internal");
+    auto complexSetResult = engine_->setCurrentEvent(sessionId_, complexEvent).get();
+    ASSERT_TRUE(complexSetResult.isSuccess());
+
+    auto complexNameResult = engine_->executeScript(sessionId_, "_event.name").get();
     ASSERT_TRUE(complexNameResult.isSuccess());
     EXPECT_EQ(complexNameResult.getValue<std::string>(), "error.execution.timeout");
 }
 
-// Test event origin and invocation properties via internal updates
+// Test event origin and invocation properties via setCurrentEvent API
 TEST_F(EventSystemTest, InternalEventOriginPropertiesUpdating) {
-    // Test updating origin internally
-    auto originResult = engine_->executeScript(sessionId_, "_updateEvent({origin: '#_internal'}); _event.origin").get();
+    // Test setting origin via setCurrentEvent API
+    auto internalEvent = std::make_shared<RSM::Event>("internal.event", "internal");
+    internalEvent->setOrigin("#_internal");
+    auto originSetResult = engine_->setCurrentEvent(sessionId_, internalEvent).get();
+    ASSERT_TRUE(originSetResult.isSuccess());
+
+    auto originResult = engine_->executeScript(sessionId_, "_event.origin").get();
     ASSERT_TRUE(originResult.isSuccess());
     EXPECT_EQ(originResult.getValue<std::string>(), "#_internal");
 
-    // Test updating origintype internally
-    auto origintypeResult =
-        engine_
-            ->executeScript(
-                sessionId_,
-                "_updateEvent({origintype: 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor'}); _event.origintype")
-            .get();
+    // Test setting origintype via setCurrentEvent API
+    auto scxmlEvent = std::make_shared<RSM::Event>("scxml.event", "internal");
+    scxmlEvent->setOriginType("http://www.w3.org/TR/scxml/#SCXMLEventProcessor");
+    auto origintypeSetResult = engine_->setCurrentEvent(sessionId_, scxmlEvent).get();
+    ASSERT_TRUE(origintypeSetResult.isSuccess());
+
+    auto origintypeResult = engine_->executeScript(sessionId_, "_event.origintype").get();
     ASSERT_TRUE(origintypeResult.isSuccess());
     EXPECT_EQ(origintypeResult.getValue<std::string>(), "http://www.w3.org/TR/scxml/#SCXMLEventProcessor");
 
-    // Test updating invokeid internally
-    auto invokeidResult =
-        engine_->executeScript(sessionId_, "_updateEvent({invokeid: 'invoke_123'}); _event.invokeid").get();
+    // Test setting invokeid via setCurrentEvent API
+    auto invokeEvent = std::make_shared<RSM::Event>("invoke.event", "internal");
+    invokeEvent->setInvokeId("invoke_123");
+    auto invokeidSetResult = engine_->setCurrentEvent(sessionId_, invokeEvent).get();
+    ASSERT_TRUE(invokeidSetResult.isSuccess());
+
+    auto invokeidResult = engine_->executeScript(sessionId_, "_event.invokeid").get();
     ASSERT_TRUE(invokeidResult.isSuccess());
     EXPECT_EQ(invokeidResult.getValue<std::string>(), "invoke_123");
 
-    // Test updating sendid internally
-    auto sendidResult = engine_->executeScript(sessionId_, "_updateEvent({sendid: 'send_456'}); _event.sendid").get();
+    // Test setting sendid via setCurrentEvent API
+    auto sendEvent = std::make_shared<RSM::Event>("send.event", "internal");
+    sendEvent->setSendId("send_456");
+    auto sendidSetResult = engine_->setCurrentEvent(sessionId_, sendEvent).get();
+    ASSERT_TRUE(sendidSetResult.isSuccess());
+
+    auto sendidResult = engine_->executeScript(sessionId_, "_event.sendid").get();
     ASSERT_TRUE(sendidResult.isSuccess());
     EXPECT_EQ(sendidResult.getValue<std::string>(), "send_456");
 }
 
 // Test event object in expressions
 TEST_F(EventSystemTest, EventInExpressions) {
-    // Set up event data using internal update
-    auto setupResult =
-        engine_
-            ->executeScript(sessionId_,
-                            "_updateEvent({name: 'user.action', data: {userId: 123, action: 'click'}}); true")
-            .get();
+    // Set up event data using setCurrentEvent API
+    auto userEvent = std::make_shared<RSM::Event>("user.action", "internal");
+    userEvent->setRawJsonData("{\"userId\": 123, \"action\": \"click\"}");
+    auto setupResult = engine_->setCurrentEvent(sessionId_, userEvent).get();
     ASSERT_TRUE(setupResult.isSuccess());
 
     // Test using event in conditional expressions
@@ -202,13 +233,10 @@ TEST_F(EventSystemTest, EventInExpressions) {
 
 // Test event object serialization
 TEST_F(EventSystemTest, EventSerialization) {
-    // Set up event with complex data using internal update
-    auto setupResult =
-        engine_
-            ->executeScript(
-                sessionId_,
-                "_updateEvent({name: 'complex.event', data: {user: {id: 1, name: 'test'}, items: [1, 2, 3]}}); true")
-            .get();
+    // Set up event with complex data using setCurrentEvent API
+    auto complexEvent = std::make_shared<RSM::Event>("complex.event", "internal");
+    complexEvent->setRawJsonData("{\"user\":{\"id\":1,\"name\":\"test\"},\"items\":[1,2,3]}");
+    auto setupResult = engine_->setCurrentEvent(sessionId_, complexEvent).get();
     ASSERT_TRUE(setupResult.isSuccess());
 
     // Test JSON serialization of event data
@@ -230,10 +258,10 @@ TEST_F(EventSystemTest, EventSerialization) {
 
 // Test event object across multiple evaluations
 TEST_F(EventSystemTest, EventPersistence) {
-    // Set event data in first evaluation using internal update
-    auto setResult =
-        engine_->executeScript(sessionId_, "_updateEvent({name: 'persistent.event', data: 'persistent_data'}); true")
-            .get();
+    // Set event data using setCurrentEvent API
+    auto persistentEvent = std::make_shared<RSM::Event>("persistent.event", "internal");
+    persistentEvent->setRawJsonData("\"persistent_data\"");  // JSON string format
+    auto setResult = engine_->setCurrentEvent(sessionId_, persistentEvent).get();
     ASSERT_TRUE(setResult.isSuccess());
 
     // Check event data persists in subsequent evaluations
@@ -245,10 +273,11 @@ TEST_F(EventSystemTest, EventPersistence) {
     ASSERT_TRUE(checkDataResult.isSuccess());
     EXPECT_EQ(checkDataResult.getValue<std::string>(), "persistent_data");
 
-    // Modify in another evaluation using internal update
-    auto modifyResult = engine_->executeScript(sessionId_, "_updateEvent({data: 'modified_data'}); _event.data").get();
+    // Modify using another setCurrentEvent call
+    auto modifiedEvent = std::make_shared<RSM::Event>("persistent.event", "internal");
+    modifiedEvent->setRawJsonData("\"modified_data\"");  // JSON string format
+    auto modifyResult = engine_->setCurrentEvent(sessionId_, modifiedEvent).get();
     ASSERT_TRUE(modifyResult.isSuccess());
-    EXPECT_EQ(modifyResult.getValue<std::string>(), "modified_data");
 
     // Verify modification persists
     auto verifyResult = engine_->evaluateExpression(sessionId_, "_event.data").get();

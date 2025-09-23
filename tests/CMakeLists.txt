@@ -104,6 +104,28 @@ target_link_libraries(state_machine_tests
 )
 
 # ============================================================================
+# 3.5. States Tests (ConcurrentRegion Unit Tests)
+# ============================================================================
+add_executable(states_tests
+    states/ConcurrentRegionTest.cpp
+    mocks/MockActionExecutor.cpp
+)
+
+target_include_directories(states_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(states_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        pthread
+)
+
+# ============================================================================
 # 4. Action System Tests (SCXML Executable Content)
 # ============================================================================
 
@@ -223,7 +245,8 @@ add_executable(integration_tests
     integration/SCXMLParallelParsingTest.cpp
     integration/ParallelStateEndToEndTest.cpp
     integration/SCXMLParallelComplianceTest.cpp
-
+    integration/ConcurrentCompletionMonitoringTest.cpp
+    mocks/MockActionExecutor.cpp
 )
 
 add_dependencies(integration_tests libxmlxx_external rsm_unified)
