@@ -196,6 +196,18 @@ private:
      */
     void printStateHierarchy(IStateNode *state, int depth) const;
 
+    /**
+     * @brief 상태 계층에서 모든 상태를 재귀적으로 수집
+     * @param state 시작 상태 노드
+     * @param allStates 모든 상태를 저장할 벡터
+     */
+    void collectAllStatesRecursively(IStateNode *state, std::vector<std::shared_ptr<IStateNode>> &allStates) const;
+
+    /**
+     * @brief 모든 상태 목록을 재구성 (루트부터 모든 중첩 상태 포함)
+     */
+    void rebuildAllStatesList();
+
     // 멤버 변수
     std::shared_ptr<IStateNode> rootState_;
     std::string name_;

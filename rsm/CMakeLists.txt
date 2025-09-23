@@ -72,6 +72,13 @@ add_library(rsm_unified
     src/runtime/ExecutionContextImpl.cpp
     src/runtime/StateHierarchyManager.cpp
     src/runtime/EventRaiserImpl.cpp
+    
+    # History state management (SOLID architecture)
+    src/runtime/HistoryManager.cpp
+    src/runtime/HistoryStateAutoRegistrar.cpp
+    src/runtime/ShallowHistoryFilter.cpp
+    src/runtime/DeepHistoryFilter.cpp
+    src/runtime/HistoryValidator.cpp
 
     # Actions implementation
     src/actions/BaseAction.cpp

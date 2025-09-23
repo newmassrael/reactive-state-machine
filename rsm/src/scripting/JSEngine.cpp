@@ -143,6 +143,12 @@ bool JSEngine::createSession(const std::string &sessionId, const std::string &pa
 }
 
 bool JSEngine::destroySession(const std::string &sessionId) {
+    // Check if JSEngine is already shutdown to prevent deadlock
+    if (shouldStop_.load()) {
+        Logger::debug("JSEngine: Already shutdown, skipping destroySession for: {}", sessionId);
+        return true;
+    }
+
     auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::DESTROY_SESSION, sessionId);
     auto future = request->promise.get_future();
 

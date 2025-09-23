@@ -17,6 +17,8 @@ RSM::SCXMLModel::~SCXMLModel() {
 void RSM::SCXMLModel::setRootState(std::shared_ptr<RSM::IStateNode> rootState) {
     Logger::debug("RSM::SCXMLModel::setRootState() - Setting root state: " + (rootState ? rootState->getId() : "null"));
     rootState_ = rootState;
+    // Rebuild the complete state list to include all nested children
+    rebuildAllStatesList();
 }
 
 std::shared_ptr<RSM::IStateNode> RSM::SCXMLModel::getRootState() const {
@@ -83,6 +85,8 @@ void RSM::SCXMLModel::addState(std::shared_ptr<RSM::IStateNode> state) {
         Logger::debug("RSM::SCXMLModel::addState() - Adding state: " + state->getId());
         allStates_.push_back(state);
         stateIdMap_[state->getId()] = state.get();
+        // Rebuild the complete state list to include all nested children
+        rebuildAllStatesList();
     }
 }
 
@@ -350,4 +354,78 @@ void RSM::SCXMLModel::addSystemVariable(std::shared_ptr<RSM::IDataModelItem> sys
 
 const std::vector<std::shared_ptr<RSM::IDataModelItem>> &RSM::SCXMLModel::getSystemVariables() const {
     return systemVariables_;
+}
+
+void RSM::SCXMLModel::collectAllStatesRecursively(IStateNode *state,
+                                                  std::vector<std::shared_ptr<IStateNode>> &allStates) const {
+    if (!state) {
+        return;
+    }
+
+    // Find the shared_ptr version of this raw pointer from the root states
+    bool found = false;
+    for (const auto &sharedState : allStates_) {
+        if (sharedState.get() == state) {
+            allStates.push_back(sharedState);
+            found = true;
+            break;
+        }
+    }
+
+    // If not found in root states, recursively search in already collected states
+    if (!found) {
+        for (const auto &sharedState : allStates) {
+            const auto &children = sharedState->getChildren();
+            for (const auto &child : children) {
+                if (child.get() == state) {
+                    allStates.push_back(child);
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                break;
+            }
+        }
+    }
+
+    // Recursively collect children
+    const auto &children = state->getChildren();
+    for (const auto &child : children) {
+        collectAllStatesRecursively(child.get(), allStates);
+    }
+}
+
+void RSM::SCXMLModel::rebuildAllStatesList() {
+    std::vector<std::shared_ptr<IStateNode>> newAllStates;
+
+    // Start from root state if available
+    if (rootState_) {
+        collectAllStatesRecursively(rootState_.get(), newAllStates);
+    }
+
+    // Also add any states that were explicitly added but might not be in the hierarchy
+    for (const auto &state : allStates_) {
+        bool alreadyIncluded = false;
+        for (const auto &existingState : newAllStates) {
+            if (existingState.get() == state.get()) {
+                alreadyIncluded = true;
+                break;
+            }
+        }
+        if (!alreadyIncluded) {
+            newAllStates.push_back(state);
+            // Also recursively add their children
+            collectAllStatesRecursively(state.get(), newAllStates);
+        }
+    }
+
+    // Replace the current allStates_ with the complete list
+    allStates_ = std::move(newAllStates);
+
+    // Rebuild the state ID map as well
+    stateIdMap_.clear();
+    for (const auto &state : allStates_) {
+        stateIdMap_[state->getId()] = state.get();
+    }
 }

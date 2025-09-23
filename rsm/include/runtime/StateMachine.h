@@ -4,6 +4,8 @@
 #include "model/SCXMLModel.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
+#include "runtime/IHistoryManager.h"
+#include "runtime/IHistoryStateAutoRegistrar.h"
 #include "runtime/StateHierarchyManager.h"
 #include "scripting/JSEngine.h"
 #include <functional>
@@ -143,6 +145,35 @@ public:
 
     Statistics getStatistics() const;
 
+    /**
+     * @brief Register a history state for tracking
+     * @param historyStateId ID of the history state
+     * @param parentStateId ID of the parent compound state
+     * @param type History type (SHALLOW or DEEP)
+     * @param defaultStateId Default state if no history available
+     * @return true if registration succeeded
+     */
+    bool registerHistoryState(const std::string &historyStateId, const std::string &parentStateId, HistoryType type,
+                              const std::string &defaultStateId = "");
+
+    /**
+     * @brief Check if a state ID represents a history state
+     * @param stateId State ID to check
+     * @return true if it's a history state
+     */
+    bool isHistoryState(const std::string &stateId) const;
+
+    /**
+     * @brief Clear all recorded history (for testing/reset purposes)
+     */
+    void clearAllHistory();
+
+    /**
+     * @brief Get history information for debugging
+     * @return Vector of all recorded history entries
+     */
+    std::vector<HistoryEntry> getHistoryEntries() const;
+
 private:
     // Core state - now delegated to StateHierarchyManager
     // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
@@ -165,12 +196,18 @@ private:
     // Hierarchical state management
     std::unique_ptr<StateHierarchyManager> hierarchyManager_;
 
+    // History state management (SOLID architecture)
+    std::unique_ptr<IHistoryManager> historyManager_;
+    std::unique_ptr<IHistoryStateAutoRegistrar> historyAutoRegistrar_;
+
     // Statistics
     mutable Statistics stats_;
 
     // Helper methods
     std::string generateSessionId();
     bool initializeFromModel();
+    void initializeHistoryManager();
+    void initializeHistoryAutoRegistrar();
 
     // Parallel state completion handling
     void handleParallelStateCompletion(const std::string &stateId);

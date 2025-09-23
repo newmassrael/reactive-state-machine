@@ -48,6 +48,22 @@ public:
      */
     void shutdown();
 
+    // === Lifecycle Management ===
+
+    /**
+     * @brief Initialize JSEngine with worker thread (SOLID: Single Responsibility)
+     * @return true if initialization successful
+     */
+    bool initialize();
+
+    /**
+     * @brief Check if engine is properly initialized
+     * @return true if ready for operations
+     */
+    bool isInitialized() const {
+        return initialized_.load();
+    }
+
     // === Session Management ===
 
     /**
@@ -337,6 +353,7 @@ private:
     mutable std::condition_variable queueCondition_;
     std::thread executionThread_;
     std::atomic<bool> shouldStop_{false};
+    std::atomic<bool> initialized_{false};
 
     // === Global Functions ===
     std::unordered_map<std::string, std::function<ScriptValue(const std::vector<ScriptValue> &)>> globalFunctions_;

@@ -5,7 +5,12 @@
 #include "parsing/SCXMLParser.h"
 #include "parsing/XIncludeProcessor.h"
 #include "runtime/ActionExecutorImpl.h"
+#include "runtime/DeepHistoryFilter.h"
 #include "runtime/ExecutionContextImpl.h"
+#include "runtime/HistoryManager.h"
+#include "runtime/HistoryStateAutoRegistrar.h"
+#include "runtime/HistoryValidator.h"
+#include "runtime/ShallowHistoryFilter.h"
 #include "scripting/JSEngine.h"
 #include "states/ConcurrentStateNode.h"
 #include <fstream>
@@ -18,6 +23,9 @@ StateMachine::StateMachine() : isRunning_(false), jsEnvironmentReady_(false) {
     sessionId_ = generateSessionId();
     // JS 환경은 지연 초기화로 변경
     // ActionExecutor와 ExecutionContext는 setupJSEnvironment에서 초기화
+
+    // Initialize History Manager with SOLID architecture (Dependency Injection)
+    initializeHistoryManager();
 }
 
 StateMachine::~StateMachine() {
@@ -440,6 +448,12 @@ bool StateMachine::initializeFromModel() {
         // Set up completion callbacks for parallel states (SCXML W3C compliance)
         setupParallelStateCallbacks();
 
+        // SCXML W3C Section 3.6: Auto-register history states from parsed model (SOLID architecture)
+        initializeHistoryAutoRegistrar();
+        if (historyAutoRegistrar_) {
+            historyAutoRegistrar_->autoRegisterHistoryStates(model_, historyManager_.get());
+        }
+
         Logger::debug("StateMachine: Model initialized with initial state: " + initialState_);
         Logger::info("StateMachine: Model initialized with " + std::to_string(allStates.size()) + " states");
         return true;
@@ -485,6 +499,30 @@ bool StateMachine::evaluateCondition(const std::string &condition) {
 
 bool StateMachine::enterState(const std::string &stateId) {
     Logger::debug("StateMachine: Entering state: " + stateId);
+
+    // Check if this is a history state and handle restoration (SCXML W3C specification section 3.6)
+    if (historyManager_ && historyManager_->isHistoryState(stateId)) {
+        Logger::info("StateMachine: Entering history state: " + stateId);
+
+        auto restorationResult = historyManager_->restoreHistory(stateId);
+        if (restorationResult.success && !restorationResult.targetStateIds.empty()) {
+            Logger::info("StateMachine: History restoration successful, entering " +
+                         std::to_string(restorationResult.targetStateIds.size()) + " target states");
+
+            // Enter all target states from history restoration
+            bool allSucceeded = true;
+            for (const auto &targetStateId : restorationResult.targetStateIds) {
+                if (!enterState(targetStateId)) {
+                    Logger::error("StateMachine: Failed to enter restored target state: " + targetStateId);
+                    allSucceeded = false;
+                }
+            }
+            return allSucceeded;
+        } else {
+            Logger::error("StateMachine: History restoration failed: " + restorationResult.errorMessage);
+            return false;
+        }
+    }
 
     // SCXML W3C specification: hierarchy manager is required for compliant state entry
     assert(hierarchyManager_ && "SCXML violation: hierarchy manager required for state management");
@@ -560,6 +598,21 @@ bool StateMachine::exitState(const std::string &stateId) {
         bool exitResult = executeExitActions(stateId);
         assert(exitResult && "SCXML violation: state exit actions must succeed");
         (void)exitResult;  // Suppress unused variable warning in release builds
+    }
+
+    // Record history before exiting compound states (SCXML W3C specification section 3.6)
+    if (historyManager_ && hierarchyManager_) {
+        auto stateNode = model_->findStateById(stateId);
+        if (stateNode && (stateNode->getType() == Type::COMPOUND || stateNode->getType() == Type::PARALLEL)) {
+            // Get current active states before exiting
+            auto activeStates = hierarchyManager_->getActiveStates();
+
+            // Record history for this compound state
+            bool recorded = historyManager_->recordHistory(stateId, activeStates);
+            if (recorded) {
+                Logger::debug("StateMachine: Recorded history for compound state: " + stateId);
+            }
+        }
     }
 
     // Use hierarchy manager for SCXML-compliant state exit
@@ -970,6 +1023,92 @@ void StateMachine::setupParallelStateCallbacks() {
 
     Logger::info("StateMachine: Set up completion callbacks for " + std::to_string(parallelStateCount) +
                  " parallel states");
+}
+
+void StateMachine::initializeHistoryManager() {
+    Logger::debug("StateMachine: Initializing History Manager with SOLID architecture");
+
+    // Create state provider function for dependency injection
+    auto stateProvider = [this](const std::string &stateId) -> std::shared_ptr<IStateNode> {
+        if (!model_) {
+            return nullptr;
+        }
+        // Find state by ID in the shared_ptr vector
+        auto allStates = model_->getAllStates();
+        for (const auto &state : allStates) {
+            if (state && state->getId() == stateId) {
+                return state;
+            }
+        }
+        return nullptr;
+    };
+
+    // Create filter components using Strategy pattern
+    auto shallowFilter = std::make_unique<ShallowHistoryFilter>(stateProvider);
+    auto deepFilter = std::make_unique<DeepHistoryFilter>(stateProvider);
+    auto validator = std::make_unique<HistoryValidator>(stateProvider);
+
+    // Create HistoryManager with dependency injection
+    historyManager_ = std::make_unique<HistoryManager>(stateProvider, std::move(shallowFilter), std::move(deepFilter),
+                                                       std::move(validator));
+
+    Logger::info("StateMachine: History Manager initialized with SOLID dependencies");
+}
+
+void StateMachine::initializeHistoryAutoRegistrar() {
+    Logger::debug("StateMachine: Initializing History Auto-Registrar with SOLID architecture");
+
+    // Create state provider function for dependency injection (same as history manager)
+    auto stateProvider = [this](const std::string &stateId) -> std::shared_ptr<IStateNode> {
+        if (!model_) {
+            return nullptr;
+        }
+        // Find state by ID in the model
+        auto allStates = model_->getAllStates();
+        for (const auto &state : allStates) {
+            if (state && state->getId() == stateId) {
+                return state;
+            }
+        }
+        return nullptr;
+    };
+
+    // Create HistoryStateAutoRegistrar with dependency injection
+    historyAutoRegistrar_ = std::make_unique<HistoryStateAutoRegistrar>(stateProvider);
+
+    Logger::info("StateMachine: History Auto-Registrar initialized with SOLID dependencies");
+}
+
+bool StateMachine::registerHistoryState(const std::string &historyStateId, const std::string &parentStateId,
+                                        HistoryType type, const std::string &defaultStateId) {
+    if (!historyManager_) {
+        Logger::error("StateMachine: History Manager not initialized");
+        return false;
+    }
+
+    return historyManager_->registerHistoryState(historyStateId, parentStateId, type, defaultStateId);
+}
+
+bool StateMachine::isHistoryState(const std::string &stateId) const {
+    if (!historyManager_) {
+        return false;
+    }
+
+    return historyManager_->isHistoryState(stateId);
+}
+
+void StateMachine::clearAllHistory() {
+    if (historyManager_) {
+        historyManager_->clearAllHistory();
+    }
+}
+
+std::vector<HistoryEntry> StateMachine::getHistoryEntries() const {
+    if (!historyManager_) {
+        return {};
+    }
+
+    return historyManager_->getHistoryEntries();
 }
 
 }  // namespace RSM

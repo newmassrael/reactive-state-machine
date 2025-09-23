@@ -153,6 +153,28 @@ target_link_libraries(action_tests
 # Note: ActionTests will be registered below with all other tests
 
 # ============================================================================
+# 4.5. History Manager Tests (SOLID SCXML W3C Compliance)
+# ============================================================================
+
+add_executable(history_tests
+    runtime/HistoryManagerTest.cpp
+)
+
+target_include_directories(history_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_link_libraries(history_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        pthread
+)
+
+# ============================================================================
 # 5. Core Parser Tests (RSM namespace updated)
 # ============================================================================
 
@@ -247,6 +269,7 @@ add_executable(integration_tests
     integration/SCXMLParallelComplianceTest.cpp
     integration/ConcurrentCompletionMonitoringTest.cpp
     integration/SCXMLForeachIntegrationTest.cpp
+    integration/HistoryStateIntegrationTest.cpp
     mocks/MockActionExecutor.cpp
 )
 
@@ -297,6 +320,7 @@ target_link_libraries(concurrency_tests
 add_test(NAME JSEngineTests COMMAND js_engine_tests)
 add_test(NAME StateMachineTests COMMAND state_machine_tests)
 add_test(NAME ActionTests COMMAND action_tests)
+add_test(NAME HistoryTests COMMAND history_tests)
 add_test(NAME CoreParserTests COMMAND core_parser_tests)
 # 테스트 등록이 제거되어 비활성화됨
 # add_test(NAME ConcurrentFoundationTests COMMAND concurrent_foundation_tests)
