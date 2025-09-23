@@ -82,6 +82,7 @@ add_library(rsm_unified
     src/actions/IfAction.cpp
     src/actions/SendAction.cpp
     src/actions/CancelAction.cpp
+    src/actions/ForeachAction.cpp
 
     # Events implementation
     src/events/InternalEventTarget.cpp

@@ -457,29 +457,24 @@ bool StateMachine::evaluateCondition(const std::string &condition) {
     try {
         // Debug: Check counter value before evaluating condition
         auto counterCheck = RSM::JSEngine::instance().evaluateExpression(sessionId_, "counter").get();
-        if (counterCheck.success && std::holds_alternative<double>(counterCheck.value)) {
-            Logger::debug("StateMachine: Current counter value before condition '" + condition +
-                          "': " + std::to_string(std::get<double>(counterCheck.value)));
+        if (RSM::JSEngine::isSuccess(counterCheck)) {
+            auto counterValue = RSM::JSEngine::resultToValue<double>(counterCheck);
+            if (counterValue.has_value()) {
+                Logger::debug("StateMachine: Current counter value before condition '" + condition +
+                              "': " + std::to_string(counterValue.value()));
+            }
         }
 
         auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, condition);
         auto result = future.get();
 
-        if (!result.success) {
-            Logger::error("StateMachine: Failed to evaluate condition: " + result.errorMessage);
+        if (!RSM::JSEngine::isSuccess(result)) {
+            Logger::error("StateMachine: Failed to evaluate condition: evaluation failed");
             return false;
         }
 
-        // Convert result to boolean
-        if (std::holds_alternative<bool>(result.value)) {
-            return std::get<bool>(result.value);
-        } else if (std::holds_alternative<long>(result.value)) {
-            return std::get<long>(result.value) != 0;
-        } else if (std::holds_alternative<double>(result.value)) {
-            return std::get<double>(result.value) != 0.0;
-        } else if (std::holds_alternative<std::string>(result.value)) {
-            return !std::get<std::string>(result.value).empty();
-        }
+        // Convert result to boolean using integrated JSEngine method
+        return RSM::JSEngine::resultToBool(result);
 
         return false;
     } catch (const std::exception &e) {
@@ -617,8 +612,9 @@ bool StateMachine::setupJSEnvironment() {
                 auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, expr);
                 auto result = future.get();
 
-                if (result.success) {
-                    RSM::JSEngine::instance().setVariable(sessionId_, id, result.value);
+                if (RSM::JSEngine::isSuccess(result)) {
+                    // Direct access to value through friend class access
+                    RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
                     Logger::debug("StateMachine: Initialized data model variable: " + id + " = " + expr);
                 } else {
                     // Default to 0 for numeric expressions

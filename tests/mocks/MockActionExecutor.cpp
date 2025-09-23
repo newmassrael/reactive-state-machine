@@ -1,6 +1,7 @@
 #include "MockActionExecutor.h"
 #include "actions/AssignAction.h"
 #include "actions/CancelAction.h"
+#include "actions/ForeachAction.h"
 #include "actions/IfAction.h"
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
@@ -288,6 +289,13 @@ bool MockActionExecutor::executeCancelAction(const CancelAction &action) {
         return false;
     }
     return true;
+}
+
+bool MockActionExecutor::executeForeachAction(const ForeachAction &action) {
+    // For mock, just record that foreach action was called
+    // In real tests, this would be mocked with EXPECT_CALL
+    (void)action;
+    return true;  // Foreach always succeeds in mock
 }
 
 // MockExecutionContext implementation

@@ -108,11 +108,11 @@ bool JSEngineAdapter::initialize() {
     }
 
     // JSEngine은 생성자에서 자동 초기화됨 (RAII)
-    JSEngine::instance();  // RAII 보장
+    RSM::JSEngine::instance();  // RAII 보장
     Logger::debug("JSEngineAdapter: JSEngine automatically initialized via RAII");
 
     // Create default session
-    if (!JSEngine::instance().createSession(defaultSessionId_)) {
+    if (!RSM::JSEngine::instance().createSession(defaultSessionId_)) {
         Logger::error("JSEngineAdapter: Failed to create default session");
         return false;
     }
@@ -128,7 +128,7 @@ void JSEngineAdapter::shutdown() {
     }
 
     // Destroy default session
-    JSEngine::instance().destroySession(defaultSessionId_);
+    RSM::JSEngine::instance().destroySession(defaultSessionId_);
 
     // Note: We don't shutdown the JSEngine instance as it's a singleton
     // and might be used by other components
@@ -154,15 +154,15 @@ std::future<JSResult> JSEngineAdapter::getVariable(const std::string &name) {
 }
 
 std::string JSEngineAdapter::getEngineInfo() const {
-    return JSEngine::instance().getEngineInfo() + " (via Adapter)";
+    return RSM::JSEngine::instance().getEngineInfo() + " (via Adapter)";
 }
 
 size_t JSEngineAdapter::getMemoryUsage() const {
-    return JSEngine::instance().getMemoryUsage();
+    return RSM::JSEngine::instance().getMemoryUsage();
 }
 
 void JSEngineAdapter::collectGarbage() {
-    JSEngine::instance().collectGarbage();
+    RSM::JSEngine::instance().collectGarbage();
 }
 
 bool JSEngineAdapter::createSession(const std::string &sessionId, const std::string &parentSessionId) {
@@ -170,28 +170,28 @@ bool JSEngineAdapter::createSession(const std::string &sessionId, const std::str
         Logger::error("JSEngineAdapter: Not initialized");
         return false;
     }
-    return JSEngine::instance().createSession(sessionId, parentSessionId);
+    return RSM::JSEngine::instance().createSession(sessionId, parentSessionId);
 }
 
 bool JSEngineAdapter::destroySession(const std::string &sessionId) {
     if (!initialized_) {
         return false;
     }
-    return JSEngine::instance().destroySession(sessionId);
+    return RSM::JSEngine::instance().destroySession(sessionId);
 }
 
 bool JSEngineAdapter::hasSession(const std::string &sessionId) {
     if (!initialized_) {
         return false;
     }
-    return JSEngine::instance().hasSession(sessionId);
+    return RSM::JSEngine::instance().hasSession(sessionId);
 }
 
 std::vector<std::string> JSEngineAdapter::getActiveSessions() const {
     if (!initialized_) {
         return {};
     }
-    return JSEngine::instance().getActiveSessions();
+    return RSM::JSEngine::instance().getActiveSessions();
 }
 
 std::future<JSResult> JSEngineAdapter::executeScript(const std::string &sessionId, const std::string &script) {
@@ -200,7 +200,7 @@ std::future<JSResult> JSEngineAdapter::executeScript(const std::string &sessionI
         promise.set_value(JSResult::createError("Adapter not initialized"));
         return promise.get_future();
     }
-    return JSEngine::instance().executeScript(sessionId, script);
+    return RSM::JSEngine::instance().executeScript(sessionId, script);
 }
 
 std::future<JSResult> JSEngineAdapter::evaluateExpression(const std::string &sessionId, const std::string &expression) {
@@ -209,7 +209,7 @@ std::future<JSResult> JSEngineAdapter::evaluateExpression(const std::string &ses
         promise.set_value(JSResult::createError("Adapter not initialized"));
         return promise.get_future();
     }
-    return JSEngine::instance().evaluateExpression(sessionId, expression);
+    return RSM::JSEngine::instance().evaluateExpression(sessionId, expression);
 }
 
 std::future<JSResult> JSEngineAdapter::setVariable(const std::string &sessionId, const std::string &name,
@@ -219,7 +219,7 @@ std::future<JSResult> JSEngineAdapter::setVariable(const std::string &sessionId,
         promise.set_value(JSResult::createError("Adapter not initialized"));
         return promise.get_future();
     }
-    return JSEngine::instance().setVariable(sessionId, name, value);
+    return RSM::JSEngine::instance().setVariable(sessionId, name, value);
 }
 
 std::future<JSResult> JSEngineAdapter::getVariable(const std::string &sessionId, const std::string &name) {
@@ -228,7 +228,7 @@ std::future<JSResult> JSEngineAdapter::getVariable(const std::string &sessionId,
         promise.set_value(JSResult::createError("Adapter not initialized"));
         return promise.get_future();
     }
-    return JSEngine::instance().getVariable(sessionId, name);
+    return RSM::JSEngine::instance().getVariable(sessionId, name);
 }
 
 }  // namespace RSM

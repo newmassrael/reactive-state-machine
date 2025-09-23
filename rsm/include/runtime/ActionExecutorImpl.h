@@ -14,6 +14,7 @@ namespace RSM {
 
 // Forward declarations
 class IEventDispatcher;
+class IActionNode;
 
 /**
  * @brief Concrete implementation of IActionExecutor using JSEngine
@@ -46,6 +47,7 @@ public:
     bool executeIfAction(const IfAction &action) override;
     bool executeSendAction(const SendAction &action) override;
     bool executeCancelAction(const CancelAction &action) override;
+    bool executeForeachAction(const ForeachAction &action) override;
 
     // Low-level primitives
     bool executeScript(const std::string &script) override;
@@ -158,6 +160,30 @@ private:
      * @return Unique sendid string following SCXML specification
      */
     std::string generateUniqueSendId() const;
+
+    /**
+     * @brief Parse array expression into vector of string values
+     * @param arrayExpr Array expression to parse (e.g., "[1,2,3]", "myArray", "data.items")
+     * @return Vector of string values from the array
+     */
+    std::vector<std::string> parseArrayExpression(const std::string &arrayExpr);
+
+    /**
+     * @brief Set loop variable in JavaScript context for foreach iteration
+     * @param varName Variable name to set
+     * @param value Value to assign (as string)
+     * @param iteration Current iteration number (for logging)
+     * @return true if variable was set successfully
+     */
+    bool setLoopVariable(const std::string &varName, const std::string &value, size_t iteration);
+
+    /**
+     * @brief Execute all actions in a foreach iteration
+     * @param actions Vector of actions to execute
+     * @param iteration Current iteration number (for logging)
+     * @return true if all actions executed successfully
+     */
+    bool executeIterationActions(const std::vector<std::shared_ptr<IActionNode>> &actions, size_t iteration);
 };
 
 }  // namespace RSM

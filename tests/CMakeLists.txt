@@ -246,6 +246,7 @@ add_executable(integration_tests
     integration/ParallelStateEndToEndTest.cpp
     integration/SCXMLParallelComplianceTest.cpp
     integration/ConcurrentCompletionMonitoringTest.cpp
+    integration/SCXMLForeachIntegrationTest.cpp
     mocks/MockActionExecutor.cpp
 )
 

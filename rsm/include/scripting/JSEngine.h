@@ -176,6 +176,103 @@ public:
      */
     std::future<JSResult> validateExpression(const std::string &sessionId, const std::string &expression);
 
+    // === INTEGRATED RESULT PROCESSING API ===
+
+    /**
+     * @brief Convert JSResult to boolean with W3C SCXML semantics
+     *
+     * ARCHITECTURAL DECISION: Integrated directly into JSEngine to eliminate
+     * scattered type conversion logic across the codebase.
+     *
+     * @param result JSEngine execution result
+     * @return Boolean value following W3C SCXML conversion rules
+     * @throws std::runtime_error on conversion failure
+     */
+    static bool resultToBool(const JSResult &result);
+
+    /**
+     * @brief Convert JSResult to string with JSON.stringify fallback
+     *
+     * Integrates the proven conversion logic from ActionExecutorImpl
+     * directly into the engine for consistent access.
+     *
+     * @param result JSEngine execution result
+     * @param sessionId Session ID for JSON.stringify evaluation (optional)
+     * @param originalExpression Original expression for complex objects (optional)
+     * @return String representation or error message
+     */
+    static std::string resultToString(const JSResult &result, const std::string &sessionId = "",
+                                      const std::string &originalExpression = "");
+
+    /**
+     * @brief Convert JSResult to string array for SCXML foreach actions
+     *
+     * @param result JSEngine evaluation result of array expression
+     * @param sessionId Session for additional evaluation if needed
+     * @return Vector of string representations
+     */
+    static std::vector<std::string> resultToStringArray(const JSResult &result, const std::string &sessionId);
+
+    /**
+     * @brief Convert JSResult to string array with original expression context
+     *
+     * SOLID: Expression-aware version that can re-evaluate with JSON.stringify
+     * This maintains Single Responsibility while providing complete functionality
+     *
+     * @param result JSEngine evaluation result
+     * @param sessionId Session for additional evaluation if needed
+     * @param originalExpression Original expression for JSON.stringify fallback
+     * @return Vector of string representations
+     */
+    static std::vector<std::string> resultToStringArray(const JSResult &result, const std::string &sessionId,
+                                                        const std::string &originalExpression);
+
+    /**
+     * @brief Extract typed value from JSResult safely
+     *
+     * @tparam T Target type (bool, int64_t, double, std::string)
+     * @param result JSEngine execution result
+     * @return Optional typed value (nullopt on type mismatch or failure)
+     */
+
+    /**
+     * @brief Require successful result or throw exception
+     *
+     * @param result JSEngine result to validate
+     * @param operation Operation context for error message
+     * @throws std::runtime_error if result indicates failure
+     */
+    static void requireSuccess(const JSResult &result, const std::string &operation);
+
+    /**
+     * @brief Check if result represents successful operation
+     *
+     * @param result JSEngine execution result
+     * @return true if operation succeeded
+     */
+    static bool isSuccess(const JSResult &result) noexcept;
+
+    /**
+     * @brief Extract typed value from JSResult safely (template implementation)
+     *
+     * @tparam T Target type (bool, int64_t, double, std::string)
+     * @param result JSEngine execution result
+     * @return Optional typed value (nullopt on type mismatch or failure)
+     */
+    template <typename T> static std::optional<T> resultToValue(const JSResult &result) {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int64_t> || std::is_same_v<T, double> ||
+                          std::is_same_v<T, std::string>,
+                      "Supported types: bool, int64_t, double, std::string");
+
+        if (!result.success_internal || !std::holds_alternative<T>(result.value_internal)) {
+            return std::nullopt;
+        }
+        return std::get<T>(result.value_internal);
+    }
+
+    // === DEPRECATED: Direct result.value access is architecturally forbidden ===
+    // Use the resultToXXX methods above instead
+
 private:
     JSEngine();  // 생성자에서 완전 초기화
     ~JSEngine();

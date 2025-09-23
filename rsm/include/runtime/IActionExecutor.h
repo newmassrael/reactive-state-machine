@@ -13,6 +13,7 @@ class ScriptAction;
 class AssignAction;
 class SendAction;
 class CancelAction;
+class ForeachAction;
 
 /**
  * @brief Interface for executing SCXML actions
@@ -77,6 +78,13 @@ public:
      * @return true if execution was successful
      */
     virtual bool executeCancelAction(const CancelAction &action) = 0;
+
+    /**
+     * @brief Execute a foreach action (iteration over arrays)
+     * @param action ForeachAction to execute
+     * @return true if execution was successful
+     */
+    virtual bool executeForeachAction(const ForeachAction &action) = 0;
 
     // Low-level primitives (for internal use)
     /**

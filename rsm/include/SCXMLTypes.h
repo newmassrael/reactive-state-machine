@@ -29,9 +29,24 @@ struct ScriptArray;
 struct ScriptObject;
 
 /**
- * @brief JavaScript value types for SCXML data model
+ * @brief JavaScript null type for SCXML W3C compliance
  */
-using ScriptValue = std::variant<std::monostate,                // undefined/null
+struct ScriptNull {};
+
+/**
+ * @brief JavaScript undefined type for SCXML W3C compliance
+ */
+struct ScriptUndefined {};
+
+/**
+ * @brief JavaScript value types for SCXML data model
+ *
+ * SCXML W3C Compliance: null and undefined are now distinct types
+ * - ScriptUndefined: typeof returns "undefined"
+ * - ScriptNull: typeof returns "object"
+ */
+using ScriptValue = std::variant<ScriptUndefined,               // undefined
+                                 ScriptNull,                    // null
                                  bool,                          // boolean
                                  int64_t,                       // integer
                                  double,                        // number
@@ -73,7 +88,7 @@ namespace RSM {
  */
 struct SCXML_API ExecutionResult {
     bool success = false;
-    ScriptValue value = std::monostate{};
+    ScriptValue value = ScriptUndefined{};
     std::string errorMessage;
 
     bool isSuccess() const {

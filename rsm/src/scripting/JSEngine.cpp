@@ -139,7 +139,7 @@ bool JSEngine::createSession(const std::string &sessionId, const std::string &pa
     queueCondition_.notify_one();
 
     auto result = future.get();
-    return result.success;
+    return result.isSuccess();
 }
 
 bool JSEngine::destroySession(const std::string &sessionId) {
@@ -155,7 +155,7 @@ bool JSEngine::destroySession(const std::string &sessionId) {
     queueCondition_.notify_one();
 
     auto result = future.get();
-    return result.success;
+    return result.isSuccess();
 }
 
 bool JSEngine::hasSession(const std::string &sessionId) const {
@@ -169,7 +169,7 @@ bool JSEngine::hasSession(const std::string &sessionId) const {
     const_cast<JSEngine *>(this)->queueCondition_.notify_one();
 
     auto result = future.get();
-    return result.success;
+    return result.isSuccess();
 }
 
 std::vector<std::string> JSEngine::getActiveSessions() const {
@@ -185,8 +185,8 @@ std::vector<std::string> JSEngine::getActiveSessions() const {
     auto result = future.get();
     // Parse comma-separated session IDs from result
     std::vector<std::string> sessions;
-    if (result.success && std::holds_alternative<std::string>(result.value)) {
-        std::string sessionIds = std::get<std::string>(result.value);
+    if (result.isSuccess() && std::holds_alternative<std::string>(result.value_internal)) {
+        std::string sessionIds = std::get<std::string>(result.value_internal);
         if (!sessionIds.empty()) {
             std::stringstream ss(sessionIds);
             std::string item;
@@ -335,8 +335,8 @@ size_t JSEngine::getMemoryUsage() const {
     const_cast<JSEngine *>(this)->queueCondition_.notify_one();
 
     auto result = future.get();
-    if (result.success && std::holds_alternative<int64_t>(result.value)) {
-        return static_cast<size_t>(std::get<int64_t>(result.value));
+    if (result.isSuccess() && std::holds_alternative<int64_t>(result.value_internal)) {
+        return static_cast<size_t>(std::get<int64_t>(result.value_internal));
     }
     return 0;
 }
@@ -366,7 +366,7 @@ void JSEngine::executionWorker() {
     // Create QuickJS runtime in worker thread to ensure thread safety
     runtime_ = JS_NewRuntime();
     if (!runtime_) {
-        std::cerr << "JSEngine: Failed to create QuickJS runtime in worker thread" << std::endl;
+        Logger::error("JSEngine: Failed to create QuickJS runtime in worker thread");
         return;
     }
     Logger::debug("JSEngine: QuickJS runtime created in worker thread");
@@ -523,12 +523,12 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
 bool JSEngine::createSessionInternal(const std::string &sessionId, const std::string &parentSessionId) {
     // Validate session ID is not empty
     if (sessionId.empty()) {
-        std::cerr << "JSEngine: Session ID cannot be empty" << std::endl;
+        Logger::error("JSEngine: Session ID cannot be empty");
         return false;
     }
 
     if (sessions_.find(sessionId) != sessions_.end()) {
-        std::cerr << "JSEngine: Session already exists: " << sessionId << std::endl;
+        Logger::error("JSEngine: Session already exists: {}", sessionId);
         return false;
     }
 
@@ -536,7 +536,7 @@ bool JSEngine::createSessionInternal(const std::string &sessionId, const std::st
     // Create QuickJS context
     JSContext *ctx = JS_NewContext(runtime_);
     if (!ctx) {
-        std::cerr << "JSEngine: Failed to create context for session: " << sessionId << std::endl;
+        Logger::error("JSEngine: Failed to create context for session: {}", sessionId);
         return false;
     }
 
@@ -803,7 +803,7 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
 
     // Log to our RSM logging system
     // For now, just print to stderr for testing
-    std::cerr << "RSM console.log: " << ss.str() << std::endl;
+    Logger::info("RSM console.log: {}", ss.str());
     return JS_UNDEFINED;
 }
 
@@ -872,6 +872,209 @@ void JSEngine::setStateMachine(StateMachine *stateMachine, const std::string &se
             Logger::debug("JSEngine: StateMachine removed for session: {}", sessionId);
         }
     }
+}
+
+// ===================================================================
+// INTEGRATED RESULT PROCESSING IMPLEMENTATION
+// ===================================================================
+
+bool JSEngine::resultToBool(const JSResult &result) {
+    if (!result.success_internal) {
+        return false;
+    }
+
+    // REUSE: Proven boolean conversion logic from ActionExecutorImpl
+    if (std::holds_alternative<bool>(result.value_internal)) {
+        return std::get<bool>(result.value_internal);
+    } else if (std::holds_alternative<long>(result.value_internal)) {
+        return std::get<long>(result.value_internal) != 0;
+    } else if (std::holds_alternative<double>(result.value_internal)) {
+        return std::get<double>(result.value_internal) != 0.0;
+    } else if (std::holds_alternative<std::string>(result.value_internal)) {
+        return !std::get<std::string>(result.value_internal).empty();
+    }
+    return false;
+}
+
+std::string JSEngine::resultToString(const JSResult &result, const std::string &sessionId,
+                                     const std::string &originalExpression) {
+    if (!result.success_internal) {
+        return "";
+    }
+
+    if (std::holds_alternative<std::string>(result.value_internal)) {
+        return result.getValue<std::string>();
+    } else if (std::holds_alternative<double>(result.value_internal)) {
+        double val = result.getValue<double>();
+        // Check if it's an integer value
+        if (val == std::floor(val)) {
+            return std::to_string(static_cast<int64_t>(val));
+        } else {
+            // SCXML W3C Compliance: Use ECMAScript-compatible number formatting
+            std::ostringstream oss;
+            oss << std::noshowpoint << val;
+            std::string str = oss.str();
+
+            // Remove trailing zeros after decimal point (JavaScript behavior)
+            if (str.find('.') != std::string::npos) {
+                str.erase(str.find_last_not_of('0') + 1, std::string::npos);
+                if (str.back() == '.') {
+                    str.pop_back();
+                }
+            }
+            return str;
+        }
+    } else if (std::holds_alternative<int64_t>(result.value_internal)) {
+        return std::to_string(result.getValue<int64_t>());
+    } else if (std::holds_alternative<bool>(result.value_internal)) {
+        return result.getValue<bool>() ? "true" : "false";
+    } else if (!sessionId.empty() && !originalExpression.empty()) {
+        // REUSE: Proven JSON.stringify fallback logic
+        std::string stringifyExpr = "JSON.stringify(" + originalExpression + ")";
+        auto stringifyResult = RSM::JSEngine::instance().evaluateExpression(sessionId, stringifyExpr).get();
+        if (stringifyResult.isSuccess()) {
+            return stringifyResult.getValue<std::string>();
+        }
+        return "[object]";
+    }
+    return "[conversion_error]";
+}
+
+std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, const std::string &sessionId) {
+    // SOLID: Delegate to expression-aware version (Single Responsibility)
+    return resultToStringArray(result, sessionId, "");
+}
+
+std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, const std::string &sessionId,
+                                                       const std::string &originalExpression) {
+    std::vector<std::string> arrayValues;
+
+    Logger::debug("resultToStringArray: Starting with sessionId='{}', originalExpression='{}'", sessionId,
+                  originalExpression);
+
+    if (!result.success_internal) {
+        Logger::debug("resultToStringArray: Result not successful, returning empty array");
+        return arrayValues;
+    }
+
+    std::string arrayStr;
+
+    // SOLID: Handle all ScriptValue types internally (Single Responsibility)
+    if (std::holds_alternative<std::string>(result.value_internal)) {
+        arrayStr = std::get<std::string>(result.value_internal);
+        Logger::debug("resultToStringArray: Got string result: '{}'", arrayStr);
+    } else {
+        Logger::debug("resultToStringArray: Result is not string type, attempting JSON.stringify conversion");
+        // SOLID: For non-string types, convert to JSON string using proven logic
+        // This handles array objects, numbers, booleans, etc.
+        if (!sessionId.empty() && !originalExpression.empty()) {
+            // Use JSON.stringify for reliable array conversion
+            std::string stringifyExpr = "JSON.stringify(" + originalExpression + ")";
+            Logger::debug("resultToStringArray: Evaluating stringify expression: '{}'", stringifyExpr);
+            auto stringifyResult = RSM::JSEngine::instance().evaluateExpression(sessionId, stringifyExpr).get();
+            if (stringifyResult.isSuccess() && std::holds_alternative<std::string>(stringifyResult.value_internal)) {
+                arrayStr = std::get<std::string>(stringifyResult.value_internal);
+                Logger::debug("resultToStringArray: JSON.stringify succeeded, result: '{}'", arrayStr);
+            } else {
+                Logger::debug("resultToStringArray: JSON.stringify failed or returned non-string");
+                return arrayValues;  // Failed to convert to JSON string
+            }
+        } else {
+            Logger::debug("resultToStringArray: Missing sessionId or originalExpression for non-string type");
+            return arrayValues;  // Cannot process non-string types without session context
+        }
+    }
+
+    Logger::debug("resultToStringArray: Final arrayStr before processing: '{}'", arrayStr);
+
+    // SOLID: Use JSON-based approach for reliable array parsing
+    // This correctly handles nested arrays like [[1,2],[3,4]] and all JavaScript types
+    if (!arrayStr.empty() && !sessionId.empty()) {
+        Logger::debug("resultToStringArray: Processing array using JSON approach");
+
+        try {
+            // SCXML W3C Compliance: Use original expression to preserve null/undefined distinction
+            std::string setVarExpr = "var _tempArray = " + originalExpression + "; _tempArray.length";
+            Logger::debug("resultToStringArray: Evaluating temp variable length expression: '{}'", setVarExpr);
+            auto lengthResult = RSM::JSEngine::instance().evaluateExpression(sessionId, setVarExpr).get();
+
+            Logger::debug("resultToStringArray: Length result type index: {}", lengthResult.value_internal.index());
+
+            int64_t arrayLength = 0;
+            bool lengthValid = false;
+
+            if (lengthResult.isSuccess()) {
+                if (std::holds_alternative<int64_t>(lengthResult.value_internal)) {
+                    arrayLength = std::get<int64_t>(lengthResult.value_internal);
+                    lengthValid = true;
+                    Logger::debug("resultToStringArray: Got int64_t array length: {}", arrayLength);
+                } else if (std::holds_alternative<double>(lengthResult.value_internal)) {
+                    double doubleLength = std::get<double>(lengthResult.value_internal);
+                    arrayLength = static_cast<int64_t>(doubleLength);
+                    lengthValid = true;
+                    Logger::debug("resultToStringArray: Got double array length: {} -> {}", doubleLength, arrayLength);
+                }
+            }
+
+            if (lengthValid) {
+                // Iterate through array elements using temporary variable approach
+                for (int64_t i = 0; i < arrayLength; ++i) {
+                    // SCXML W3C: Check for undefined first, then use JSON.stringify for other types
+                    std::string typeCheckExpr = "typeof _tempArray[" + std::to_string(i) + "]";
+                    auto typeResult = RSM::JSEngine::instance().evaluateExpression(sessionId, typeCheckExpr).get();
+
+                    if (typeResult.isSuccess() && std::holds_alternative<std::string>(typeResult.value_internal)) {
+                        std::string typeStr = std::get<std::string>(typeResult.value_internal);
+
+                        if (typeStr == "undefined") {
+                            // Preserve undefined values exactly
+                            arrayValues.push_back("undefined");
+                            Logger::debug("resultToStringArray: Element {} is undefined", i);
+                            continue;
+                        }
+                    }
+
+                    // For non-undefined values, use JSON.stringify
+                    std::string elementExpr = "JSON.stringify(_tempArray[" + std::to_string(i) + "])";
+                    Logger::debug("resultToStringArray: Element {} expression: '{}'", i, elementExpr);
+                    auto elementResult = RSM::JSEngine::instance().evaluateExpression(sessionId, elementExpr).get();
+
+                    if (elementResult.isSuccess() &&
+                        std::holds_alternative<std::string>(elementResult.value_internal)) {
+                        std::string elementStr = std::get<std::string>(elementResult.value_internal);
+                        Logger::debug("resultToStringArray: Element {} result: '{}'", i, elementStr);
+                        // Remove quotes for primitive types, keep JSON for complex types
+                        if (elementStr.length() >= 2 && elementStr.front() == '"' && elementStr.back() == '"') {
+                            // String value - remove quotes
+                            arrayValues.push_back(elementStr.substr(1, elementStr.length() - 2));
+                        } else {
+                            // Non-string value (number, boolean, array, object) - keep as JSON
+                            arrayValues.push_back(elementStr);
+                        }
+                    }
+                }
+            } else {
+                Logger::debug("resultToStringArray: Length evaluation failed - success: {}, error: '{}'",
+                              lengthResult.isSuccess(),
+                              lengthResult.isSuccess() ? "no error" : lengthResult.errorMessage_internal);
+            }
+        } catch (const std::exception &e) {
+            Logger::error("resultToStringArray: Exception during JSON processing: {}", e.what());
+        }
+    }
+
+    Logger::debug("resultToStringArray: Returning {} elements", arrayValues.size());
+    return arrayValues;
+}
+
+void JSEngine::requireSuccess(const JSResult &result, const std::string &operation) {
+    if (!result.success_internal) {
+        throw std::runtime_error("JSEngine operation failed: " + operation + " - " + result.errorMessage_internal);
+    }
+}
+
+bool JSEngine::isSuccess(const JSResult &result) noexcept {
+    return result.success_internal;
 }
 
 // JSEngine internal functions are implemented in JSEngineImpl.cpp

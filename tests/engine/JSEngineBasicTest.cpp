@@ -1,3 +1,4 @@
+#include "common/Logger.h"
 #include "runtime/StateMachine.h"
 #include "scripting/JSEngine.h"
 #include <gtest/gtest.h>
@@ -29,7 +30,7 @@ protected:
 TEST_F(JSEngineBasicTest, ECMAScript_BasicArithmeticExpression) {
     // Test basic arithmetic
     auto result = engine_->evaluateExpression(sessionId_, "2 + 3").get();
-    ASSERT_TRUE(result.isSuccess()) << "Failed to evaluate expression: " << result.errorMessage;
+    ASSERT_TRUE(result.isSuccess()) << "Failed to evaluate expression";
     EXPECT_EQ(result.getValue<double>(), 5.0);
 }
 
@@ -401,4 +402,151 @@ TEST_F(JSEngineBasicTest, W3C_InFunction_StateMachineIntegration_ShouldReturnCor
     auto afterStopResult = engine_->evaluateExpression(sessionId_, "In('idle')").get();
     ASSERT_TRUE(afterStopResult.isSuccess()) << "In('idle') evaluation failed after stop";
     EXPECT_FALSE(afterStopResult.getValue<bool>()) << "In() should return false after StateMachine is stopped";
+}
+
+TEST_F(JSEngineBasicTest, W3C_ForeachAction_ArrayExpressionEvaluation) {
+    // SCXML foreach에서 사용하는 배열 표현식들을 테스트
+    // 이 테스트는 ForeachAction의 parseArrayExpression에서 사용되는 패턴들을 검증
+
+    // 1. 기본 숫자 배열 표현식 (ForeachAction 실패 원인 분석용)
+    auto numberArrayResult = engine_->evaluateExpression(sessionId_, "[1, 2, 3]").get();
+    ASSERT_TRUE(numberArrayResult.isSuccess()) << "숫자 배열 표현식 평가 실패";
+
+    // 반환값의 타입과 내용 확인
+    if (std::holds_alternative<std::string>(numberArrayResult.getInternalValue())) {
+        std::string resultStr = std::get<std::string>(numberArrayResult.getInternalValue());
+        RSM::Logger::debug("Array result (string): '{}'", resultStr);
+        RSM::Logger::debug("Length: {}", resultStr.length());
+        if (!resultStr.empty()) {
+            RSM::Logger::debug("First char: '{}' (ASCII: {})", resultStr.front(), (int)resultStr.front());
+            RSM::Logger::debug("Last char: '{}' (ASCII: {})", resultStr.back(), (int)resultStr.back());
+        }
+    } else if (std::holds_alternative<long>(numberArrayResult.getInternalValue())) {
+        RSM::Logger::debug("Array result (integer): {}", std::get<long>(numberArrayResult.getInternalValue()));
+    } else if (std::holds_alternative<double>(numberArrayResult.getInternalValue())) {
+        RSM::Logger::debug("Array result (double): {}", std::get<double>(numberArrayResult.getInternalValue()));
+    } else if (std::holds_alternative<bool>(numberArrayResult.getInternalValue())) {
+        RSM::Logger::debug("Array result (boolean): {}", std::get<bool>(numberArrayResult.getInternalValue()));
+    }
+
+    // 2. 문자열 배열 표현식
+    auto stringArrayResult = engine_->evaluateExpression(sessionId_, "['first', 'second', 'third']").get();
+    ASSERT_TRUE(stringArrayResult.isSuccess()) << "문자열 배열 표현식 평가 실패";
+
+    // 3. 변수를 통한 배열 접근
+    auto varArraySetup = engine_->executeScript(sessionId_, "var testArray = [1, 2, 3]; testArray").get();
+    ASSERT_TRUE(varArraySetup.isSuccess()) << "배열 변수 설정 실패";
+
+    auto varArrayResult = engine_->evaluateExpression(sessionId_, "testArray").get();
+    ASSERT_TRUE(varArrayResult.isSuccess()) << "배열 변수 평가 실패";
+
+    // 4. Object.values() 표현식 (복잡한 배열 생성)
+    auto objectValuesResult =
+        engine_->evaluateExpression(sessionId_, "Object.values({a: 'first', b: 'second', c: 'third'})").get();
+    ASSERT_TRUE(objectValuesResult.isSuccess()) << "Object.values 표현식 평가 실패";
+
+    // 5. 빈 배열 표현식
+    auto emptyArrayResult = engine_->evaluateExpression(sessionId_, "[]").get();
+    ASSERT_TRUE(emptyArrayResult.isSuccess()) << "빈 배열 표현식 평가 실패";
+
+    // 6. 배열 길이 확인 (foreach에서 반복 횟수 결정에 사용)
+    auto lengthCheckResult = engine_->evaluateExpression(sessionId_, "[1, 2, 3].length").get();
+    ASSERT_TRUE(lengthCheckResult.isSuccess()) << "배열 길이 확인 실패";
+    if (lengthCheckResult.isSuccess()) {
+        EXPECT_EQ(lengthCheckResult.getValue<double>(), 3.0) << "배열 길이가 3이 아님";
+    }
+
+    // 7. 배열 요소 개별 접근 (foreach 반복에서 사용)
+    auto elementAccessResult1 = engine_->evaluateExpression(sessionId_, "[1, 2, 3][0]").get();
+    ASSERT_TRUE(elementAccessResult1.isSuccess()) << "배열 첫 번째 요소 접근 실패";
+
+    auto elementAccessResult2 = engine_->evaluateExpression(sessionId_, "[1, 2, 3][1]").get();
+    ASSERT_TRUE(elementAccessResult2.isSuccess()) << "배열 두 번째 요소 접근 실패";
+
+    // 8. JSON.stringify를 통한 배열 문자열 변환 (디버깅용)
+    auto stringifyResult = engine_->evaluateExpression(sessionId_, "JSON.stringify([1, 2, 3])").get();
+    ASSERT_TRUE(stringifyResult.isSuccess()) << "JSON.stringify 변환 실패";
+    if (stringifyResult.isSuccess()) {
+        std::string jsonString = stringifyResult.getValue<std::string>();
+        RSM::Logger::debug("JSON.stringify result: '{}'", jsonString);
+        EXPECT_EQ(jsonString, "[1,2,3]") << "JSON 문자열이 예상과 다름";
+    }
+}
+
+// ===================================================================
+// INTEGRATED API TESTS: JSEngine built-in result processing
+// ===================================================================
+
+TEST_F(JSEngineBasicTest, IntegratedAPI_ResultConversion) {
+    // Test the new integrated result conversion API that eliminates code duplication
+
+    // Test boolean conversion
+    auto boolResult = engine_->evaluateExpression(sessionId_, "true").get();
+    ASSERT_TRUE(boolResult.isSuccess()) << "Boolean evaluation failed";
+    bool converted = RSM::JSEngine::resultToBool(boolResult);
+    EXPECT_TRUE(converted) << "Boolean conversion failed";
+
+    // Test string conversion with different types
+    auto numberResult = engine_->evaluateExpression(sessionId_, "42").get();
+    ASSERT_TRUE(numberResult.isSuccess()) << "Number evaluation failed";
+    std::string numberStr = RSM::JSEngine::resultToString(numberResult);
+    EXPECT_EQ(numberStr, "42") << "Number to string conversion failed";
+
+    auto doubleResult = engine_->evaluateExpression(sessionId_, "3.14").get();
+    ASSERT_TRUE(doubleResult.isSuccess()) << "Double evaluation failed";
+    std::string doubleStr = RSM::JSEngine::resultToString(doubleResult);
+    EXPECT_EQ(doubleStr, "3.14") << "Double to string conversion failed";
+
+    auto boolStrResult = engine_->evaluateExpression(sessionId_, "false").get();
+    ASSERT_TRUE(boolStrResult.isSuccess()) << "Boolean string evaluation failed";
+    std::string boolStr = RSM::JSEngine::resultToString(boolStrResult);
+    EXPECT_EQ(boolStr, "false") << "Boolean to string conversion failed";
+
+    // Test template-based typed conversion
+    auto typedNumber = RSM::JSEngine::resultToValue<double>(doubleResult);
+    ASSERT_TRUE(typedNumber.has_value()) << "Typed double conversion failed";
+    EXPECT_DOUBLE_EQ(typedNumber.value(), 3.14) << "Typed double value mismatch";
+
+    auto typedBool = RSM::JSEngine::resultToValue<bool>(boolResult);
+    ASSERT_TRUE(typedBool.has_value()) << "Typed boolean conversion failed";
+    EXPECT_TRUE(typedBool.value()) << "Typed boolean value mismatch";
+}
+
+TEST_F(JSEngineBasicTest, IntegratedAPI_JSONStringifyFallback) {
+    // Test JSON.stringify fallback for complex objects - reuses proven ActionExecutorImpl logic
+
+    auto objResult = engine_->evaluateExpression(sessionId_, "{name: 'test', value: 123}").get();
+    ASSERT_TRUE(objResult.isSuccess()) << "Object evaluation failed";
+
+    // Test string conversion with JSON.stringify fallback
+    std::string objStr = RSM::JSEngine::resultToString(objResult, sessionId_, "{name: 'test', value: 123}");
+    EXPECT_FALSE(objStr.empty()) << "Object to string conversion returned empty";
+
+    // Should contain JSON representation or fallback
+    EXPECT_TRUE(objStr.find("test") != std::string::npos || objStr.find("[object]") != std::string::npos)
+        << "Object conversion should contain 'test' or '[object]' fallback";
+}
+
+TEST_F(JSEngineBasicTest, IntegratedAPI_ErrorHandling) {
+    // Test error handling with integrated API
+
+    // Test with failed result
+    auto failedResult = engine_->evaluateExpression(sessionId_, "nonexistent_variable").get();
+    EXPECT_FALSE(RSM::JSEngine::isSuccess(failedResult)) << "Should fail for nonexistent variable";
+
+    // Boolean conversion of failed result should return false
+    bool failedBool = RSM::JSEngine::resultToBool(failedResult);
+    EXPECT_FALSE(failedBool) << "Failed result should convert to false";
+
+    // String conversion of failed result should return empty
+    std::string failedStr = RSM::JSEngine::resultToString(failedResult);
+    EXPECT_TRUE(failedStr.empty()) << "Failed result should convert to empty string";
+
+    // Template conversion should return nullopt
+    auto failedTyped = RSM::JSEngine::resultToValue<double>(failedResult);
+    EXPECT_FALSE(failedTyped.has_value()) << "Failed result should return nullopt for typed conversion";
+
+    // Test requireSuccess with failed result
+    EXPECT_THROW(RSM::JSEngine::requireSuccess(failedResult, "test operation"), std::runtime_error)
+        << "requireSuccess should throw for failed result";
 }

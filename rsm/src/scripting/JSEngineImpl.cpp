@@ -29,7 +29,7 @@ JSResult JSEngine::executeScriptInternal(const std::string &sessionId, const std
         Logger::debug("JSEngine: QuickJS exception occurred");
         JSResult error = createErrorFromException(ctx);
         JS_FreeValue(ctx, result);
-        Logger::debug("JSEngine: Error: " + error.errorMessage);
+        Logger::debug("JSEngine: Execution error occurred");
         return error;
     }
 
@@ -278,7 +278,12 @@ JSResult JSEngine::setupSystemVariablesInternal(const std::string &sessionId, co
 // === Type Conversion ===
 
 ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
-    if (JS_IsBool(qjsValue)) {
+    // SCXML W3C Compliance: Handle null and undefined distinctly
+    if (JS_IsUndefined(qjsValue)) {
+        return ScriptUndefined{};
+    } else if (JS_IsNull(qjsValue)) {
+        return ScriptNull{};
+    } else if (JS_IsBool(qjsValue)) {
         return JS_ToBool(ctx, qjsValue) ? true : false;
     } else if (JS_IsNumber(qjsValue)) {
         // JavaScript numbers are always double (IEEE 754)
@@ -327,14 +332,19 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
         return scriptObject;
     }
 
-    return std::monostate{};  // undefined/null
+    // Default fallback for unknown types
+    return ScriptUndefined{};
 }
 
 JSValue JSEngine::jsValueToQuickJS(JSContext *ctx, const ScriptValue &value) {
     return std::visit(
         [this, ctx](const auto &v) -> JSValue {
             using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, bool>) {
+            if constexpr (std::is_same_v<T, ScriptUndefined>) {
+                return JS_UNDEFINED;
+            } else if constexpr (std::is_same_v<T, ScriptNull>) {
+                return JS_NULL;
+            } else if constexpr (std::is_same_v<T, bool>) {
                 return JS_NewBool(ctx, v);
             } else if constexpr (std::is_same_v<T, int64_t>) {
                 return JS_NewInt64(ctx, v);

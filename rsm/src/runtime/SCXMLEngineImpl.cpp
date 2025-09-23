@@ -50,7 +50,7 @@ bool SCXMLEngineImpl::initialize() {
 
     // JSEngine은 생성자에서 자동 초기화됨 (RAII)
     // instance() 호출만으로 완전 초기화된 엔진을 얻을 수 있음
-    JSEngine::instance();  // RAII 보장
+    RSM::JSEngine::instance();  // RAII 보장
     Logger::debug("SCXMLEngineImpl: JSEngine automatically initialized via RAII");
     initialized_ = true;
     return true;
@@ -58,29 +58,29 @@ bool SCXMLEngineImpl::initialize() {
 
 void SCXMLEngineImpl::shutdown() {
     if (initialized_) {
-        JSEngine::instance().shutdown();
+        RSM::JSEngine::instance().shutdown();
         initialized_ = false;
     }
 }
 
 ::std::string SCXMLEngineImpl::getEngineInfo() const {
-    return JSEngine::instance().getEngineInfo() + " (SCXML C++ API v1.0)";
+    return RSM::JSEngine::instance().getEngineInfo() + " (SCXML C++ API v1.0)";
 }
 
 bool SCXMLEngineImpl::createSession(const ::std::string &sessionId, const ::std::string &parentSessionId) {
-    return JSEngine::instance().createSession(sessionId, parentSessionId);
+    return RSM::JSEngine::instance().createSession(sessionId, parentSessionId);
 }
 
 bool SCXMLEngineImpl::destroySession(const ::std::string &sessionId) {
-    return JSEngine::instance().destroySession(sessionId);
+    return RSM::JSEngine::instance().destroySession(sessionId);
 }
 
 bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
-    return JSEngine::instance().hasSession(sessionId);
+    return RSM::JSEngine::instance().hasSession(sessionId);
 }
 
 ::std::vector<SessionInfo> SCXMLEngineImpl::getActiveSessions() const {
-    auto sessionIds = JSEngine::instance().getActiveSessions();
+    auto sessionIds = RSM::JSEngine::instance().getActiveSessions();
     ::std::vector<SessionInfo> result;
     result.reserve(sessionIds.size());
 
@@ -96,7 +96,7 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 
 ::std::future<ExecutionResult> SCXMLEngineImpl::executeScript(const ::std::string &sessionId,
                                                               const ::std::string &script) {
-    auto jsFuture = JSEngine::instance().executeScript(sessionId, script);
+    auto jsFuture = RSM::JSEngine::instance().executeScript(sessionId, script);
     return ::std::async(::std::launch::deferred, [jsFuture = ::std::move(jsFuture), this]() mutable {
         auto jsResult = jsFuture.get();
         return convertResult(jsResult);
@@ -105,7 +105,7 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 
 ::std::future<ExecutionResult> SCXMLEngineImpl::evaluateExpression(const ::std::string &sessionId,
                                                                    const ::std::string &expression) {
-    auto jsFuture = JSEngine::instance().evaluateExpression(sessionId, expression);
+    auto jsFuture = RSM::JSEngine::instance().evaluateExpression(sessionId, expression);
     return ::std::async(::std::launch::deferred, [jsFuture = ::std::move(jsFuture), this]() mutable {
         auto jsResult = jsFuture.get();
         return convertResult(jsResult);
@@ -115,7 +115,7 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 ::std::future<ExecutionResult> SCXMLEngineImpl::setVariable(const ::std::string &sessionId, const ::std::string &name,
                                                             const ScriptValue &value) {
     // Convert public ScriptValue to internal ScriptValue (same type)
-    auto jsFuture = JSEngine::instance().setVariable(sessionId, name, value);
+    auto jsFuture = RSM::JSEngine::instance().setVariable(sessionId, name, value);
     return ::std::async(::std::launch::deferred, [jsFuture = ::std::move(jsFuture), this]() mutable {
         auto jsResult = jsFuture.get();
         return convertResult(jsResult);
@@ -123,7 +123,7 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 }
 
 ::std::future<ExecutionResult> SCXMLEngineImpl::getVariable(const ::std::string &sessionId, const ::std::string &name) {
-    auto jsFuture = JSEngine::instance().getVariable(sessionId, name);
+    auto jsFuture = RSM::JSEngine::instance().getVariable(sessionId, name);
     return ::std::async(::std::launch::deferred, [jsFuture = ::std::move(jsFuture), this]() mutable {
         auto jsResult = jsFuture.get();
         return convertResult(jsResult);
@@ -133,7 +133,7 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 ::std::future<ExecutionResult> SCXMLEngineImpl::setCurrentEvent(const ::std::string &sessionId,
                                                                 ::std::shared_ptr<Event> event) {
     auto internalEvent = event;
-    auto jsFuture = JSEngine::instance().setCurrentEvent(sessionId, internalEvent);
+    auto jsFuture = RSM::JSEngine::instance().setCurrentEvent(sessionId, internalEvent);
     return ::std::async(::std::launch::deferred, [this, jsFuture = ::std::move(jsFuture)]() mutable {
         auto jsResult = jsFuture.get();
         return convertResult(jsResult);
@@ -143,7 +143,7 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 ::std::future<ExecutionResult> SCXMLEngineImpl::setupSystemVariables(const ::std::string &sessionId,
                                                                      const ::std::string &sessionName,
                                                                      const ::std::vector<::std::string> &ioProcessors) {
-    auto jsFuture = JSEngine::instance().setupSystemVariables(sessionId, sessionName, ioProcessors);
+    auto jsFuture = RSM::JSEngine::instance().setupSystemVariables(sessionId, sessionName, ioProcessors);
     return ::std::async(::std::launch::deferred, [jsFuture = ::std::move(jsFuture), this]() mutable {
         auto jsResult = jsFuture.get();
         return convertResult(jsResult);
@@ -151,18 +151,19 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 }
 
 size_t SCXMLEngineImpl::getMemoryUsage() const {
-    return JSEngine::instance().getMemoryUsage();
+    return RSM::JSEngine::instance().getMemoryUsage();
 }
 
 void SCXMLEngineImpl::collectGarbage() {
-    JSEngine::instance().collectGarbage();
+    RSM::JSEngine::instance().collectGarbage();
 }
 
 ExecutionResult SCXMLEngineImpl::convertResult(const JSResult &jsResult) const {
     ExecutionResult result;
-    result.success = jsResult.success;
-    result.value = jsResult.value;  // Same type, direct copy
-    result.errorMessage = jsResult.errorMessage;
+    result.success = jsResult.isSuccess();
+    // Direct access to value through internal member (friend class access)
+    result.value = jsResult.getInternalValue();
+    result.errorMessage = jsResult.isSuccess() ? "" : "Execution failed";
     return result;
 }
 

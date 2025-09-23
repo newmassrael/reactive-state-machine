@@ -1,6 +1,7 @@
 #include "runtime/ActionExecutorImpl.h"
 #include "actions/AssignAction.h"
 #include "actions/CancelAction.h"
+#include "actions/ForeachAction.h"
 #include "actions/IfAction.h"
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
@@ -44,7 +45,7 @@ bool ActionExecutorImpl::executeScript(const std::string &script) {
         auto result = JSEngine::instance().executeScript(sessionId_, script).get();
 
         if (!result.isSuccess()) {
-            handleJSError("script execution", result.errorMessage);
+            handleJSError("script execution", "Script execution failed");
             return false;
         }
 
@@ -78,7 +79,7 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
         // Use direct JSEngine evaluation without ActionExecutor context
         auto evalResult = JSEngine::instance().evaluateExpression(sessionId_, expr).get();
         if (!evalResult.isSuccess()) {
-            handleJSError("expression evaluation for assignment", evalResult.errorMessage);
+            handleJSError("expression evaluation for assignment", "Expression evaluation failed");
             return false;
         }
 
@@ -87,9 +88,10 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
         // For complex paths like "data.field", use executeScript
         if (std::regex_match(location, std::regex("^[a-zA-Z_][a-zA-Z0-9_]*$"))) {
             // Simple variable name - use setVariable
-            auto setResult = JSEngine::instance().setVariable(sessionId_, location, evalResult.value).get();
+            auto setResult =
+                JSEngine::instance().setVariable(sessionId_, location, evalResult.getInternalValue()).get();
             if (!setResult.isSuccess()) {
-                handleJSError("variable assignment", setResult.errorMessage);
+                handleJSError("variable assignment", "Variable assignment failed");
                 return false;
             }
         } else {
@@ -99,7 +101,7 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
 
             auto scriptResult = JSEngine::instance().executeScript(sessionId_, assignScript.str()).get();
             if (!scriptResult.isSuccess()) {
-                handleJSError("complex variable assignment", scriptResult.errorMessage);
+                handleJSError("complex variable assignment", "Complex variable assignment failed");
                 return false;
             }
         }
@@ -150,34 +152,12 @@ std::string ActionExecutorImpl::evaluateExpression(const std::string &expression
         auto result = JSEngine::instance().evaluateExpression(sessionId_, expression).get();
 
         if (!result.isSuccess()) {
-            handleJSError("expression evaluation", result.errorMessage);
+            handleJSError("expression evaluation", "Expression evaluation failed");
             return "";
         }
 
-        // Convert result to string based on type
-        if (std::holds_alternative<std::string>(result.value)) {
-            return result.getValue<std::string>();
-        } else if (std::holds_alternative<double>(result.value)) {
-            double val = result.getValue<double>();
-            // Check if it's an integer value
-            if (val == std::floor(val)) {
-                return std::to_string(static_cast<int64_t>(val));
-            } else {
-                return std::to_string(val);
-            }
-        } else if (std::holds_alternative<int64_t>(result.value)) {
-            return std::to_string(result.getValue<int64_t>());
-        } else if (std::holds_alternative<bool>(result.value)) {
-            return result.getValue<bool>() ? "true" : "false";
-        } else {
-            // For objects, try JSON.stringify
-            std::string stringifyExpr = "JSON.stringify(" + expression + ")";
-            auto stringifyResult = JSEngine::instance().evaluateExpression(sessionId_, stringifyExpr).get();
-            if (stringifyResult.isSuccess()) {
-                return stringifyResult.getValue<std::string>();
-            }
-            return "[object]";
-        }
+        // Use integrated JSEngine result conversion API
+        return JSEngine::resultToString(result, sessionId_, expression);
 
     } catch (const std::exception &e) {
         handleJSError("expression evaluation", e.what());
@@ -233,7 +213,7 @@ bool ActionExecutorImpl::hasVariable(const std::string &location) {
         std::string checkExpr = "typeof " + location + " !== 'undefined'";
         auto result = JSEngine::instance().evaluateExpression(sessionId_, checkExpr).get();
 
-        if (result.isSuccess() && std::holds_alternative<bool>(result.value)) {
+        if (result.isSuccess() && std::holds_alternative<bool>(result.getInternalValue())) {
             return result.getValue<bool>();
         }
 
@@ -275,7 +255,7 @@ void ActionExecutorImpl::clearCurrentEvent() {
         try {
             auto result = JSEngine::instance().setCurrentEvent(sessionId_, nullptr).get();
             if (!result.isSuccess()) {
-                Logger::debug("Failed to clear current event: {}", result.errorMessage);
+                Logger::debug("Failed to clear current event: Clear event failed");
             }
         } catch (const std::exception &e) {
             Logger::debug("Error clearing current event: {}", e.what());
@@ -616,23 +596,13 @@ bool ActionExecutorImpl::evaluateCondition(const std::string &condition) {
     try {
         auto result = JSEngine::instance().evaluateExpression(sessionId_, condition).get();
 
-        if (!result.success) {
-            Logger::error("Failed to evaluate condition '{}': {}", condition, result.errorMessage);
+        if (!result.isSuccess()) {
+            Logger::error("Failed to evaluate condition '{}': Condition evaluation failed", condition);
             return false;
         }
 
-        // Convert result to boolean
-        if (std::holds_alternative<bool>(result.value)) {
-            return std::get<bool>(result.value);
-        } else if (std::holds_alternative<long>(result.value)) {
-            return std::get<long>(result.value) != 0;
-        } else if (std::holds_alternative<double>(result.value)) {
-            return std::get<double>(result.value) != 0.0;
-        } else if (std::holds_alternative<std::string>(result.value)) {
-            return !std::get<std::string>(result.value).empty();
-        }
-
-        return false;
+        // Use integrated JSEngine result conversion API
+        return JSEngine::resultToBool(result);
     } catch (const std::exception &e) {
         Logger::error("Exception evaluating condition '{}': {}", condition, e.what());
         return false;
@@ -778,6 +748,116 @@ bool ActionExecutorImpl::executeCancelAction(const CancelAction &action) {
 
     } catch (const std::exception &e) {
         Logger::error("Failed to execute cancel action: {}", e.what());
+        return false;
+    }
+}
+
+bool ActionExecutorImpl::executeForeachAction(const ForeachAction &action) {
+    Logger::debug("ActionExecutorImpl::executeForeachAction - Executing foreach action: {}", action.getId());
+
+    try {
+        if (!isSessionReady()) {
+            Logger::error("Session {} not ready for foreach action execution", sessionId_);
+            return false;
+        }
+
+        // Get array expression and item variable
+        std::string arrayExpr = action.getArray();
+        std::string itemVar = action.getItem();
+        std::string indexVar = action.getIndex();
+
+        if (arrayExpr.empty() || itemVar.empty()) {
+            Logger::error("Foreach action missing required array or item attributes");
+            return false;
+        }
+
+        // Parse array expression to get items
+        auto arrayResult = JSEngine::instance().evaluateExpression(sessionId_, arrayExpr).get();
+        if (!arrayResult.isSuccess()) {
+            Logger::error("Failed to evaluate foreach array expression: {}", arrayExpr);
+            return false;
+        }
+
+        // Convert result to string array using integrated API
+        std::vector<std::string> arrayItems = JSEngine::resultToStringArray(arrayResult, sessionId_, arrayExpr);
+
+        if (arrayItems.empty()) {
+            Logger::debug("Foreach array is empty, no iterations to execute");
+            return true;
+        }
+
+        // Execute foreach iterations
+        bool allSucceeded = true;
+        for (size_t i = 0; i < arrayItems.size(); ++i) {
+            Logger::debug("Foreach iteration {}/{}", i + 1, arrayItems.size());
+
+            // Set loop variable - SCXML W3C compliance: preserve type information
+            if (!setLoopVariable(itemVar, arrayItems[i], i)) {
+                Logger::error("Failed to set foreach item variable: {}", itemVar);
+                allSucceeded = false;
+                break;
+            }
+
+            // Set index variable if specified - SCXML: index is always numeric
+            if (!indexVar.empty()) {
+                if (!setLoopVariable(indexVar, std::to_string(i), i)) {
+                    Logger::error("Failed to set foreach index variable: {}", indexVar);
+                    allSucceeded = false;
+                    break;
+                }
+            }
+
+            // Execute nested actions
+            auto sharedThis = std::shared_ptr<IActionExecutor>(this, [](IActionExecutor *) {});
+            ExecutionContextImpl context(sharedThis, sessionId_);
+
+            for (const auto &nestedAction : action.getIterationActions()) {
+                if (nestedAction && !nestedAction->execute(context)) {
+                    Logger::error("Failed to execute action in foreach iteration {}", i);
+                    allSucceeded = false;
+                }
+            }
+
+            if (!allSucceeded) {
+                break;
+            }
+        }
+
+        Logger::debug("Foreach action completed with {} iterations", arrayItems.size());
+        return allSucceeded;
+
+    } catch (const std::exception &e) {
+        Logger::error("Exception in foreach action execution: {}", e.what());
+        return false;
+    }
+}
+
+bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::string &value, size_t iteration) {
+    try {
+        // SCXML W3C Compliance: Preserve JavaScript type information for foreach variables
+        // Parse the value as JSON to maintain type (null, undefined, number, string, object)
+
+        // First, try to evaluate as JavaScript expression to preserve type
+        std::string setExpression = varName + " = " + value + ";";
+        auto setResult = JSEngine::instance().executeScript(sessionId_, setExpression).get();
+
+        if (!setResult.isSuccess()) {
+            // Fallback: treat as string literal
+            std::string stringLiteral = "\"" + value + "\"";
+            std::string fallbackExpression = varName + " = " + stringLiteral + ";";
+            auto fallbackResult = JSEngine::instance().executeScript(sessionId_, fallbackExpression).get();
+
+            if (!fallbackResult.isSuccess()) {
+                Logger::error("Failed to set foreach variable {} = {} at iteration {}", varName, value, iteration);
+                return false;
+            }
+        }
+
+        Logger::debug("Set foreach variable: {} = {} (iteration {})", varName, value, iteration);
+        return true;
+
+    } catch (const std::exception &e) {
+        Logger::error("Exception setting foreach variable {} at iteration {}: {}", varName, iteration, e.what());
         return false;
     }
 }

@@ -127,38 +127,37 @@ protected:
  * @brief Debug test to isolate exact hanging point
  */
 TEST_F(EventSchedulingTest, DebugHangingPoint) {
-    std::cout << "DEBUG: Test started" << std::endl;
+    RSM::Logger::debug("Test started");
 
     // Step 1: Create send action
-    std::cout << "DEBUG: Creating SendAction" << std::endl;
+    RSM::Logger::debug("Creating SendAction");
     SendAction sendAction("test.event");
-    std::cout << "DEBUG: SendAction created" << std::endl;
+    RSM::Logger::debug("SendAction created");
 
     // Step 2: Set target
-    std::cout << "DEBUG: Setting target" << std::endl;
+    RSM::Logger::debug("Setting target");
     sendAction.setTarget("#_internal");
-    std::cout << "DEBUG: Target set" << std::endl;
+    RSM::Logger::debug("Target set");
 
     // Step 3: Set data
-    std::cout << "DEBUG: Setting data" << std::endl;
+    RSM::Logger::debug("Setting data");
     sendAction.setData("'test data'");
-    std::cout << "DEBUG: Data set" << std::endl;
+    RSM::Logger::debug("Data set");
 
     // Step 4: Create execution context
-    std::cout << "DEBUG: Creating execution context" << std::endl;
+    RSM::Logger::debug("Creating execution context");
     auto sharedExecutor = std::shared_ptr<IActionExecutor>(actionExecutor_.get(), [](IActionExecutor *) {});
-    std::cout << "DEBUG: Shared executor created" << std::endl;
+    RSM::Logger::debug("Shared executor created");
 
     ExecutionContextImpl context(sharedExecutor, "test_session");
-    std::cout << "DEBUG: Execution context created" << std::endl;
+    RSM::Logger::debug("Execution context created");
 
     // Step 5: Execute send action (this is likely where it hangs)
-    std::cout << "DEBUG: About to execute send action" << std::endl;
-    std::cout.flush();
+    RSM::Logger::debug("About to execute send action");
 
     bool success = sendAction.execute(context);
 
-    std::cout << "DEBUG: Send action executed, success=" << success << std::endl;
+    RSM::Logger::debug("Send action executed, success={}", success);
     EXPECT_TRUE(success);
 }
 
