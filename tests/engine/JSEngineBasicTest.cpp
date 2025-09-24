@@ -19,7 +19,6 @@ protected:
     void TearDown() override {
         if (engine_) {
             engine_->destroySession(sessionId_);
-            engine_->shutdown();
         }
     }
 
@@ -259,8 +258,16 @@ TEST_F(JSEngineBasicTest, ECMAScript_DataTypes_ObjectLiterals) {
     EXPECT_EQ(std::get<std::string>(nameValue), "test") << "Name value should be 'test'";
 
     auto valueProperty = objectResult.getObjectProperty("value");
-    EXPECT_TRUE(std::holds_alternative<double>(valueProperty)) << "Value should be number";
-    EXPECT_EQ(std::get<double>(valueProperty), 42.0) << "Value should be 42";
+    bool isNumber = std::holds_alternative<double>(valueProperty) || std::holds_alternative<int64_t>(valueProperty);
+    EXPECT_TRUE(isNumber) << "Value should be number";
+
+    double actualValue = 0.0;
+    if (std::holds_alternative<double>(valueProperty)) {
+        actualValue = std::get<double>(valueProperty);
+    } else if (std::holds_alternative<int64_t>(valueProperty)) {
+        actualValue = static_cast<double>(std::get<int64_t>(valueProperty));
+    }
+    EXPECT_EQ(actualValue, 42.0) << "Value should be 42";
 
     // Test array creation and evaluation
     auto arrayResult = engine_->evaluateExpression(sessionId_, "[1, 'hello', true]").get();
@@ -272,8 +279,16 @@ TEST_F(JSEngineBasicTest, ECMAScript_DataTypes_ObjectLiterals) {
     EXPECT_EQ(arr->elements.size(), 3u) << "Array should have 3 elements";
 
     auto firstElement = arrayResult.getArrayElement(0);
-    EXPECT_TRUE(std::holds_alternative<double>(firstElement)) << "First element should be number";
-    EXPECT_EQ(std::get<double>(firstElement), 1.0) << "First element should be 1";
+    bool isFirstNumber = std::holds_alternative<double>(firstElement) || std::holds_alternative<int64_t>(firstElement);
+    EXPECT_TRUE(isFirstNumber) << "First element should be number";
+
+    double firstValue = 0.0;
+    if (std::holds_alternative<double>(firstElement)) {
+        firstValue = std::get<double>(firstElement);
+    } else if (std::holds_alternative<int64_t>(firstElement)) {
+        firstValue = static_cast<double>(std::get<int64_t>(firstElement));
+    }
+    EXPECT_EQ(firstValue, 1.0) << "First element should be 1";
 
     auto secondElement = arrayResult.getArrayElement(1);
     EXPECT_TRUE(std::holds_alternative<std::string>(secondElement)) << "Second element should be string";
@@ -549,4 +564,63 @@ TEST_F(JSEngineBasicTest, IntegratedAPI_ErrorHandling) {
     // Test requireSuccess with failed result
     EXPECT_THROW(RSM::JSEngine::requireSuccess(failedResult, "test operation"), std::runtime_error)
         << "requireSuccess should throw for failed result";
+}
+
+TEST_F(JSEngineBasicTest, W3C_VariablePersistence_ExecuteScriptConsistency) {
+    // Test case to verify that variables defined in executeScript() persist across multiple calls
+    // This ensures SCXML W3C compliance for JavaScript variable persistence
+
+    // Initialize variables using executeScript - similar to history test pattern
+    auto initResult =
+        engine_->executeScript(sessionId_, "var workflow_state = ''; var step_count = 0; step_count").get();
+    ASSERT_TRUE(initResult.isSuccess()) << "Initial variable setup should succeed";
+    EXPECT_EQ(initResult.getValue<int64_t>(), 0) << "Initial step_count should be 0";
+
+    // First step: modify both string and numeric variables
+    auto step1Result =
+        engine_->executeScript(sessionId_, "workflow_state += '_step1'; step_count += 1; step_count").get();
+    ASSERT_TRUE(step1Result.isSuccess()) << "Step 1 execution should succeed";
+    EXPECT_EQ(step1Result.getValue<int64_t>(), 1) << "step_count should be 1 after first increment";
+
+    // Verify string variable persistence using evaluateExpression
+    auto stringCheckResult = engine_->evaluateExpression(sessionId_, "workflow_state").get();
+    ASSERT_TRUE(stringCheckResult.isSuccess()) << "String variable check should succeed";
+    EXPECT_EQ(stringCheckResult.getValue<std::string>(), "_step1") << "workflow_state should contain '_step1'";
+
+    // Second step: continue modifying variables
+    auto step2Result =
+        engine_->executeScript(sessionId_, "workflow_state += '_step2'; step_count += 1; step_count").get();
+    ASSERT_TRUE(step2Result.isSuccess()) << "Step 2 execution should succeed";
+    EXPECT_EQ(step2Result.getValue<int64_t>(), 2) << "step_count should be 2 after second increment";
+
+    // Third step: continue pattern
+    auto step3Result =
+        engine_->executeScript(sessionId_, "workflow_state += '_step3'; step_count += 1; step_count").get();
+    ASSERT_TRUE(step3Result.isSuccess()) << "Step 3 execution should succeed";
+    EXPECT_EQ(step3Result.getValue<int64_t>(), 3) << "step_count should be 3 after third increment";
+
+    // Fourth step: final verification
+    auto step4Result =
+        engine_->executeScript(sessionId_, "workflow_state += '_step4'; step_count += 1; step_count").get();
+    ASSERT_TRUE(step4Result.isSuccess()) << "Step 4 execution should succeed";
+    EXPECT_EQ(step4Result.getValue<int64_t>(), 4) << "step_count should be 4 after fourth increment";
+
+    // Final verification of both variables
+    auto finalStringResult = engine_->evaluateExpression(sessionId_, "workflow_state").get();
+    ASSERT_TRUE(finalStringResult.isSuccess()) << "Final string check should succeed";
+    EXPECT_EQ(finalStringResult.getValue<std::string>(), "_step1_step2_step3_step4")
+        << "workflow_state should contain all steps";
+
+    auto finalCountResult = engine_->evaluateExpression(sessionId_, "step_count").get();
+    ASSERT_TRUE(finalCountResult.isSuccess()) << "Final count check should succeed";
+    EXPECT_EQ(finalCountResult.getValue<int64_t>(), 4) << "step_count should be 4 at the end";
+
+    // Test variable type consistency
+    auto stepTypeResult = engine_->evaluateExpression(sessionId_, "typeof step_count").get();
+    ASSERT_TRUE(stepTypeResult.isSuccess()) << "Type check should succeed";
+    EXPECT_EQ(stepTypeResult.getValue<std::string>(), "number") << "step_count should remain a number";
+
+    auto stateTypeResult = engine_->evaluateExpression(sessionId_, "typeof workflow_state").get();
+    ASSERT_TRUE(stateTypeResult.isSuccess()) << "String type check should succeed";
+    EXPECT_EQ(stateTypeResult.getValue<std::string>(), "string") << "workflow_state should remain a string";
 }

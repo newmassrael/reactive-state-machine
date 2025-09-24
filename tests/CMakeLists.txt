@@ -66,6 +66,7 @@ add_executable(js_engine_tests
     engine/DataModelTest.cpp
     engine/EventSystemTest.cpp
     engine/JSEngineBasicTest.cpp
+    engine/JSResultTypeConversionTest.cpp
 )
 
 target_include_directories(js_engine_tests

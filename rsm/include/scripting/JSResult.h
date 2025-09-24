@@ -1,6 +1,8 @@
 #pragma once
 
 #include "SCXMLTypes.h"
+#include <climits>
+#include <cmath>
 #include <string>
 #include <variant>
 
@@ -48,9 +50,29 @@ public:
     }
 
     template <typename T> T getValue() const {
+        // Direct type match - fastest path
         if (std::holds_alternative<T>(value_internal)) {
             return std::get<T>(value_internal);
         }
+
+        // SCXML W3C compliance: Support automatic numeric type conversion
+        // JavaScript numbers can be accessed as both double and int64_t
+        if constexpr (std::is_same_v<T, double>) {
+            // Request double: convert from int64_t if needed
+            if (std::holds_alternative<int64_t>(value_internal)) {
+                return static_cast<double>(std::get<int64_t>(value_internal));
+            }
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+            // Request int64_t: convert from double if it's a whole number
+            if (std::holds_alternative<double>(value_internal)) {
+                double d = std::get<double>(value_internal);
+                if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
+                    return static_cast<int64_t>(d);
+                }
+            }
+        }
+
+        // No conversion possible - return default value
         return T{};
     }
 

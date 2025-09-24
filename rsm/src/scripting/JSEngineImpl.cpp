@@ -1,6 +1,8 @@
 #include "common/Logger.h"
 #include "quickjs.h"
 #include "scripting/JSEngine.h"
+#include <climits>
+#include <cmath>
 #include <iostream>
 
 namespace RSM {
@@ -8,35 +10,31 @@ namespace RSM {
 // === Internal JavaScript Execution Methods ===
 
 JSResult JSEngine::executeScriptInternal(const std::string &sessionId, const std::string &script) {
-    Logger::debug("JSEngine: executeScriptInternal - sessionId: " + sessionId + ", script: " + script);
     SessionContext *session = getSession(sessionId);
     if (!session || !session->jsContext) {
-        Logger::debug("JSEngine: Session not found or no context: " + sessionId);
         return JSResult::createError("Session not found: " + sessionId);
     }
 
     JSContext *ctx = session->jsContext;
-    Logger::debug("JSEngine: Evaluating script with QuickJS...");
+
+    // Execute script with QuickJS global evaluation
+    Logger::debug("JSEngine: Executing script with QuickJS...");
+
     ::JSValue result = JS_Eval(ctx, script.c_str(), script.length(), "<script>", JS_EVAL_TYPE_GLOBAL);
 
     Logger::debug("JSEngine: JS_Eval completed, checking result...");
-    Logger::debug("JSEngine: JS_IsException(result): " + std::string(JS_IsException(result) ? "true" : "false"));
-    Logger::debug("JSEngine: JS_IsUndefined(result): " + std::string(JS_IsUndefined(result) ? "true" : "false"));
-    Logger::debug("JSEngine: JS_IsNull(result): " + std::string(JS_IsNull(result) ? "true" : "false"));
-    Logger::debug("JSEngine: JS_IsNumber(result): " + std::string(JS_IsNumber(result) ? "true" : "false"));
 
     if (JS_IsException(result)) {
-        Logger::debug("JSEngine: QuickJS exception occurred");
+        Logger::debug("JSEngine: Exception occurred in script execution");
         JSResult error = createErrorFromException(ctx);
         JS_FreeValue(ctx, result);
-        Logger::debug("JSEngine: Execution error occurred");
         return error;
     }
 
-    Logger::debug("JSEngine: Script executed successfully, converting result...");
+    Logger::debug("JSEngine: Script execution successful, converting result...");
     ScriptValue jsResult = quickJSToJSValue(ctx, result);
     JS_FreeValue(ctx, result);
-    Logger::debug("JSEngine: Result converted, returning success");
+    Logger::debug("JSEngine: Result conversion completed, returning success");
     return JSResult::createSuccess(jsResult);
 }
 
@@ -289,6 +287,11 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
         // JavaScript numbers are always double (IEEE 754)
         double d;
         JS_ToFloat64(ctx, &d, qjsValue);
+
+        // SCXML W3C compliance: Return as int64_t if it's a whole number within range
+        if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
+            return static_cast<int64_t>(d);
+        }
         return d;
     } else if (JS_IsString(qjsValue)) {
         const char *str = JS_ToCString(ctx, qjsValue);
@@ -377,35 +380,28 @@ JSValue JSEngine::jsValueToQuickJS(JSContext *ctx, const ScriptValue &value) {
 
 JSResult JSEngine::createErrorFromException(JSContext *ctx) {
     ::JSValue exception = JS_GetException(ctx);
-    Logger::debug("JSEngine: Getting exception details...");
     if (JS_IsNull(exception)) {
-        Logger::debug("JSEngine: Exception is null");
         return JSResult::createError("JavaScript error: Exception is null");
     }
     const char *errorStr = JS_ToCString(ctx, exception);
     std::string errorMessage;
     if (errorStr) {
         errorMessage = std::string("JavaScript error: ") + errorStr;
-        Logger::debug("JSEngine: Exception message: " + std::string(errorStr));
         JS_FreeCString(ctx, errorStr);
     } else {
         errorMessage = "Unknown JavaScript error - could not get error string";
-        Logger::debug("JSEngine: Could not get error string from exception");
     }
     // Try to get stack trace
     ::JSValue stack = JS_GetPropertyStr(ctx, exception, "stack");
     if (!JS_IsUndefined(stack)) {
         const char *stackStr = JS_ToCString(ctx, stack);
         if (stackStr) {
-            Logger::debug("JSEngine: Stack trace: " + std::string(stackStr));
             errorMessage += "\nStack: " + std::string(stackStr);
             JS_FreeCString(ctx, stackStr);
         }
     }
     JS_FreeValue(ctx, stack);
     JS_FreeValue(ctx, exception);
-    Logger::debug("JSEngine: Final error message: " + errorMessage);
     return JSResult::createError(errorMessage);
 }
-
 }  // namespace RSM
