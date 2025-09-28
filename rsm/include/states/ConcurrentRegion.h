@@ -62,9 +62,10 @@ public:
 
     /**
      * @brief Deactivate region with proper SCXML cleanup
+     * @param executionContext Execution context for proper exit action execution
      * @return Operation result indicating success/failure
      */
-    ConcurrentOperationResult deactivate() override;
+    ConcurrentOperationResult deactivate(std::shared_ptr<IExecutionContext> executionContext = nullptr) override;
 
     /**
      * @brief Check if region is currently active
@@ -205,9 +206,10 @@ private:
 
     /**
      * @brief Exit all active states during deactivation
+     * @param executionContext Execution context for proper exit action execution
      * @return Operation result for state exit
      */
-    ConcurrentOperationResult exitAllStates();
+    ConcurrentOperationResult exitAllStates(std::shared_ptr<IExecutionContext> executionContext);
 
     /**
      * @brief Execute an action node with consistent logging and error handling

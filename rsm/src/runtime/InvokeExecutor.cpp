@@ -1,0 +1,538 @@
+#include "runtime/InvokeExecutor.h"
+#include "SCXMLTypes.h"
+#include "common/Logger.h"
+#include "runtime/EventRaiserImpl.h"
+#include "runtime/InvokeExecutor.h"
+#include "runtime/StateMachine.h"
+#include "runtime/StateMachineBuilder.h"
+#include "scripting/JSEngine.h"
+#include <iomanip>
+#include <random>
+#include <sstream>
+
+namespace RSM {
+
+// ============================================================================
+// SCXMLInvokeHandler Implementation
+// ============================================================================
+
+SCXMLInvokeHandler::SCXMLInvokeHandler() = default;
+
+SCXMLInvokeHandler::~SCXMLInvokeHandler() {
+    // Cancel all active sessions on destruction
+    for (const auto &[invokeid, session] : activeSessions_) {
+        if (session.isActive) {
+            JSEngine::instance().destroySession(session.sessionId);
+        }
+    }
+}
+
+std::string SCXMLInvokeHandler::startInvoke(const std::shared_ptr<IInvokeNode> &invoke,
+                                            const std::string &parentSessionId,
+                                            std::shared_ptr<IEventDispatcher> eventDispatcher) {
+    if (!invoke) {
+        LOG_ERROR("SCXMLInvokeHandler: Cannot start invoke - invoke node is null");
+        return "";
+    }
+
+    // Generate unique child session ID
+    std::string childSessionId = JSEngine::instance().generateSessionIdString("session_");
+
+    LOG_DEBUG("SCXMLInvokeHandler: startInvoke called with parent session: {}, generated child session: {}",
+              parentSessionId, childSessionId);
+
+    // Delegate to internal method with session creation required
+    return startInvokeInternal(invoke, parentSessionId, eventDispatcher, childSessionId, false);
+}
+
+std::string SCXMLInvokeHandler::startInvokeWithSessionId(const std::shared_ptr<IInvokeNode> &invoke,
+                                                         const std::string &parentSessionId,
+                                                         std::shared_ptr<IEventDispatcher> eventDispatcher,
+                                                         const std::string &childSessionId) {
+    if (!invoke) {
+        LOG_ERROR("SCXMLInvokeHandler: Cannot start invoke - invoke node is null");
+        return "";
+    }
+
+    LOG_DEBUG(
+        "SCXMLInvokeHandler: startInvokeWithSessionId called with parent session: {}, pre-allocated child session: {}",
+        parentSessionId, childSessionId);
+
+    // Check if session exists (architectural fix for timing)
+    bool sessionExists = JSEngine::instance().hasSession(childSessionId);
+
+    // Delegate to internal method with session existence information
+    return startInvokeInternal(invoke, parentSessionId, eventDispatcher, childSessionId, sessionExists);
+}
+
+std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvokeNode> &invoke,
+                                                    const std::string &parentSessionId,
+                                                    std::shared_ptr<IEventDispatcher> eventDispatcher,
+                                                    const std::string &childSessionId, bool sessionAlreadyExists) {
+    // Generate unique invoke ID
+    std::string invokeid = invoke->getId().empty() ? generateInvokeId() : invoke->getId();
+
+    LOG_DEBUG(
+        "SCXMLInvokeHandler: Starting invoke - invokeid: {}, childSession: {}, parentSession: {}, sessionExists: {}",
+        invokeid, childSessionId, parentSessionId, sessionAlreadyExists);
+
+    // Get invoke content (SCXML document)
+    std::string scxmlContent = invoke->getContent();
+    if (scxmlContent.empty() && !invoke->getSrc().empty()) {
+        LOG_WARN("SCXMLInvokeHandler: src attribute not yet supported, using content: {}", invoke->getSrc());
+        return "";
+    }
+
+    if (scxmlContent.empty()) {
+        LOG_ERROR("SCXMLInvokeHandler: No content or src specified for invoke: {}", invokeid);
+        return "";
+    }
+
+    // Create session if it doesn't exist
+    if (!sessionAlreadyExists) {
+        bool sessionCreated = JSEngine::instance().createSession(childSessionId, parentSessionId);
+        if (!sessionCreated) {
+            LOG_ERROR("SCXMLInvokeHandler: Failed to create child session: {}", childSessionId);
+            return "";
+        }
+    }
+
+    // Set up invoke parameters in child session data model
+    const auto &params = invoke->getParams();
+    for (const auto &[name, expr, location] : params) {
+        if (!name.empty()) {
+            if (sessionAlreadyExists) {
+                // For pre-allocated sessions, use original startInvokeWithSessionId behavior
+                // Evaluate parameter expression in parent session context
+                auto future = JSEngine::instance().evaluateExpression(parentSessionId, expr);
+                auto result = future.get();
+
+                if (JSEngine::isSuccess(result)) {
+                    // Use expression as string (original behavior for pre-allocated sessions)
+                    auto value = ScriptValue{expr};
+                    JSEngine::instance().setVariable(childSessionId, name, value);
+                    LOG_DEBUG("SCXMLInvokeHandler: Set invoke parameter '{}' in child session", name);
+                } else {
+                    LOG_WARN("SCXMLInvokeHandler: Failed to evaluate invoke parameter '{}': {}", name, expr);
+                }
+            } else {
+                // For new sessions, use original startInvoke behavior
+                // Evaluate parameter expression in parent session context
+                auto future = JSEngine::instance().evaluateExpression(parentSessionId, expr);
+                auto result = future.get();
+
+                if (JSEngine::isSuccess(result)) {
+                    // Set evaluated result value in child session
+                    JSEngine::instance().setVariable(childSessionId, name, result.getInternalValue());
+                    LOG_DEBUG("SCXMLInvokeHandler: Set param {} = {} in child session", name, expr);
+                } else {
+                    LOG_WARN("SCXMLInvokeHandler: Failed to evaluate param expression: {}", expr);
+                }
+            }
+        }
+    }
+
+    // Set special variables in child session
+    JSEngine::instance().setVariable(childSessionId, "_invokeid", ScriptValue{invokeid});
+    JSEngine::instance().setVariable(childSessionId, "_parent", ScriptValue{parentSessionId});
+
+    // W3C SCXML 6.2 compliance: Register EventDispatcher for delayed event cancellation
+    if (eventDispatcher) {
+        JSEngine::instance().registerEventDispatcher(childSessionId, eventDispatcher);
+        LOG_DEBUG("SCXMLInvokeHandler: Registered EventDispatcher for child session: {}", childSessionId);
+    } else {
+        LOG_WARN("SCXMLInvokeHandler: No EventDispatcher provided for session: {}", childSessionId);
+    }
+
+    // Store session information for tracking
+    InvokeSession session;
+    session.invokeid = invokeid;
+    session.sessionId = childSessionId;
+    session.parentSessionId = parentSessionId;
+    session.eventDispatcher = eventDispatcher;
+    session.childStateMachine = nullptr;  // Will be created later
+    session.isActive = true;
+
+    // W3C SCXML: Create EventRaiser for #_parent target support
+    auto childEventRaiser = std::make_shared<EventRaiserImpl>();
+
+    // Create child StateMachine using StateMachineBuilder for consistent dependency injection
+    StateMachineBuilder builder;
+    auto childStateMachine = builder.withSessionId(childSessionId)
+                                 .withEventDispatcher(eventDispatcher)
+                                 .withEventRaiser(childEventRaiser)
+                                 .build();
+
+    LOG_DEBUG("SCXMLInvokeHandler: Created child StateMachine with StateMachineBuilder for session: {}",
+              childSessionId);
+
+    // Set up EventRaiser callback to child StateMachine's processEvent after StateMachine is fully constructed
+    childEventRaiser->setEventCallback([childStateMachine = childStateMachine.get()](
+                                           const std::string &eventName, const std::string &eventData) -> bool {
+        if (childStateMachine && childStateMachine->isRunning()) {
+            auto result = childStateMachine->processEvent(eventName, eventData);
+            return result.success;
+        }
+        return false;
+    });
+
+    // Load SCXML content into child StateMachine
+    if (!childStateMachine->loadSCXMLFromString(scxmlContent)) {
+        LOG_ERROR("SCXMLInvokeHandler: Failed to load SCXML content for invoke: {}", invokeid);
+        JSEngine::instance().destroySession(childSessionId);
+        return "";
+    }
+
+    // Start the child StateMachine
+    if (!childStateMachine->start()) {
+        LOG_ERROR("SCXMLInvokeHandler: Failed to start child StateMachine for invoke: {}", invokeid);
+        JSEngine::instance().destroySession(childSessionId);
+        return "";
+    }
+
+    // Register invoke mapping in JSEngine for #_invokeid target support
+    // For pre-allocated sessions (sessionAlreadyExists=true), mapping may already be registered by InvokeExecutor
+    if (!sessionAlreadyExists) {
+        JSEngine::instance().registerInvokeMapping(parentSessionId, invokeid, childSessionId);
+    }
+
+    // Store the child StateMachine in session
+    session.childStateMachine = std::move(childStateMachine);
+
+    activeSessions_.emplace(invokeid, std::move(session));
+
+    LOG_INFO("SCXMLInvokeHandler: Successfully started SCXML invoke: {} with session: {} and running StateMachine",
+             invokeid, childSessionId);
+
+    return invokeid;
+}
+
+bool SCXMLInvokeHandler::cancelInvoke(const std::string &invokeid) {
+    auto it = activeSessions_.find(invokeid);
+    if (it == activeSessions_.end()) {
+        LOG_WARN("SCXMLInvokeHandler: Cannot cancel invoke - not found: {}", invokeid);
+        return false;
+    }
+
+    InvokeSession &session = it->second;
+    if (!session.isActive) {
+        LOG_WARN("SCXMLInvokeHandler: Invoke already inactive: {}", invokeid);
+        return false;
+    }
+
+    LOG_DEBUG("SCXMLInvokeHandler: Cancelling invoke: {} with session: {}", invokeid, session.sessionId);
+
+    // Stop the child StateMachine if it exists
+    if (session.childStateMachine) {
+        session.childStateMachine->stop();
+        LOG_DEBUG("SCXMLInvokeHandler: Stopped child StateMachine for session: {}", session.sessionId);
+    }
+
+    // Cancel any pending events for this session
+    if (session.eventDispatcher) {
+        size_t cancelledEvents = session.eventDispatcher->cancelEventsForSession(session.sessionId);
+        LOG_DEBUG("SCXMLInvokeHandler: Cancelled {} pending events for session: {}", cancelledEvents,
+                  session.sessionId);
+    }
+
+    // Unregister invoke mapping from JSEngine
+    JSEngine::instance().unregisterInvokeMapping(session.parentSessionId, invokeid);
+
+    // Destroy the child session (this will also cancel events automatically via JSEngine)
+    JSEngine::instance().destroySession(session.sessionId);
+
+    // Mark as inactive
+    session.isActive = false;
+
+    LOG_INFO("SCXMLInvokeHandler: Successfully cancelled invoke: {}", invokeid);
+    return true;
+}
+
+bool SCXMLInvokeHandler::isInvokeActive(const std::string &invokeid) const {
+    auto it = activeSessions_.find(invokeid);
+    return it != activeSessions_.end() && it->second.isActive;
+}
+
+std::string SCXMLInvokeHandler::getType() const {
+    return "scxml";
+}
+
+std::string SCXMLInvokeHandler::generateInvokeId() const {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_int_distribution<> dis(100000, 999999);
+
+    return "invoke_" + std::to_string(dis(gen));
+}
+
+// ============================================================================
+// InvokeHandlerFactory Implementation
+// ============================================================================
+
+std::unordered_map<std::string, std::function<std::shared_ptr<IInvokeHandler>()>> InvokeHandlerFactory::creators_;
+
+std::shared_ptr<IInvokeHandler> InvokeHandlerFactory::createHandler(const std::string &type) {
+    // Initialize default handlers on first call
+    static bool initialized = false;
+    if (!initialized) {
+        registerHandler("scxml", []() { return std::make_shared<SCXMLInvokeHandler>(); });
+        initialized = true;
+    }
+
+    auto it = creators_.find(type);
+    if (it != creators_.end()) {
+        return it->second();
+    }
+
+    LOG_WARN("InvokeHandlerFactory: Unknown invoke type: {}, falling back to SCXML handler", type);
+    return std::make_shared<SCXMLInvokeHandler>();
+}
+
+void InvokeHandlerFactory::registerHandler(const std::string &type,
+                                           std::function<std::shared_ptr<IInvokeHandler>()> creator) {
+    creators_[type] = creator;
+    LOG_DEBUG("InvokeHandlerFactory: Registered handler for type: {}", type);
+}
+
+// ============================================================================
+// InvokeExecutor Implementation
+// ============================================================================
+
+InvokeExecutor::InvokeExecutor(std::shared_ptr<IEventDispatcher> eventDispatcher) : eventDispatcher_(eventDispatcher) {
+    LOG_DEBUG("InvokeExecutor: Created with eventDispatcher: {}", eventDispatcher ? "provided" : "null");
+}
+
+InvokeExecutor::~InvokeExecutor() {
+    size_t cancelled = cancelAllInvokes();
+    if (cancelled > 0) {
+        LOG_INFO("InvokeExecutor: Cancelled {} active invokes on destruction", cancelled);
+    }
+}
+
+bool InvokeExecutor::executeInvokes(const std::vector<std::shared_ptr<IInvokeNode>> &invokes,
+                                    const std::string &sessionId) {
+    if (invokes.empty()) {
+        LOG_DEBUG("InvokeExecutor: No invokes to execute for session: {}", sessionId);
+        return true;
+    }
+
+    LOG_DEBUG("InvokeExecutor: Executing {} invokes for session: {}", invokes.size(), sessionId);
+
+    bool allSucceeded = true;
+    std::vector<std::string> sessionInvokeIds;
+
+    for (const auto &invoke : invokes) {
+        std::string invokeid = executeInvoke(invoke, sessionId);
+        if (!invokeid.empty()) {
+            sessionInvokeIds.push_back(invokeid);
+            LOG_DEBUG("InvokeExecutor: Successfully started invoke: {} for session: {}", invokeid, sessionId);
+        } else {
+            LOG_ERROR("InvokeExecutor: Failed to start invoke for session: {}", sessionId);
+            allSucceeded = false;
+        }
+    }
+
+    // Track invokes by session for cleanup
+    if (!sessionInvokeIds.empty()) {
+        sessionInvokes_[sessionId] = sessionInvokeIds;
+    }
+
+    return allSucceeded;
+}
+
+std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &invoke, const std::string &sessionId) {
+    if (!invoke) {
+        LOG_ERROR("InvokeExecutor: Cannot execute null invoke node");
+        return "";
+    }
+
+    std::string invokeType = invoke->getType();
+    if (invokeType.empty()) {
+        invokeType = "scxml";  // Default to SCXML type
+    }
+
+    LOG_DEBUG("InvokeExecutor: Executing invoke of type: {} for session: {}", invokeType, sessionId);
+
+    // Check if invoke is already active to prevent duplicate execution
+    std::string invokeId = invoke->getId();
+    LOG_DEBUG("InvokeExecutor: DETAILED DEBUG - invoke ID: '{}', isEmpty: {}", invokeId, invokeId.empty());
+
+    if (!invokeId.empty()) {
+        bool isActive = isInvokeActive(invokeId);
+        LOG_DEBUG("InvokeExecutor: DETAILED DEBUG - isInvokeActive('{}') returned: {}", invokeId, isActive);
+
+        if (isActive) {
+            LOG_WARN("InvokeExecutor: Invoke {} already active, skipping duplicate execution", invokeId);
+            return invokeId;
+        } else {
+            LOG_DEBUG("InvokeExecutor: Invoke {} is not active, proceeding with execution", invokeId);
+        }
+    } else {
+        LOG_DEBUG("InvokeExecutor: Invoke ID is empty, proceeding with execution");
+    }
+
+    // Create appropriate handler using factory pattern
+    auto handler = InvokeHandlerFactory::createHandler(invokeType);
+    if (!handler) {
+        LOG_ERROR("InvokeExecutor: Failed to create handler for invoke type: {}", invokeType);
+        return "";
+    }
+
+    // ARCHITECTURAL FIX: Pre-register invoke mapping BEFORE execution for immediate availability
+    // This ensures that any transition actions executing during invoke startup can find the mapping
+    std::string reservedInvokeId = invoke->getId();
+    std::string childSessionId;  // Declare outside if block for proper scope
+
+    if (!reservedInvokeId.empty()) {
+        // Pre-register handler to prevent duplicate execution
+        invokeHandlers_[reservedInvokeId] = handler;
+        LOG_DEBUG("InvokeExecutor: Pre-registered invoke '{}' to prevent duplicates", reservedInvokeId);
+
+        // CRITICAL: Generate child session ID and register invoke mapping IMMEDIATELY
+        // This architectural change ensures mapping is available during transition actions
+        childSessionId = JSEngine::instance().generateSessionIdString("session_");
+        JSEngine::instance().registerInvokeMapping(sessionId, reservedInvokeId, childSessionId);
+        LOG_DEBUG("InvokeExecutor: ARCHITECTURAL FIX - Pre-registered invoke mapping: parent={}, invoke={}, child={}",
+                  sessionId, reservedInvokeId, childSessionId);
+    }
+
+    // Execute invoke using appropriate method
+    std::string invokeid;
+    if (!reservedInvokeId.empty()) {
+        // Pass the pre-allocated child session ID to the handler
+        invokeid = handler->startInvokeWithSessionId(invoke, sessionId, eventDispatcher_, childSessionId);
+    } else {
+        // Fallback for invokes without explicit ID
+        invokeid = handler->startInvoke(invoke, sessionId, eventDispatcher_);
+    }
+    if (invokeid.empty()) {
+        LOG_ERROR("InvokeExecutor: Handler failed to start invoke of type: {}", invokeType);
+
+        // Remove pre-registration if invoke failed
+        if (!reservedInvokeId.empty()) {
+            invokeHandlers_.erase(reservedInvokeId);
+            LOG_DEBUG("InvokeExecutor: Removed pre-registration for failed invoke '{}'", reservedInvokeId);
+        }
+        return "";
+    }
+
+    // Track handler for cancellation (update if different ID was generated)
+    invokeHandlers_[invokeid] = handler;
+
+    LOG_INFO("InvokeExecutor: Successfully executed invoke: {} of type: {} for session: {}", invokeid, invokeType,
+             sessionId);
+
+    return invokeid;
+}
+
+bool InvokeExecutor::cancelInvoke(const std::string &invokeid) {
+    auto handlerIt = invokeHandlers_.find(invokeid);
+    if (handlerIt == invokeHandlers_.end()) {
+        LOG_WARN("InvokeExecutor: Cannot cancel invoke - not found: {}", invokeid);
+        return false;
+    }
+
+    bool cancelled = handlerIt->second->cancelInvoke(invokeid);
+    if (cancelled) {
+        cleanupInvoke(invokeid);
+    }
+
+    return cancelled;
+}
+
+size_t InvokeExecutor::cancelInvokesForSession(const std::string &sessionId) {
+    auto sessionIt = sessionInvokes_.find(sessionId);
+    if (sessionIt == sessionInvokes_.end()) {
+        LOG_DEBUG("InvokeExecutor: No invokes to cancel for session: {}", sessionId);
+        return 0;
+    }
+
+    size_t cancelledCount = 0;
+    const auto &invokeIds = sessionIt->second;
+
+    LOG_DEBUG("InvokeExecutor: Cancelling {} invokes for session: {}", invokeIds.size(), sessionId);
+
+    for (const std::string &invokeid : invokeIds) {
+        if (cancelInvoke(invokeid)) {
+            cancelledCount++;
+        }
+    }
+
+    // Remove session tracking
+    sessionInvokes_.erase(sessionIt);
+
+    LOG_INFO("InvokeExecutor: Cancelled {}/{} invokes for session: {}", cancelledCount, invokeIds.size(), sessionId);
+
+    return cancelledCount;
+}
+
+size_t InvokeExecutor::cancelAllInvokes() {
+    size_t cancelledCount = 0;
+
+    // Cancel all active invokes
+    for (auto &[invokeid, handler] : invokeHandlers_) {
+        if (handler->isInvokeActive(invokeid)) {
+            if (handler->cancelInvoke(invokeid)) {
+                cancelledCount++;
+            }
+        }
+    }
+
+    // Clear all tracking
+    invokeHandlers_.clear();
+    sessionInvokes_.clear();
+
+    LOG_INFO("InvokeExecutor: Cancelled {} invokes", cancelledCount);
+    return cancelledCount;
+}
+
+bool InvokeExecutor::isInvokeActive(const std::string &invokeid) const {
+    // Simply check if the invoke ID is registered in invokeHandlers_
+    // This handles both pre-registered (to prevent duplicates) and fully active invokes
+    auto handlerIt = invokeHandlers_.find(invokeid);
+    return handlerIt != invokeHandlers_.end();
+}
+
+std::string InvokeExecutor::getStatistics() const {
+    std::ostringstream stats;
+    stats << "InvokeExecutor Statistics:\n";
+    stats << "  Active invokes: " << invokeHandlers_.size() << "\n";
+    stats << "  Sessions with invokes: " << sessionInvokes_.size() << "\n";
+    stats << "  EventDispatcher: " << (eventDispatcher_ ? "available" : "null") << "\n";
+
+    return stats.str();
+}
+
+void InvokeExecutor::setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher) {
+    eventDispatcher_ = eventDispatcher;
+    LOG_DEBUG("InvokeExecutor: EventDispatcher set: {}", eventDispatcher ? "provided" : "null");
+}
+
+std::string InvokeExecutor::generateInvokeId() const {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_int_distribution<> dis(100000, 999999);
+
+    return "invoke_" + std::to_string(dis(gen));
+}
+
+void InvokeExecutor::cleanupInvoke(const std::string &invokeid) {
+    // Remove from handler tracking
+    invokeHandlers_.erase(invokeid);
+
+    // Remove from session tracking
+    for (auto &[sessionId, invokeIds] : sessionInvokes_) {
+        auto it = std::find(invokeIds.begin(), invokeIds.end(), invokeid);
+        if (it != invokeIds.end()) {
+            invokeIds.erase(it);
+            if (invokeIds.empty()) {
+                sessionInvokes_.erase(sessionId);
+            }
+            break;
+        }
+    }
+
+    LOG_DEBUG("InvokeExecutor: Cleaned up invoke: {}", invokeid);
+}
+
+}  // namespace RSM

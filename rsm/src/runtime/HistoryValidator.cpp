@@ -6,47 +6,46 @@ namespace RSM {
 
 HistoryValidator::HistoryValidator(std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider)
     : stateProvider_(std::move(stateProvider)) {
-    Logger::debug("HistoryValidator: Initialized history validator");
+    LOG_DEBUG("HistoryValidator: Initialized history validator");
 }
 
 bool HistoryValidator::validateRegistration(const std::string &historyStateId, const std::string &parentStateId,
                                             HistoryType type) const {
-    Logger::debug("HistoryValidator: Validating registration - history: " + historyStateId +
-                  ", parent: " + parentStateId + ", type: " + std::to_string(static_cast<int>(type)));
+    LOG_DEBUG("Validating registration - history: {}, parent: {}, type: {}", historyStateId, parentStateId,
+              static_cast<int>(type));
 
     // Check for empty IDs
     if (historyStateId.empty() || parentStateId.empty()) {
-        Logger::error("HistoryValidator: History state ID and parent state ID cannot be empty");
+        LOG_ERROR("HistoryValidator: History state ID and parent state ID cannot be empty");
         return false;
     }
 
     // Check for invalid history type
     if (type == HistoryType::NONE) {
-        Logger::error("HistoryValidator: History type cannot be NONE for registration");
+        LOG_ERROR("HistoryValidator: History type cannot be NONE for registration");
         return false;
     }
 
     // Check if history state is already registered
     if (registeredHistoryStates_.find(historyStateId) != registeredHistoryStates_.end()) {
-        Logger::warn("HistoryValidator: History state already registered: " + historyStateId);
+        LOG_WARN("History state already registered: {}", historyStateId);
         return false;
     }
 
     // Check if parent state exists and is a compound state
     if (!isValidCompoundState(parentStateId)) {
-        Logger::error("HistoryValidator: Parent state is not a valid compound state: " + parentStateId);
+        LOG_ERROR("Parent state is not a valid compound state: {}", parentStateId);
         return false;
     }
 
     // Check if parent already has a history state of this type
     std::string parentTypeKey = generateParentTypeKey(parentStateId, type);
     if (registeredParentTypes_.find(parentTypeKey) != registeredParentTypes_.end()) {
-        Logger::warn("HistoryValidator: Parent state " + parentStateId +
-                     " already has a history state of the specified type");
+        LOG_WARN("Parent state {} already has a history state of the specified type", parentStateId);
         return false;
     }
 
-    Logger::info("HistoryValidator: Registration validation passed for " + historyStateId);
+    LOG_INFO("Registration validation passed for {}", historyStateId);
     return true;
 }
 
@@ -62,7 +61,7 @@ bool HistoryValidator::validateRegistrationWithDefault(const std::string &histor
     if (!defaultStateId.empty()) {
         auto defaultState = stateProvider_(defaultStateId);
         if (!defaultState) {
-            Logger::error("HistoryValidator: Default state does not exist: " + defaultStateId);
+            LOG_ERROR("Default state does not exist: {}", defaultStateId);
             return false;
         }
 
@@ -77,84 +76,83 @@ bool HistoryValidator::validateRegistrationWithDefault(const std::string &histor
                 }
             }
             if (!isChild) {
-                Logger::error("HistoryValidator: Default state must be a child of parent state: " + defaultStateId +
-                              " not child of " + parentStateId);
+                LOG_ERROR("Default state must be a child of parent state: {} not child of {}", defaultStateId,
+                          parentStateId);
                 return false;
             }
         }
     }
 
-    Logger::info("HistoryValidator: Registration with default validation passed for " + historyStateId);
+    LOG_INFO("Registration with default validation passed for {}", historyStateId);
     return true;
 }
 
 bool HistoryValidator::validateRecording(const std::string &parentStateId,
                                          const std::vector<std::string> &activeStateIds) const {
-    Logger::debug("HistoryValidator: Validating recording - parent: " + parentStateId +
-                  ", active states: " + std::to_string(activeStateIds.size()));
+    LOG_DEBUG("Validating recording - parent: {}, active states: {}", parentStateId, activeStateIds.size());
 
     // Check for empty parent ID
     if (parentStateId.empty()) {
-        Logger::error("HistoryValidator: Parent state ID cannot be empty for recording");
+        LOG_ERROR("HistoryValidator: Parent state ID cannot be empty for recording");
         return false;
     }
 
     // Check if parent state exists
     if (!stateProvider_) {
-        Logger::error("HistoryValidator: No state provider available");
+        LOG_ERROR("HistoryValidator: No state provider available");
         return false;
     }
 
     auto parentState = stateProvider_(parentStateId);
     if (!parentState) {
-        Logger::error("HistoryValidator: Parent state not found: " + parentStateId);
+        LOG_ERROR("Parent state not found: {}", parentStateId);
         return false;
     }
 
     // Active states can be empty (valid scenario)
-    Logger::info("HistoryValidator: Recording validation passed for " + parentStateId);
+    LOG_INFO("Recording validation passed for {}", parentStateId);
     return true;
 }
 
 bool HistoryValidator::validateRestoration(const std::string &historyStateId) const {
-    Logger::debug("HistoryValidator: Validating restoration - history: " + historyStateId);
+    LOG_DEBUG("Validating restoration - history: {}", historyStateId);
 
     // Check for empty ID
     if (historyStateId.empty()) {
-        Logger::error("HistoryValidator: History state ID cannot be empty for restoration");
+        LOG_ERROR("HistoryValidator: History state ID cannot be empty for restoration");
         return false;
     }
 
     // Check if history state is registered
     if (registeredHistoryStates_.find(historyStateId) == registeredHistoryStates_.end()) {
-        Logger::error("HistoryValidator: History state not registered: " + historyStateId);
+        LOG_ERROR("History state not registered: {}", historyStateId);
         return false;
     }
 
-    Logger::info("HistoryValidator: Restoration validation passed for " + historyStateId);
+    LOG_INFO("Restoration validation passed for {}", historyStateId);
     return true;
 }
 
 void HistoryValidator::registerHistoryStateId(const std::string &historyStateId) {
     registeredHistoryStates_.insert(historyStateId);
-    Logger::debug("HistoryValidator: Registered history state ID: " + historyStateId);
+    LOG_DEBUG("Registered history state ID: {}", historyStateId);
 }
 
 void HistoryValidator::registerParentType(const std::string &parentStateId, HistoryType type) {
     std::string key = generateParentTypeKey(parentStateId, type);
     registeredParentTypes_.insert(key);
-    Logger::debug("HistoryValidator: Registered parent-type combination: " + key);
+    LOG_DEBUG("Registered parent-type combination: {}", key);
 }
 
 bool HistoryValidator::isValidCompoundState(const std::string &stateId) const {
     if (!stateProvider_) {
-        Logger::error("HistoryValidator: No state provider available");
+        LOG_ERROR("HistoryValidator: No state provider available");
         return false;
     }
 
     auto state = stateProvider_(stateId);
     if (!state) {
-        Logger::warn("HistoryValidator: State not found: " + stateId);
+        LOG_WARN("State not found: {}", stateId);
         return false;
     }
 
@@ -162,7 +160,7 @@ bool HistoryValidator::isValidCompoundState(const std::string &stateId) const {
     Type stateType = state->getType();
     bool isCompound = (stateType == Type::COMPOUND || stateType == Type::PARALLEL) || !state->getChildren().empty();
 
-    Logger::debug("HistoryValidator: State " + stateId + " is " + (isCompound ? "" : "not ") + "a compound state");
+    LOG_DEBUG("State {} is {}a compound state", stateId, (isCompound ? "" : "not "));
 
     return isCompound;
 }

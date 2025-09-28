@@ -3,11 +3,11 @@
 #include "common/Logger.h"
 
 RSM::InvokeNode::InvokeNode(const std::string &id) : id_(id), autoForward_(false) {
-    Logger::debug("RSM::InvokeNode::Constructor - Creating invoke node: " + id);
+    LOG_DEBUG("Creating invoke node: {}", id);
 }
 
 RSM::InvokeNode::~InvokeNode() {
-    Logger::debug("RSM::InvokeNode::Destructor - Destroying invoke node: " + id_);
+    LOG_DEBUG("Destroying invoke node: {}", id_);
 }
 
 const std::string &RSM::InvokeNode::getId() const {
@@ -27,43 +27,42 @@ bool RSM::InvokeNode::isAutoForward() const {
 }
 
 void RSM::InvokeNode::setType(const std::string &type) {
-    Logger::debug("RSM::InvokeNode::setType() - Setting type for " + id_ + ": " + type);
+    LOG_DEBUG("Setting type for {}: {}", id_, type);
     type_ = type;
 }
 
 void RSM::InvokeNode::setSrc(const std::string &src) {
-    Logger::debug("RSM::InvokeNode::setSrc() - Setting src for " + id_ + ": " + src);
+    LOG_DEBUG("Setting src for {}: {}", id_, src);
     src_ = src;
 }
 
 void RSM::InvokeNode::setAutoForward(bool autoForward) {
-    Logger::debug("RSM::InvokeNode::setAutoForward() - Setting autoForward for " + id_ + ": " +
-                  (autoForward ? "true" : "false"));
+    LOG_DEBUG("Setting autoForward for {}: {}", id_, (autoForward ? "true" : "false"));
     autoForward_ = autoForward;
 }
 
 void RSM::InvokeNode::setIdLocation(const std::string &idLocation) {
-    Logger::debug("RSM::InvokeNode::setIdLocation() - Setting idLocation for " + id_ + ": " + idLocation);
+    LOG_DEBUG("Setting idLocation for {}: {}", id_, idLocation);
     idLocation_ = idLocation;
 }
 
 void RSM::InvokeNode::setNamelist(const std::string &namelist) {
-    Logger::debug("RSM::InvokeNode::setNamelist() - Setting namelist for " + id_ + ": " + namelist);
+    LOG_DEBUG("Setting namelist for {}: {}", id_, namelist);
     namelist_ = namelist;
 }
 
 void RSM::InvokeNode::addParam(const std::string &name, const std::string &expr, const std::string &location) {
-    Logger::debug("RSM::InvokeNode::addParam() - Adding param to " + id_ + ": name=" + name);
+    LOG_DEBUG("Adding param to {}: name={}", id_, name);
     params_.push_back(std::make_tuple(name, expr, location));
 }
 
 void RSM::InvokeNode::setContent(const std::string &content) {
-    Logger::debug("RSM::InvokeNode::setContent() - Setting content for " + id_);
+    LOG_DEBUG("Setting content for {}", id_);
     content_ = content;
 }
 
 void RSM::InvokeNode::setFinalize(const std::string &finalizeContent) {
-    Logger::debug("RSM::InvokeNode::setFinalize() - Setting finalize for " + id_);
+    LOG_DEBUG("Setting finalize for {}", id_);
     finalize_ = finalizeContent;
 }
 

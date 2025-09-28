@@ -12,6 +12,7 @@
 #include "events/EventSchedulerImpl.h"
 #include "events/EventTargetFactoryImpl.h"
 #include "events/InternalEventTarget.h"
+#include "mocks/MockEventRaiser.h"
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "scripting/JSEngine.h"
@@ -64,15 +65,17 @@ protected:
         // Create ActionExecutor first (without dispatcher)
         actionExecutor_ = std::make_shared<ActionExecutorImpl>("test_session");
 
-        // Set up event raise callback
+        // Set up event raising with MockEventRaiser
         raisedEvents_.clear();
-        actionExecutor_->setEventRaiseCallback([this](const std::string &name, const std::string &data) -> bool {
-            raisedEvents_.push_back({name, data});
-            return true;
-        });
+        mockEventRaiser_ = std::make_shared<RSM::Test::MockEventRaiser>(
+            [this](const std::string &name, const std::string &data) -> bool {
+                raisedEvents_.push_back({name, data});
+                return true;
+            });
+        actionExecutor_->setEventRaiser(mockEventRaiser_);
 
-        // Create target factory using the EventRaiser from ActionExecutor
-        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(actionExecutor_->getEventRaiser());
+        // Create target factory using MockEventRaiser
+        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(mockEventRaiser_);
 
         // Create dispatcher with proper target factory
         dispatcher_ = std::make_shared<EventDispatcherImpl>(scheduler_, targetFactory_);
@@ -117,6 +120,7 @@ protected:
     std::shared_ptr<EventTargetFactoryImpl> targetFactory_;
     std::shared_ptr<EventSchedulerImpl> scheduler_;
     std::shared_ptr<EventDispatcherImpl> dispatcher_;
+    std::shared_ptr<RSM::Test::MockEventRaiser> mockEventRaiser_;
     EventExecutionCallback eventExecutionCallback_;
 
     std::vector<ExecutedEvent> executedEvents_;
@@ -157,7 +161,7 @@ TEST_F(EventSchedulingTest, DebugHangingPoint) {
 
     bool success = sendAction.execute(context);
 
-    RSM::Logger::debug("Send action executed, success={}", success);
+    LOG_DEBUG("Send action executed, success={}", success);
     EXPECT_TRUE(success);
 }
 
@@ -384,6 +388,151 @@ TEST_F(EventSchedulingTest, ShutdownWithPendingEvents) {
 
     // Verify event was not executed
     EXPECT_EQ(raisedEvents_.size(), 0);
+}
+
+/**
+ * @brief Test session-aware delayed event cancellation (W3C SCXML 6.2 compliance)
+ *
+ * This test validates our implementation of W3C SCXML 6.2 requirement:
+ * "When a session terminates, all delayed events scheduled by that session must be cancelled"
+ */
+TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
+    auto &jsEngine = JSEngine::instance();
+
+    // Create additional sessions for testing
+    jsEngine.createSession("session_1");
+    jsEngine.createSession("session_2");
+    jsEngine.createSession("session_3");
+
+    // Create ActionExecutors for each session
+    auto actionExecutor1 = std::make_shared<ActionExecutorImpl>("session_1");
+    auto actionExecutor2 = std::make_shared<ActionExecutorImpl>("session_2");
+    auto actionExecutor3 = std::make_shared<ActionExecutorImpl>("session_3");
+
+    // Set up event raising for each session
+    std::vector<std::string> session1Events, session2Events, session3Events;
+
+    auto mockEventRaiser1 = std::make_shared<RSM::Test::MockEventRaiser>(
+        [&session1Events](const std::string &name, const std::string &data) -> bool {
+            (void)data;  // Suppress unused parameter warning
+            session1Events.push_back(name);
+            return true;
+        });
+
+    auto mockEventRaiser2 = std::make_shared<RSM::Test::MockEventRaiser>(
+        [&session2Events](const std::string &name, const std::string &data) -> bool {
+            (void)data;  // Suppress unused parameter warning
+            session2Events.push_back(name);
+            return true;
+        });
+
+    auto mockEventRaiser3 = std::make_shared<RSM::Test::MockEventRaiser>(
+        [&session3Events](const std::string &name, const std::string &data) -> bool {
+            (void)data;  // Suppress unused parameter warning
+            session3Events.push_back(name);
+            return true;
+        });
+
+    actionExecutor1->setEventRaiser(mockEventRaiser1);
+    actionExecutor2->setEventRaiser(mockEventRaiser2);
+    actionExecutor3->setEventRaiser(mockEventRaiser3);
+
+    // Create separate dispatchers for each session to ensure proper event routing
+    auto targetFactory1 = std::make_shared<EventTargetFactoryImpl>(mockEventRaiser1);
+    auto targetFactory2 = std::make_shared<EventTargetFactoryImpl>(mockEventRaiser2);
+    auto targetFactory3 = std::make_shared<EventTargetFactoryImpl>(mockEventRaiser3);
+
+    auto dispatcher1 = std::make_shared<EventDispatcherImpl>(scheduler_, targetFactory1);
+    auto dispatcher2 = std::make_shared<EventDispatcherImpl>(scheduler_, targetFactory2);
+    auto dispatcher3 = std::make_shared<EventDispatcherImpl>(scheduler_, targetFactory3);
+
+    // Set EventDispatcher for each session (this registers them with JSEngine)
+    actionExecutor1->setEventDispatcher(dispatcher1);
+    actionExecutor2->setEventDispatcher(dispatcher2);
+    actionExecutor3->setEventDispatcher(dispatcher3);
+
+    // Schedule delayed events from each session
+    SendAction sendAction1("session1.event");
+    sendAction1.setTarget("#_internal");
+    sendAction1.setDelay("300ms");
+    sendAction1.setSendId("session1_event");
+
+    SendAction sendAction2("session2.event");
+    sendAction2.setTarget("#_internal");
+    sendAction2.setDelay("300ms");
+    sendAction2.setSendId("session2_event");
+
+    SendAction sendAction3("session3.event");
+    sendAction3.setTarget("#_internal");
+    sendAction3.setDelay("300ms");
+    sendAction3.setSendId("session3_event");
+
+    // Create execution contexts with proper shared_ptr management
+    auto sharedExecutor1 = std::static_pointer_cast<IActionExecutor>(actionExecutor1);
+    auto sharedExecutor2 = std::static_pointer_cast<IActionExecutor>(actionExecutor2);
+    auto sharedExecutor3 = std::static_pointer_cast<IActionExecutor>(actionExecutor3);
+
+    ExecutionContextImpl context1(sharedExecutor1, "session_1");
+    ExecutionContextImpl context2(sharedExecutor2, "session_2");
+    ExecutionContextImpl context3(sharedExecutor3, "session_3");
+
+    // Execute send actions - all should succeed
+    auto startTime = std::chrono::steady_clock::now();
+    EXPECT_TRUE(sendAction1.execute(context1));
+    EXPECT_TRUE(sendAction2.execute(context2));
+    EXPECT_TRUE(sendAction3.execute(context3));
+
+    // Verify all events are scheduled
+    EXPECT_TRUE(scheduler_->hasEvent("session1_event"));
+    EXPECT_TRUE(scheduler_->hasEvent("session2_event"));
+    EXPECT_TRUE(scheduler_->hasEvent("session3_event"));
+
+    // Wait 100ms, then destroy session_2 (W3C SCXML 6.2: should cancel its delayed events)
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    LOG_INFO("TEST: Destroying session_2 - should cancel its delayed events (W3C SCXML 6.2)");
+    jsEngine.destroySession("session_2");
+
+    // Session 2's event should now be cancelled
+    EXPECT_FALSE(scheduler_->hasEvent("session2_event"));
+
+    // Session 1 and 3 events should still be scheduled
+    EXPECT_TRUE(scheduler_->hasEvent("session1_event"));
+    EXPECT_TRUE(scheduler_->hasEvent("session3_event"));
+
+    // Wait for remaining events to execute (300ms total - 100ms already passed = 200ms more)
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    auto endTime = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+    // Verify timing (should be around 300ms)
+    EXPECT_GE(elapsed.count(), 300);
+
+    // Verify session 1 and 3 events executed
+    EXPECT_EQ(session1Events.size(), 1);
+    if (session1Events.size() > 0) {
+        EXPECT_EQ(session1Events[0], "session1.event");
+    }
+
+    EXPECT_EQ(session3Events.size(), 1);
+    if (session3Events.size() > 0) {
+        EXPECT_EQ(session3Events[0], "session3.event");
+    }
+
+    // Verify session 2 event was cancelled and never executed
+    EXPECT_EQ(session2Events.size(), 0);
+
+    // Verify no events are still scheduled
+    EXPECT_FALSE(scheduler_->hasEvent("session1_event"));
+    EXPECT_FALSE(scheduler_->hasEvent("session2_event"));
+    EXPECT_FALSE(scheduler_->hasEvent("session3_event"));
+
+    LOG_INFO("TEST: Session-aware delayed event cancellation validated successfully");
+
+    // Clean up remaining sessions
+    jsEngine.destroySession("session_1");
+    jsEngine.destroySession("session_3");
 }
 
 }  // namespace RSM

@@ -1,0 +1,6 @@
+id: 409
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: Finally [after the onexits and canceling the invocations], the Processor MUST remove the state from the active state's list.
+variants: 1

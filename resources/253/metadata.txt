@@ -1,0 +1,6 @@
+id: 253
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: When the invoked session is of type http://www.w3.org/TR/scxml/, The SCXML Processor MUST support the use of SCXML Event/IO processor (E.1 SCXML Event I/O Processor) to communicate between the invoking and the invoked sessions.
+variants: 1

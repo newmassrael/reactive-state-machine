@@ -1,0 +1,6 @@
+id: 277
+specnum: 5.3
+conformance: mandatory
+manual: False
+description: If the value specified for a data element (by 'src', children, or the environment) is not a legal data value, the SCXML Processor MUST raise place error.execution in the internal event queue and MUST create an empty data element in the data model with the specified id.
+variants: 1

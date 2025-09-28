@@ -1,0 +1,6 @@
+id: 552
+specnum: 5.3
+conformance: mandatory
+manual: False
+description: If the 'src' attribute is present, the Platform MUST fetch the specified object at the time specified by the 'binding' attribute of scxml and MUST assign it as the value of the data element.
+variants: 1

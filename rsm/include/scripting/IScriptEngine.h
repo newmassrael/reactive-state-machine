@@ -85,6 +85,11 @@ public:
  */
 class ISessionBasedScriptEngine : public IScriptEngine {
 public:
+    // Bring base class methods into scope to avoid hiding
+    using IScriptEngine::evaluateExpression;
+    using IScriptEngine::executeScript;
+    using IScriptEngine::getVariable;
+    using IScriptEngine::setVariable;
     /**
      * @brief Create a new session
      * @param sessionId Unique session identifier

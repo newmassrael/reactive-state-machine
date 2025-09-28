@@ -6,16 +6,16 @@
 #include <unordered_set>
 
 RSM::SCXMLModel::SCXMLModel() : rootState_(nullptr) {
-    Logger::debug("RSM::SCXMLModel::Constructor - Creating SCXML model");
+    LOG_DEBUG("Creating SCXML model");
 }
 
 RSM::SCXMLModel::~SCXMLModel() {
-    Logger::debug("RSM::SCXMLModel::Destructor - Destroying SCXML model");
+    LOG_DEBUG("Destroying SCXML model");
     // 스마트 포인터가 자원 정리를 담당
 }
 
 void RSM::SCXMLModel::setRootState(std::shared_ptr<RSM::IStateNode> rootState) {
-    Logger::debug("RSM::SCXMLModel::setRootState() - Setting root state: " + (rootState ? rootState->getId() : "null"));
+    LOG_DEBUG("Setting root state: {}", (rootState ? rootState->getId() : "null"));
     rootState_ = rootState;
     // Rebuild the complete state list to include all nested children
     rebuildAllStatesList();
@@ -34,7 +34,7 @@ const std::string &RSM::SCXMLModel::getName() const {
 }
 
 void RSM::SCXMLModel::setInitialState(const std::string &initialState) {
-    Logger::debug("RSM::SCXMLModel::setInitialState() - Setting initial state: " + initialState);
+    LOG_DEBUG("Setting initial state: {}", initialState);
     initialState_ = initialState;
 }
 
@@ -43,7 +43,7 @@ const std::string &RSM::SCXMLModel::getInitialState() const {
 }
 
 void RSM::SCXMLModel::setDatamodel(const std::string &datamodel) {
-    Logger::debug("RSM::SCXMLModel::setDatamodel() - Setting datamodel: " + datamodel);
+    LOG_DEBUG("Setting datamodel: {}", datamodel);
     datamodel_ = datamodel;
 }
 
@@ -52,7 +52,7 @@ const std::string &RSM::SCXMLModel::getDatamodel() const {
 }
 
 void RSM::SCXMLModel::addContextProperty(const std::string &name, const std::string &type) {
-    Logger::debug("RSM::SCXMLModel::addContextProperty() - Adding context property: " + name + " (" + type + ")");
+    LOG_DEBUG("Adding context property: {} ({})", name, type);
     contextProperties_[name] = type;
 }
 
@@ -61,7 +61,7 @@ const std::unordered_map<std::string, std::string> &RSM::SCXMLModel::getContextP
 }
 
 void RSM::SCXMLModel::addInjectPoint(const std::string &name, const std::string &type) {
-    Logger::debug("RSM::SCXMLModel::addInjectPoint() - Adding inject point: " + name + " (" + type + ")");
+    LOG_DEBUG("Adding inject point: {} ({})", name, type);
     injectPoints_[name] = type;
 }
 
@@ -71,7 +71,7 @@ const std::unordered_map<std::string, std::string> &RSM::SCXMLModel::getInjectPo
 
 void RSM::SCXMLModel::addGuard(std::shared_ptr<RSM::IGuardNode> guard) {
     if (guard) {
-        Logger::debug("RSM::SCXMLModel::addGuard() - Adding guard: " + guard->getId());
+        LOG_DEBUG("Adding guard: {}", guard->getId());
         guards_.push_back(guard);
     }
 }
@@ -82,7 +82,7 @@ const std::vector<std::shared_ptr<RSM::IGuardNode>> &RSM::SCXMLModel::getGuards(
 
 void RSM::SCXMLModel::addState(std::shared_ptr<RSM::IStateNode> state) {
     if (state) {
-        Logger::debug("RSM::SCXMLModel::addState() - Adding state: " + state->getId());
+        LOG_DEBUG("Adding state: {}", state->getId());
         allStates_.push_back(state);
         stateIdMap_[state->getId()] = state.get();
         // Rebuild the complete state list to include all nested children
@@ -148,7 +148,7 @@ RSM::IStateNode *RSM::SCXMLModel::findStateByIdRecursive(RSM::IStateNode *state,
 
 void RSM::SCXMLModel::addDataModelItem(std::shared_ptr<RSM::IDataModelItem> dataItem) {
     if (dataItem) {
-        Logger::debug("RSM::SCXMLModel::addDataModelItem() - Adding data model item: " + dataItem->getId());
+        LOG_DEBUG("Adding data model item: {}", dataItem->getId());
         dataModelItems_.push_back(dataItem);
     }
 }
@@ -158,8 +158,7 @@ const std::vector<std::shared_ptr<RSM::IDataModelItem>> &RSM::SCXMLModel::getDat
 }
 
 bool RSM::SCXMLModel::validateStateRelationships() const {
-    Logger::info("RSM::SCXMLModel::validateStateRelationships() - Validating state "
-                 "relationships");
+    LOG_INFO("Validating state relationships");
 
     // 모든 상태에 대해 검증
     for (const auto &state : allStates_) {
@@ -176,8 +175,8 @@ bool RSM::SCXMLModel::validateStateRelationships() const {
             }
 
             if (!foundAsChild) {
-                Logger::error("RSM::SCXMLModel::validateStateRelationships() - State '" + state->getId() +
-                              "' has parent '" + parent->getId() + "' but is not in parent's children list");
+                LOG_ERROR("State '{}' has parent '{}' but is not in parent's children list", state->getId(),
+                          parent->getId());
                 return false;
             }
         }
@@ -188,9 +187,8 @@ bool RSM::SCXMLModel::validateStateRelationships() const {
             for (const auto &target : targets) {
                 RSM::IStateNode *targetState = findStateById(target);
                 if (!targetState) {
-                    Logger::error("RSM::SCXMLModel::validateStateRelationships() - Transition "
-                                  "in state '" +
-                                  state->getId() + "' references non-existent target state '" + target + "'");
+                    LOG_ERROR("Transition in state '{}' references non-existent target state '{}'", state->getId(),
+                              target);
                     return false;
                 }
             }
@@ -199,8 +197,7 @@ bool RSM::SCXMLModel::validateStateRelationships() const {
         // 초기 상태가 존재하는지 확인
         if (!state->getInitialState().empty()) {
             if (state->getChildren().empty()) {
-                Logger::warn("RSM::SCXMLModel::validateStateRelationships() - State '" + state->getId() +
-                             "' has initialState but no children");
+                LOG_WARN("State '{}' has initialState but no children", state->getId());
             } else {
                 bool initialStateExists = false;
                 for (const auto &child : state->getChildren()) {
@@ -211,21 +208,20 @@ bool RSM::SCXMLModel::validateStateRelationships() const {
                 }
 
                 if (!initialStateExists) {
-                    Logger::error("RSM::SCXMLModel::validateStateRelationships() - State '" + state->getId() +
-                                  "' references non-existent initial state '" + state->getInitialState() + "'");
+                    LOG_ERROR("State '{}' references non-existent initial state '{}'", state->getId(),
+                              state->getInitialState());
                     return false;
                 }
             }
         }
     }
 
-    Logger::info("RSM::SCXMLModel::validateStateRelationships() - All state "
-                 "relationships are valid");
+    LOG_INFO("All state relationships are valid");
     return true;
 }
 
 std::vector<std::string> RSM::SCXMLModel::findMissingStateIds() const {
-    Logger::info("RSM::SCXMLModel::findMissingStateIds() - Looking for missing state IDs");
+    LOG_INFO("Looking for missing state IDs");
 
     std::vector<std::string> missingIds;
     std::unordered_set<std::string> existingIds;
@@ -240,9 +236,7 @@ std::vector<std::string> RSM::SCXMLModel::findMissingStateIds() const {
         // 초기 상태 확인
         if (!state->getInitialState().empty() && existingIds.find(state->getInitialState()) == existingIds.end()) {
             missingIds.push_back(state->getInitialState());
-            Logger::warn("RSM::SCXMLModel::findMissingStateIds() - Missing state ID "
-                         "referenced as initial state: " +
-                         state->getInitialState());
+            LOG_WARN("Missing state ID referenced as initial state: {}", state->getInitialState());
         }
 
         // 전환 타겟 확인
@@ -251,9 +245,7 @@ std::vector<std::string> RSM::SCXMLModel::findMissingStateIds() const {
             for (const auto &target : targets) {
                 if (!target.empty() && existingIds.find(target) == existingIds.end()) {
                     missingIds.push_back(target);
-                    Logger::warn("RSM::SCXMLModel::findMissingStateIds() - Missing state ID "
-                                 "referenced as transition target: " +
-                                 target);
+                    LOG_WARN("Missing state ID referenced as transition target: {}", target);
                 }
             }
         }
@@ -263,60 +255,59 @@ std::vector<std::string> RSM::SCXMLModel::findMissingStateIds() const {
     std::sort(missingIds.begin(), missingIds.end());
     missingIds.erase(std::unique(missingIds.begin(), missingIds.end()), missingIds.end());
 
-    Logger::info("RSM::SCXMLModel::findMissingStateIds() - Found " + std::to_string(missingIds.size()) +
-                 " missing state IDs");
+    LOG_INFO("Found {} missing state IDs", missingIds.size());
     return missingIds;
 }
 
 void RSM::SCXMLModel::printModelStructure() const {
-    Logger::info("RSM::SCXMLModel::printModelStructure() - Printing model structure");
-    Logger::info("SCXML Model Structure:\n");
-    Logger::info("======================\n");
-    Logger::info("Initial State: " + initialState_);
-    Logger::info("Datamodel: " + datamodel_);
+    LOG_INFO("Printing model structure");
+    LOG_INFO("SCXML Model Structure:\n");
+    LOG_INFO("======================\n");
+    LOG_INFO("Initial State: {}", initialState_);
+    LOG_INFO("Datamodel: {}", datamodel_);
 
-    Logger::info("Context Properties:\n");
+    LOG_INFO("Context Properties:\n");
     for (const auto &[name, type] : contextProperties_) {
-        Logger::info("  " + name + ": " + type);
+        LOG_INFO("  {}: {}", name, type);
     }
 
-    Logger::info("\nInject Points:\n");
+    LOG_INFO("\nInject Points:\n");
     for (const auto &[name, type] : injectPoints_) {
-        Logger::info("  " + name + ": " + type);
+        LOG_INFO("  {}: {}", name, type);
     }
 
-    Logger::info("\nGuards:\n");
+    LOG_INFO("\nGuards:\n");
     for (const auto &guard : guards_) {
-        Logger::info("  " + guard->getId() + ":");
+        LOG_INFO("  {}:", guard->getId());
 
         if (!guard->getCondition().empty()) {
-            Logger::info("    Condition: " + guard->getCondition());
+            LOG_INFO("    Condition: {}", guard->getCondition());
         }
 
         if (!guard->getTargetState().empty()) {
-            Logger::info("    Target State: " + guard->getTargetState());
+            LOG_INFO("    Target State: {}", guard->getTargetState());
         }
 
-        Logger::info("    Dependencies:\n");
+        LOG_INFO("    Dependencies:\n");
         for (const auto &dep : guard->getDependencies()) {
-            Logger::info("      " + dep);
+            LOG_INFO("      {}", dep);
         }
 
         if (!guard->getExternalClass().empty()) {
-            Logger::info("    External Class: " + guard->getExternalClass());
+            LOG_INFO("    External Class: {}", guard->getExternalClass());
         }
 
         if (guard->isReactive()) {
-            Logger::info("    Reactive: Yes");
+            LOG_INFO("    Reactive: Yes");
         }
     }
 
-    Logger::info("\nState Hierarchy:\n");
+    LOG_INFO("\nState Hierarchy:\n");
     if (rootState_) {
         printStateHierarchy(rootState_.get(), 0);
     }
 
-    Logger::info("RSM::SCXMLModel::printModelStructure() - Model structure printed");
+    LOG_INFO("Model structure printed");
 }
 
 void RSM::SCXMLModel::printStateHierarchy(RSM::IStateNode *state, int depth) const {
@@ -328,7 +319,7 @@ void RSM::SCXMLModel::printStateHierarchy(RSM::IStateNode *state, int depth) con
     std::string indent(depth * 2, ' ');
 
     // 현재 상태 정보 출력
-    Logger::info(indent + "State: " + state->getId());
+    LOG_INFO("{}State: {}", indent, state->getId());
 
     // 자식 상태 재귀적으로 출력
     for (const auto &child : state->getChildren()) {
@@ -337,7 +328,7 @@ void RSM::SCXMLModel::printStateHierarchy(RSM::IStateNode *state, int depth) con
 }
 
 void RSM::SCXMLModel::setBinding(const std::string &binding) {
-    Logger::debug("RSM::SCXMLModel::setBinding() - Setting binding mode: " + binding);
+    LOG_DEBUG("Setting binding mode: {}", binding);
     binding_ = binding;
 }
 
@@ -347,7 +338,7 @@ const std::string &RSM::SCXMLModel::getBinding() const {
 
 void RSM::SCXMLModel::addSystemVariable(std::shared_ptr<RSM::IDataModelItem> systemVar) {
     if (systemVar) {
-        Logger::debug("RSM::SCXMLModel::addSystemVariable() - Adding system variable: " + systemVar->getId());
+        LOG_DEBUG("Adding system variable: {}", systemVar->getId());
         systemVariables_.push_back(systemVar);
     }
 }

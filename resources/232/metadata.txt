@@ -1,0 +1,6 @@
+id: 232
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: he invoked external service MAY return multiple events while it is processing
+variants: 1

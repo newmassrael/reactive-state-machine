@@ -1,0 +1,6 @@
+id: 343
+specnum: 5.7
+conformance: mandatory
+manual: False
+description: If the 'location' attribute on a param element does not refer to a valid location in the data model, or if the evaluation of the 'expr' produces an error, the processor MUST ignore the name and value.
+variants: 1

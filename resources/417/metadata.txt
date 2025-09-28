@@ -1,0 +1,6 @@
+id: 417
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: If the compound state [which has the final element that we entered this microstep] is itself the child of a parallel element, and all the parallel element's other children are in final states, the Processor MUST generate the event done.state.id, where id is the id of the parallel element.
+variants: 1

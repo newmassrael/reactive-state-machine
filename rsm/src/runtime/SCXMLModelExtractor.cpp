@@ -12,7 +12,7 @@ SCXMLModelExtractor::ExtractedModel SCXMLModelExtractor::extractModel(std::share
     ExtractedModel extracted;
 
     if (!model) {
-        Logger::error("SCXMLModelExtractor: Null model provided");
+        LOG_ERROR("SCXMLModelExtractor: Null model provided");
         return extracted;
     }
 
@@ -148,8 +148,7 @@ bool SCXMLModelExtractor::validateExtractedModel(ExtractedModel &extracted) {
     // Validate transition targets
     for (const auto &transition : extracted.transitions) {
         if (!transition.toState.empty() && stateIds.find(transition.toState) == stateIds.end()) {
-            Logger::warn("SCXMLModelExtractor: Transition target '" + transition.toState +
-                         "' not found in extracted states");
+            LOG_WARN("Transition target '{}' not found in extracted states", transition.toState);
             isValid = false;
         }
     }

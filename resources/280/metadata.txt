@@ -1,0 +1,6 @@
+id: 280
+specnum: 5.3
+conformance: mandatory
+manual: False
+description: When 'binding' attribute on the scxml element is assigned the value "late", the SCXML Processor MUST create the data elements at document initialization time, but MUST assign the specified initial value to a given data element only when the state that contains it is entered for the first time, before any onentry markup.
+variants: 1

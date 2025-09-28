@@ -1,0 +1,6 @@
+id: 148
+specnum: 4.3
+conformance: mandatory
+manual: False
+description: When the if element is executed, if no 'cond'attribute evaluates to true, the SCXML Processor must execute the partition defined by the else tag, if there is one.
+variants: 1

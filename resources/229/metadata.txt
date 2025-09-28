@@ -1,0 +1,6 @@
+id: 229
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: When the 'autoforward' attribute is set to true, the SCXML Processor MUST send an exact copy of every external event it receives to the invoked process.
+variants: 1

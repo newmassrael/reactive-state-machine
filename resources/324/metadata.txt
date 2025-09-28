@@ -1,0 +1,6 @@
+id: 324
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The Processor MUST keep the _name variable bound to the value of the 'name' attribute of the scxml element until the session terminates.
+variants: 1

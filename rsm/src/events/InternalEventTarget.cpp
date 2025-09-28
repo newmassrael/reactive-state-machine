@@ -1,14 +1,18 @@
 #include "events/InternalEventTarget.h"
 #include "common/Logger.h"
+#include "runtime/EventRaiserImpl.h"
 #include "runtime/IEventRaiser.h"
 #include <future>
 #include <sstream>
 
 namespace RSM {
 
-InternalEventTarget::InternalEventTarget(std::shared_ptr<IEventRaiser> eventRaiser) : eventRaiser_(eventRaiser) {}
+InternalEventTarget::InternalEventTarget(std::shared_ptr<IEventRaiser> eventRaiser, bool isExternal)
+    : eventRaiser_(eventRaiser), isExternal_(isExternal) {}
 
 std::future<SendResult> InternalEventTarget::send(const EventDescriptor &event) {
+    LOG_DEBUG("InternalEventTarget::send() - ENTRY: event='{}', target='{}'", event.eventName, event.target);
+
     std::promise<SendResult> promise;
     auto future = promise.get_future();
 
@@ -37,7 +41,25 @@ std::future<SendResult> InternalEventTarget::send(const EventDescriptor &event) 
 
         // SCXML "fire and forget": Queue event and return immediate success
         // EventRaiser uses async processing, so queueing success = operation success
-        bool queueSuccess = eventRaiser_->raiseEvent(eventName, eventData);
+        // W3C SCXML compliance: Use appropriate priority based on target type
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        bool queueSuccess = false;
+
+        if (eventRaiserImpl) {
+            // Use priority-aware method for W3C SCXML compliance
+            auto priority =
+                isExternal_ ? EventRaiserImpl::EventPriority::EXTERNAL : EventRaiserImpl::EventPriority::INTERNAL;
+            LOG_DEBUG("InternalEventTarget::send() - Calling raiseEventWithPriority('{}', '{}', {})", eventName,
+                      eventData, (isExternal_ ? "EXTERNAL" : "INTERNAL"));
+            queueSuccess = eventRaiserImpl->raiseEventWithPriority(eventName, eventData, priority);
+        } else {
+            // Fallback to standard method for compatibility
+            LOG_DEBUG("InternalEventTarget::send() - Calling eventRaiser_->raiseEvent('{}', '{}')", eventName,
+                      eventData);
+            queueSuccess = eventRaiser_->raiseEvent(eventName, eventData);
+        }
+
+        LOG_DEBUG("InternalEventTarget::send() - raiseEvent result: {}", queueSuccess);
 
         if (queueSuccess) {
             // Generate send ID for tracking (internal events get immediate IDs)
@@ -45,19 +67,17 @@ std::future<SendResult> InternalEventTarget::send(const EventDescriptor &event) 
                                                                   std::chrono::steady_clock::now().time_since_epoch())
                                                                   .count());
 
-            Logger::debug("InternalEventTarget: Successfully sent internal event '{}' with sendId '{}'", eventName,
-                          sendId);
+            LOG_DEBUG("InternalEventTarget: Successfully sent internal event '{}' with sendId '{}'", eventName, sendId);
             promise.set_value(SendResult::success(sendId));
         } else {
             // Only fails if EventRaiser is not ready (shutdown, etc.)
-            Logger::error("InternalEventTarget: Failed to queue internal event '{}' - EventRaiser not ready",
-                          eventName);
+            LOG_ERROR("InternalEventTarget: Failed to queue internal event '{}' - EventRaiser not ready", eventName);
             promise.set_value(
                 SendResult::error("EventRaiser not ready for internal event", SendResult::ErrorType::INTERNAL_ERROR));
         }
 
     } catch (const std::exception &e) {
-        Logger::error("InternalEventTarget: Exception while sending event: {}", e.what());
+        LOG_ERROR("InternalEventTarget: Exception while sending event: {}", e.what());
         promise.set_value(
             SendResult::error("Exception: " + std::string(e.what()), SendResult::ErrorType::INTERNAL_ERROR));
     }
@@ -98,7 +118,7 @@ std::string InternalEventTarget::resolveEventName(const EventDescriptor &event) 
     // If eventExpr is provided, we would need to evaluate it through the ActionExecutor
     // For now, we'll support only literal event names
     if (!event.eventExpr.empty()) {
-        Logger::warn("InternalEventTarget: eventExpr not yet supported, using literal name");
+        LOG_WARN("InternalEventTarget: eventExpr not yet supported, using literal name");
     }
 
     return event.eventName;

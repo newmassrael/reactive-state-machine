@@ -1,0 +1,7 @@
+id: 185
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: If a delay is specified via 'delay' or 'delayexpr', the SCXML Processor MUST interpret the character string as a time interval.
+ 	     the SCXML Processor MUST dispatch the message only when the delay interval elapses.
+variants: 1

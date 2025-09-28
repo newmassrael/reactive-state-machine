@@ -1,0 +1,6 @@
+id: 406
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: [the SCXML Processor executing a set of transitions] MUST then [after the exits and the transitions] enter the states in the transitions' entry set in entry order.
+variants: 1

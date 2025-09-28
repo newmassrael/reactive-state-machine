@@ -85,3 +85,6 @@ docs/generated/
 docs/html/
 docs/latex/
 docs/xml/
+
+.serena
+.cache

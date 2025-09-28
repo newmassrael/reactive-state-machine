@@ -1,0 +1,6 @@
+id: 155
+specnum: 4.6
+conformance: mandatory
+manual: False
+description: when evaluating foreach, for each item, after making the assignment, the SCXML processor MUST evaluate its child executable content. It MUST then proceed to the next item in iteration order.
+variants: 1

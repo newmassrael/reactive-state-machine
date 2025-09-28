@@ -51,8 +51,6 @@ private:
     // 실행 가능한 콘텐츠 파싱 헬퍼 메서드
     void parseExecutableContent(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state,
                                 bool isEntryAction);
-    std::shared_ptr<RSM::IActionNode> parseScriptAction(const xmlpp::Element *scriptElement);
-    std::shared_ptr<RSM::IActionNode> parseAssignAction(const xmlpp::Element *assignElement);
 
     // invoke 요소 파싱
     void parseInvokeElements(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);

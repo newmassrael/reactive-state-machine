@@ -1,0 +1,6 @@
+id: 250
+specnum: 6.4
+conformance: mandatory
+manual: True
+description: When an invoked process of type http://www.w3.org/TR/scxml/is cancelled by the invoking process, the Processor MUST execute the onexit handlers for all active states in the invoked session
+variants: 1

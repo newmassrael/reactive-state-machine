@@ -1,0 +1,6 @@
+id: 307
+specnum: 5.9
+conformance: mandatory
+manual: True
+description: When "late" data binding is used, accessing data substructure in expressions before the corresponding data element is loaded MUST yield the same execution-time behavior as accessing non-existent data substructure in a loaded data instance.
+variants: 1

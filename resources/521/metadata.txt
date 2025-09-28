@@ -1,0 +1,6 @@
+id: 521
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: f the Processor cannot dispatch the event, it MUST place the error error.communication on the internal event queue of the session that attempted to send the event.
+variants: 1

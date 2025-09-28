@@ -35,6 +35,40 @@ else()
 endif()
 
 # ============================================================================
+# RSM 테스트 설정: std::cout 사용 금지 적용
+# ============================================================================
+function(apply_rsm_test_policies target_name)
+    # DisableStdOut.h를 모든 테스트 타겟에 강제 포함
+    target_compile_options(${target_name} 
+        PRIVATE
+            -include ${CMAKE_SOURCE_DIR}/rsm/include/common/DisableStdOut.h
+    )
+    
+    # RSM 테스트 정책 정의
+    target_compile_definitions(${target_name}
+        PRIVATE
+            RSM_TEST_TARGET=1  # 테스트 타겟 식별용
+    )
+endfunction()
+
+# 모든 테스트 타겟 이름 리스트
+set(RSM_TEST_TARGETS
+    rsm_scxml_tests
+    js_engine_tests  
+    state_machine_tests
+    states_tests
+    action_tests
+    history_tests
+    core_parser_tests
+    integration_tests
+    concurrency_tests
+    txml_converter_tests
+    w3c_test_cli
+    w3c_full_runner
+    w3c_simple_tests
+)
+
+# ============================================================================
 # 1. RSM SCXML Builtin Tests (현재 작동하는 테스트)
 # ============================================================================
 add_executable(rsm_scxml_tests
@@ -55,6 +89,9 @@ target_link_libraries(rsm_scxml_tests
         pthread
 )
 
+# RSM 테스트 정책 적용 (cout 금지 등)
+apply_rsm_test_policies(rsm_scxml_tests)
+
 # CTest에 작동하는 테스트 추가
 add_test(NAME RSMSCXMLTests COMMAND rsm_scxml_tests)
 
@@ -67,6 +104,7 @@ add_executable(js_engine_tests
     engine/EventSystemTest.cpp
     engine/JSEngineBasicTest.cpp
     engine/JSResultTypeConversionTest.cpp
+    mocks/MockEventRaiser.cpp
 )
 
 target_include_directories(js_engine_tests
@@ -82,6 +120,9 @@ target_link_libraries(js_engine_tests
         GTest::gtest_main
         pthread
 )
+
+# RSM 테스트 정책 적용
+apply_rsm_test_policies(js_engine_tests)
 
 # ============================================================================
 # 3. StateMachine Tests
@@ -135,6 +176,7 @@ add_executable(action_tests
     actions/AssignActionTest.cpp
     runtime/ActionExecutorImplTest.cpp
     mocks/MockActionExecutor.cpp
+    mocks/MockEventRaiser.cpp
 )
 
 target_include_directories(action_tests
@@ -272,6 +314,7 @@ add_executable(integration_tests
     integration/SCXMLForeachIntegrationTest.cpp
     integration/HistoryStateIntegrationTest.cpp
     mocks/MockActionExecutor.cpp
+    mocks/MockEventRaiser.cpp
 )
 
 add_dependencies(integration_tests libxmlxx_external rsm_unified)
@@ -300,6 +343,7 @@ target_link_libraries(integration_tests
 # ============================================================================
 add_executable(concurrency_tests
     concurrency/DeadlockReproductionTest.cpp
+    mocks/MockEventRaiser.cpp
 )
 
 target_include_directories(concurrency_tests
@@ -317,12 +361,74 @@ target_link_libraries(concurrency_tests
         pthread
 )
 
+# ============================================================================
+# 7. TXML Converter Tests (W3C SCXML Compliance Testing)
+# ============================================================================
+add_executable(txml_converter_tests
+    w3c/TXMLConverterTest.cpp
+    w3c/impl/TXMLConverter.cpp
+)
+
+target_include_directories(txml_converter_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+        ${LIBXMLXX_INCLUDE_DIRS}
+        /usr/include/libxml2
+)
+
+target_link_libraries(txml_converter_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        ${LIBXMLXX_LIBRARIES}
+        xml2
+        pthread
+)
+
+add_dependencies(txml_converter_tests libxmlxx_external rsm_unified)
+
+# ============================================================================
+# 8. W3C SCXML Compliance Tests (SOLID Architecture)
+# ============================================================================
+# Full W3C Test Runner for all W3C SCXML 1.0 compliance tests
+add_executable(w3c_test_cli
+    w3c/W3CTestCLI.cpp
+    w3c/W3CTestRunner.cpp
+    w3c/impl/TXMLConverter.cpp
+    w3c/impl/TestMetadataParser.cpp
+
+    w3c/impl/W3CTestEventDispatcher.cpp
+    mocks/MockEventRaiser.cpp
+)
+
+target_link_libraries(w3c_test_cli
+    PRIVATE
+        rsm_unified
+        ${LIBXMLXX_LIBRARIES}
+        xml2
+        pthread
+)
+
+target_include_directories(w3c_test_cli
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tests
+        ${LIBXMLXX_INCLUDE_DIRS}
+        /usr/include/libxml2
+)
+
+add_dependencies(w3c_test_cli libxmlxx_external rsm_unified)
+
 # CTest에 모든 테스트들 추가
 add_test(NAME JSEngineTests COMMAND js_engine_tests)
 add_test(NAME StateMachineTests COMMAND state_machine_tests)
 add_test(NAME ActionTests COMMAND action_tests)
 add_test(NAME HistoryTests COMMAND history_tests)
 add_test(NAME CoreParserTests COMMAND core_parser_tests)
+add_test(NAME TXMLConverterTests COMMAND txml_converter_tests)
 # 테스트 등록이 제거되어 비활성화됨
 # add_test(NAME ConcurrentFoundationTests COMMAND concurrent_foundation_tests)
 # add_test(NAME ConcurrentOrchestrationTests COMMAND concurrent_orchestration_tests)
@@ -332,7 +438,20 @@ add_test(NAME CoreParserTests COMMAND core_parser_tests)
 add_test(NAME IntegrationTests COMMAND integration_tests)
 add_test(NAME ConcurrencyTests COMMAND concurrency_tests)
 
+# W3C Compliance Test Categories
+# W3C Tests는 가장 포괄적이고 시간이 오래 걸리므로 별도 카테고리로 분리
+add_test(NAME W3CFullComplianceTests COMMAND w3c_test_cli)
+
+# 모든 테스트 타겟에 RSM 정책 일괄 적용
+foreach(test_target ${RSM_TEST_TARGETS})
+    if(TARGET ${test_target})
+        apply_rsm_test_policies(${test_target})
+        message(STATUS "✅ Applied RSM policies (cout prohibition) to ${test_target}")
+    endif()
+endforeach()
+
 message(STATUS "✅ RSM SCXML tests enabled")
 message(STATUS "✅ JavaScript Engine tests enabled")
 message(STATUS "✅ Core Parser tests enabled")
 message(STATUS "✅ Integration tests enabled")
+message(STATUS "🚫 std::cout usage prohibited in all test targets")

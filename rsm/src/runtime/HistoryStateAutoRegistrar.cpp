@@ -11,33 +11,33 @@ namespace RSM {
 HistoryStateAutoRegistrar::HistoryStateAutoRegistrar(
     std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider)
     : stateProvider_(std::move(stateProvider)) {
-    Logger::debug("HistoryStateAutoRegistrar: Initialized with SOLID architecture");
+    LOG_DEBUG("HistoryStateAutoRegistrar: Initialized with SOLID architecture");
 }
 
 bool HistoryStateAutoRegistrar::autoRegisterHistoryStates(const std::shared_ptr<SCXMLModel> &model,
                                                           IHistoryManager *historyManager) {
     if (!autoRegistrationEnabled_) {
-        Logger::debug("HistoryStateAutoRegistrar: Auto-registration is disabled");
+        LOG_DEBUG("HistoryStateAutoRegistrar: Auto-registration is disabled");
         return true;
     }
 
     if (!model) {
-        Logger::error("HistoryStateAutoRegistrar: Cannot register - null model");
+        LOG_ERROR("HistoryStateAutoRegistrar: Cannot register - null model");
         return false;
     }
 
     if (!historyManager) {
-        Logger::error("HistoryStateAutoRegistrar: Cannot register - null history manager");
+        LOG_ERROR("HistoryStateAutoRegistrar: Cannot register - null history manager");
         return false;
     }
 
-    Logger::info("HistoryStateAutoRegistrar: Starting SCXML W3C compliant auto-registration");
+    LOG_INFO("HistoryStateAutoRegistrar: Starting SCXML W3C compliant auto-registration");
 
     // Extract history states from model
     auto historyStates = extractHistoryStatesFromModel(model);
 
     if (historyStates.empty()) {
-        Logger::debug("HistoryStateAutoRegistrar: No history states found in model");
+        LOG_DEBUG("HistoryStateAutoRegistrar: No history states found in model");
         registeredHistoryStateCount_ = 0;
         return true;
     }
@@ -47,22 +47,19 @@ bool HistoryStateAutoRegistrar::autoRegisterHistoryStates(const std::shared_ptr<
         if (registerSingleHistoryState(historyInfo.historyStateId, historyInfo.parentStateId, historyInfo.historyType,
                                        historyInfo.defaultStateId, historyManager)) {
             successCount++;
-            Logger::debug("HistoryStateAutoRegistrar: Successfully registered history state: " +
-                          historyInfo.historyStateId);
+            LOG_DEBUG("Successfully registered history state: {}", historyInfo.historyStateId);
         } else {
-            Logger::warn("HistoryStateAutoRegistrar: Failed to register history state: " + historyInfo.historyStateId);
+            LOG_WARN("Failed to register history state: {}", historyInfo.historyStateId);
         }
     }
 
     registeredHistoryStateCount_ = successCount;
 
     if (successCount == historyStates.size()) {
-        Logger::info("HistoryStateAutoRegistrar: Successfully registered all " + std::to_string(successCount) +
-                     " history states");
+        LOG_INFO("Successfully registered all {} history states", successCount);
         return true;
     } else {
-        Logger::warn("HistoryStateAutoRegistrar: Registered " + std::to_string(successCount) + " out of " +
-                     std::to_string(historyStates.size()) + " history states");
+        LOG_WARN("Registered {} out of {} history states", successCount, historyStates.size());
         return false;
     }
 }
@@ -77,7 +74,7 @@ bool HistoryStateAutoRegistrar::isAutoRegistrationEnabled() const {
 
 void HistoryStateAutoRegistrar::setAutoRegistrationEnabled(bool enabled) {
     autoRegistrationEnabled_ = enabled;
-    Logger::debug("HistoryStateAutoRegistrar: Auto-registration " + std::string(enabled ? "enabled" : "disabled"));
+    LOG_DEBUG("Auto-registration {}", (enabled ? "enabled" : "disabled"));
 }
 
 bool HistoryStateAutoRegistrar::registerSingleHistoryState(const std::string &historyStateId,
@@ -86,7 +83,7 @@ bool HistoryStateAutoRegistrar::registerSingleHistoryState(const std::string &hi
                                                            IHistoryManager *historyManager) {
     // Validate history type
     if (historyType == HistoryType::NONE) {
-        Logger::error("HistoryStateAutoRegistrar: Invalid history type NONE for state '" + historyStateId + "'");
+        LOG_ERROR("Invalid history type NONE for state '{}'", historyStateId);
         return false;
     }
 
@@ -97,7 +94,7 @@ bool HistoryStateAutoRegistrar::registerSingleHistoryState(const std::string &hi
     } else if (historyType == HistoryType::DEEP) {
         historyTypeStr = "deep";
     } else {
-        Logger::error("HistoryStateAutoRegistrar: Invalid history type for state '" + historyStateId + "'");
+        LOG_ERROR("Invalid history type for state '{}'", historyStateId);
         return false;
     }
 
@@ -105,10 +102,10 @@ bool HistoryStateAutoRegistrar::registerSingleHistoryState(const std::string &hi
     bool success = historyManager->registerHistoryState(historyStateId, parentStateId, historyType, defaultStateId);
 
     if (success) {
-        Logger::debug("HistoryStateAutoRegistrar: Registered " + historyTypeStr + " history state '" + historyStateId +
-                      "' in parent '" + parentStateId + "' with default '" + defaultStateId + "'");
+        LOG_DEBUG("Registered {} history state '{}' in parent '{}' with default '{}'", historyTypeStr, historyStateId,
+                  parentStateId, defaultStateId);
     } else {
-        Logger::error("HistoryStateAutoRegistrar: Failed to register history state '" + historyStateId + "'");
+        LOG_ERROR("Failed to register history state '{}'", historyStateId);
     }
 
     return success;
@@ -164,7 +161,7 @@ std::string HistoryStateAutoRegistrar::findParentStateId(const std::string &hist
         }
     }
 
-    Logger::warn("HistoryStateAutoRegistrar: Could not find parent for history state: " + historyStateId);
+    LOG_WARN("Could not find parent for history state: {}", historyStateId);
     return "";
 }
 
@@ -179,7 +176,7 @@ std::string HistoryStateAutoRegistrar::extractDefaultStateId(const std::shared_p
         }
     }
 
-    Logger::debug("HistoryStateAutoRegistrar: No default state found for history state: " + historyState->getId());
+    LOG_DEBUG("No default state found for history state: {}", historyState->getId());
     return "";
 }
 

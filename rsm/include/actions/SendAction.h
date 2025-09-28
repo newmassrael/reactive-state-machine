@@ -135,6 +135,18 @@ public:
     const std::string &getSendId() const;
 
     /**
+     * @brief Set ID location for storing generated sendid
+     * @param idLocation Variable name to store the sendid (W3C SCXML idlocation attribute)
+     */
+    void setIdLocation(const std::string &idLocation);
+
+    /**
+     * @brief Get ID location
+     * @return ID location variable name
+     */
+    const std::string &getIdLocation() const;
+
+    /**
      * @brief Set event type override
      * @param type Event type ("platform", "internal", "external")
      */
@@ -147,17 +159,38 @@ public:
     const std::string &getType() const;
 
     /**
-     * @brief Add a parameter to this send action
+     * @brief Parameter structure for SCXML send params with expr support
+     */
+    struct SendParam {
+        std::string name;
+        std::string expr;  // SCXML expr attribute for dynamic evaluation
+
+        SendParam(const std::string &paramName, const std::string &paramExpr) : name(paramName), expr(paramExpr) {}
+    };
+
+    /**
+     * @brief Add a parameter to this send action (legacy interface)
      * @param name Parameter name
      * @param value Parameter value
      */
-    void addParam(const std::string &name, const std::string &value);
 
     /**
-     * @brief Get all parameters for this send action
+     * @brief Add a parameter with expression for dynamic evaluation (W3C SCXML compliant)
+     * @param name Parameter name
+     * @param expr Parameter expression to evaluate at send time
+     */
+    void addParamWithExpr(const std::string &name, const std::string &expr);
+
+    /**
+     * @brief Get all parameters for this send action (legacy interface)
      * @return Map of parameter name-value pairs
      */
-    const std::map<std::string, std::string> &getParams() const;
+
+    /**
+     * @brief Get parameters with expressions for W3C SCXML compliance
+     * @return Vector of SendParam structures with name and expr
+     */
+    const std::vector<SendParam> &getParamsWithExpr() const;
 
     /**
      * @brief Clear all parameters
@@ -186,13 +219,14 @@ private:
     std::string eventExpr_;  // Event expression for dynamic event names
     std::string
         target_;  // Target URI for event delivery (empty = session-scoped)          // Target URI for event delivery
-    std::string targetExpr_;                     // Target expression for dynamic targets
-    std::string data_;                           // Event data payload
-    std::string delay_;                          // Delivery delay specification
-    std::string delayExpr_;                      // Delay expression for dynamic delays
-    std::string sendId_;                         // Sender ID for tracking
-    std::string type_ = "scxml";                 // Event type
-    std::map<std::string, std::string> params_;  // Additional parameters
+    std::string targetExpr_;                 // Target expression for dynamic targets
+    std::string data_;                       // Event data payload
+    std::string delay_;                      // Delivery delay specification
+    std::string delayExpr_;                  // Delay expression for dynamic delays
+    std::string sendId_;                     // Sender ID for tracking
+    std::string idLocation_;                 // Variable name to store sendid (W3C SCXML idlocation)
+    std::string type_;                       // Event type (empty by default per W3C SCXML)
+    std::vector<SendParam> paramsWithExpr_;  // W3C SCXML compliant params with expr
 };
 
 }  // namespace RSM

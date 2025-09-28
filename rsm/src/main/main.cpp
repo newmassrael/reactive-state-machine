@@ -13,21 +13,21 @@
 namespace fs = std::filesystem;
 
 void printUsage(const char *programName) {
-    RSM::Logger::info("SCXML Code Generator\n");
-    RSM::Logger::info("Usage: {} [options] <input.scxml>\n", programName);
-    RSM::Logger::info("Options:");
-    RSM::Logger::info("  -o, --output <file>    Output file path (default: generated.cpp)");
-    RSM::Logger::info("  -h, --help            Show this help message");
-    RSM::Logger::info("  -v, --verbose         Enable verbose logging\n");
-    RSM::Logger::info("Examples:");
-    RSM::Logger::info("  {} state_machine.scxml", programName);
-    RSM::Logger::info("  {} -o my_sm.cpp input.scxml", programName);
-    RSM::Logger::info("  {} --verbose --output=generated.hpp input.scxml", programName);
+    RSM::LOG_INFO("SCXML Code Generator\n");
+    RSM::LOG_INFO("Usage: {} [options] <input.scxml>\n", programName);
+    RSM::LOG_INFO("Options:");
+    RSM::LOG_INFO("  -o, --output <file>    Output file path (default: generated.cpp)");
+    RSM::LOG_INFO("  -h, --help            Show this help message");
+    RSM::LOG_INFO("  -v, --verbose         Enable verbose logging\n");
+    RSM::LOG_INFO("Examples:");
+    RSM::LOG_INFO("  {} state_machine.scxml", programName);
+    RSM::LOG_INFO("  {} -o my_sm.cpp input.scxml", programName);
+    RSM::LOG_INFO("  {} --verbose --output=generated.hpp input.scxml", programName);
 }
 
 void printVersion() {
-    RSM::Logger::info("scxml-codegen version 1.0.0");
-    RSM::Logger::info("SCXML-to-C++ Code Generator");
+    RSM::LOG_INFO("scxml-codegen version 1.0.0");
+    RSM::LOG_INFO("SCXML-to-C++ Code Generator");
 }
 
 int main(int argc, char *argv[]) {
@@ -51,20 +51,20 @@ int main(int argc, char *argv[]) {
             if (i + 1 < argc) {
                 outputFile = argv[++i];
             } else {
-                RSM::Logger::error("Error: --output requires a file path");
+                RSM::LOG_ERROR("Error: --output requires a file path");
                 return 1;
             }
         } else if (arg.starts_with("--output=")) {
             outputFile = arg.substr(9);
         } else if (arg.starts_with("-")) {
-            RSM::Logger::error("Error: Unknown option {}", arg);
+            RSM::LOG_ERROR("Error: Unknown option {}", arg);
             printUsage(argv[0]);
             return 1;
         } else {
             if (inputFile.empty()) {
                 inputFile = arg;
             } else {
-                RSM::Logger::error("Error: Multiple input files specified");
+                RSM::LOG_ERROR("Error: Multiple input files specified");
                 return 1;
             }
         }
@@ -72,26 +72,26 @@ int main(int argc, char *argv[]) {
 
     // Validate arguments
     if (inputFile.empty()) {
-        RSM::Logger::error("Error: No input file specified");
+        RSM::LOG_ERROR("Error: No input file specified");
         printUsage(argv[0]);
         return 1;
     }
 
     if (!fs::exists(inputFile)) {
-        RSM::Logger::error("Error: Input file '{}' does not exist", inputFile);
+        RSM::LOG_ERROR("Error: Input file '{}' does not exist", inputFile);
         return 1;
     }
 
     // Set logging level
     if (verbose) {
         // Logger는 정적 레벨 설정이 없으므로 현재는 무시
-        Logger::info("Verbose mode enabled");
+        LOG_INFO("Verbose mode enabled");
     }
 
     try {
-        Logger::info("Starting SCXML code generation...");
-        Logger::info("Input file: " + inputFile);
-        Logger::info("Output file: " + outputFile);
+        LOG_INFO("Starting SCXML code generation...");
+        LOG_INFO("Input file: " + inputFile);
+        LOG_INFO("Output file: " + outputFile);
 
         // Parse SCXML file
         auto nodeFactory = std::make_shared<RSM::NodeFactory>();
@@ -99,16 +99,16 @@ int main(int argc, char *argv[]) {
         auto model = parser.parseFile(inputFile);
 
         if (!model) {
-            RSM::Logger::error("Error: Failed to parse SCXML file");
+            RSM::LOG_ERROR("Error: Failed to parse SCXML file");
             return 1;
         }
 
-        Logger::info("SCXML parsing completed successfully");
+        LOG_INFO("SCXML parsing completed successfully");
 
         // Generate C++ code
         std::ofstream outFile(outputFile);
         if (!outFile.is_open()) {
-            RSM::Logger::error("Error: Cannot create output file '{}'", outputFile);
+            RSM::LOG_ERROR("Error: Cannot create output file '{}'", outputFile);
             return 1;
         }
 
@@ -153,13 +153,13 @@ int main(int argc, char *argv[]) {
 
         outFile.close();
 
-        Logger::info("Code generation completed successfully");
-        RSM::Logger::info("Generated: {}", outputFile);
+        LOG_INFO("Code generation completed successfully");
+        RSM::LOG_INFO("Generated: {}", outputFile);
 
         return 0;
 
     } catch (const std::exception &e) {
-        RSM::Logger::error("Error: {}", e.what());
+        RSM::LOG_ERROR("Error: {}", e.what());
         return 1;
     }
 }

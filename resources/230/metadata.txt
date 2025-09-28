@@ -1,0 +1,6 @@
+id: 230
+specnum: 6.4
+conformance: mandatory
+manual: True
+description: When the SCXML Processor autoforwards an event to the invoked process, all the fields specified in 5.11.1 The Internal Structure of Events MUST have the same values in the forwarded copy of the event
+variants: 1

@@ -3,11 +3,11 @@
 #include <algorithm>
 
 RSM::DataModelParser::DataModelParser(std::shared_ptr<INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
-    Logger::debug("RSM::DataModelParser::Constructor - Creating data model parser");
+    LOG_DEBUG("Creating data model parser");
 }
 
 RSM::DataModelParser::~DataModelParser() {
-    Logger::debug("RSM::DataModelParser::Destructor - Destroying data model parser");
+    LOG_DEBUG("Destroying data model parser");
 }
 
 std::vector<std::shared_ptr<RSM::IDataModelItem>>
@@ -15,11 +15,11 @@ RSM::DataModelParser::parseDataModelNode(const xmlpp::Element *datamodelNode, co
     std::vector<std::shared_ptr<IDataModelItem>> items;
 
     if (!datamodelNode) {
-        Logger::warn("RSM::DataModelParser::parseDataModelNode() - Null datamodel node");
+        LOG_WARN("Null datamodel node");
         return items;
     }
 
-    Logger::debug("RSM::DataModelParser::parseDataModelNode() - Parsing datamodel node");
+    LOG_DEBUG("Parsing datamodel node");
 
     // data 노드들 파싱
     auto dataNodes = datamodelNode->get_children("data");
@@ -29,29 +29,25 @@ RSM::DataModelParser::parseDataModelNode(const xmlpp::Element *datamodelNode, co
             auto dataItem = parseDataModelItem(dataElement, context);
             if (dataItem) {
                 items.push_back(dataItem);
-                Logger::debug("RSM::DataModelParser::parseDataModelNode() - Added data "
-                              "model item: " +
-                              dataItem->getId());
+                LOG_DEBUG("Added data model item: {}", dataItem->getId());
             }
         }
     }
 
-    Logger::debug("RSM::DataModelParser::parseDataModelNode() - Parsed " + std::to_string(items.size()) +
-                  " data model items");
+    LOG_DEBUG("Parsed {} data model items", items.size());
     return items;
 }
 
 std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(const xmlpp::Element *dataNode,
                                                                               const RSM::SCXMLContext &context) {
     if (!dataNode) {
-        Logger::warn("RSM::DataModelParser::parseDataModelItem() - Null data node");
+        LOG_WARN("Null data node");
         return nullptr;
     }
 
     auto idAttr = dataNode->get_attribute("id");
     if (!idAttr) {
-        Logger::warn("RSM::DataModelParser::parseDataModelItem() - Data node "
-                     "missing id attribute");
+        LOG_WARN("Data node missing id attribute");
         return nullptr;
     }
 
@@ -63,7 +59,7 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
         expr = exprAttr->get_value();
     }
 
-    Logger::debug("RSM::DataModelParser::parseDataModelItem() - Parsing data model item: " + id);
+    LOG_DEBUG("Parsing data model item: {}", id);
     auto dataItem = nodeFactory_->createDataModelItem(id, expr);
 
     // src 속성 처리 (추가된 부분)
@@ -71,23 +67,19 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
     if (srcAttr) {
         std::string src = srcAttr->get_value();
         dataItem->setSrc(src);
-        Logger::debug("RSM::DataModelParser::parseDataModelItem() - Source URL: " + src);
+        LOG_DEBUG("Source URL: {}", src);
 
         loadExternalContent(src, dataItem);
 
         // SCXML 표준에 따르면 src, expr, content는 상호 배타적
         if (exprAttr) {
-            Logger::warn("RSM::DataModelParser::parseDataModelItem() - Data element "
-                         "cannot have both 'src' and 'expr' attributes: " +
-                         id);
+            LOG_WARN("Data element cannot have both 'src' and 'expr' attributes: {}", id);
             // 오류 처리: SCXML 표준에서는 오류지만, 일단 둘 다 저장
         }
 
         // 내용이 있는지 확인 (자식 노드가 있는지)
         if (dataNode->get_first_child()) {
-            Logger::warn("RSM::DataModelParser::parseDataModelItem() - Data element "
-                         "cannot have both 'src' attribute and content: " +
-                         id);
+            LOG_WARN("Data element cannot have both 'src' attribute and content: {}", id);
             // 오류 처리: SCXML 표준에서는 오류지만, 일단 둘 다 저장
         }
     }
@@ -96,13 +88,11 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
     auto typeAttr = dataNode->get_attribute("type");
     if (typeAttr) {
         dataItem->setType(typeAttr->get_value());
-        Logger::debug("RSM::DataModelParser::parseDataModelItem() - Type: " + typeAttr->get_value());
+        LOG_DEBUG("Type: {}", typeAttr->get_value());
     } else if (!context.getDatamodelType().empty()) {
         // 노드에 타입이 없으면 컨텍스트의 데이터 모델 타입 사용
         dataItem->setType(context.getDatamodelType());
-        Logger::debug("RSM::DataModelParser::parseDataModelItem() - Using parent "
-                      "datamodel type: " +
-                      context.getDatamodelType());
+        LOG_DEBUG("Using parent datamodel type: {}", context.getDatamodelType());
     }
 
     auto scopeAttr = dataNode->get_attribute("code:scope");
@@ -113,7 +103,7 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
 
     if (scopeAttr) {
         dataItem->setScope(scopeAttr->get_value());
-        Logger::debug("RSM::DataModelParser::parseDataModelItem() - Scope: " + scopeAttr->get_value());
+        LOG_DEBUG("Scope: {}", scopeAttr->get_value());
     }
 
     // 추가 속성 처리
@@ -129,7 +119,7 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
                 name != "src")  // src 추가
             {
                 dataItem->setAttribute(name, value);
-                Logger::debug("RSM::DataModelParser::parseDataModelItem() - Added attribute: " + name + " = " + value);
+                LOG_DEBUG("Added attribute: {} = {}", name, value);
             }
         }
     }
@@ -140,8 +130,7 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
         parseDataContent(dataNode, dataItem);
     }
 
-    Logger::debug("RSM::DataModelParser::parseDataModelItem() - Data model item "
-                  "parsed successfully");
+    LOG_DEBUG("Data model item parsed successfully");
     return dataItem;
 }
 
@@ -172,7 +161,7 @@ void RSM::DataModelParser::parseDataContent(const xmlpp::Element *dataNode, std:
 
                 if (!onlyWhitespace) {
                     dataItem->setContent(content);
-                    Logger::debug("RSM::DataModelParser::parseDataContent() - Added text content");
+                    LOG_DEBUG("Added text content");
                 }
             }
             continue;  // 텍스트 노드 처리 후 다음 노드로
@@ -183,7 +172,7 @@ void RSM::DataModelParser::parseDataContent(const xmlpp::Element *dataNode, std:
         if (cdataNode) {
             std::string content = cdataNode->get_content();
             dataItem->setContent(content);
-            Logger::debug("RSM::DataModelParser::parseDataContent() - Added CDATA content: " + content);
+            LOG_DEBUG("Added CDATA content: {}", content);
             continue;  // CDATA 노드 처리 후 다음 노드로
         }
 
@@ -193,9 +182,7 @@ void RSM::DataModelParser::parseDataContent(const xmlpp::Element *dataNode, std:
             // XML 콘텐츠를 문자열로 직렬화하는 방법이 필요함
             // 간단한 구현을 위해 요소 이름만 기록
             dataItem->setContent("<" + elementNode->get_name() + ">...</" + elementNode->get_name() + ">");
-            Logger::debug("RSM::DataModelParser::parseDataContent() - Added XML "
-                          "content of type: " +
-                          elementNode->get_name());
+            LOG_DEBUG("Added XML content of type: {}", elementNode->get_name());
         }
     }
 }
@@ -205,12 +192,11 @@ RSM::DataModelParser::parseDataModelInState(const xmlpp::Element *stateNode, con
     std::vector<std::shared_ptr<IDataModelItem>> items;
 
     if (!stateNode) {
-        Logger::warn("RSM::DataModelParser::parseDataModelInState() - Null state node");
+        LOG_WARN("Null state node");
         return items;
     }
 
-    Logger::debug("RSM::DataModelParser::parseDataModelInState() - Parsing "
-                  "datamodel in state");
+    LOG_DEBUG("Parsing datamodel in state");
 
     // datamodel 요소 찾기
     auto datamodelNode = stateNode->get_first_child("datamodel");
@@ -223,8 +209,7 @@ RSM::DataModelParser::parseDataModelInState(const xmlpp::Element *stateNode, con
         }
     }
 
-    Logger::debug("RSM::DataModelParser::parseDataModelInState() - Found " + std::to_string(items.size()) +
-                  " data items in state");
+    LOG_DEBUG("Found {} data items in state", items.size());
     return items;
 }
 
@@ -270,7 +255,7 @@ void RSM::DataModelParser::loadExternalContent(const std::string &src, std::shar
     // 이 메서드는 실제 구현에서 외부 URL에서 데이터를 로드하는 작업을 담당
     // 예: 파일 시스템, HTTP 요청 등
 
-    Logger::debug("RSM::DataModelParser::loadExternalContent() - Loading content from: " + src);
+    LOG_DEBUG("Loading content from: {}", src);
 
     // 예시: 파일 경로인 경우 파일 내용 로드
     if (src.find("file://") == 0 || src.find("/") == 0 || src.find("./") == 0) {
@@ -286,28 +271,19 @@ void RSM::DataModelParser::loadExternalContent(const std::string &src, std::shar
                 std::stringstream buffer;
                 buffer << file.rdbuf();
                 dataItem->setContent(buffer.str());
-                Logger::debug("RSM::DataModelParser::loadExternalContent() - Content "
-                              "loaded from file");
+                LOG_DEBUG("Content loaded from file");
             } else {
-                Logger::error("RSM::DataModelParser::loadExternalContent() - Failed to "
-                              "open file: " +
-                              filePath);
+                LOG_ERROR("Failed to open file: {}", filePath);
             }
         } catch (std::exception &e) {
-            Logger::error("RSM::DataModelParser::loadExternalContent() - Exception "
-                          "loading file: " +
-                          std::string(e.what()));
+            LOG_ERROR("Exception loading file: {}", e.what());
         }
     } else if (src.find("http://") == 0 || src.find("https://") == 0) {
         // HTTP 요청은 더 복잡한 구현이 필요하며, 외부 라이브러리 사용이 권장됨
         // 여기서는 구현을 생략하고 로그만 남김
-        Logger::warn("RSM::DataModelParser::loadExternalContent() - HTTP loading "
-                     "not implemented: " +
-                     src);
+        LOG_WARN("HTTP loading not implemented: {}", src);
     } else {
         // 기타 프로토콜이나 상대 경로 등 처리
-        Logger::warn("RSM::DataModelParser::loadExternalContent() - Unsupported "
-                     "URL format: " +
-                     src);
+        LOG_WARN("Unsupported URL format: {}", src);
     }
 }

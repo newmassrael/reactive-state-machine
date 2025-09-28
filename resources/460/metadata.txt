@@ -1,0 +1,6 @@
+id: 460
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, since shallow copy is required for the foreach element, foreach assignment is equivalent to item = array_name[index] in ECMAScript.
+variants: 1

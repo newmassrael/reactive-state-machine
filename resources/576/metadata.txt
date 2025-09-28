@@ -1,0 +1,6 @@
+id: 576
+specnum: 3.2
+conformance: mandatory
+manual: False
+description: At system initialization time, the SCXML Processor MUST enter the states specified by the 'initial' attribute, if it is present.
+variants: 1

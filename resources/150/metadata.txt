@@ -1,0 +1,6 @@
+id: 150
+specnum: 4.6
+conformance: mandatory
+manual: False
+description: In the foreach element, the SCXML processor MUST declare a new variable if the one specified by 'item' is not already defined.
+variants: 1

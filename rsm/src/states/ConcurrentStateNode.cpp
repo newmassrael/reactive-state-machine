@@ -10,14 +10,14 @@ namespace RSM {
 ConcurrentStateNode::ConcurrentStateNode(const std::string &id, const ConcurrentStateConfig &config)
     : id_(id), parent_(nullptr), config_(config), hasNotifiedCompletion_(false), historyType_(HistoryType::NONE),
       initialTransition_(nullptr) {
-    Logger::debug("ConcurrentStateNode::Constructor - Creating parallel state: " + id);
+    LOG_DEBUG("Creating parallel state: {}", id);
 
     // Initialize DoneData
     doneData_ = std::make_unique<DoneData>();
 }
 
 ConcurrentStateNode::~ConcurrentStateNode() {
-    Logger::debug("ConcurrentStateNode::Destructor - Destroying concurrent state: " + id_);
+    LOG_DEBUG("Destroying concurrent state: {}", id_);
 }
 
 // IStateNode interface implementation
@@ -31,8 +31,7 @@ Type ConcurrentStateNode::getType() const {
 }
 
 void ConcurrentStateNode::setParent(IStateNode *parent) {
-    Logger::debug("ConcurrentStateNode::setParent() - Setting parent for " + id_ + ": " +
-                  (parent ? parent->getId() : "null"));
+    LOG_DEBUG("Setting parent for {}: {}", id_, (parent ? parent->getId() : "null"));
     parent_ = parent;
 }
 
@@ -42,7 +41,7 @@ IStateNode *ConcurrentStateNode::getParent() const {
 
 void ConcurrentStateNode::addChild(std::shared_ptr<IStateNode> child) {
     if (child) {
-        Logger::debug("ConcurrentStateNode::addChild() - Adding child to " + id_ + ": " + child->getId());
+        LOG_DEBUG("Adding child to {}: {}", id_, child->getId());
         children_.push_back(child);
 
         // SCXML W3C specification section 3.4: child states in parallel states become regions
@@ -52,13 +51,12 @@ void ConcurrentStateNode::addChild(std::shared_ptr<IStateNode> child) {
 
         auto result = addRegion(region);
         if (!result.isSuccess) {
-            Logger::error("ConcurrentStateNode::addChild() - Failed to create region for child '" + child->getId() +
-                          "': " + result.errorMessage);
+            LOG_ERROR("Failed to create region for child '{}': {}", child->getId(), result.errorMessage);
         } else {
-            Logger::debug("ConcurrentStateNode::addChild() - Successfully created region: " + regionId);
+            LOG_DEBUG("Successfully created region: {}", regionId);
         }
     } else {
-        Logger::warn("ConcurrentStateNode::addChild() - Attempt to add null child to " + id_);
+        LOG_WARN("Attempt to add null child to {}", id_);
     }
 }
 
@@ -68,10 +66,10 @@ const std::vector<std::shared_ptr<IStateNode>> &ConcurrentStateNode::getChildren
 
 void ConcurrentStateNode::addTransition(std::shared_ptr<ITransitionNode> transition) {
     if (transition) {
-        Logger::debug("ConcurrentStateNode::addTransition() - Adding transition to " + id_);
+        LOG_DEBUG("Adding transition to {}", id_);
         transitions_.push_back(transition);
     } else {
-        Logger::warn("ConcurrentStateNode::addTransition() - Attempt to add null transition to " + id_);
+        LOG_WARN("Attempt to add null transition to {}", id_);
     }
 }
 
@@ -81,10 +79,10 @@ const std::vector<std::shared_ptr<ITransitionNode>> &ConcurrentStateNode::getTra
 
 void ConcurrentStateNode::addDataItem(std::shared_ptr<IDataModelItem> dataItem) {
     if (dataItem) {
-        Logger::debug("ConcurrentStateNode::addDataItem() - Adding data item to " + id_);
+        LOG_DEBUG("Adding data item to {}", id_);
         dataItems_.push_back(dataItem);
     } else {
-        Logger::warn("ConcurrentStateNode::addDataItem() - Attempt to add null data item to " + id_);
+        LOG_WARN("Attempt to add null data item to {}", id_);
     }
 }
 
@@ -93,7 +91,7 @@ const std::vector<std::shared_ptr<IDataModelItem>> &ConcurrentStateNode::getData
 }
 
 void ConcurrentStateNode::setOnEntry(const std::string &callback) {
-    Logger::debug("ConcurrentStateNode::setOnEntry() - Setting onEntry callback for " + id_);
+    LOG_DEBUG("Setting onEntry callback for {}", id_);
     onEntry_ = callback;
 }
 
@@ -102,7 +100,7 @@ const std::string &ConcurrentStateNode::getOnEntry() const {
 }
 
 void ConcurrentStateNode::setOnExit(const std::string &callback) {
-    Logger::debug("ConcurrentStateNode::setOnExit() - Setting onExit callback for " + id_);
+    LOG_DEBUG("Setting onExit callback for {}", id_);
     onExit_ = callback;
 }
 
@@ -111,7 +109,7 @@ const std::string &ConcurrentStateNode::getOnExit() const {
 }
 
 void ConcurrentStateNode::setInitialState(const std::string &state) {
-    Logger::debug("ConcurrentStateNode::setInitialState() - Setting initial state for " + id_ + ": " + state);
+    LOG_DEBUG("Setting initial state for {}: {}", id_, state);
     initialState_ = state;
 }
 
@@ -120,21 +118,21 @@ const std::string &ConcurrentStateNode::getInitialState() const {
 }
 
 void ConcurrentStateNode::addEntryAction(const std::string &actionId) {
-    Logger::debug("ConcurrentStateNode::addEntryAction() - Adding entry action to " + id_ + ": " + actionId);
+    LOG_DEBUG("Adding entry action to {}: {}", id_, actionId);
     entryActions_.push_back(actionId);
 }
 
 void ConcurrentStateNode::addExitAction(const std::string &actionId) {
-    Logger::debug("ConcurrentStateNode::addExitAction() - Adding exit action to " + id_ + ": " + actionId);
+    LOG_DEBUG("Adding exit action to {}: {}", id_, actionId);
     exitActions_.push_back(actionId);
 }
 
 void ConcurrentStateNode::addInvoke(std::shared_ptr<IInvokeNode> invoke) {
     if (invoke) {
-        Logger::debug("ConcurrentStateNode::addInvoke() - Adding invoke to " + id_);
+        LOG_DEBUG("Adding invoke to {}", id_);
         invokeNodes_.push_back(invoke);
     } else {
-        Logger::warn("ConcurrentStateNode::addInvoke() - Attempt to add null invoke to " + id_);
+        LOG_WARN("Attempt to add null invoke to {}", id_);
     }
 }
 
@@ -144,8 +142,7 @@ const std::vector<std::shared_ptr<IInvokeNode>> &ConcurrentStateNode::getInvoke(
 
 void ConcurrentStateNode::setHistoryType(bool isDeep) {
     historyType_ = isDeep ? HistoryType::DEEP : HistoryType::SHALLOW;
-    Logger::debug("ConcurrentStateNode::setHistoryType() - Setting history type for " + id_ + " to " +
-                  (isDeep ? "DEEP" : "SHALLOW"));
+    LOG_DEBUG("Setting history type for {} to {}", id_, (isDeep ? "DEEP" : "SHALLOW"));
 }
 
 HistoryType ConcurrentStateNode::getHistoryType() const {
@@ -161,7 +158,7 @@ bool ConcurrentStateNode::isDeepHistory() const {
 }
 
 void ConcurrentStateNode::addReactiveGuard(const std::string &guardId) {
-    Logger::debug("ConcurrentStateNode::addReactiveGuard() - Adding reactive guard to " + id_ + ": " + guardId);
+    LOG_DEBUG("Adding reactive guard to {}: {}", id_, guardId);
     reactiveGuards_.push_back(guardId);
 }
 
@@ -179,19 +176,19 @@ const std::vector<std::string> &ConcurrentStateNode::getExitActions() const {
 
 void ConcurrentStateNode::addEntryActionNode(std::shared_ptr<IActionNode> action) {
     if (action) {
-        Logger::debug("ConcurrentStateNode::addEntryActionNode() - Adding entry action node to " + id_);
+        LOG_DEBUG("Adding entry action node to {}", id_);
         entryActionNodes_.push_back(action);
     } else {
-        Logger::warn("ConcurrentStateNode::addEntryActionNode() - Attempt to add null action node to " + id_);
+        LOG_WARN("Attempt to add null action node to {}", id_);
     }
 }
 
 void ConcurrentStateNode::addExitActionNode(std::shared_ptr<IActionNode> action) {
     if (action) {
-        Logger::debug("ConcurrentStateNode::addExitActionNode() - Adding exit action node to " + id_);
+        LOG_DEBUG("Adding exit action node to {}", id_);
         exitActionNodes_.push_back(action);
     } else {
-        Logger::warn("ConcurrentStateNode::addExitActionNode() - Attempt to add null action node to " + id_);
+        LOG_WARN("Attempt to add null action node to {}", id_);
     }
 }
 
@@ -217,18 +214,17 @@ DoneData &ConcurrentStateNode::getDoneData() {
 }
 
 void ConcurrentStateNode::setDoneDataContent(const std::string &content) {
-    Logger::debug("ConcurrentStateNode::setDoneDataContent() - Setting done data content for " + id_);
+    LOG_DEBUG("Setting done data content for {}", id_);
     doneData_->setContent(content);
 }
 
 void ConcurrentStateNode::addDoneDataParam(const std::string &name, const std::string &value) {
-    Logger::debug("ConcurrentStateNode::addDoneDataParam() - Adding done data param to " + id_ + ": " + name + " = " +
-                  value);
+    LOG_DEBUG("Adding done data param to {}: {} = {}", id_, name, value);
     doneData_->addParam(name, value);
 }
 
 void ConcurrentStateNode::clearDoneDataParams() {
-    Logger::debug("ConcurrentStateNode::clearDoneDataParams() - Clearing done data params for " + id_);
+    LOG_DEBUG("Clearing done data params for {}", id_);
     doneData_->clearParams();
 }
 
@@ -237,8 +233,8 @@ std::shared_ptr<ITransitionNode> ConcurrentStateNode::getInitialTransition() con
 }
 
 void ConcurrentStateNode::setInitialTransition(std::shared_ptr<ITransitionNode> transition) {
-    Logger::debug("ConcurrentStateNode::setInitialTransition() - Setting initial transition for " + id_ +
-                  " (Note: Concurrent states typically don't use initial transitions)");
+    LOG_DEBUG("Setting initial transition for {} (Note: Concurrent states typically don't use initial transitions)",
+              id_);
     initialTransition_ = transition;
 }
 
@@ -254,12 +250,13 @@ ConcurrentOperationResult ConcurrentStateNode::addRegion(std::shared_ptr<IConcur
     // Check for duplicate region IDs
     for (const auto &existingRegion : regions_) {
         if (existingRegion->getId() == regionId) {
-            return ConcurrentOperationResult::failure(regionId, "Region with ID '" + regionId + "' already exists");
+            return ConcurrentOperationResult::failure(regionId,
+                                                      fmt::format("Region with ID '{}' already exists", regionId));
         }
     }
 
     regions_.push_back(region);
-    Logger::debug("ConcurrentStateNode::addRegion() - Added region '" + regionId + "' to " + id_);
+    LOG_DEBUG("Added region '{}' to {}", regionId, id_);
 
     return ConcurrentOperationResult::success(regionId);
 }
@@ -271,11 +268,11 @@ ConcurrentOperationResult ConcurrentStateNode::removeRegion(const std::string &r
         });
 
     if (it == regions_.end()) {
-        return ConcurrentOperationResult::failure(regionId, "Region with ID '" + regionId + "' not found");
+        return ConcurrentOperationResult::failure(regionId, fmt::format("Region with ID '{}' not found", regionId));
     }
 
     regions_.erase(it);
-    Logger::debug("ConcurrentStateNode::removeRegion() - Removed region '" + regionId + "' from " + id_);
+    LOG_DEBUG("Removed region '{}' from {}", regionId, id_);
 
     return ConcurrentOperationResult::success(regionId);
 }
@@ -294,13 +291,14 @@ std::shared_ptr<IConcurrentRegion> ConcurrentStateNode::getRegion(const std::str
 }
 
 ConcurrentOperationResult ConcurrentStateNode::enterParallelState() {
-    Logger::debug("ConcurrentStateNode::enterParallelState() - Entering parallel state: " + id_);
+    LOG_DEBUG("Entering parallel state: {}", id_);
 
     // SCXML W3C specification section 3.4: parallel states MUST have regions
     if (regions_.empty()) {
-        std::string error = "SCXML violation: parallel state '" + id_ +
-                            "' has no regions. SCXML specification requires at least one region.";
-        Logger::error("ConcurrentStateNode::enterParallelState() - " + error);
+        std::string error = fmt::format(
+            "SCXML violation: parallel state '{}' has no regions. SCXML specification requires at least one region.",
+            id_);
+        LOG_ERROR("{}", error);
         assert(false && "SCXML violation: parallel state must have at least one region");
         return ConcurrentOperationResult::failure(id_, error);
     }
@@ -308,16 +306,15 @@ ConcurrentOperationResult ConcurrentStateNode::enterParallelState() {
     // State entry managed by architectural separation
 
     // SCXML W3C specification section 3.4: ALL child regions MUST be activated simultaneously
-    Logger::debug("ConcurrentStateNode::enterParallelState() - Activating " + std::to_string(regions_.size()) +
-                  " regions simultaneously");
+    LOG_DEBUG("Activating {} regions simultaneously", regions_.size());
 
     auto results = activateAllRegions();
 
     // Check if any region failed to activate
     for (const auto &result : results) {
         if (!result.isSuccess) {
-            std::string error = "Failed to activate region '" + result.regionId + "': " + result.errorMessage;
-            Logger::error("ConcurrentStateNode::enterParallelState() - " + error);
+            std::string error = fmt::format("Failed to activate region '{}': {}", result.regionId, result.errorMessage);
+            LOG_ERROR("{}", error);
             // Cleanup on failure
             return ConcurrentOperationResult::failure(id_, error);
         }
@@ -326,28 +323,27 @@ ConcurrentOperationResult ConcurrentStateNode::enterParallelState() {
     // Entry process complete
     // Completion checking is delegated to StateMachine::enterState()
 
-    Logger::debug("ConcurrentStateNode::enterParallelState() - Successfully entered parallel state: " + id_);
+    LOG_DEBUG("Successfully entered parallel state: {}", id_);
     return ConcurrentOperationResult::success(id_);
 }
 
-ConcurrentOperationResult ConcurrentStateNode::exitParallelState() {
-    Logger::debug("ConcurrentStateNode::exitParallelState() - Exiting parallel state: " + id_);
+ConcurrentOperationResult ConcurrentStateNode::exitParallelState(std::shared_ptr<IExecutionContext> executionContext) {
+    LOG_DEBUG("Exiting parallel state: {}", id_);
 
     // SCXML W3C specification section 3.4: ALL child regions MUST be deactivated when exiting
-    auto results = deactivateAllRegions();
+    auto results = deactivateAllRegions(executionContext);
 
     // Log warnings for any deactivation issues but continue (exit should not fail)
     for (const auto &result : results) {
         if (!result.isSuccess) {
-            Logger::warn("ConcurrentStateNode::exitParallelState() - Warning during region deactivation '" +
-                         result.regionId + "': " + result.errorMessage);
+            LOG_WARN("Warning during region deactivation '{}': {}", result.regionId, result.errorMessage);
         }
     }
 
     // Reset completion notification state when exiting
     hasNotifiedCompletion_ = false;
 
-    Logger::debug("ConcurrentStateNode::exitParallelState() - Successfully exited parallel state: " + id_);
+    LOG_DEBUG("Successfully exited parallel state: {}", id_);
     return ConcurrentOperationResult::success(id_);
 }
 
@@ -355,39 +351,40 @@ std::vector<ConcurrentOperationResult> ConcurrentStateNode::activateAllRegions()
     std::vector<ConcurrentOperationResult> results;
     results.reserve(regions_.size());
 
-    Logger::debug("ConcurrentStateNode::activateAllRegions() - Activating " + std::to_string(regions_.size()) +
-                  " regions in parallel state: " + id_);
+    LOG_DEBUG("Activating {} regions in parallel state: {}", regions_.size(), id_);
 
     for (auto &region : regions_) {
         auto result = region->activate();
         results.push_back(result);
 
         if (!result.isSuccess) {
-            Logger::warn("ConcurrentStateNode::activateAllRegions() - Failed to activate region '" + region->getId() +
-                         "': " + result.errorMessage);
+            LOG_WARN("Failed to activate region '{}': {}", region->getId(), result.errorMessage);
         }
     }
 
-    // Region activation complete
-    // Completion checking is delegated to the caller
+    // SCXML W3C specification section 3.4: Check for parallel state completion after activation
+    // This is crucial for cases where all regions immediately reach final states
+    if (areAllRegionsInFinalState()) {
+        LOG_DEBUG("All regions immediately reached final states after activation in {}", id_);
+        areAllRegionsComplete();  // This will handle completion callback if appropriate
+    }
 
     return results;
 }
 
-std::vector<ConcurrentOperationResult> ConcurrentStateNode::deactivateAllRegions() {
+std::vector<ConcurrentOperationResult>
+ConcurrentStateNode::deactivateAllRegions(std::shared_ptr<IExecutionContext> executionContext) {
     std::vector<ConcurrentOperationResult> results;
     results.reserve(regions_.size());
 
-    Logger::debug("ConcurrentStateNode::deactivateAllRegions() - Deactivating " + std::to_string(regions_.size()) +
-                  " regions in " + id_);
+    LOG_DEBUG("Deactivating {} regions in {}", regions_.size(), id_);
 
     for (auto &region : regions_) {
-        auto result = region->deactivate();
+        auto result = region->deactivate(executionContext);
         results.push_back(result);
 
         if (!result.isSuccess) {
-            Logger::warn("ConcurrentStateNode::deactivateAllRegions() - Failed to deactivate region '" +
-                         region->getId() + "': " + result.errorMessage);
+            LOG_WARN("Failed to deactivate region '{}': {}", region->getId(), result.errorMessage);
         }
     }
 
@@ -397,8 +394,9 @@ std::vector<ConcurrentOperationResult> ConcurrentStateNode::deactivateAllRegions
 bool ConcurrentStateNode::areAllRegionsComplete() const {
     // SCXML W3C specification section 3.4: parallel states MUST have regions
     if (regions_.empty()) {
-        Logger::error("ConcurrentStateNode::areAllRegionsComplete() - SCXML violation: parallel state '" + id_ +
-                      "' has no regions. SCXML specification requires at least one region.");
+        LOG_ERROR(
+            "SCXML violation: parallel state '{}' has no regions. SCXML specification requires at least one region.",
+            id_);
         // No fallback - this is a specification violation
         assert(false && "SCXML violation: parallel state must have at least one region");
         return false;
@@ -409,9 +407,7 @@ bool ConcurrentStateNode::areAllRegionsComplete() const {
     bool isComplete =
         std::all_of(regions_.begin(), regions_.end(), [this](const std::shared_ptr<IConcurrentRegion> &region) {
             if (!region) {
-                Logger::error(
-                    "ConcurrentStateNode::areAllRegionsComplete() - SCXML violation: null region in parallel state '" +
-                    id_ + "'");
+                LOG_ERROR("SCXML violation: null region in parallel state '{}'", id_);
                 assert(false && "SCXML violation: parallel state cannot have null regions");
                 return false;
             }
@@ -422,9 +418,7 @@ bool ConcurrentStateNode::areAllRegionsComplete() const {
     // This implements SCXML W3C specification section 3.4 for done.state event generation
     if (isComplete && !hasNotifiedCompletion_ && completionCallback_) {
         hasNotifiedCompletion_ = true;
-        Logger::debug(
-            "ConcurrentStateNode::areAllRegionsComplete() - All regions complete, triggering done.state event for " +
-            id_);
+        LOG_DEBUG("All regions complete, triggering done.state event for {}", id_);
 
         // Call the completion callback to notify the runtime system
         // The runtime system will generate the done.state.{id} event
@@ -435,7 +429,7 @@ bool ConcurrentStateNode::areAllRegionsComplete() const {
     // This allows for re-notification if the state completes again
     if (!isComplete && hasNotifiedCompletion_) {
         hasNotifiedCompletion_ = false;
-        Logger::debug("ConcurrentStateNode::areAllRegionsComplete() - Reset completion notification state for " + id_);
+        LOG_DEBUG("Reset completion notification state for {}", id_);
     }
 
     return isComplete;
@@ -461,15 +455,18 @@ std::vector<ConcurrentOperationResult> ConcurrentStateNode::processEventInAllReg
 
     results.reserve(regions_.size());
 
-    Logger::debug("ConcurrentStateNode::processEventInAllRegions() - Broadcasting event '" + event.eventName + "' to " +
-                  std::to_string(regions_.size()) + " regions in " + id_);
+    LOG_DEBUG("Broadcasting event '{}' to {} regions in {}", event.eventName, regions_.size(), id_);
 
     for (auto &region : regions_) {
         assert(region && "SCXML violation: parallel state cannot have null regions");
 
+        LOG_DEBUG("DEBUG: Region '{}' isActive: {}", region->getId(), region->isActive());
         if (region->isActive()) {
+            LOG_DEBUG("DEBUG: Processing event '{}' in active region '{}'", event.eventName, region->getId());
             auto result = region->processEvent(event);
             results.push_back(result);
+        } else {
+            LOG_DEBUG("DEBUG: Skipping inactive region '{}' for event '{}'", region->getId(), event.eventName);
         }
     }
 
@@ -487,7 +484,7 @@ const ConcurrentStateConfig &ConcurrentStateNode::getConfig() const {
 }
 
 void ConcurrentStateNode::setConfig(const ConcurrentStateConfig &config) {
-    Logger::debug("ConcurrentStateNode::setConfig() - Updating configuration for " + id_);
+    LOG_DEBUG("Updating configuration for {}", id_);
     config_ = config;
 }
 
@@ -496,15 +493,16 @@ std::vector<std::string> ConcurrentStateNode::validateConcurrentState() const {
 
     // SCXML W3C specification section 3.4: parallel states MUST have at least one region
     if (regions_.empty()) {
-        errors.push_back("SCXML violation: Parallel state '" + id_ +
-                         "' has no regions. SCXML specification requires at least one region.");
+        errors.push_back(fmt::format(
+            "SCXML violation: Parallel state '{}' has no regions. SCXML specification requires at least one region.",
+            id_));
     }
 
     // Validate each region
     for (const auto &region : regions_) {
         auto regionErrors = region->validate();
         for (const auto &error : regionErrors) {
-            errors.push_back("Region '" + region->getId() + "': " + error);
+            errors.push_back(fmt::format("Region '{}': {}", region->getId(), error));
         }
     }
 
@@ -512,7 +510,7 @@ std::vector<std::string> ConcurrentStateNode::validateConcurrentState() const {
     for (size_t i = 0; i < regions_.size(); ++i) {
         for (size_t j = i + 1; j < regions_.size(); ++j) {
             if (regions_[i]->getId() == regions_[j]->getId()) {
-                errors.push_back("Duplicate region ID found: " + regions_[i]->getId());
+                errors.push_back(fmt::format("Duplicate region ID found: {}", regions_[i]->getId()));
             }
         }
     }
@@ -521,13 +519,12 @@ std::vector<std::string> ConcurrentStateNode::validateConcurrentState() const {
 }
 
 void ConcurrentStateNode::setCompletionCallback(const ParallelStateCompletionCallback &callback) {
-    Logger::debug("ConcurrentStateNode::setCompletionCallback() - Setting completion callback for " + id_);
+    LOG_DEBUG("Setting completion callback for {}", id_);
     completionCallback_ = callback;
 }
 
 void ConcurrentStateNode::setExecutionContextForRegions(std::shared_ptr<IExecutionContext> executionContext) {
-    Logger::debug("ConcurrentStateNode::setExecutionContextForRegions() - Setting ExecutionContext for " +
-                  std::to_string(regions_.size()) + " regions in " + id_);
+    LOG_DEBUG("Setting ExecutionContext for {} regions in {}", regions_.size(), id_);
 
     // SOLID: Dependency Injection - provide ExecutionContext to all existing regions
     for (auto &region : regions_) {
@@ -536,20 +533,17 @@ void ConcurrentStateNode::setExecutionContextForRegions(std::shared_ptr<IExecuti
             auto concreteRegion = std::dynamic_pointer_cast<ConcurrentRegion>(region);
             if (concreteRegion) {
                 concreteRegion->setExecutionContext(executionContext);
-                Logger::debug(
-                    "ConcurrentStateNode::setExecutionContextForRegions() - Set ExecutionContext for region: " +
-                    region->getId());
+                LOG_DEBUG("Set ExecutionContext for region: {}", region->getId());
             }
         }
     }
 }
 
 bool ConcurrentStateNode::areAllRegionsInFinalState() const {
-    Logger::debug("ConcurrentStateNode::areAllRegionsInFinalState() - Checking " + std::to_string(regions_.size()) +
-                  " regions in " + id_);
+    LOG_DEBUG("Checking {} regions in {}", regions_.size(), id_);
 
     if (regions_.empty()) {
-        Logger::warn("ConcurrentStateNode::areAllRegionsInFinalState() - No regions in parallel state: " + id_);
+        LOG_WARN("No regions in parallel state: {}", id_);
         return false;
     }
 
@@ -558,14 +552,12 @@ bool ConcurrentStateNode::areAllRegionsInFinalState() const {
         assert(region && "SCXML violation: parallel state cannot have null regions");
 
         if (!region->isInFinalState()) {
-            Logger::debug("ConcurrentStateNode::areAllRegionsInFinalState() - Region " + region->getId() +
-                          " not in final state yet in " + id_);
+            LOG_DEBUG("Region {} not in final state yet in {}", region->getId(), id_);
             return false;
         }
     }
 
-    Logger::debug("ConcurrentStateNode::areAllRegionsInFinalState() - All " + std::to_string(regions_.size()) +
-                  " regions in parallel state " + id_ + " have reached final states");
+    LOG_DEBUG("All {} regions in parallel state {} have reached final states", regions_.size(), id_);
     return true;
 }
 
@@ -574,29 +566,24 @@ void ConcurrentStateNode::generateDoneStateEvent() {
     // "When all of the children reach final states, the <parallel> element itself is considered to be in a final state"
 
     if (hasNotifiedCompletion_) {
-        Logger::debug("ConcurrentStateNode::generateDoneStateEvent() - Already notified completion for " + id_);
+        LOG_DEBUG("Already notified completion for {}", id_);
         return;
     }
 
-    std::string doneEventName = "done.state." + id_;
-    Logger::debug("ConcurrentStateNode::generateDoneStateEvent() - Generating done.state event: " + doneEventName +
-                  " for completed parallel state: " + id_);
+    std::string doneEventName = fmt::format("done.state.{}", id_);
+    LOG_DEBUG("Generating done.state event: {} for completed parallel state: {}", doneEventName, id_);
 
     // Use completion callback to notify StateMachine
     if (completionCallback_) {
         try {
             completionCallback_(id_);
             hasNotifiedCompletion_ = true;
-            Logger::debug(
-                "ConcurrentStateNode::generateDoneStateEvent() - Successfully notified completion via callback for " +
-                id_);
+            LOG_DEBUG("Successfully notified completion via callback for {}", id_);
         } catch (const std::exception &e) {
-            Logger::error("ConcurrentStateNode::generateDoneStateEvent() - Exception in completion callback: " +
-                          std::string(e.what()) + " for " + id_);
+            LOG_ERROR("Exception in completion callback: {} for {}", e.what(), id_);
         }
     } else {
-        Logger::warn("ConcurrentStateNode::generateDoneStateEvent() - No completion callback set for parallel state: " +
-                     id_);
+        LOG_WARN("No completion callback set for parallel state: {}", id_);
     }
 }
 

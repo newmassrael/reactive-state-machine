@@ -1,0 +1,6 @@
+id: 522
+specnum: C.2
+conformance: optional
+manual: False
+description: SCXML Processors that support the BasicHTTP Event I/O Processor MUST maintain a 'basichttp' entry in the _ioprocessors system variable. The Processor MUST maintain a in 'location' field inside this entry whose value holds an address that external entities can use to communicate with this SCXML session using the Basic HTTP Event I/O Processor.
+variants: 1

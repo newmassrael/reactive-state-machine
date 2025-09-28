@@ -1,0 +1,6 @@
+id: 550
+specnum: 5.3
+conformance: mandatory
+manual: False
+description: If the 'expr' attribute is present, the Platform MUST evaluate the corresponding expression at the time specified by the 'binding' attribute of scxml and MUST assign the resulting value as the value of the data element
+variants: 1

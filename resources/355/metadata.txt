@@ -1,0 +1,6 @@
+id: 355
+specnum: 3.2
+conformance: mandatory
+manual: False
+description: At system initialization time, if the 'initial' attribute is not present, the Processor MUST enter the first state in document order.
+variants: 1

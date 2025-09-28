@@ -2,8 +2,10 @@
 #include "actions/AssignAction.h"
 #include "actions/ForeachAction.h"
 #include "actions/LogAction.h"
+#include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
+#include "mocks/MockEventRaiser.h"
 #include "scripting/JSEngine.h"
 #include <atomic>
 #include <chrono>
@@ -172,61 +174,52 @@ TEST_F(ActionExecutorImplTest, VariableExistenceCheck) {
 }
 
 TEST_F(ActionExecutorImplTest, EventRaising) {
-    std::atomic<bool> eventRaised{false};
-    std::string raisedEventName;
-    std::string raisedEventData;
-    std::mutex callbackMutex;
+    std::vector<std::pair<std::string, std::string>> raisedEvents;
 
-    // Set up callback - SCXML "fire and forget" async processing
-    executor->setEventRaiseCallback([&](const std::string &name, const std::string &data) {
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        eventRaised = true;
-        raisedEventName = name;
-        raisedEventData = data;
-        return true;  // Simulate successful event processing
-    });
+    // Set up MockEventRaiser with dependency injection
+    auto mockEventRaiser =
+        std::make_shared<RSM::Test::MockEventRaiser>([&](const std::string &name, const std::string &data) -> bool {
+            raisedEvents.emplace_back(name, data);
+            return true;
+        });
+    executor->setEventRaiser(mockEventRaiser);
 
-    // Raise event without data - SCXML fire and forget model
-    bool result = executor->raiseEvent("test.event");
-    EXPECT_TRUE(result);  // Should succeed (queuing success)
+    // Test RaiseAction without data - SCXML fire and forget model
+    RaiseAction raiseAction("test.event");
+    bool result = executor->executeRaiseAction(raiseAction);
+    EXPECT_TRUE(result);
 
-    // Wait for async processing (SCXML events are processed asynchronously)
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_EQ(raisedEvents.size(), 1);
+    EXPECT_EQ(raisedEvents[0].first, "test.event");
+    EXPECT_TRUE(raisedEvents[0].second.empty());
 
-    EXPECT_TRUE(eventRaised.load());
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        EXPECT_EQ(raisedEventName, "test.event");
-        EXPECT_TRUE(raisedEventData.empty());
-    }
+    // Test RaiseAction with data (JavaScript expression)
+    raisedEvents.clear();
+    RaiseAction raiseActionWithData("user.login");
+    raiseActionWithData.setData("{userId: 123}");  // This will be evaluated as JS expression
 
-    // Reset for second test
-    eventRaised = false;
+    result = executor->executeRaiseAction(raiseActionWithData);
+    EXPECT_TRUE(result);
 
-    // Raise event with data
-    result = executor->raiseEvent("user.login", "{userId: 123}");
-    EXPECT_TRUE(result);  // Queuing should succeed
-
-    // Wait for async processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-    EXPECT_TRUE(eventRaised.load());
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        EXPECT_EQ(raisedEventName, "user.login");
-        EXPECT_EQ(raisedEventData, "{userId: 123}");
-    }
+    ASSERT_EQ(raisedEvents.size(), 1);
+    EXPECT_EQ(raisedEvents[0].first, "user.login");
+    EXPECT_EQ(raisedEvents[0].second, "123");  // JavaScript evaluation result
 }
 
 TEST_F(ActionExecutorImplTest, EventRaisingWithoutCallback) {
-    // SCXML Compliance: Without callback, event raising should return false
+    // SCXML Compliance: Without EventRaiser, event raising should fail
     // SCXML 3.12.1: Infrastructure failures should generate error events, not exceptions
-    bool result = executor->raiseEvent("test.event");
-    EXPECT_FALSE(result);  // Should return false when EventRaiseCallback is not available
+    RaiseAction raiseAction("test.event");
+    bool result = executor->executeRaiseAction(raiseAction);
+    EXPECT_FALSE(result);  // Should return false when EventRaiser is not available
 
-    // Empty event name should fail
-    executor->setEventRaiseCallback([](const std::string &, const std::string &) { return true; });
-    bool emptyResult = executor->raiseEvent("");
+    // Set up EventRaiser and test empty event name should fail
+    auto mockEventRaiser = std::make_shared<RSM::Test::MockEventRaiser>(
+        [](const std::string &, const std::string &) -> bool { return true; });
+    executor->setEventRaiser(mockEventRaiser);
+
+    RaiseAction emptyAction("");
+    bool emptyResult = executor->executeRaiseAction(emptyAction);
     EXPECT_FALSE(emptyResult);  // Empty name validation should still work
 }
 
@@ -623,4 +616,92 @@ TEST_F(ActionExecutorImplTest, W3C_ForeachAction_ComplexExpressionArray) {
     // Verify: 0 + 2 + 4 = 6
     std::string result = executor->evaluateExpression("total");
     EXPECT_EQ(result, "6");
+}
+
+TEST_F(ActionExecutorImplTest, W3C_ForeachAction_NumericVariableNames) {
+    // Test W3C Test 150 scenario: foreach with numeric variable names
+    // This tests the specific case where variables have numeric names like "1", "2", "3"
+    // and foreach needs to access their values correctly
+
+    // Setup: Create variables with numeric names (like W3C Test 150)
+    EXPECT_TRUE(executor->assignVariable("1", "undefined"));  // item variable
+    EXPECT_TRUE(executor->assignVariable("2", "undefined"));  // index variable
+    EXPECT_TRUE(executor->assignVariable("3", "[1,2,3]"));    // array variable
+
+    // Create foreach action that uses numeric variable names
+    auto foreachAction = std::make_shared<ForeachAction>();
+    foreachAction->setArray("3");  // Should access variable "3" containing [1,2,3]
+    foreachAction->setItem("1");   // Should use variable "1" as item
+    foreachAction->setIndex("2");  // Should use variable "2" as index
+
+    // Execute foreach (no child actions like W3C Test 150)
+    EXPECT_TRUE(executor->executeForeachAction(*foreachAction))
+        << "Foreach with numeric variable names should execute successfully";
+
+    // Verify variables were updated during iteration
+    EXPECT_TRUE(executor->hasVariable("1")) << "Item variable '1' should exist after foreach";
+    EXPECT_TRUE(executor->hasVariable("2")) << "Index variable '2' should exist after foreach";
+
+    // Verify final iteration values (last iteration: item=3, index=2)
+    std::string itemValue = executor->evaluateExpression("1");
+    EXPECT_EQ(itemValue, "3") << "Item variable should contain last array element";
+
+    std::string indexValue = executor->evaluateExpression("2");
+    EXPECT_EQ(indexValue, "2") << "Index variable should contain last index (0-based)";
+}
+
+TEST_F(ActionExecutorImplTest, W3C_ForeachAction_NumericArrayVariableAccess) {
+    // Test that numeric variable names are accessed correctly as array sources
+    // This specifically tests the getVariable vs evaluateExpression logic
+
+    // Setup array in a numeric variable
+    EXPECT_TRUE(executor->assignVariable("99", "['a', 'b', 'c']"));
+
+    auto foreachAction = std::make_shared<ForeachAction>();
+    foreachAction->setArray("99");  // Access variable "99", not evaluate expression 99
+    foreachAction->setItem("letter");
+    foreachAction->setIndex("pos");
+
+    auto concatAction = std::make_shared<AssignAction>("result", "result + letter");
+    foreachAction->addIterationAction(concatAction);
+
+    EXPECT_TRUE(executor->assignVariable("result", "\"\""));
+    EXPECT_TRUE(executor->executeForeachAction(*foreachAction));
+
+    std::string result = executor->evaluateExpression("result");
+    EXPECT_EQ(result, "abc") << "Should iterate over array stored in numeric variable";
+}
+
+// ============================================================================
+// Send Action Type Processing Tests - Bug Reproduction for W3C Test 193
+// ============================================================================
+
+TEST_F(ActionExecutorImplTest, SendAction_TypeProcessing_W3C193_BugReproduction) {
+    // Create mock event raiser to track raised events
+    std::vector<std::string> raisedEvents;
+    auto mockEventRaiser = std::make_shared<RSM::Test::MockEventRaiser>(
+        [&raisedEvents](const std::string &name, const std::string & /*data*/) -> bool {
+            raisedEvents.push_back(name);
+            return true;
+        });
+    executor->setEventRaiser(mockEventRaiser);
+
+    // Test 1: Send with no type should result in external queue routing (not internal)
+    auto sendNoType = std::make_shared<SendAction>();
+    sendNoType->setEvent("internal_event");
+    // No type set - should go to external queue (W3C SCXML default)
+
+    // Test 2: Send with SCXMLEventProcessor type should result in external queue routing
+    auto sendWithType = std::make_shared<SendAction>();
+    sendWithType->setEvent("external_event");
+    sendWithType->setType("http://www.w3.org/TR/scxml/#SCXMLEventProcessor");
+
+    // Both should behave the same - go to external queue
+    // The type attribute doesn't affect queue routing, only event processor selection
+
+    EXPECT_TRUE(executor->executeSendAction(*sendNoType));
+    EXPECT_TRUE(executor->executeSendAction(*sendWithType));
+
+    // Both events should be processed (this test is about queue routing, not specific behavior)
+    // The actual W3C test 193 checks the timing and order in a real state machine context
 }

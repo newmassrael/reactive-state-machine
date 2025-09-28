@@ -18,6 +18,7 @@ struct EventDescriptor {
     std::string target = "#_internal";          // Target URI (default: internal)
     std::string data;                           // Event data payload
     std::string sendId;                         // Unique send identifier
+    std::string sessionId;                      // Session ID that created this event (for cancellation)
     std::string type = "scxml";                 // Event type (scxml, platform, etc.)
     std::chrono::milliseconds delay{0};         // Delivery delay
     std::map<std::string, std::string> params;  // Additional parameters

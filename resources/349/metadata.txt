@@ -1,0 +1,6 @@
+id: 349
+specnum: C.1
+conformance: mandatory
+manual: False
+description: source'. The sending SCXML Processor MUST populate this attribute with a URI that the receiving processor can use to reply to the sending processor. The receiving SCXML Processor MUST use this URI as the value of the 'origin' field in the event that it generates.
+variants: 1

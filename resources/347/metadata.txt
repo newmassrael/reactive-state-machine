@@ -1,0 +1,6 @@
+id: 347
+specnum: C.1
+conformance: mandatory
+manual: False
+description: SCXML Processors MUST support sending messages to and receiving messages from other SCXML sessions using the SCXML Event I/O Processor.
+variants: 1

@@ -1,0 +1,6 @@
+id: 436
+specnum: B.1
+conformance: mandatory
+manual: False
+description: When the "datamodel" attribute of the scxml element has the value "null", the In() predicate must return 'true' if and only if that state is in the current state configuration.
+variants: 1

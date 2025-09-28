@@ -1,0 +1,6 @@
+id: 151
+specnum: 4.6
+conformance: mandatory
+manual: False
+description: In the foreach element, if 'index' is present, the SCXML processor MUST declare a new variable if the one specified by 'index' is not already defined.
+variants: 1

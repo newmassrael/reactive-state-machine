@@ -1,0 +1,6 @@
+id: 402
+specnum: 3.12
+conformance: mandatory
+manual: False
+description: The processor MUST process them [error events] like any other event.
+variants: 1

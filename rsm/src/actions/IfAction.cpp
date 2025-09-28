@@ -62,6 +62,14 @@ void IfAction::addElseIfCondition(const std::string &condition) {
     branches_.push_back(branch);
 }
 
+IfAction::ConditionalBranch &IfAction::addElseIfBranch(const std::string &condition) {
+    ConditionalBranch branch;
+    branch.condition = condition;
+    branch.isElseBranch = false;
+    branches_.push_back(branch);
+    return branches_.back();
+}
+
 IfAction::ConditionalBranch &IfAction::addElseBranch() {
     ConditionalBranch branch;
     branch.condition = "";

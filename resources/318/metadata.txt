@@ -1,0 +1,6 @@
+id: 318
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST bind the _event variable when an event is pulled off the internal or external event queue to be processed, and MUST keep the variable bound to that event until another event is processed.
+variants: 1

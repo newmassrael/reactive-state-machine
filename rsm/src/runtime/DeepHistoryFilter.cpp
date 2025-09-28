@@ -7,16 +7,16 @@ namespace RSM {
 
 DeepHistoryFilter::DeepHistoryFilter(std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider)
     : stateProvider_(std::move(stateProvider)) {
-    Logger::debug("DeepHistoryFilter: Initialized deep history filter");
+    LOG_DEBUG("DeepHistoryFilter: Initialized deep history filter");
 }
 
 std::vector<std::string> DeepHistoryFilter::filterStates(const std::vector<std::string> &activeStateIds,
                                                          const std::string &parentStateId) const {
-    Logger::debug("DeepHistoryFilter: Filtering states for deep history - parent: " + parentStateId +
-                  ", active states: " + std::to_string(activeStateIds.size()));
+    LOG_DEBUG("Filtering states for deep history - parent: {}, active states: {}", parentStateId,
+              activeStateIds.size());
 
     if (parentStateId.empty()) {
-        Logger::warn("DeepHistoryFilter: Empty parent state ID provided");
+        LOG_WARN("DeepHistoryFilter: Empty parent state ID provided");
         return {};
     }
 
@@ -26,12 +26,11 @@ std::vector<std::string> DeepHistoryFilter::filterStates(const std::vector<std::
     for (const auto &stateId : activeStateIds) {
         if (isDescendant(stateId, parentStateId)) {
             filteredStates.push_back(stateId);
-            Logger::debug("DeepHistoryFilter: Recording descendant state: " + stateId);
+            LOG_DEBUG("Recording descendant state: {}", stateId);
         }
     }
 
-    Logger::info("DeepHistoryFilter: Filtered " + std::to_string(activeStateIds.size()) + " states to " +
-                 std::to_string(filteredStates.size()) + " descendants");
+    LOG_INFO("Filtered {} states to {} descendants", activeStateIds.size(), filteredStates.size());
 
     return filteredStates;
 }
@@ -48,8 +47,7 @@ bool DeepHistoryFilter::isDescendant(const std::string &stateId, const std::stri
     auto it = std::find(statePath.begin(), statePath.end(), parentStateId);
     bool isDescendant = (it != statePath.end());
 
-    Logger::debug("DeepHistoryFilter: State " + stateId + " is " + (isDescendant ? "" : "not ") + "descendant of " +
-                  parentStateId);
+    LOG_DEBUG("State {} is {}descendant of {}", stateId, (isDescendant ? "" : "not "), parentStateId);
 
     return isDescendant;
 }
@@ -58,7 +56,7 @@ std::vector<std::string> DeepHistoryFilter::getStatePath(const std::string &stat
     std::vector<std::string> path;
 
     if (!stateProvider_) {
-        Logger::error("DeepHistoryFilter: No state provider available");
+        LOG_ERROR("DeepHistoryFilter: No state provider available");
         return path;
     }
 
@@ -70,7 +68,7 @@ std::vector<std::string> DeepHistoryFilter::getStatePath(const std::string &stat
         currentState = currentState->getParent() ? stateProvider_(currentState->getParent()->getId()) : nullptr;
     }
 
-    Logger::debug("DeepHistoryFilter: State path for " + stateId + " has " + std::to_string(path.size()) + " levels");
+    LOG_DEBUG("State path for {} has {} levels", stateId, path.size());
 
     return path;
 }

@@ -1,0 +1,6 @@
+id: 416
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: If it [the SCXML processor] has entered a final state that is a child of a compound state [during the last microstep], it MUST generate the event done.state.id, where id is the id of the compound state.
+variants: 1

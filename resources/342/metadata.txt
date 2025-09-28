@@ -1,0 +1,6 @@
+id: 342
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST set the name field (of the _event variable) to the name of the event.
+variants: 1

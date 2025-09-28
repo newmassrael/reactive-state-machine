@@ -1,0 +1,6 @@
+id: 344
+specnum: 5.9
+conformance: mandatory
+manual: False
+description: If a conditional expression cannot be evaluated as a boolean value ('true' or 'false') or if its evaluation causes an error, the SCXML processor MUST place the error 'error.execution' in the internal event queue.
+variants: 1

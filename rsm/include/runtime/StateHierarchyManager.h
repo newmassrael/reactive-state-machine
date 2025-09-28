@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -10,6 +11,7 @@ namespace RSM {
 // Forward declarations
 class SCXMLModel;
 class IStateNode;
+class IExecutionContext;
 
 /**
  * @brief 계층적 상태 관리 시스템
@@ -75,8 +77,35 @@ public:
      * 지정된 상태와 그 하위 상태들을 비활성화합니다.
      *
      * @param stateId 종료할 상태 ID
+     * @param executionContext 적절한 종료 액션 실행을 위한 실행 컨텍스트
      */
-    void exitState(const std::string &stateId);
+    void exitState(const std::string &stateId, std::shared_ptr<IExecutionContext> executionContext = nullptr);
+
+    /**
+     * @brief 모든 상태 초기화
+     *
+     * 활성 상태 리스트를 모두 비웁니다.
+     */
+    void reset();
+
+    /**
+     * @brief 계층적 모드 필요 여부 확인
+     *
+     * 현재 활성 상태들이 계층적 관리를 필요로 하는지 확인합니다.
+     *
+     * @return 계층적 모드 필요 여부
+     */
+    bool isHierarchicalModeNeeded() const;
+
+    /**
+     * @brief Set callback for onentry action execution
+     *
+     * This callback is called when states are added to the active configuration
+     * to execute their onentry actions per W3C SCXML specification.
+     *
+     * @param callback Function to call with state ID for onentry execution
+     */
+    void setOnEntryCallback(std::function<void(const std::string &)> callback);
 
 private:
     /**
@@ -103,27 +132,12 @@ private:
      */
     void collectDescendantStates(const std::string &parentId, std::vector<std::string> &collector);
 
-public:
-    /**
-     * @brief 모든 상태 초기화
-     *
-     * 활성 상태 리스트를 모두 비웁니다.
-     */
-    void reset();
-
-    /**
-     * @brief 계층적 모드 필요 여부 확인
-     *
-     * 현재 활성 상태들이 계층적 관리를 필요로 하는지 확인합니다.
-     *
-     * @return 계층적 모드 필요 여부
-     */
-    bool isHierarchicalModeNeeded() const;
-
-private:
     std::shared_ptr<SCXMLModel> model_;
     std::vector<std::string> activeStates_;      // 활성 상태 리스트 (계층 순서)
     std::unordered_set<std::string> activeSet_;  // 빠른 검색용 세트
+
+    // W3C SCXML onentry callback
+    std::function<void(const std::string &)> onEntryCallback_;
 
     /**
      * @brief 상태를 활성 구성에 추가

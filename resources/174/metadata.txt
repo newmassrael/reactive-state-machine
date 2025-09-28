@@ -1,0 +1,6 @@
+id: 174
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: If 'typexpr' is present, the SCXML Processor MUST evaluate it when the parent send element is evaluated and treat the result as if it had been entered as the value of 'type'.
+variants: 1

@@ -6,16 +6,16 @@
 #include <libxml/tree.h>
 
 RSM::InvokeParser::InvokeParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
-    Logger::debug("RSM::InvokeParser::Constructor - Creating invoke parser");
+    LOG_DEBUG("Creating invoke parser");
 }
 
 RSM::InvokeParser::~InvokeParser() {
-    Logger::debug("RSM::InvokeParser::Destructor - Destroying invoke parser");
+    LOG_DEBUG("Destroying invoke parser");
 }
 
 std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp::Element *invokeElement) {
     if (!invokeElement) {
-        Logger::warn("RSM::InvokeParser::parseInvokeNode() - Null invoke element");
+        LOG_WARN("Null invoke element");
         return nullptr;
     }
 
@@ -27,7 +27,7 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
     } else {
         // id가 없으면 자동 생성
         id = "invoke_" + std::to_string(reinterpret_cast<uintptr_t>(invokeElement));
-        Logger::debug("RSM::InvokeParser::parseInvokeNode() - Generated id: " + id);
+        LOG_DEBUG("Generated id: {}", id);
     }
 
     // InvokeNode 생성
@@ -40,8 +40,7 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
         invokeNode->setType(typeAttr->get_value());
     } else if (typeExprAttr) {
         // typeexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        Logger::debug("RSM::InvokeParser::parseInvokeNode() - typeexpr attribute present: " +
-                      typeExprAttr->get_value());
+        LOG_DEBUG("typeexpr attribute present: {}", typeExprAttr->get_value());
     }
 
     // src 속성 처리
@@ -51,7 +50,7 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
         invokeNode->setSrc(srcAttr->get_value());
     } else if (srcExprAttr) {
         // srcexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        Logger::debug("RSM::InvokeParser::parseInvokeNode() - srcexpr attribute present: " + srcExprAttr->get_value());
+        LOG_DEBUG("srcexpr attribute present: {}", srcExprAttr->get_value());
     }
 
     // idlocation 속성 처리
@@ -84,9 +83,7 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
         parseFinalizeElement(finalizeElement, invokeNode);
     }
 
-    Logger::debug("RSM::InvokeParser::parseInvokeNode() - Invoke node parsed "
-                  "successfully: " +
-                  id);
+    LOG_DEBUG("Invoke node parsed successfully: {}", id);
     return invokeNode;
 }
 
@@ -95,13 +92,12 @@ RSM::InvokeParser::parseInvokesInState(const xmlpp::Element *stateElement) {
     std::vector<std::shared_ptr<IInvokeNode>> invokeNodes;
 
     if (!stateElement) {
-        Logger::warn("RSM::InvokeParser::parseInvokesInState() - Null state element");
+        LOG_WARN("Null state element");
         return invokeNodes;
     }
 
     auto invokeElements = ParsingCommon::findChildElements(stateElement, "invoke");
-    Logger::debug("RSM::InvokeParser::parseInvokesInState() - Found " + std::to_string(invokeElements.size()) +
-                  " invoke elements");
+    LOG_DEBUG("Found {} invoke elements", invokeElements.size());
 
     for (auto invokeElement : invokeElements) {
         auto invokeNode = parseInvokeNode(invokeElement);
@@ -131,9 +127,7 @@ void RSM::InvokeParser::parseFinalizeElement(const xmlpp::Element *finalizeEleme
 
     invokeNode->setFinalize(finalizeContent);
 
-    Logger::debug("RSM::InvokeParser::parseFinalizeElement() - Finalize element "
-                  "parsed for invoke: " +
-                  invokeNode->getId());
+    LOG_DEBUG("Finalize element parsed for invoke: {}", invokeNode->getId());
 }
 
 void RSM::InvokeParser::parseParamElements(const xmlpp::Element *invokeElement,
@@ -163,7 +157,7 @@ void RSM::InvokeParser::parseParamElements(const xmlpp::Element *invokeElement,
 
         invokeNode->addParam(name, expr, location);
 
-        Logger::debug("RSM::InvokeParser::parseParamElements() - Param parsed: name=" + name);
+        LOG_DEBUG("Param parsed: name={}", name);
     }
 }
 
@@ -206,9 +200,7 @@ RSM::InvokeParser::parseParamElementsAndCreateDataItems(const xmlpp::Element *in
             }
         }
 
-        Logger::debug("RSM::InvokeParser::parseParamElementsAndCreateDataItems() - "
-                      "Data item created for param: name=" +
-                      name);
+        LOG_DEBUG("Data item created for param: name={}", name);
     }
 
     return dataItems;
@@ -256,7 +248,6 @@ void RSM::InvokeParser::parseContentElement(const xmlpp::Element *invokeElement,
         }
 
         invokeNode->setContent(content);
-        Logger::debug("RSM::InvokeParser::parseContentElement() - Content element "
-                      "parsed with serialized XML");
+        LOG_DEBUG("Content element parsed with serialized XML");
     }
 }

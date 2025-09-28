@@ -1,0 +1,6 @@
+id: 183
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: If 'idlocation' is present, the SCXML Processor MUST generate an id when the parent send element is evaluated and store it in this location
+variants: 1

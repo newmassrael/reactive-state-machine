@@ -19,8 +19,8 @@ EventSchedulerImpl::EventSchedulerImpl(EventExecutionCallback executionCallback)
     // CRITICAL: Defer thread creation to prevent deadlock during object construction
     // Threads will be started lazily on first scheduleEvent() call
 
-    Logger::debug("EventSchedulerImpl: Scheduler started with timer thread and {} callback threads",
-                  CALLBACK_THREAD_POOL_SIZE);
+    LOG_DEBUG("EventSchedulerImpl: Scheduler started with timer thread and {} callback threads",
+              CALLBACK_THREAD_POOL_SIZE);
 }
 
 EventSchedulerImpl::~EventSchedulerImpl() {
@@ -30,7 +30,7 @@ EventSchedulerImpl::~EventSchedulerImpl() {
 std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor &event,
                                                            std::chrono::milliseconds delay,
                                                            std::shared_ptr<IEventTarget> target,
-                                                           const std::string &sendId) {
+                                                           const std::string &sendId, const std::string &sessionId) {
     if (!isRunning()) {
         std::promise<std::string> errorPromise;
         errorPromise.set_exception(std::make_exception_ptr(std::runtime_error("EventScheduler is not running")));
@@ -54,7 +54,7 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     // Cancel existing event with same send ID (W3C SCXML behavior)
     auto existingIt = scheduledEvents_.find(actualSendId);
     if (existingIt != scheduledEvents_.end()) {
-        Logger::debug("EventSchedulerImpl: Cancelling existing event with sendId: {}", actualSendId);
+        LOG_DEBUG("EventSchedulerImpl: Cancelling existing event with sendId: {}", actualSendId);
         existingIt->second->cancelled = true;
         scheduledEvents_.erase(existingIt);
     }
@@ -63,7 +63,7 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     auto executeAt = std::chrono::steady_clock::now() + delay;
 
     // Create scheduled event
-    auto scheduledEvent = std::make_unique<ScheduledEvent>(event, executeAt, target, actualSendId);
+    auto scheduledEvent = std::make_unique<ScheduledEvent>(event, executeAt, target, actualSendId, sessionId);
     auto future = scheduledEvent->sendIdPromise.get_future();
 
     // Set the send ID promise immediately
@@ -72,8 +72,8 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     // Store the event
     scheduledEvents_[actualSendId] = std::move(scheduledEvent);
 
-    Logger::debug("EventSchedulerImpl: Scheduled event '{}' with sendId '{}' for {}ms delay", event.eventName,
-                  actualSendId, delay.count());
+    LOG_DEBUG("EventSchedulerImpl: Scheduled event '{}' with sendId '{}' for {}ms delay", event.eventName, actualSendId,
+              delay.count());
 
     // Notify timer thread about new event
     timerCondition_.notify_one();
@@ -83,7 +83,7 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
 
 bool EventSchedulerImpl::cancelEvent(const std::string &sendId) {
     if (sendId.empty()) {
-        Logger::warn("EventSchedulerImpl: Cannot cancel event with empty sendId");
+        LOG_WARN("EventSchedulerImpl: Cannot cancel event with empty sendId");
         return false;
     }
 
@@ -91,7 +91,7 @@ bool EventSchedulerImpl::cancelEvent(const std::string &sendId) {
 
     auto it = scheduledEvents_.find(sendId);
     if (it != scheduledEvents_.end() && !it->second->cancelled) {
-        Logger::debug("EventSchedulerImpl: Cancelling event with sendId: {}", sendId);
+        LOG_DEBUG("EventSchedulerImpl: Cancelling event with sendId: {}", sendId);
         it->second->cancelled = true;
         scheduledEvents_.erase(it);
 
@@ -100,8 +100,40 @@ bool EventSchedulerImpl::cancelEvent(const std::string &sendId) {
         return true;
     }
 
-    Logger::debug("EventSchedulerImpl: Event with sendId '{}' not found or already cancelled", sendId);
+    LOG_DEBUG("EventSchedulerImpl: Event with sendId '{}' not found or already cancelled", sendId);
     return false;
+}
+
+size_t EventSchedulerImpl::cancelEventsForSession(const std::string &sessionId) {
+    if (sessionId.empty()) {
+        LOG_WARN("EventSchedulerImpl: Cannot cancel events for empty sessionId");
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(schedulerMutex_);
+
+    size_t cancelledCount = 0;
+    auto it = scheduledEvents_.begin();
+
+    while (it != scheduledEvents_.end()) {
+        if (it->second->sessionId == sessionId && !it->second->cancelled) {
+            LOG_DEBUG("EventSchedulerImpl: Cancelling event '{}' with sendId '{}' for session '{}'",
+                      it->second->event.eventName, it->first, sessionId);
+            it->second->cancelled = true;
+            it = scheduledEvents_.erase(it);
+            cancelledCount++;
+        } else {
+            ++it;
+        }
+    }
+
+    if (cancelledCount > 0) {
+        LOG_DEBUG("EventSchedulerImpl: Cancelled {} events for session '{}'", cancelledCount, sessionId);
+        // Notify timer thread about cancellations
+        timerCondition_.notify_one();
+    }
+
+    return cancelledCount;
 }
 
 bool EventSchedulerImpl::hasEvent(const std::string &sendId) const {
@@ -124,7 +156,7 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
         return;  // Already shut down
     }
 
-    Logger::debug("EventSchedulerImpl: Shutting down scheduler (waitForCompletion={})", waitForCompletion);
+    LOG_DEBUG("EventSchedulerImpl: Shutting down scheduler (waitForCompletion={})", waitForCompletion);
 
     shutdownRequested_ = true;
     callbackShutdownRequested_ = true;
@@ -163,11 +195,11 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
         scheduledEvents_.clear();
 
         if (cancelledCount > 0) {
-            Logger::debug("EventSchedulerImpl: Cancelled {} pending events during shutdown", cancelledCount);
+            LOG_DEBUG("EventSchedulerImpl: Cancelled {} pending events during shutdown", cancelledCount);
         }
     }
 
-    Logger::debug("EventSchedulerImpl: Scheduler shutdown complete");
+    LOG_DEBUG("EventSchedulerImpl: Scheduler shutdown complete");
 }
 
 bool EventSchedulerImpl::isRunning() const {
@@ -175,7 +207,7 @@ bool EventSchedulerImpl::isRunning() const {
 }
 
 void EventSchedulerImpl::timerThreadMain() {
-    Logger::debug("EventSchedulerImpl: Timer thread started");
+    LOG_DEBUG("EventSchedulerImpl: Timer thread started");
 
     while (!shutdownRequested_) {
         std::unique_lock<std::mutex> lock(schedulerMutex_);
@@ -185,14 +217,14 @@ void EventSchedulerImpl::timerThreadMain() {
 
         if (nextExecutionTime == std::chrono::steady_clock::time_point::max()) {
             // No events scheduled, wait indefinitely until notified
-            Logger::debug("EventSchedulerImpl: No events scheduled, waiting for notification");
+            LOG_DEBUG("EventSchedulerImpl: No events scheduled, waiting for notification");
             timerCondition_.wait(lock, [&] { return shutdownRequested_.load() || !scheduledEvents_.empty(); });
         } else {
             // Wait until next event time or notification
             auto now = std::chrono::steady_clock::now();
             if (nextExecutionTime > now) {
                 auto waitTime = std::chrono::duration_cast<std::chrono::milliseconds>(nextExecutionTime - now);
-                Logger::debug("EventSchedulerImpl: Waiting {}ms for next event", waitTime.count());
+                LOG_DEBUG("EventSchedulerImpl: Waiting {}ms for next event", waitTime.count());
 
                 timerCondition_.wait_until(lock, nextExecutionTime, [&] { return shutdownRequested_.load(); });
             }
@@ -206,11 +238,11 @@ void EventSchedulerImpl::timerThreadMain() {
         lock.unlock();
         size_t processedCount = processReadyEvents();
         if (processedCount > 0) {
-            Logger::debug("EventSchedulerImpl: Processed {} ready events", processedCount);
+            LOG_DEBUG("EventSchedulerImpl: Processed {} ready events", processedCount);
         }
     }
 
-    Logger::debug("EventSchedulerImpl: Timer thread stopped");
+    LOG_DEBUG("EventSchedulerImpl: Timer thread stopped");
 }
 
 size_t EventSchedulerImpl::processReadyEvents() {
@@ -234,26 +266,25 @@ size_t EventSchedulerImpl::processReadyEvents() {
 
     // Queue events for asynchronous callback execution (PREVENTS DEADLOCK)
     for (auto &event : readyEvents) {
-        Logger::debug("EventSchedulerImpl: Queueing event '{}' with sendId '{}' for async execution",
-                      event->event.eventName, event->sendId);
+        LOG_DEBUG("EventSchedulerImpl: Queueing event '{}' with sendId '{}' for async execution",
+                  event->event.eventName, event->sendId);
 
         // Create callback task that captures the event data
         auto callbackTask = [this, eventDescriptor = event->event, target = event->target, sendId = event->sendId]() {
             try {
-                Logger::debug("EventSchedulerImpl: Executing event '{}' asynchronously", eventDescriptor.eventName);
+                LOG_DEBUG("EventSchedulerImpl: Executing event '{}' asynchronously", eventDescriptor.eventName);
 
                 // Execute the callback without holding any scheduler locks
                 bool success = executionCallback_(eventDescriptor, target, sendId);
 
                 if (success) {
-                    Logger::debug("EventSchedulerImpl: Event '{}' executed successfully", eventDescriptor.eventName);
+                    LOG_DEBUG("EventSchedulerImpl: Event '{}' executed successfully", eventDescriptor.eventName);
                 } else {
-                    Logger::warn("EventSchedulerImpl: Event '{}' execution failed", eventDescriptor.eventName);
+                    LOG_WARN("EventSchedulerImpl: Event '{}' execution failed", eventDescriptor.eventName);
                 }
 
             } catch (const std::exception &e) {
-                Logger::error("EventSchedulerImpl: Error executing event '{}': {}", eventDescriptor.eventName,
-                              e.what());
+                LOG_ERROR("EventSchedulerImpl: Error executing event '{}': {}", eventDescriptor.eventName, e.what());
             }
         };
 
@@ -274,7 +305,7 @@ void EventSchedulerImpl::ensureThreadsStarted() {
     // Note: This method assumes schedulerMutex_ is already locked by caller
 
     std::call_once(threadsStartedFlag_, [this]() {
-        Logger::debug("EventSchedulerImpl: Starting threads lazily to prevent constructor deadlock");
+        LOG_DEBUG("EventSchedulerImpl: Starting threads lazily to prevent constructor deadlock");
 
         // Start callback execution thread pool
         for (size_t i = 0; i < CALLBACK_THREAD_POOL_SIZE; ++i) {
@@ -284,12 +315,12 @@ void EventSchedulerImpl::ensureThreadsStarted() {
         // Start timer thread
         timerThread_ = std::thread(&EventSchedulerImpl::timerThreadMain, this);
 
-        Logger::debug("EventSchedulerImpl: All threads started successfully");
+        LOG_DEBUG("EventSchedulerImpl: All threads started successfully");
     });
 }
 
 void EventSchedulerImpl::callbackWorker() {
-    Logger::debug("EventSchedulerImpl: Callback worker thread started");
+    LOG_DEBUG("EventSchedulerImpl: Callback worker thread started");
 
     while (!callbackShutdownRequested_) {
         std::unique_lock<std::mutex> lock(callbackQueueMutex_);
@@ -311,14 +342,14 @@ void EventSchedulerImpl::callbackWorker() {
             try {
                 task();
             } catch (const std::exception &e) {
-                Logger::error("EventSchedulerImpl: Exception in callback worker: {}", e.what());
+                LOG_ERROR("EventSchedulerImpl: Exception in callback worker: {}", e.what());
             } catch (...) {
-                Logger::error("EventSchedulerImpl: Unknown exception in callback worker");
+                LOG_ERROR("EventSchedulerImpl: Unknown exception in callback worker");
             }
         }
     }
 
-    Logger::debug("EventSchedulerImpl: Callback worker thread stopped");
+    LOG_DEBUG("EventSchedulerImpl: Callback worker thread stopped");
 }
 
 std::string EventSchedulerImpl::generateSendId() {

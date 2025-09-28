@@ -5,16 +5,16 @@
 #include <algorithm>
 
 RSM::GuardParser::GuardParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
-    Logger::debug("GuardParser::Constructor - Creating guard parser");
+    LOG_DEBUG("Creating guard parser");
 }
 
 RSM::GuardParser::~GuardParser() {
-    Logger::debug("GuardParser::Destructor - Destroying guard parser");
+    LOG_DEBUG("Destroying guard parser");
 }
 
 std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::Element *guardNode) {
     if (!guardNode) {
-        Logger::warn("GuardParser::parseGuardNode() - Null guard node");
+        LOG_WARN("Null guard node");
         return nullptr;
     }
 
@@ -32,16 +32,14 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
     }
 
     if (!idAttr || (!targetAttr && !conditionAttr)) {
-        Logger::warn("GuardParser::parseGuardNode() - Guard node missing required "
-                     "attributes");
-        Logger::debug("GuardParser::parseGuardNode() - Node name: " + guardNode->get_name());
+        LOG_WARN("Guard node missing required attributes");
+        LOG_DEBUG("Node name: {}", guardNode->get_name());
         // 디버깅을 위해 가용한 모든 속성 출력
         auto attrs = guardNode->get_attributes();
         for (auto *attr : attrs) {
             auto *xmlAttr = dynamic_cast<const xmlpp::Attribute *>(attr);
             if (xmlAttr) {
-                Logger::debug("GuardParser::parseGuardNode() - Attribute: " + xmlAttr->get_name() + " = " +
-                              xmlAttr->get_value());
+                LOG_DEBUG("Attribute: {} = {}", xmlAttr->get_name(), xmlAttr->get_value());
             }
         }
         return nullptr;
@@ -55,16 +53,16 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
     // target 속성 처리
     if (targetAttr) {
         std::string target = targetAttr->get_value();
-        Logger::debug("GuardParser::parseGuardNode() - Guard: " + id + " with target attribute: " + target);
+        LOG_DEBUG("Guard: {} with target attribute: {}", id, target);
 
         if (GuardUtils::isConditionExpression(target)) {
             // target이 조건식인 경우
             guard->setCondition(target);
-            Logger::debug("GuardParser::parseGuardNode() - Set condition from target: " + target);
+            LOG_DEBUG("Set condition from target: {}", target);
         } else {
             // target이 상태 ID인 경우
             guard->setTargetState(target);
-            Logger::debug("GuardParser::parseGuardNode() - Set target state: " + target);
+            LOG_DEBUG("Set target state: {}", target);
         }
     }
 
@@ -72,7 +70,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
     if (conditionAttr) {
         std::string condition = conditionAttr->get_value();
         guard->setCondition(condition);
-        Logger::debug("GuardParser::parseGuardNode() - Set condition from attribute: " + condition);
+        LOG_DEBUG("Set condition from attribute: {}", condition);
     }
 
     // <code:condition> 또는 <condition> 요소 처리
@@ -85,15 +83,15 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
         // <code:condition> 또는 <condition> 요소 처리
         auto conditionElement = RSM::ParsingCommon::findFirstChildElement(guardNode, "condition");
         if (conditionElement) {
-            Logger::debug("GuardParser::parseGuardNode() - Found condition element");
+            LOG_DEBUG("Found condition element");
 
             // CDATA 섹션과 일반 텍스트 모두 처리
             std::string conditionText = RSM::ParsingCommon::extractTextContent(conditionElement, true);
-            Logger::debug("GuardParser::parseGuardNode() - Raw condition content: '" + conditionText + "'");
+            LOG_DEBUG("Raw condition content: '{}'", conditionText);
 
             if (!conditionText.empty()) {
                 guard->setCondition(conditionText);
-                Logger::debug("GuardParser::parseGuardNode() - Set condition from element: " + conditionText);
+                LOG_DEBUG("Set condition from element: {}", conditionText);
             }
         }
     }
@@ -104,14 +102,14 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
     // 외부 구현 파싱
     parseExternalImplementation(guardNode, guard);
 
-    Logger::debug("GuardParser::parseGuardNode() - Guard parsed successfully");
+    LOG_DEBUG("Guard parsed successfully");
     return guard;
 }
 
 std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardFromTransition(const xmlpp::Element *transitionNode,
                                                                             const std::string &targetState) {
     if (!transitionNode) {
-        Logger::warn("GuardParser::parseGuardFromTransition() - Null transition node");
+        LOG_WARN("Null transition node");
         return nullptr;
     }
 
@@ -129,9 +127,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardFromTransition(cons
 
     std::string guardId = guardAttr->get_value();
 
-    Logger::debug("GuardParser::parseGuardFromTransition() - Parsing guard from "
-                  "transition: " +
-                  guardId + " for state: " + targetState);
+    LOG_DEBUG("Parsing guard from transition: {} for state: {}", guardId, targetState);
 
     // 기본 가드 노드 생성 - 빈 문자열로 초기화
     auto guard = nodeFactory_->createGuardNode(guardId, "");
@@ -144,19 +140,16 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardFromTransition(cons
     if (condAttr) {
         std::string condition = condAttr->get_value();
         guard->setCondition(condition);
-        Logger::debug("GuardParser::parseGuardFromTransition() - Set condition "
-                      "from cond attribute: " +
-                      condition);
+        LOG_DEBUG("Set condition from cond attribute: {}", condition);
     }
 
-    Logger::debug("GuardParser::parseGuardFromTransition() - Guard from "
-                  "transition parsed successfully");
+    LOG_DEBUG("Guard from transition parsed successfully");
     return guard;
 }
 
 std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseReactiveGuard(const xmlpp::Element *reactiveGuardNode) {
     if (!reactiveGuardNode) {
-        Logger::warn("GuardParser::parseReactiveGuard() - Null reactive guard node");
+        LOG_WARN("Null reactive guard node");
         return nullptr;
     }
 
@@ -165,8 +158,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseReactiveGuard(const xmlp
     auto conditionAttr = reactiveGuardNode->get_attribute("condition");
 
     if (!idAttr || (!targetAttr && !conditionAttr)) {
-        Logger::warn("GuardParser::parseReactiveGuard() - Reactive guard node "
-                     "missing required attributes");
+        LOG_WARN("Reactive guard node missing required attributes");
         return nullptr;
     }
 
@@ -182,16 +174,16 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseReactiveGuard(const xmlp
     // target 속성 처리
     if (targetAttr) {
         std::string target = targetAttr->get_value();
-        Logger::debug("GuardParser::parseReactiveGuard() - Reactive guard: " + id + " with target: " + target);
+        LOG_DEBUG("Reactive guard: {} with target: {}", id, target);
 
         if (GuardUtils::isConditionExpression(target)) {
             // target이 조건식인 경우
             guard->setCondition(target);
-            Logger::debug("GuardParser::parseReactiveGuard() - Set condition from target: " + target);
+            LOG_DEBUG("Set condition from target: {}", target);
         } else {
             // target이 상태 ID인 경우
             guard->setTargetState(target);
-            Logger::debug("GuardParser::parseReactiveGuard() - Set target state: " + target);
+            LOG_DEBUG("Set target state: {}", target);
         }
     }
 
@@ -199,7 +191,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseReactiveGuard(const xmlp
     if (conditionAttr) {
         std::string condition = conditionAttr->get_value();
         guard->setCondition(condition);
-        Logger::debug("GuardParser::parseReactiveGuard() - Set condition from attribute: " + condition);
+        LOG_DEBUG("Set condition from attribute: {}", condition);
     }
 
     // 의존성 파싱
@@ -208,7 +200,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseReactiveGuard(const xmlp
     // 외부 구현 파싱
     parseExternalImplementation(reactiveGuardNode, guard);
 
-    Logger::debug("GuardParser::parseReactiveGuard() - Reactive guard parsed successfully");
+    LOG_DEBUG("Reactive guard parsed successfully");
     return guard;
 }
 
@@ -216,11 +208,11 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseGuardsEleme
     std::vector<std::shared_ptr<RSM::IGuardNode>> guards;
 
     if (!guardsNode) {
-        Logger::warn("GuardParser::parseGuardsElement() - Null guards node");
+        LOG_WARN("Null guards node");
         return guards;
     }
 
-    Logger::debug("GuardParser::parseGuardsElement() - Parsing guards element");
+    LOG_DEBUG("Parsing guards element");
 
     // guard 노드들 파싱
     auto guardNodes = guardsNode->get_children("code:guard");
@@ -235,12 +227,12 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseGuardsEleme
             auto guard = parseGuardNode(guardElement);
             if (guard) {
                 guards.push_back(guard);
-                Logger::debug("GuardParser::parseGuardsElement() - Added guard: " + guard->getId());
+                LOG_DEBUG("Added guard: {}", guard->getId());
             }
         }
     }
 
-    Logger::debug("GuardParser::parseGuardsElement() - Parsed " + std::to_string(guards.size()) + " guards");
+    LOG_DEBUG("Parsed {} guards", guards.size());
     return guards;
 }
 
@@ -248,11 +240,11 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
     std::vector<std::shared_ptr<RSM::IGuardNode>> allGuards;
 
     if (!scxmlNode) {
-        Logger::warn("GuardParser::parseAllGuards() - Null SCXML node");
+        LOG_WARN("Null SCXML node");
         return allGuards;
     }
 
-    Logger::debug("GuardParser::parseAllGuards() - Parsing all guards in SCXML document");
+    LOG_DEBUG("Parsing all guards in SCXML document");
 
     // 1. code:guards 요소 내의 가드 파싱
     auto guardsNode = scxmlNode->get_first_child("code:guards");
@@ -305,9 +297,7 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
                         auto guard = parseGuardFromTransition(transElement, target);
                         if (guard) {
                             allGuards.push_back(guard);
-                            Logger::debug("GuardParser::parseAllGuards() - Added guard from "
-                                          "transition in state " +
-                                          stateId);
+                            LOG_DEBUG("Added guard from transition in state {}", stateId);
                         }
                     }
                 }
@@ -326,9 +316,7 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
                     auto guard = parseReactiveGuard(guardElement);
                     if (guard) {
                         allGuards.push_back(guard);
-                        Logger::debug("GuardParser::parseAllGuards() - Added reactive "
-                                      "guard from state " +
-                                      stateId);
+                        LOG_DEBUG("Added reactive guard from state {}", stateId);
                     }
                 }
             }
@@ -346,7 +334,7 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
                                    const std::shared_ptr<RSM::IGuardNode> &b) { return a->getId() == b->getId(); }),
                     allGuards.end());
 
-    Logger::debug("GuardParser::parseAllGuards() - Found " + std::to_string(allGuards.size()) + " unique guards");
+    LOG_DEBUG("Found {} unique guards", allGuards.size());
     return allGuards;
 }
 
@@ -392,7 +380,7 @@ void RSM::GuardParser::parseDependencies(const xmlpp::Element *guardNode,
             if (propAttr) {
                 std::string property = propAttr->get_value();
                 guardObject->addDependency(property);
-                Logger::debug("GuardParser::parseDependencies() - Added dependency: " + property);
+                LOG_DEBUG("Added dependency: {}", property);
             }
         }
     }
@@ -419,13 +407,13 @@ void RSM::GuardParser::parseExternalImplementation(const xmlpp::Element *guardNo
             if (classAttr) {
                 std::string className = classAttr->get_value();
                 guardObject->setExternalClass(className);
-                Logger::debug("GuardParser::parseExternalImplementation() - External class: " + className);
+                LOG_DEBUG("External class: {}", className);
             }
 
             if (factoryAttr) {
                 std::string factory = factoryAttr->get_value();
                 guardObject->setExternalFactory(factory);
-                Logger::debug("GuardParser::parseExternalImplementation() - External factory: " + factory);
+                LOG_DEBUG("External factory: {}", factory);
             }
         }
     }

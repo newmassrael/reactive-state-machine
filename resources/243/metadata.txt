@@ -1,0 +1,6 @@
+id: 243
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: If the invoked process is of type http://www.w3.org/TR/scxml/ and 'name' of a param element in the invoke matches the 'id' of a data element in the top-level data declarations of the invoked session, the SCXML Processor MUST use the value of the param element as the initial value of the corresponding data element.
+variants: 1

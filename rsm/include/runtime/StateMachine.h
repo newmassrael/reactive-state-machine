@@ -1,12 +1,15 @@
 #pragma once
 
+#include "events/IEventDispatcher.h"
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
 #include "runtime/IHistoryManager.h"
 #include "runtime/IHistoryStateAutoRegistrar.h"
+#include "runtime/InvokeExecutor.h"
 #include "runtime/StateHierarchyManager.h"
+#include "runtime/StateMachineEventRaiser.h"
 #include "scripting/JSEngine.h"
 #include <functional>
 #include <map>
@@ -46,9 +49,15 @@ public:
     };
 
     /**
-     * @brief Constructor
+     * @brief Default constructor - generates random session ID
      */
     StateMachine();
+
+    /**
+     * @brief Constructor with session ID injection
+     * @param sessionId Pre-existing session ID to use (for invoke scenarios)
+     */
+    explicit StateMachine(const std::string &sessionId);
 
     /**
      * @brief Destructor
@@ -174,11 +183,31 @@ public:
      */
     std::vector<HistoryEntry> getHistoryEntries() const;
 
+    /**
+     * @brief Set EventDispatcher for delayed events and external targets
+     * @param eventDispatcher EventDispatcher instance for event handling
+     */
+    void setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher);
+
+    /**
+     * @brief Set EventRaiser for event processing
+     * @param eventRaiser EventRaiser instance for event handling
+     */
+    void setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser);
+
+    /**
+     * @brief Get EventDispatcher for access by child components
+     * @return Current EventDispatcher instance
+     */
+    std::shared_ptr<IEventDispatcher> getEventDispatcher() const;
+
 private:
     // Core state - now delegated to StateHierarchyManager
     // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
     // Removed: std::vector<std::string> activeStates_ (use hierarchyManager_->getActiveStates())
     bool isRunning_ = false;
+    bool isEnteringState_ = false;    // Guard against reentrant enterState calls
+    bool isProcessingEvent_ = false;  // Track event processing context
     std::string initialState_;
 
     // SCXML model
@@ -200,11 +229,28 @@ private:
     std::unique_ptr<IHistoryManager> historyManager_;
     std::unique_ptr<IHistoryStateAutoRegistrar> historyAutoRegistrar_;
 
+    // W3C SCXML invoke execution (SOLID architecture)
+    std::unique_ptr<InvokeExecutor> invokeExecutor_;
+
+    // Event dispatching for delayed events and external targets
+    std::shared_ptr<IEventDispatcher> eventDispatcher_;
+
+    // EventRaiser for SCXML compliance mode control
+    std::shared_ptr<IEventRaiser> eventRaiser_;
+
+    // Deferred invoke execution for W3C SCXML compliance
+    struct DeferredInvoke {
+        std::string stateId;
+        std::vector<std::shared_ptr<IInvokeNode>> invokes;
+    };
+
+    std::vector<DeferredInvoke> pendingInvokes_;
+
     // Statistics
     mutable Statistics stats_;
 
     // Helper methods
-    std::string generateSessionId();
+
     bool initializeFromModel();
     void initializeHistoryManager();
     void initializeHistoryAutoRegistrar();
@@ -229,6 +275,13 @@ private:
     // SCXML W3C compliant state transition processing
     TransitionResult processStateTransitions(IStateNode *stateNode, const std::string &eventName,
                                              const std::string &eventData);
+
+    // W3C SCXML onentry action execution
+    void executeOnEntryActions(const std::string &stateId);
+
+    // Deferred invoke execution for W3C SCXML compliance
+    void deferInvokeExecution(const std::string &stateId, const std::vector<std::shared_ptr<IInvokeNode>> &invokes);
+    void executePendingInvokes();
 };
 
 // Template implementation

@@ -1,0 +1,6 @@
+id: 346
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The Processor MUST place the error error.execution on the internal event queue when any attempt to change the value of a system variable is made.
+variants: 1

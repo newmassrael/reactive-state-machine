@@ -1,0 +1,7 @@
+id: 423
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: Then [after invoking the new invoke handlers since the last macrostep] the Processor MUST remove events from the external event queue, waiting till events appear if necessary, until it finds one that enables a non-empty optimal transition set in the current configuration.
+      The Processor MUST then execute that set [the enabled non-empty optimal transition set in the current configuration triggered by an external event] as a microstep.
+variants: 1

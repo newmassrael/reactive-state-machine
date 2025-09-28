@@ -1,0 +1,6 @@
+id: 153
+specnum: 4.6
+conformance: mandatory
+manual: False
+description: When evaluating foreach, the SCXML processor MUST start with the first item in the collection and proceed to the last item in the iteration order that is defined for the collection. For each item in the collection in turn, the processor MUST assign it to the item variable.
+variants: 1

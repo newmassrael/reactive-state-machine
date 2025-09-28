@@ -1,0 +1,6 @@
+id: 377
+specnum: 3.9
+conformance: mandatory
+manual: False
+description: The SCXML processor MUST execute the onexit handlers of a state in document order when the state is exited.
+variants: 1

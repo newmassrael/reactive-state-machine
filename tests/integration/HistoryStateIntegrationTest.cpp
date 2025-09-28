@@ -852,9 +852,9 @@ TEST_F(HistoryStateIntegrationTest, W3C_HistoryState_ComplexWorkflow_PauseAndRes
                           .get();
     EXPECT_TRUE(initResult.isSuccess());
     if (initResult.isSuccess()) {
-        std::cout << "DEBUG: Initial step_count = " << initResult.getValue<long>() << std::endl;
+        LOG_DEBUG("DEBUG: Initial step_count = {}", initResult.getValue<long>());
     } else {
-        std::cout << "DEBUG: Initial script FAILED" << std::endl;
+        LOG_DEBUG("DEBUG: Initial script FAILED");
     }
 
     // Step 1: Initialize workflow
@@ -865,9 +865,9 @@ TEST_F(HistoryStateIntegrationTest, W3C_HistoryState_ComplexWorkflow_PauseAndRes
             .get();
     EXPECT_TRUE(startWorkflow.isSuccess());
     if (startWorkflow.isSuccess()) {
-        std::cout << "DEBUG: After step 1, step_count = " << startWorkflow.getValue<long>() << std::endl;
+        LOG_DEBUG("DEBUG: After step 1, step_count = {}", startWorkflow.getValue<long>());
     } else {
-        std::cout << "DEBUG: Step 1 script FAILED" << std::endl;
+        LOG_DEBUG("DEBUG: Step 1 script FAILED");
     }
 
     // Step 2: Processing
@@ -877,9 +877,9 @@ TEST_F(HistoryStateIntegrationTest, W3C_HistoryState_ComplexWorkflow_PauseAndRes
                        .get();
     EXPECT_TRUE(proceed.isSuccess());
     if (proceed.isSuccess()) {
-        std::cout << "DEBUG: After step 2, step_count = " << proceed.getValue<long>() << std::endl;
+        LOG_DEBUG("DEBUG: After step 2, step_count = {}", proceed.getValue<long>());
     } else {
-        std::cout << "DEBUG: Step 2 script FAILED" << std::endl;
+        LOG_DEBUG("DEBUG: Step 2 script FAILED");
     }
 
     // Step 3: Validation
@@ -889,9 +889,9 @@ TEST_F(HistoryStateIntegrationTest, W3C_HistoryState_ComplexWorkflow_PauseAndRes
                         .get();
     EXPECT_TRUE(validate.isSuccess());
     if (validate.isSuccess()) {
-        std::cout << "DEBUG: After step 3, step_count = " << validate.getValue<long>() << std::endl;
+        LOG_DEBUG("DEBUG: After step 3, step_count = {}", validate.getValue<long>());
     } else {
-        std::cout << "DEBUG: Step 3 script FAILED" << std::endl;
+        LOG_DEBUG("DEBUG: Step 3 script FAILED");
     }
 
     // Step 4: Completion
@@ -901,9 +901,9 @@ TEST_F(HistoryStateIntegrationTest, W3C_HistoryState_ComplexWorkflow_PauseAndRes
                         .get();
     EXPECT_TRUE(complete.isSuccess());
     if (complete.isSuccess()) {
-        std::cout << "DEBUG: After step 4, step_count = " << complete.getValue<long>() << std::endl;
+        LOG_DEBUG("DEBUG: After step 4, step_count = {}", complete.getValue<long>());
     } else {
-        std::cout << "DEBUG: Step 4 script FAILED" << std::endl;
+        LOG_DEBUG("DEBUG: Step 4 script FAILED");
     }
 
     // Pause workflow
@@ -912,7 +912,7 @@ TEST_F(HistoryStateIntegrationTest, W3C_HistoryState_ComplexWorkflow_PauseAndRes
                              .get();
     EXPECT_TRUE(pauseWorkflow.isSuccess());
     if (pauseWorkflow.isSuccess()) {
-        std::cout << "DEBUG: After pause, workflow_state = " << pauseWorkflow.getValue<std::string>() << std::endl;
+        LOG_DEBUG("DEBUG: After pause, workflow_state = {}", pauseWorkflow.getValue<std::string>());
     }
 
     // Resume workflow - should return to completion state
@@ -924,7 +924,7 @@ TEST_F(HistoryStateIntegrationTest, W3C_HistoryState_ComplexWorkflow_PauseAndRes
             .get();
     EXPECT_TRUE(resumeWorkflow.isSuccess());
     if (resumeWorkflow.isSuccess()) {
-        std::cout << "DEBUG: After resume, workflow_state = " << resumeWorkflow.getValue<std::string>() << std::endl;
+        LOG_DEBUG("DEBUG: After resume, workflow_state = {}", resumeWorkflow.getValue<std::string>());
     }
 
     // Debug: Check step_count value after each major operation

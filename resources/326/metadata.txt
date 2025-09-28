@@ -1,0 +1,6 @@
+id: 326
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The Processor MUST keep the _ioprocessors variable bound to its set of values until the session terminates.
+variants: 1

@@ -1,0 +1,6 @@
+id: 332
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: If the sending entity has specified a value for this, the Processor MUST set this field to that value.  Otherwise, in the case of error events triggered by a failed attempt to send an event, the Processor MUST set the sendid field to the send id of the triggering send element.
+variants: 1

@@ -53,18 +53,8 @@ void MockActionExecutor::log(const std::string &level, const std::string &messag
     logMessages_.emplace_back(level, message);
 }
 
-bool MockActionExecutor::raiseEvent(const std::string &eventName, const std::string &eventData) {
-    // SCXML Compliance: raiseEvent must always succeed if properly configured
-    // Mock records the event and returns success (fire and forget model)
-    raisedEvents_.emplace_back(eventName, eventData);
-
-    // SCXML compliance: only fail if eventName is empty (validation error)
-    if (eventName.empty()) {
-        return false;
-    }
-
-    // Always return success for valid events (SCXML fire and forget)
-    return true;  // Mock simulates successful event queuing
+void MockActionExecutor::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) {
+    eventRaiser_ = eventRaiser;
 }
 
 bool MockActionExecutor::hasVariable(const std::string &location) {
@@ -186,7 +176,15 @@ bool MockActionExecutor::executeRaiseAction(const RaiseAction &action) {
         eventData = evaluateExpression(action.getData());
     }
 
-    return raiseEvent(action.getEvent(), eventData);
+    // Use eventRaiser_ for actual event raising, but still record for testing
+    raisedEvents_.emplace_back(action.getEvent(), eventData);
+
+    if (eventRaiser_) {
+        return eventRaiser_->raiseEvent(action.getEvent(), eventData);
+    }
+
+    // Mock behavior: succeed if event name is not empty
+    return !action.getEvent().empty();
 }
 
 bool MockActionExecutor::executeIfAction(const IfAction &action) {

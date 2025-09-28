@@ -1,0 +1,6 @@
+id: 378
+specnum: 3.9
+conformance: mandatory
+manual: False
+description: The SCXML processor MUST treat each [onexit] handler as a separate block of executable content.
+variants: 1

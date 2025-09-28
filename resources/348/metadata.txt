@@ -1,0 +1,6 @@
+id: 348
+specnum: C.1
+conformance: mandatory
+manual: False
+description: name'. The sending SCXML Processor MUST take the value of this attribute from the 'event' attribute of the send element. The receiving SCXML Processor MUST use it as the value the 'name' field in the event that it generates.
+variants: 1

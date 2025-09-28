@@ -13,12 +13,12 @@ HistoryManager::HistoryManager(std::function<std::shared_ptr<IStateNode>(const s
                                std::unique_ptr<IHistoryValidator> validator)
     : stateProvider_(std::move(stateProvider)), shallowFilter_(std::move(shallowFilter)),
       deepFilter_(std::move(deepFilter)), validator_(std::move(validator)) {
-    Logger::info("HistoryManager: Initialized with SOLID architecture components");
+    LOG_INFO("HistoryManager: Initialized with SOLID architecture components");
 }
 
 bool HistoryManager::registerHistoryState(const std::string &historyStateId, const std::string &parentStateId,
                                           HistoryType type, const std::string &defaultStateId) {
-    Logger::info("HistoryManager: Registering history state - " + historyStateId + " for parent " + parentStateId);
+    LOG_INFO("HistoryManager: Registering history state - {} for parent {}", historyStateId, parentStateId);
 
     std::lock_guard<std::mutex> lock(historyMutex_);
 
@@ -38,7 +38,7 @@ bool HistoryManager::registerHistoryState(const std::string &historyStateId, con
     }
 
     if (!validationResult) {
-        Logger::error("HistoryManager: Registration validation failed for " + historyStateId);
+        LOG_ERROR("HistoryManager: Registration validation failed for {}", historyStateId);
         return false;
     }
 
@@ -60,21 +60,21 @@ bool HistoryManager::registerHistoryState(const std::string &historyStateId, con
     }
 
     std::string typeStr = (type == HistoryType::SHALLOW) ? "shallow" : "deep";
-    Logger::info("HistoryManager: Successfully registered " + typeStr + " history state: " + historyStateId +
-                 " for parent: " + parentStateId);
+    LOG_INFO("HistoryManager: Successfully registered {} history state: {} for parent: {}", typeStr, historyStateId,
+             parentStateId);
 
     return true;
 }
 
 bool HistoryManager::recordHistory(const std::string &parentStateId, const std::vector<std::string> &activeStateIds) {
-    Logger::info("HistoryManager: Recording history for parent " + parentStateId + " with " +
-                 std::to_string(activeStateIds.size()) + " active states");
+    LOG_INFO("HistoryManager: Recording history for parent {} with {} active states", parentStateId,
+             activeStateIds.size());
 
     std::lock_guard<std::mutex> lock(historyMutex_);
 
     // Validate recording using injected validator
     if (!validator_->validateRecording(parentStateId, activeStateIds)) {
-        Logger::error("HistoryManager: Recording validation failed for " + parentStateId);
+        LOG_ERROR("HistoryManager: Recording validation failed for {}", parentStateId);
         return false;
     }
 
@@ -100,19 +100,19 @@ bool HistoryManager::recordHistory(const std::string &parentStateId, const std::
         recordedAny = true;
 
         std::string typeStr = (historyInfo.type == HistoryType::SHALLOW) ? "shallow" : "deep";
-        Logger::info("HistoryManager: Recorded " + typeStr + " history with " + std::to_string(filteredStates.size()) +
-                     " states for " + historyInfo.historyStateId);
+        LOG_INFO("HistoryManager: Recorded {} history with {} states for {}", typeStr, filteredStates.size(),
+                 historyInfo.historyStateId);
     }
 
     if (!recordedAny) {
-        Logger::debug("HistoryManager: No history states found or no states to record for " + parentStateId);
+        LOG_DEBUG("HistoryManager: No history states found or no states to record for {}", parentStateId);
     }
 
     return recordedAny;
 }
 
 HistoryRestorationResult HistoryManager::restoreHistory(const std::string &historyStateId) {
-    Logger::info("HistoryManager: Restoring history for " + historyStateId);
+    LOG_INFO("HistoryManager: Restoring history for {}", historyStateId);
 
     std::lock_guard<std::mutex> lock(historyMutex_);
 
@@ -134,14 +134,13 @@ HistoryRestorationResult HistoryManager::restoreHistory(const std::string &histo
     if (historyIt != recordedHistory_.end() && historyIt->second.isValid) {
         // Restore from recorded history
         const auto &entry = historyIt->second;
-        Logger::info("HistoryManager: Restoring " + std::to_string(entry.recordedStateIds.size()) +
-                     " recorded states for " + historyStateId);
+        LOG_INFO("HistoryManager: Restoring {} recorded states for {}", entry.recordedStateIds.size(), historyStateId);
         return HistoryRestorationResult::createSuccess(entry.recordedStateIds);
     } else {
         // Use default states
         auto defaultStates = getDefaultStates(historyInfo);
-        Logger::info("HistoryManager: No recorded history found, using " + std::to_string(defaultStates.size()) +
-                     " default states for " + historyStateId);
+        LOG_INFO("HistoryManager: No recorded history found, using {} default states for {}", defaultStates.size(),
+                 historyStateId);
         return HistoryRestorationResult::createSuccess(defaultStates);
     }
 }
@@ -154,7 +153,7 @@ bool HistoryManager::isHistoryState(const std::string &stateId) const {
 void HistoryManager::clearAllHistory() {
     std::lock_guard<std::mutex> lock(historyMutex_);
     recordedHistory_.clear();
-    Logger::info("HistoryManager: Cleared all recorded history");
+    LOG_INFO("HistoryManager: Cleared all recorded history");
 }
 
 std::vector<HistoryEntry> HistoryManager::getHistoryEntries() const {
@@ -167,7 +166,7 @@ std::vector<HistoryEntry> HistoryManager::getHistoryEntries() const {
         entries.push_back(pair.second);
     }
 
-    Logger::debug("HistoryManager: Retrieved " + std::to_string(entries.size()) + " history entries");
+    LOG_DEBUG("HistoryManager: Retrieved {} history entries", entries.size());
     return entries;
 }
 
@@ -189,8 +188,7 @@ HistoryManager::findHistoryStatesForParent(const std::string &parentStateId) con
         }
     }
 
-    Logger::debug("HistoryManager: Found " + std::to_string(result.size()) + " history states for parent " +
-                  parentStateId);
+    LOG_DEBUG("HistoryManager: Found {} history states for parent {}", result.size(), parentStateId);
     return result;
 }
 
@@ -199,7 +197,7 @@ std::vector<std::string> HistoryManager::getDefaultStates(const HistoryStateInfo
 
     if (!historyStateInfo.defaultStateId.empty()) {
         defaultStates.push_back(historyStateInfo.defaultStateId);
-        Logger::debug("HistoryManager: Using explicit default state: " + historyStateInfo.defaultStateId);
+        LOG_DEBUG("HistoryManager: Using explicit default state: {}", historyStateInfo.defaultStateId);
     } else {
         // If no explicit default, try to find the initial state of the parent
         if (stateProvider_) {
@@ -208,13 +206,13 @@ std::vector<std::string> HistoryManager::getDefaultStates(const HistoryStateInfo
                 std::string initialState = parentState->getInitialState();
                 if (!initialState.empty()) {
                     defaultStates.push_back(initialState);
-                    Logger::debug("HistoryManager: Using parent's initial state as default: " + initialState);
+                    LOG_DEBUG("HistoryManager: Using parent's initial state as default: {}", initialState);
                 } else {
                     // Fallback: use first child state
                     const auto &children = parentState->getChildren();
                     if (!children.empty()) {
                         defaultStates.push_back(children[0]->getId());
-                        Logger::debug("HistoryManager: Using first child as default: " + children[0]->getId());
+                        LOG_DEBUG("HistoryManager: Using first child as default: {}", children[0]->getId());
                     }
                 }
             }
@@ -222,7 +220,7 @@ std::vector<std::string> HistoryManager::getDefaultStates(const HistoryStateInfo
     }
 
     if (defaultStates.empty()) {
-        Logger::warn("HistoryManager: No default states available for " + historyStateInfo.historyStateId);
+        LOG_WARN("HistoryManager: No default states available for {}", historyStateInfo.historyStateId);
     }
 
     return defaultStates;

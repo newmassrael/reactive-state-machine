@@ -1,0 +1,6 @@
+id: 448
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript datamodel, the SCXML Processor must place all variables in a single global ECMAScript scope.
+variants: 1

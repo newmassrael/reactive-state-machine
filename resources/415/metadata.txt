@@ -1,0 +1,6 @@
+id: 415
+specnum: 3.13
+conformance: mandatory
+manual: True
+description: If it [the SCXML Processor] has entered a final state that is a child of scxml [during the last microstep], it MUST halt processing.
+variants: 1

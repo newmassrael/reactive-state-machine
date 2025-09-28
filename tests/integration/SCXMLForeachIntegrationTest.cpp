@@ -440,7 +440,7 @@ TEST_F(SCXMLForeachIntegrationTest, W3C_SCXML_ForeachAction_ItemVariableNameVali
     auto validErrors = validForeachAction->validate();
     if (!validErrors.empty()) {
         for (const auto &error : validErrors) {
-            RSM::Logger::debug("Validation error: {}", error);
+            LOG_DEBUG("Validation error: {}", error);
         }
     }
     EXPECT_TRUE(validErrors.empty());  // Should have no validation errors
@@ -558,4 +558,151 @@ TEST_F(SCXMLForeachIntegrationTest, W3C_SCXML_ForeachAction_OptionalIndexComplia
 
     // Index variable should not exist
     EXPECT_FALSE(executor->hasVariable("index"));  // Default name shouldn't exist
+}
+
+TEST_F(SCXMLForeachIntegrationTest, W3C_SCXML_ForeachAction_EmptyArrayVariableDeclaration) {
+    // W3C SCXML 4.6 Requirement: foreach MUST declare item and index variables
+    // even when the array is empty - variables should exist after execution
+    // This is critical for W3C test 150 compliance
+
+    // Ensure variables don't exist initially
+    EXPECT_FALSE(executor->hasVariable("emptyItem"));
+    EXPECT_FALSE(executor->hasVariable("emptyIndex"));
+
+    // Create empty array
+    EXPECT_TRUE(executor->assignVariable("emptyArray", "[]"));
+
+    auto foreachAction = std::make_shared<ForeachAction>();
+    foreachAction->setArray("emptyArray");
+    foreachAction->setItem("emptyItem");
+    foreachAction->setIndex("emptyIndex");
+
+    // Add a dummy action (even though it won't execute due to empty array)
+    auto dummyAction = std::make_shared<ScriptAction>("/* This should not execute */");
+    foreachAction->addIterationAction(dummyAction);
+
+    EXPECT_TRUE(executor->executeForeachAction(*foreachAction));
+
+    // W3C SCXML 4.6 Compliance: Variables MUST be declared even for empty arrays
+    // This is where the current implementation fails - it returns early without declaring variables
+    EXPECT_TRUE(executor->hasVariable("emptyItem"))
+        << "W3C SCXML 4.6 violation: item variable must be declared even for empty arrays";
+    EXPECT_TRUE(executor->hasVariable("emptyIndex"))
+        << "W3C SCXML 4.6 violation: index variable must be declared even for empty arrays";
+
+    // Variables should be undefined since no iterations occurred
+    std::string itemValue = executor->evaluateExpression("typeof emptyItem");
+    EXPECT_EQ(itemValue, "undefined") << "Empty array item variable should be undefined";
+
+    std::string indexValue = executor->evaluateExpression("typeof emptyIndex");
+    EXPECT_EQ(indexValue, "undefined") << "Empty array index variable should be undefined";
+}
+
+TEST_F(SCXMLForeachIntegrationTest, EmptyForeachWithNoChildActions) {
+    // Test specifically for W3C Test 150 scenario: empty foreach (no child actions)
+    // should still create accessible variables. This differs from empty array test.
+
+    // Ensure variables don't exist initially
+    EXPECT_FALSE(executor->hasVariable("noActionItem"));
+    EXPECT_FALSE(executor->hasVariable("noActionIndex"));
+
+    // Create foreach with normal array but NO child actions (like W3C Test 150)
+    EXPECT_TRUE(executor->assignVariable("normalArray", "[1,2,3]"));
+
+    auto foreachAction = std::make_shared<ForeachAction>();
+    foreachAction->setArray("normalArray");
+    foreachAction->setItem("noActionItem");
+    foreachAction->setIndex("noActionIndex");
+    // No addIterationAction calls - this is the key difference
+
+    // Execute foreach with no child actions
+    EXPECT_TRUE(executor->executeForeachAction(*foreachAction));
+
+    // Variables must be accessible even when foreach has no child actions
+    EXPECT_TRUE(executor->hasVariable("noActionItem"))
+        << "Foreach with no child actions must still create accessible variables";
+    EXPECT_TRUE(executor->hasVariable("noActionIndex"))
+        << "Foreach with no child actions must still create accessible variables";
+
+    // Variables should contain final iteration values
+    std::string itemValue = executor->evaluateExpression("noActionItem");
+    EXPECT_EQ(itemValue, "3") << "No-action foreach should still iterate and set variables";
+
+    std::string indexValue = executor->evaluateExpression("noActionIndex");
+    EXPECT_EQ(indexValue, "2") << "No-action foreach should still set index variable";
+}
+
+TEST_F(SCXMLForeachIntegrationTest, CrossStateVariableAccessAfterForeach) {
+    // Test that variables created by foreach in one execution context
+    // remain accessible in subsequent operations (simulating cross-state access)
+
+    // Setup test array
+    EXPECT_TRUE(executor->assignVariable("crossStateArray", "[10,20,30]"));
+
+    // Verify variables don't exist initially
+    EXPECT_FALSE(executor->hasVariable("crossStateItem"));
+    EXPECT_FALSE(executor->hasVariable("crossStateIndex"));
+
+    // Execute foreach in "first state" (first execution context)
+    auto foreachAction = std::make_shared<ForeachAction>();
+    foreachAction->setArray("crossStateArray");
+    foreachAction->setItem("crossStateItem");
+    foreachAction->setIndex("crossStateIndex");
+
+    EXPECT_TRUE(executor->executeForeachAction(*foreachAction));
+
+    // Simulate "second state" - variables should still be accessible
+    EXPECT_TRUE(executor->hasVariable("crossStateItem")) << "Foreach variables must persist across execution contexts";
+    EXPECT_TRUE(executor->hasVariable("crossStateIndex")) << "Foreach variables must persist across execution contexts";
+
+    // Test variable accessibility in conditions (like cond="typeof var !== 'undefined'")
+    std::string accessibilityTest = executor->evaluateExpression("typeof crossStateItem !== 'undefined'");
+    EXPECT_EQ(accessibilityTest, "true") << "Foreach variables must be accessible in conditional expressions";
+
+    // Verify actual values
+    std::string itemValue = executor->evaluateExpression("crossStateItem");
+    EXPECT_EQ(itemValue, "30") << "Cross-state item access should return correct value";
+
+    std::string indexValue = executor->evaluateExpression("crossStateIndex");
+    EXPECT_EQ(indexValue, "2") << "Cross-state index access should return correct value";
+}
+
+TEST_F(SCXMLForeachIntegrationTest, ForeachVariableScopeAndLifetime) {
+    // Test the scope and lifetime of foreach-declared variables
+    // Ensures variables follow SCXML scoping rules
+
+    // Test 1: Variable declaration with existing variables
+    EXPECT_TRUE(executor->assignVariable("existingVar", "'originalValue'"));
+    EXPECT_TRUE(executor->assignVariable("testScopeArray", "['a','b','c']"));
+
+    auto foreachAction = std::make_shared<ForeachAction>();
+    foreachAction->setArray("testScopeArray");
+    foreachAction->setItem("existingVar");     // Use existing variable as item
+    foreachAction->setIndex("newScopeIndex");  // Create new variable as index
+
+    EXPECT_TRUE(executor->executeForeachAction(*foreachAction));
+
+    // Existing variable should be modified, not redeclared
+    std::string existingValue = executor->evaluateExpression("existingVar");
+    EXPECT_EQ(existingValue, "c") << "Existing variable should be updated by foreach";
+
+    // New variable should be declared and set
+    EXPECT_TRUE(executor->hasVariable("newScopeIndex"));
+    std::string newValue = executor->evaluateExpression("newScopeIndex");
+    EXPECT_EQ(newValue, "2") << "New index variable should be created with correct value";
+
+    // Test 2 : Variable persistence after multiple operations
+    EXPECT_TRUE(executor->assignVariable("persistenceArray", "[100]"));
+
+    auto secondForeachAction = std::make_shared<ForeachAction>();
+    secondForeachAction->setArray("persistenceArray");
+    secondForeachAction->setItem("persistentItem");
+    secondForeachAction->setIndex("persistentIndex");
+
+    EXPECT_TRUE(executor->executeForeachAction(*secondForeachAction));
+
+    // Variables should persist and be modifiable
+    EXPECT_TRUE(executor->assignVariable("persistentItem", "'modifiedValue'"));
+    std::string modifiedValue = executor->evaluateExpression("persistentItem");
+    EXPECT_EQ(modifiedValue, "modifiedValue") << "Foreach variables should remain modifiable";
 }

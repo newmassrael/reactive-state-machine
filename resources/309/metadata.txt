@@ -1,0 +1,6 @@
+id: 309
+specnum: 5.9
+conformance: mandatory
+manual: False
+description: If a conditional expression cannot be evaluated as a boolean value ('true' or 'false') or if its evaluation causes an error, the SCXML processor MUST treat the expression as if it evaluated to 'false'.
+variants: 1

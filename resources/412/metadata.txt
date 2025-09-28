@@ -1,0 +1,6 @@
+id: 412
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: If the state is a default entry state and has an initial child, the SCXML Processor MUST then [after doing the active state add and the onentry handlers] execute the executable content in the initial child's transition.
+variants: 1

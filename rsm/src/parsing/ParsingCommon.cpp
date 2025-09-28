@@ -29,7 +29,7 @@ std::vector<const xmlpp::Element *> RSM::ParsingCommon::findChildElements(const 
     std::vector<const xmlpp::Element *> result;
 
     if (!element) {
-        Logger::warn("ParsingCommon::findChildElements() - Null parent element");
+        LOG_WARN("Null parent element");
         return result;
     }
 
@@ -62,7 +62,7 @@ std::vector<const xmlpp::Element *> RSM::ParsingCommon::findChildElements(const 
 const xmlpp::Element *RSM::ParsingCommon::findFirstChildElement(const xmlpp::Element *element,
                                                                 const std::string &childName) {
     if (!element) {
-        Logger::warn("ParsingCommon::findFirstChildElement() - Null parent element");
+        LOG_WARN("Null parent element");
         return nullptr;
     }
 
@@ -119,22 +119,19 @@ std::string RSM::ParsingCommon::findElementId(const xmlpp::Element *element) {
 std::string RSM::ParsingCommon::getAttributeValue(const xmlpp::Element *element,
                                                   const std::vector<std::string> &attrNames) {
     if (!element) {
-        Logger::debug("ParsingCommon::getAttributeValue() - Null element provided");
+        LOG_DEBUG("Null element provided");
         return "";
     }
 
-    Logger::debug("ParsingCommon::getAttributeValue() - Searching for attributes "
-                  "in element: " +
-                  element->get_name());
+    LOG_DEBUG("Searching for attributes in element: {}", element->get_name());
 
     // 주어진 속성 이름 목록에서 차례대로 시도
     for (const auto &attrName : attrNames) {
-        Logger::debug("ParsingCommon::getAttributeValue() - Checking attribute: " + attrName);
+        LOG_DEBUG("Checking attribute: {}", attrName);
 
         auto attr = element->get_attribute(attrName);
         if (attr) {
-            Logger::debug("ParsingCommon::getAttributeValue() - Found attribute: " + attrName + " = " +
-                          attr->get_value());
+            LOG_DEBUG("Found attribute: {} = {}", attrName, attr->get_value());
             return attr->get_value();
         }
 
@@ -143,17 +140,13 @@ std::string RSM::ParsingCommon::getAttributeValue(const xmlpp::Element *element,
         for (const auto &ns : namespaces) {
             auto nsAttr = element->get_attribute(attrName, ns);
             if (nsAttr) {
-                Logger::debug("ParsingCommon::getAttributeValue() - Found namespaced "
-                              "attribute: " +
-                              ns + ":" + attrName + " = " + nsAttr->get_value());
+                LOG_DEBUG("Found namespaced attribute: {}:{} = {}", ns, attrName, nsAttr->get_value());
                 return nsAttr->get_value();
             }
         }
     }
 
-    Logger::debug("ParsingCommon::getAttributeValue() - No matching attribute "
-                  "found for element: " +
-                  element->get_name());
+    LOG_DEBUG("No matching attribute found for element: {}", element->get_name());
     return "";
 }
 

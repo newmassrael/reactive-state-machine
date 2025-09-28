@@ -10,17 +10,17 @@ namespace RSM {
 HttpEventTarget::HttpEventTarget(const std::string &targetUri, std::chrono::milliseconds timeoutMs, int maxRetries)
     : targetUri_(targetUri), port_(80), timeoutMs_(timeoutMs), maxRetries_(maxRetries), sslVerification_(true) {
     if (!parseTargetUri()) {
-        Logger::error("HttpEventTarget: Invalid target URI: {}", targetUri_);
+        LOG_ERROR("HttpEventTarget: Invalid target URI: {}", targetUri_);
     }
 
-    Logger::debug("HttpEventTarget: Created for URI '{}' with timeout {}ms, {} retries", targetUri_, timeoutMs_.count(),
-                  maxRetries_);
+    LOG_DEBUG("HttpEventTarget: Created for URI '{}' with timeout {}ms, {} retries", targetUri_, timeoutMs_.count(),
+              maxRetries_);
 }
 
 std::future<SendResult> HttpEventTarget::send(const EventDescriptor &event) {
     return std::async(std::launch::async, [this, event]() -> SendResult {
         try {
-            Logger::debug("HttpEventTarget: Sending event '{}' to '{}'", event.eventName, targetUri_);
+            LOG_DEBUG("HttpEventTarget: Sending event '{}' to '{}'", event.eventName, targetUri_);
 
             // Create HTTP client
             auto client = createHttpClient();
@@ -31,7 +31,7 @@ std::future<SendResult> HttpEventTarget::send(const EventDescriptor &event) {
 
             // Create JSON payload
             std::string payload = createJsonPayload(event);
-            Logger::debug("HttpEventTarget: JSON payload: {}", payload);
+            LOG_DEBUG("HttpEventTarget: JSON payload: {}", payload);
 
             // Perform request with retry
             auto result = performRequestWithRetry(*client, path_, payload);
@@ -40,7 +40,7 @@ std::future<SendResult> HttpEventTarget::send(const EventDescriptor &event) {
             return convertHttpResponse(result, event);
 
         } catch (const std::exception &e) {
-            Logger::error("HttpEventTarget: Exception during send: {}", e.what());
+            LOG_ERROR("HttpEventTarget: Exception during send: {}", e.what());
             return SendResult::error("HTTP send exception: " + std::string(e.what()),
                                      SendResult::ErrorType::INTERNAL_ERROR);
         }
@@ -109,22 +109,22 @@ std::string HttpEventTarget::getDebugInfo() const {
 
 void HttpEventTarget::setCustomHeaders(const std::map<std::string, std::string> &headers) {
     customHeaders_ = headers;
-    Logger::debug("HttpEventTarget: Set {} custom headers", headers.size());
+    LOG_DEBUG("HttpEventTarget: Set {} custom headers", headers.size());
 }
 
 void HttpEventTarget::setTimeout(std::chrono::milliseconds timeoutMs) {
     timeoutMs_ = timeoutMs;
-    Logger::debug("HttpEventTarget: Set timeout to {}ms", timeoutMs_.count());
+    LOG_DEBUG("HttpEventTarget: Set timeout to {}ms", timeoutMs_.count());
 }
 
 void HttpEventTarget::setMaxRetries(int maxRetries) {
     maxRetries_ = maxRetries;
-    Logger::debug("HttpEventTarget: Set max retries to {}", maxRetries_);
+    LOG_DEBUG("HttpEventTarget: Set max retries to {}", maxRetries_);
 }
 
 void HttpEventTarget::setSSLVerification(bool verify) {
     sslVerification_ = verify;
-    Logger::debug("HttpEventTarget: SSL verification {}", verify ? "enabled" : "disabled");
+    LOG_DEBUG("HttpEventTarget: SSL verification {}", verify ? "enabled" : "disabled");
 }
 
 bool HttpEventTarget::parseTargetUri() {
@@ -155,8 +155,7 @@ bool HttpEventTarget::parseTargetUri() {
     // Parse path
     path_ = match[4].matched ? match[4].str() : "/";
 
-    Logger::debug("HttpEventTarget: Parsed URI - scheme='{}', host='{}', port={}, path='{}'", scheme_, host_, port_,
-                  path_);
+    LOG_DEBUG("HttpEventTarget: Parsed URI - scheme='{}', host='{}', port={}, path='{}'", scheme_, host_, port_, path_);
 
     return true;
 }
@@ -186,11 +185,11 @@ std::unique_ptr<httplib::Client> HttpEventTarget::createHttpClient() const {
             client->set_default_headers({{header.first, header.second}});
         }
 
-        Logger::debug("HttpEventTarget: Created HTTP client for '{}'", baseUrl);
+        LOG_DEBUG("HttpEventTarget: Created HTTP client for '{}'", baseUrl);
         return client;
 
     } catch (const std::exception &e) {
-        Logger::error("HttpEventTarget: Failed to create HTTP client: {}", e.what());
+        LOG_ERROR("HttpEventTarget: Failed to create HTTP client: {}", e.what());
         return nullptr;
     }
 }
@@ -234,22 +233,22 @@ httplib::Result HttpEventTarget::performRequestWithRetry(httplib::Client &client
     while (attempts <= maxRetries_) {
         attempts++;
 
-        Logger::debug("HttpEventTarget: HTTP POST attempt {} to '{}'", attempts, path);
+        LOG_DEBUG("HttpEventTarget: HTTP POST attempt {} to '{}'", attempts, path);
 
         // Perform POST request
         result = client.Post(path, payload, "application/json");
 
         if (result && result->status >= 200 && result->status < 300) {
             // Success
-            Logger::debug("HttpEventTarget: HTTP POST successful, status {}", result->status);
+            LOG_DEBUG("HttpEventTarget: HTTP POST successful, status {}", result->status);
             break;
         }
 
         if (attempts <= maxRetries_) {
             // Wait before retry (exponential backoff)
             auto waitTime = std::chrono::milliseconds(100 * attempts);
-            Logger::debug("HttpEventTarget: Retrying in {}ms (attempt {} of {})", waitTime.count(), attempts,
-                          maxRetries_ + 1);
+            LOG_DEBUG("HttpEventTarget: Retrying in {}ms (attempt {} of {})", waitTime.count(), attempts,
+                      maxRetries_ + 1);
             std::this_thread::sleep_for(waitTime);
         }
     }
@@ -297,14 +296,14 @@ SendResult HttpEventTarget::convertHttpResponse(const httplib::Result &result, c
             break;
         }
 
-        Logger::error("HttpEventTarget: {}", errorMsg);
+        LOG_ERROR("HttpEventTarget: {}", errorMsg);
         return SendResult::error(errorMsg, errorType);
     }
 
     // Check HTTP status code
     if (result->status >= 200 && result->status < 300) {
-        Logger::info("HttpEventTarget: Event '{}' sent successfully to '{}', status {}", event.eventName, targetUri_,
-                     result->status);
+        LOG_INFO("HttpEventTarget: Event '{}' sent successfully to '{}', status {}", event.eventName, targetUri_,
+                 result->status);
         return SendResult::success(event.sendId);
     } else {
         std::string errorMsg = "HTTP " + std::to_string(result->status) + ": " + result->reason;
@@ -317,7 +316,7 @@ SendResult HttpEventTarget::convertHttpResponse(const httplib::Result &result, c
             errorType = SendResult::ErrorType::NETWORK_ERROR;
         }
 
-        Logger::error("HttpEventTarget: HTTP error for event '{}': {}", event.eventName, errorMsg);
+        LOG_ERROR("HttpEventTarget: HTTP error for event '{}': {}", event.eventName, errorMsg);
         return SendResult::error(errorMsg, errorType);
     }
 }

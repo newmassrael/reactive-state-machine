@@ -1,0 +1,6 @@
+id: 278
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, the SCXML processor MUST allow any data element to be accessed from any state.
+variants: 1

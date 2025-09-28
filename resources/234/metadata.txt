@@ -1,0 +1,6 @@
+id: 234
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: t MUST NOT execute the finalize handler in any other instance of invoke besides the one in the instance of invoke that created the service that generated the event.
+variants: 1

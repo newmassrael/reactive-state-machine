@@ -1,0 +1,6 @@
+id: 501
+specnum: C.1
+conformance: mandatory
+manual: False
+description: The 'location' field inside the entry for the SCXML Event I/O Processor in the _ioprocessors system variable MUST hold an address that external entities can use to communicate with this SCXML session using the SCXML Event I/O Processor.
+variants: 1

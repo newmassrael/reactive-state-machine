@@ -1,0 +1,6 @@
+id: 159
+specnum: 4.9
+conformance: mandatory
+manual: False
+description: If the processing of an element of executable content causes an error to be raised, the processor MUST NOT process the remaining elements of the block.
+variants: 1

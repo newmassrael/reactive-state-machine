@@ -1,0 +1,9 @@
+id: 579
+specnum: 3.10
+conformance: mandatory
+manual: False
+description: Before the parent state has been visited for the first time, if a transition is executed that takes the history state as its target, 
+      the SCXML processor MUST execute any executable content in the transition
+      after the parent state's onentry content and any content in a possible
+      initial transition.
+variants: 1

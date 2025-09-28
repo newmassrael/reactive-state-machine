@@ -1,0 +1,6 @@
+id: 452
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript datamodel, the SCXML Processor must accept any ECMAScript left-hand-side expression as a location expression.
+variants: 1

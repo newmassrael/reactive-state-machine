@@ -127,10 +127,8 @@ std::vector<std::string> ForeachAction::validateSpecific() const {
         }
     }
 
-    // Validate that we have at least one iteration action
-    if (iterationActions_.empty()) {
-        errors.push_back("Foreach action should have at least one child action to execute");
-    }
+    // W3C SCXML Note: Empty foreach is allowed (see test150.txml)
+    // foreach can be used for variable declaration without child actions
 
     // Validate each iteration action
     for (size_t i = 0; i < iterationActions_.size(); ++i) {

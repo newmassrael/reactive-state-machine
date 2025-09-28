@@ -1,0 +1,6 @@
+id: 178
+specnum: 6.2
+conformance: mandatory
+manual: True
+description: The SCXML Processor MUST include all attributes and values provided by param and/or 'namelist' even if duplicates occur.
+variants: 1

@@ -1,0 +1,6 @@
+id: 396
+specnum: 3.12
+conformance: mandatory
+manual: False
+description: The SCXML processor MUST use this same name value [the one reflected in the event variable] to match against the 'event' attribute of transitions.
+variants: 1

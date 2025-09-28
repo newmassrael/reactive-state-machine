@@ -1,0 +1,6 @@
+id: 225
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: n the automatically generated invoke identifier, platformid MUST be unique within the current session
+variants: 1

@@ -6,6 +6,7 @@
 #include "events/EventTargetFactoryImpl.h"
 #include "events/InternalEventTarget.h"
 #include "mocks/MockActionExecutor.h"
+#include "mocks/MockEventRaiser.h"
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "scripting/JSEngine.h"
@@ -55,15 +56,17 @@ protected:
         // Create ActionExecutor
         executor_ = std::make_shared<ActionExecutorImpl>(sessionId_);
 
-        // Set up event raising callback for internal events
+        // Set up event raising with MockEventRaiser for internal events
         raisedEvents_.clear();
-        executor_->setEventRaiseCallback([this](const std::string &eventName, const std::string &eventData) -> bool {
-            raisedEvents_.emplace_back(eventName, eventData);
-            return true;
-        });
+        mockEventRaiser_ = std::make_shared<MockEventRaiser>(
+            [this](const std::string &eventName, const std::string &eventData) -> bool {
+                raisedEvents_.emplace_back(eventName, eventData);
+                return true;
+            });
+        executor_->setEventRaiser(mockEventRaiser_);
 
-        // Create target factory using the EventRaiser from ActionExecutor
-        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(executor_->getEventRaiser());
+        // Create target factory using the MockEventRaiser
+        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(mockEventRaiser_);
 
         // Create dispatcher with proper target factory
         dispatcher_ = std::make_shared<EventDispatcherImpl>(scheduler_, targetFactory_);
@@ -94,6 +97,7 @@ protected:
     std::string sessionId_;
     std::shared_ptr<ActionExecutorImpl> executor_;
     std::shared_ptr<ExecutionContextImpl> context_;
+    std::shared_ptr<MockEventRaiser> mockEventRaiser_;
     std::vector<std::pair<std::string, std::string>> raisedEvents_;
 
     // SCXML compliant event infrastructure
@@ -195,8 +199,10 @@ TEST_F(SCXMLEventTest, SendActionValidationMissingEvent) {
     // Verify execution failed
     EXPECT_FALSE(result);
 
-    // Verify no event was raised
-    EXPECT_EQ(raisedEvents_.size(), 0);
+    // W3C SCXML 6.2: Verify error.execution event was raised for invalid send action
+    EXPECT_EQ(raisedEvents_.size(), 1);
+    EXPECT_EQ(raisedEvents_[0].first, "error.execution");
+    EXPECT_EQ(raisedEvents_[0].second, "Send action has no event or eventexpr");
 }
 
 /**

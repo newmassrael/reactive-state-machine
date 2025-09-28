@@ -1,0 +1,6 @@
+id: 236
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: The external service MUST NOT generate any other events after the invoke.done.invokeid event.
+variants: 1

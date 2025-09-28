@@ -1,0 +1,6 @@
+id: 329
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The Processor MUST cause any attempt to change the value of a system variable to fail.
+variants: 1

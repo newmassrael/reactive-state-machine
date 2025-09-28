@@ -1,0 +1,7 @@
+id: 558
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript datamodel, if either the 'src' attribute or in-line content is provided in the data element, and the content (whether fetched or provided in-line) is not an XML document or JSON (or the
+ 	     processor does not support JSON), then the Processor MUST treat the content as a space-normalized string literal and assign it as the value of the variable
+variants: 1

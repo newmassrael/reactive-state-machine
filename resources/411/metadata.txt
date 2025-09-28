@@ -1,0 +1,6 @@
+id: 411
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: To enter a state, the SCXML Processor MUST add the state to the active state's list. Then it MUST execute the executable content in the state's onentry handler.
+variants: 1

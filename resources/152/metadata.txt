@@ -1,0 +1,6 @@
+id: 152
+specnum: 4.6
+conformance: mandatory
+manual: False
+description: In the foreach element, if 'array' does not evaluate to a legal iterable collection, or if 'item' does not specify a legal variable name, the SCXML processor MUST terminate execution of the foreach element and the block that contains it, and place the error error.execution on the internal event queue.
+variants: 1

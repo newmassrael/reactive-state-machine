@@ -1,0 +1,6 @@
+id: 245
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: If the invoked process is of type http://www.w3.org/TR/scxml/, and the name of a param element or the key of of a namelis item do not match the name of a data element in the invoked process, the Processor MUST NOT add the value of the param element or namelist key/value pair to the invoked session's data model.
+variants: 1

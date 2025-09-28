@@ -2,6 +2,8 @@
 
 #include "../SCXMLEngine.h"
 
+#include "model/SCXMLModel.h"
+#include "runtime/IActionExecutor.h"
 #include "scripting/JSEngine.h"
 
 namespace RSM {
@@ -54,7 +56,16 @@ private:
     // Convert public Event to internal Event
     std::shared_ptr<Event> convertEvent(std::shared_ptr<Event> publicEvent) const;
 
+    /**
+     * @brief Execute onentry actions for a state according to W3C SCXML specification
+     * @param stateId State ID to execute onentry actions for
+     */
+    void executeOnEntryActions(const std::string &stateId);
+
     bool initialized_ = false;
+    std::shared_ptr<RSM::SCXMLModel> scxmlModel_;
+    std::shared_ptr<IActionExecutor> actionExecutor_;
+    std::string sessionId_;
 };
 
 }  // namespace RSM

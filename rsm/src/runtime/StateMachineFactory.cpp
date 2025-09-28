@@ -67,7 +67,7 @@ StateMachineFactory::createInternal(std::shared_ptr<ISessionBasedScriptEngine> s
             }
         }
 
-        Logger::debug("StateMachineFactory: Successfully created StateMachine instance");
+        LOG_DEBUG("StateMachineFactory: Successfully created StateMachine instance");
         return CreationResult(std::move(stateMachine));
 
     } catch (const std::exception &e) {
@@ -109,16 +109,16 @@ bool JSEngineAdapter::initialize() {
 
     // JSEngine은 생성자에서 자동 초기화됨 (RAII)
     RSM::JSEngine::instance();  // RAII 보장
-    Logger::debug("JSEngineAdapter: JSEngine automatically initialized via RAII");
+    LOG_DEBUG("JSEngineAdapter: JSEngine automatically initialized via RAII");
 
     // Create default session
     if (!RSM::JSEngine::instance().createSession(defaultSessionId_)) {
-        Logger::error("JSEngineAdapter: Failed to create default session");
+        LOG_ERROR("JSEngineAdapter: Failed to create default session");
         return false;
     }
 
     initialized_ = true;
-    Logger::debug("JSEngineAdapter: Successfully initialized");
+    LOG_DEBUG("JSEngineAdapter: Successfully initialized");
     return true;
 }
 
@@ -134,7 +134,7 @@ void JSEngineAdapter::shutdown() {
     // and might be used by other components
 
     initialized_ = false;
-    Logger::debug("JSEngineAdapter: Shutdown completed");
+    LOG_DEBUG("JSEngineAdapter: Shutdown completed");
 }
 
 std::future<JSResult> JSEngineAdapter::executeScript(const std::string &script) {
@@ -167,7 +167,7 @@ void JSEngineAdapter::collectGarbage() {
 
 bool JSEngineAdapter::createSession(const std::string &sessionId, const std::string &parentSessionId) {
     if (!initialized_) {
-        Logger::error("JSEngineAdapter: Not initialized");
+        LOG_ERROR("JSEngineAdapter: Not initialized");
         return false;
     }
     return RSM::JSEngine::instance().createSession(sessionId, parentSessionId);

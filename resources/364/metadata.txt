@@ -1,0 +1,6 @@
+id: 364
+specnum: 3.3
+conformance: mandatory
+manual: False
+description: Definition: The default initial state(s) of a compound state are those specified by the 'initial' attribute or initial element, if either is present. Otherwise it is the state's first child state in document order. If a compound state is entered either as an initial state or as the target of a transition (i.e. and no descendent of it is specified), then the SCXML Processor MUST enter the default initial state(s) after it enters the parent state.
+variants: 1

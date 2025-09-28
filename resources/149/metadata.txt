@@ -1,0 +1,6 @@
+id: 149
+specnum: 4.3
+conformance: mandatory
+manual: False
+description: When it executes an if element, if no 'cond' attribute evaluates to true and there is no else element, the SCXML processor must not evaluate any executable content within the element.
+variants: 1

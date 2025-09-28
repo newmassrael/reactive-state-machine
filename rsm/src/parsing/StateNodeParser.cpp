@@ -10,11 +10,11 @@
 #include "parsing/TransitionParser.h"
 
 RSM::StateNodeParser::StateNodeParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
-    Logger::debug("RSM::StateNodeParser::Constructor - Creating state node parser");
+    LOG_DEBUG("Creating state node parser");
 }
 
 RSM::StateNodeParser::~StateNodeParser() {
-    Logger::debug("RSM::StateNodeParser::Destructor - Destroying state node parser");
+    LOG_DEBUG("Destroying state node parser");
 }
 
 void RSM::StateNodeParser::setRelatedParsers(std::shared_ptr<TransitionParser> transitionParser,
@@ -28,14 +28,14 @@ void RSM::StateNodeParser::setRelatedParsers(std::shared_ptr<TransitionParser> t
     invokeParser_ = invokeParser;
     doneDataParser_ = doneDataParser;
 
-    Logger::debug("RSM::StateNodeParser::setRelatedParsers() - Related parsers set");
+    LOG_DEBUG("Related parsers set");
 }
 
 std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlpp::Element *stateElement,
                                                                       std::shared_ptr<RSM::IStateNode> parentState,
                                                                       const RSM::SCXMLContext &context) {
     if (!stateElement) {
-        Logger::warn("RSM::StateNodeParser::parseStateNode() - Null state element");
+        LOG_WARN("Null state element");
         return nullptr;
     }
 
@@ -47,31 +47,28 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
     } else {
         // ID가 없는 경우 자동 생성
         stateId = "state_" + std::to_string(reinterpret_cast<uintptr_t>(stateElement));
-        Logger::warn("RSM::StateNodeParser::parseStateNode() - State has no ID, "
-                     "generated: " +
-                     stateId);
+        LOG_WARN("State has no ID, generated: {}", stateId);
     }
 
     // 상태 유형 결정
     Type stateType = determineStateType(stateElement);
-    Logger::debug("RSM::StateNodeParser::parseStateNode() - Parsing state: " + stateId + " (" +
-                  (stateType == Type::PARALLEL  ? "parallel"
-                   : stateType == Type::FINAL   ? "final"
-                   : stateType == Type::HISTORY ? "history"
-                                                : "state") +
-                  ")");
+    LOG_DEBUG("Parsing state: {} ({})", stateId,
+              (stateType == Type::PARALLEL  ? "parallel"
+               : stateType == Type::FINAL   ? "final"
+               : stateType == Type::HISTORY ? "history"
+                                            : "state"));
 
     // 상태 노드 생성
     auto stateNode = nodeFactory_->createStateNode(stateId, stateType);
     if (!stateNode) {
-        Logger::error("RSM::StateNodeParser::parseStateNode() - Failed to create state node");
+        LOG_ERROR("Failed to create state node");
         return nullptr;
     }
 
     // 부모 상태 설정
     stateNode->setParent(parentState.get());
     if (!parentState) {
-        Logger::debug("RSM::StateNodeParser::parseStateNode() - No parent state (root)");
+        LOG_DEBUG("No parent state (root)");
     }
 
     // 히스토리 상태인 경우 추가 처리
@@ -88,8 +85,7 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
         if (transitionParser_) {
             parseTransitions(stateElement, stateNode);
         } else {
-            Logger::warn("RSM::StateNodeParser::parseStateNode() - TransitionParser "
-                         "not set, skipping transitions");
+            LOG_WARN("TransitionParser not set, skipping transitions");
         }
 
         parseReactiveGuards(stateElement, stateNode);
@@ -100,11 +96,10 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
         auto dataItems = dataModelParser_->parseDataModelInState(stateElement, context);
         for (const auto &item : dataItems) {
             stateNode->addDataItem(item);
-            Logger::debug("RSM::StateNodeParser::parseStateNode() - Added data item: " + item->getId());
+            LOG_DEBUG("Added data item: {}", item->getId());
         }
     } else {
-        Logger::warn("RSM::StateNodeParser::parseStateNode() - DataModelParser not "
-                     "set, skipping data model");
+        LOG_WARN("DataModelParser not set, skipping data model");
     }
 
     // 자식 상태 파싱 (compound 및 parallel 상태의 경우) - context 전달
@@ -116,8 +111,7 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
     if (invokeParser_) {
         parseInvokeElements(stateElement, stateNode);
     } else {
-        Logger::warn("RSM::StateNodeParser::parseStateNode() - InvokeParser not "
-                     "set, skipping invoke elements");
+        LOG_WARN("InvokeParser not set, skipping invoke elements");
     }
 
     // <final> 상태에서 <donedata> 요소 파싱
@@ -126,14 +120,10 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
         if (doneDataElement) {
             bool success = doneDataParser_->parseDoneData(doneDataElement, stateNode.get());
             if (!success) {
-                Logger::warn("RSM::StateNodeParser::parseStateNode() - Failed to parse "
-                             "<donedata> in final state: " +
-                             stateId);
+                LOG_WARN("Failed to parse <donedata> in final state: {}", stateId);
                 // 오류가 있어도 계속 진행 (치명적이지 않음)
             } else {
-                Logger::debug("RSM::StateNodeParser::parseStateNode() - Successfully "
-                              "parsed <donedata> in final state: " +
-                              stateId);
+                LOG_DEBUG("Successfully parsed <donedata> in final state: {}", stateId);
             }
         }
     }
@@ -146,30 +136,23 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
             if (initialElement) {
                 // <initial> 요소 파싱
                 parseInitialElement(initialElement, stateNode);
-                Logger::debug("RSM::StateNodeParser::parseStateNode() - Parsed "
-                              "<initial> element for state: " +
-                              stateId);
+                LOG_DEBUG("Parsed <initial> element for state: {}", stateId);
             } else {
                 // initial 속성에서 초기 상태 설정
                 auto initialAttr = stateElement->get_attribute("initial");
                 if (initialAttr) {
                     stateNode->setInitialState(initialAttr->get_value());
-                    Logger::debug("RSM::StateNodeParser::parseStateNode() - Set initial "
-                                  "state from attribute: " +
-                                  initialAttr->get_value());
+                    LOG_DEBUG("Set initial state from attribute: {}", initialAttr->get_value());
                 } else if (!stateNode->getChildren().empty()) {
                     // 초기 상태가 지정되지 않은 경우 첫 번째 자식을 사용
                     stateNode->setInitialState(stateNode->getChildren().front()->getId());
-                    Logger::debug("RSM::StateNodeParser::parseStateNode() - Set default "
-                                  "initial state: " +
-                                  stateNode->getChildren().front()->getId());
+                    LOG_DEBUG("Set default initial state: {}", stateNode->getChildren().front()->getId());
                 }
             }
         }
     }
 
-    Logger::debug("RSM::StateNodeParser::parseStateNode() - State " + stateId + " parsed successfully with " +
-                  std::to_string(stateNode->getChildren().size()) + " child states");
+    LOG_DEBUG("State {} parsed successfully with {} child states", stateId, stateNode->getChildren().size());
     return stateNode;
 }
 
@@ -214,8 +197,7 @@ RSM::Type RSM::StateNodeParser::determineStateType(const xmlpp::Element *stateEl
         }
     }
 
-    Logger::debug("RSM::StateNodeParser::determineStateType() - State type: " +
-                  std::string(hasChildStates ? "Compound" : "Standard"));
+    LOG_DEBUG("State type: {}", (hasChildStates ? "Compound" : "Standard"));
     return hasChildStates ? Type::COMPOUND : Type::ATOMIC;
 }
 
@@ -233,8 +215,7 @@ void RSM::StateNodeParser::parseTransitions(const xmlpp::Element *parentElement,
         }
     }
 
-    Logger::debug("RSM::StateNodeParser::parseStateNode() - Parsed " + std::to_string(state->getTransitions().size()) +
-                  " transitions");
+    LOG_DEBUG("Parsed {} transitions", state->getTransitions().size());
 }
 
 void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentElement,
@@ -256,9 +237,7 @@ void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentEl
                 actionContent = action->getId();
             }
             state->addEntryAction(actionContent);
-            Logger::debug("RSM::StateNodeParser::parseEntryExitElements() - Added "
-                          "entry action: " +
-                          actionContent);
+            LOG_DEBUG("Added entry action: {}", actionContent);
         }
     }
 
@@ -275,9 +254,7 @@ void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentEl
                 actionContent = action->getId();
             }
             state->addExitAction(actionContent);
-            Logger::debug("RSM::StateNodeParser::parseEntryExitElements() - Added "
-                          "exit action: " +
-                          actionContent);
+            LOG_DEBUG("Added exit action: {}", actionContent);
         }
     }
 }
@@ -285,7 +262,7 @@ void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentEl
 void RSM::StateNodeParser::parseChildStates(const xmlpp::Element *stateElement,
                                             std::shared_ptr<RSM::IStateNode> parentState,
                                             const RSM::SCXMLContext &context) {
-    Logger::debug("RSM::StateNodeParser::parseChildStates() - Parsing child states");
+    LOG_DEBUG("Parsing child states");
 
     // state, parallel, final, history 등의 자식 요소 검색
     std::vector<const xmlpp::Element *> childStateElements;
@@ -309,8 +286,7 @@ void RSM::StateNodeParser::parseChildStates(const xmlpp::Element *stateElement,
         }
     }
 
-    Logger::debug("RSM::StateNodeParser::parseChildStates() - Found " + std::to_string(childStateElements.size()) +
-                  " child states");
+    LOG_DEBUG("Found {} child states", childStateElements.size());
 }
 
 void RSM::StateNodeParser::parseInvokeElements(const xmlpp::Element *parentElement,
@@ -325,21 +301,18 @@ void RSM::StateNodeParser::parseInvokeElements(const xmlpp::Element *parentEleme
         if (invokeNode) {
             // Invoke 노드를 상태에 추가
             state->addInvoke(invokeNode);
-            Logger::debug("RSM::StateNodeParser::parseInvokeElements() - Added invoke: " + invokeNode->getId());
+            LOG_DEBUG("Added invoke: {}", invokeNode->getId());
 
             // Param 요소들로부터 데이터 모델 아이템 생성 및 추가
             auto dataItems = invokeParser_->parseParamElementsAndCreateDataItems(invokeElement, invokeNode);
             for (const auto &dataItem : dataItems) {
                 state->addDataItem(dataItem);
-                Logger::debug("RSM::StateNodeParser::parseInvokeElements() - Added "
-                              "data item from param: " +
-                              dataItem->getId());
+                LOG_DEBUG("Added data item from param: {}", dataItem->getId());
             }
         }
     }
 
-    Logger::debug("RSM::StateNodeParser::parseInvokeElements() - Parsed " + std::to_string(state->getInvoke().size()) +
-                  " invoke elements");
+    LOG_DEBUG("Parsed {} invoke elements", state->getInvoke().size());
 }
 
 void RSM::StateNodeParser::parseHistoryType(const xmlpp::Element *historyElement,
@@ -360,8 +333,7 @@ void RSM::StateNodeParser::parseHistoryType(const xmlpp::Element *historyElement
     // 히스토리 타입 설정
     state->setHistoryType(isDeep);
 
-    Logger::debug("RSM::StateNodeParser::parseHistoryType() - History state " + state->getId() +
-                  " type: " + (isDeep ? "deep" : "shallow"));
+    LOG_DEBUG("History state {} type: {}", state->getId(), (isDeep ? "deep" : "shallow"));
 
     // 히스토리 상태의 기본 전환도 파싱
     if (transitionParser_) {
@@ -385,17 +357,13 @@ void RSM::StateNodeParser::parseReactiveGuards(const xmlpp::Element *parentEleme
         if (idAttr) {
             std::string guardId = idAttr->get_value();
             state->addReactiveGuard(guardId);
-            Logger::debug("RSM::StateNodeParser::parseReactiveGuards() - Added "
-                          "reactive guard: " +
-                          guardId);
+            LOG_DEBUG("Added reactive guard: {}", guardId);
         } else {
-            Logger::warn("RSM::StateNodeParser::parseReactiveGuards() - Reactive "
-                         "guard without ID");
+            LOG_WARN("Reactive guard without ID");
         }
     }
 
-    Logger::debug("RSM::StateNodeParser::parseReactiveGuards() - Parsed " +
-                  std::to_string(reactiveGuardElements.size()) + " reactive guards");
+    LOG_DEBUG("Parsed {} reactive guards", reactiveGuardElements.size());
 }
 
 void RSM::StateNodeParser::parseInitialElement(const xmlpp::Element *initialElement,
@@ -404,9 +372,7 @@ void RSM::StateNodeParser::parseInitialElement(const xmlpp::Element *initialElem
         return;
     }
 
-    Logger::debug("RSM::StateNodeParser::parseInitialElement() - Parsing initial "
-                  "element for state: " +
-                  state->getId());
+    LOG_DEBUG("Parsing initial element for state: {}", state->getId());
 
     // <transition> 요소 찾기
     const xmlpp::Element *transitionElement = ParsingCommon::findFirstChildElement(initialElement, "transition");
@@ -420,14 +386,10 @@ void RSM::StateNodeParser::parseInitialElement(const xmlpp::Element *initialElem
             // initialState_ 설정 (첫 번째 target)
             if (!transition->getTargets().empty()) {
                 state->setInitialState(transition->getTargets()[0]);
-                Logger::debug("RSM::StateNodeParser::parseInitialElement() - Initial "
-                              "state set to: " +
-                              transition->getTargets()[0]);
+                LOG_DEBUG("Initial state set to: {}", transition->getTargets()[0]);
             }
 
-            Logger::debug("RSM::StateNodeParser::parseInitialElement() - Initial "
-                          "transition set for state: " +
-                          state->getId());
+            LOG_DEBUG("Initial transition set for state: {}", state->getId());
         }
     }
 }
@@ -457,6 +419,11 @@ void RSM::StateNodeParser::parseExecutableContent(const xmlpp::Element *parentEl
         return;
     }
 
+    if (!actionParser_) {
+        LOG_WARN("RSM::StateNodeParser::parseExecutableContent() - ActionParser not available");
+        return;
+    }
+
     auto children = parentElement->get_children();
     for (auto child : children) {
         auto element = dynamic_cast<const xmlpp::Element *>(child);
@@ -464,108 +431,26 @@ void RSM::StateNodeParser::parseExecutableContent(const xmlpp::Element *parentEl
             continue;
         }
 
-        std::string nodeName = element->get_name();
-
-        // <script> 요소 파싱
-        if (ParsingCommon::matchNodeName(nodeName, "script")) {
-            auto scriptAction = parseScriptAction(element);
-            if (scriptAction) {
-                if (isEntryAction) {
-                    state->addEntryActionNode(scriptAction);
-                } else {
-                    state->addExitActionNode(scriptAction);
-                }
-                Logger::debug("RSM::StateNodeParser::parseExecutableContent() - Added " +
-                              std::string(isEntryAction ? "entry" : "exit") + " script action");
+        // W3C SCXML 사양 준수: 모든 실행 가능한 콘텐츠를 ActionParser에 위임하여 균등하게 처리
+        auto action = actionParser_->parseActionNode(element);
+        if (action) {
+            if (isEntryAction) {
+                state->addEntryActionNode(action);
+            } else {
+                state->addExitActionNode(action);
             }
-        }
-        // <assign> 요소 파싱
-        else if (ParsingCommon::matchNodeName(nodeName, "assign")) {
-            auto assignAction = parseAssignAction(element);
-            if (assignAction) {
-                if (isEntryAction) {
-                    state->addEntryActionNode(assignAction);
-                } else {
-                    state->addExitActionNode(assignAction);
-                }
-                Logger::debug("RSM::StateNodeParser::parseExecutableContent() - Added " +
-                              std::string(isEntryAction ? "entry" : "exit") + " assign action");
+
+            std::string elementName = element->get_name();
+            // 네임스페이스 접두사 제거
+            size_t colonPos = elementName.find(':');
+            if (colonPos != std::string::npos && colonPos + 1 < elementName.length()) {
+                elementName = elementName.substr(colonPos + 1);
             }
+
+            LOG_DEBUG("Added {} {} action via ActionParser", (isEntryAction ? "entry" : "exit"), elementName);
+        } else {
+            std::string elementName = element->get_name();
+            LOG_DEBUG("Element '{}' not recognized as executable content by ActionParser", elementName);
         }
     }
-}
-
-std::shared_ptr<RSM::IActionNode> RSM::StateNodeParser::parseScriptAction(const xmlpp::Element *scriptElement) {
-    if (!scriptElement) {
-        return nullptr;
-    }
-
-    // 스크립트 내용 추출
-    std::string content;
-    auto children = scriptElement->get_children();
-    for (auto child : children) {
-        auto textNode = dynamic_cast<const xmlpp::TextNode *>(child);
-        if (textNode) {
-            content += textNode->get_content();
-        }
-    }
-
-    // src 속성 확인 (현재는 inline content만 지원)
-    auto srcAttr = scriptElement->get_attribute("src");
-    if (srcAttr && !srcAttr->get_value().empty()) {
-        Logger::warn("RSM::StateNodeParser::parseScriptAction() - External script sources not yet supported: " +
-                     srcAttr->get_value());
-        // TODO: 외부 스크립트 파일 로딩 구현
-    }
-
-    // 내용이 비어있으면 빈 스크립트로 생성
-    if (content.empty()) {
-        content = "";  // 빈 스크립트
-    }
-
-    // ScriptAction 생성 (생성자에 content 전달)
-    auto scriptAction = std::make_shared<RSM::ScriptAction>(content);
-
-    return scriptAction;
-}
-
-std::shared_ptr<RSM::IActionNode> RSM::StateNodeParser::parseAssignAction(const xmlpp::Element *assignElement) {
-    if (!assignElement) {
-        return nullptr;
-    }
-
-    // location 속성 (필수)
-    auto locationAttr = assignElement->get_attribute("location");
-    if (!locationAttr) {
-        Logger::warn("RSM::StateNodeParser::parseAssignAction() - Missing required 'location' attribute");
-        return nullptr;
-    }
-    std::string location = locationAttr->get_value();
-
-    // expr 속성
-    std::string expr;
-    auto exprAttr = assignElement->get_attribute("expr");
-    if (exprAttr) {
-        expr = exprAttr->get_value();
-    } else {
-        // expr 속성이 없으면 텍스트 내용 사용
-        auto children = assignElement->get_children();
-        for (auto child : children) {
-            auto textNode = dynamic_cast<const xmlpp::TextNode *>(child);
-            if (textNode) {
-                expr += textNode->get_content();
-            }
-        }
-    }
-
-    // expr이 비어있으면 경고
-    if (expr.empty()) {
-        Logger::warn("RSM::StateNodeParser::parseAssignAction() - Empty expression for location: " + location);
-        expr = "undefined";  // 기본값
-    }
-
-    // AssignAction 생성 (생성자에 location과 expr 전달)
-    auto assignAction = std::make_shared<RSM::AssignAction>(location, expr);
-
-    return assignAction;
 }

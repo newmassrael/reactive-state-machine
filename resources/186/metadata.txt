@@ -1,0 +1,6 @@
+id: 186
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: The Processor MUST evaluate all arguments to send when the send element is evaluated, and not when the message is actually dispatched.
+variants: 1

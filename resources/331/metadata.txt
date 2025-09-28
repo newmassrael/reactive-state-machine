@@ -1,0 +1,6 @@
+id: 331
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST set the type property of _event to: "platform" (for events raised by the platform itself, such as error events), "internal" (for events raised by raise and send with target '_internal') or "external" (for all other events).
+variants: 1

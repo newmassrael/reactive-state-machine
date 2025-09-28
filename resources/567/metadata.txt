@@ -1,0 +1,6 @@
+id: 567
+specnum: C.2
+conformance: optional
+manual: False
+description: The processor MUST use any message content other than '_scxmleventname' to populate _event.data.
+variants: 1

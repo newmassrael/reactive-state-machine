@@ -1,0 +1,6 @@
+id: 235
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: Once the invoked external service has finished processing it MUST return a special event 'done.invoke.id' to the external event queue of the invoking process, where id is the invokeid for the corresponding invoke element.
+variants: 1

@@ -1,25 +1,27 @@
 #include "parsing/ActionParser.h"
 #include "actions/AssignAction.h"
 #include "actions/CancelAction.h"
+#include "actions/ForeachAction.h"
 #include "actions/IfAction.h"
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
 #include "common/Logger.h"
+#include "parsing/ParsingCommon.h"  // ✅ Fix: Missing ParsingCommon header
 #include <algorithm>
 
 RSM::ActionParser::ActionParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
-    Logger::debug("RSM::ActionParser::Constructor - Creating action parser");
+    LOG_DEBUG("Creating action parser");
 }
 
 RSM::ActionParser::~ActionParser() {
-    Logger::debug("RSM::ActionParser::Destructor - Destroying action parser");
+    LOG_DEBUG("Destroying action parser");
 }
 
 std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp::Element *actionElement) {
     if (!actionElement) {
-        Logger::warn("RSM::ActionParser::parseActionNode() - Null action element");
+        LOG_WARN("Null action element");
         return nullptr;
     }
 
@@ -42,7 +44,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
         id = elementName;
     }
 
-    Logger::debug("RSM::ActionParser::parseActionNode() - Parsing action type: " + elementName + ", id: " + id);
+    LOG_DEBUG("ActionParser: Processing action with id: {}", id);
 
     // 액션 타입별로 구체적인 액션 객체 생성
     if (elementName == "script") {
@@ -79,29 +81,154 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
     } else if (elementName == "if") {
         auto condAttr = actionElement->get_attribute("cond");
         std::string condition = condAttr ? condAttr->get_value() : "";
-        return std::make_shared<RSM::IfAction>(condition, id);
+        auto ifAction = std::make_shared<RSM::IfAction>(condition, id);
+
+        // Parse child elements for elseif and else branches
+        auto children = actionElement->get_children();
+        RSM::IfAction::ConditionalBranch *currentBranch = nullptr;
+
+        // Process children sequentially to maintain branch context
+        for (auto child : children) {
+            auto element = dynamic_cast<const xmlpp::Element *>(child);
+            if (!element) {
+                continue;
+            }
+
+            std::string childName = element->get_name();
+            // Remove namespace prefix if present
+            size_t colonPos = childName.find(':');
+            if (colonPos != std::string::npos && colonPos + 1 < childName.length()) {
+                childName = childName.substr(colonPos + 1);
+            }
+
+            if (childName == "elseif") {
+                auto elseifCondAttr = element->get_attribute("cond");
+                std::string elseifCondition = elseifCondAttr ? elseifCondAttr->get_value() : "";
+                currentBranch = &ifAction->addElseIfBranch(elseifCondition);
+            } else if (childName == "else") {
+                currentBranch = &ifAction->addElseBranch();
+            } else if (isActionNode(element)) {
+                auto childAction = parseActionNode(element);
+                if (childAction) {
+                    if (currentBranch) {
+                        // Add to current elseif/else branch
+                        currentBranch->actions.push_back(childAction);
+                    } else {
+                        // Add to main if branch (before any elseif/else)
+                        ifAction->addIfAction(childAction);
+                    }
+                }
+            }
+        }
+
+        return ifAction;
 
     } else if (elementName == "send") {
         auto eventAttr = actionElement->get_attribute("event");
         std::string event = eventAttr ? eventAttr->get_value() : "";
-        return std::make_shared<RSM::SendAction>(event, id);
+
+        auto sendAction = std::make_shared<RSM::SendAction>(event, id);
+
+        // Parse idlocation attribute for W3C compliance
+        auto idlocationAttr = actionElement->get_attribute("idlocation");
+        if (idlocationAttr) {
+            sendAction->setIdLocation(idlocationAttr->get_value());
+        }
+
+        // Parse other send attributes
+        auto targetAttr = actionElement->get_attribute("target");
+        if (targetAttr) {
+            sendAction->setTarget(targetAttr->get_value());
+        }
+
+        auto targetExprAttr = actionElement->get_attribute("targetexpr");
+        if (targetExprAttr) {
+            sendAction->setTargetExpr(targetExprAttr->get_value());
+        }
+
+        auto eventExprAttr = actionElement->get_attribute("eventexpr");
+        if (eventExprAttr) {
+            sendAction->setEventExpr(eventExprAttr->get_value());
+        }
+
+        auto delayAttr = actionElement->get_attribute("delay");
+        if (delayAttr) {
+            sendAction->setDelay(delayAttr->get_value());
+        }
+
+        auto delayExprAttr = actionElement->get_attribute("delayexpr");
+        if (delayExprAttr) {
+            sendAction->setDelayExpr(delayExprAttr->get_value());
+        }
+
+        auto typeAttr = actionElement->get_attribute("type");
+        if (typeAttr) {
+            sendAction->setType(typeAttr->get_value());
+        }
+
+        auto sendIdAttr = actionElement->get_attribute("sendid");
+        if (sendIdAttr) {
+            sendAction->setSendId(sendIdAttr->get_value());
+        }
+
+        // 🚨 CRITICAL: Parse param child elements for W3C SCXML compliance
+        auto paramElements = ParsingCommon::findChildElements(actionElement, "param");
+        for (auto paramElement : paramElements) {
+            auto nameAttr = paramElement->get_attribute("name");
+            auto exprAttr = paramElement->get_attribute("expr");
+
+            if (nameAttr && exprAttr) {
+                std::string paramName = nameAttr->get_value();
+                std::string paramExpr = exprAttr->get_value();
+                sendAction->addParamWithExpr(paramName, paramExpr);
+                LOG_DEBUG("ActionParser: Added send param '{}' with expr '{}'", paramName, paramExpr);
+            } else {
+                LOG_WARN("ActionParser: send param element missing name or expr attribute");
+            }
+        }
+
+        return sendAction;
 
     } else if (elementName == "cancel") {
         auto sendidAttr = actionElement->get_attribute("sendid");
         std::string sendid = sendidAttr ? sendidAttr->get_value() : "";
         return std::make_shared<RSM::CancelAction>(sendid, id);
 
+    } else if (elementName == "foreach") {
+        // SCXML W3C 표준: foreach 요소 파싱
+        auto arrayAttr = actionElement->get_attribute("array");
+        auto itemAttr = actionElement->get_attribute("item");
+        auto indexAttr = actionElement->get_attribute("index");
+
+        std::string array = arrayAttr ? arrayAttr->get_value() : "";
+        std::string item = itemAttr ? itemAttr->get_value() : "";
+        std::string index = indexAttr ? indexAttr->get_value() : "";
+
+        LOG_DEBUG("Parsing foreach: array='{}', item='{}', index='{}'", array, item, index);
+
+        auto foreachAction = std::make_shared<RSM::ForeachAction>(array, item, index, id);
+
+        // 중첩 액션들 파싱 (foreach 내부의 실행 가능 콘텐츠)
+        auto childActions = parseActionsInElement(actionElement);
+        for (const auto &childAction : childActions) {
+            if (childAction) {
+                foreachAction->addIterationAction(childAction);
+            }
+        }
+
+        LOG_DEBUG("Foreach action created with {} child actions", childActions.size());
+
+        return foreachAction;
+
     } else {
-        Logger::warn("RSM::ActionParser::parseActionNode() - Unknown action type: " + elementName +
-                     ", creating ScriptAction");
+        LOG_WARN("Unknown action type: {}, creating ScriptAction", elementName);
         return std::make_shared<RSM::ScriptAction>("", id);
     }
 }
 
 std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(const xmlpp::Element *externalActionNode) {
     if (!externalActionNode) {
-        Logger::warn("RSM::ActionParser::parseExternalActionNode() - Null external "
-                     "action node");
+        LOG_WARN("Null external action node");
         return nullptr;
     }
 
@@ -114,15 +241,12 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
     }
 
     if (!nameAttr) {
-        Logger::warn("RSM::ActionParser::parseExternalActionNode() - External "
-                     "action node missing required name attribute");
+        LOG_WARN("External action node missing required name attribute");
         return nullptr;
     }
 
     std::string id = nameAttr->get_value();
-    Logger::debug("RSM::ActionParser::parseExternalActionNode() - Parsing "
-                  "external action: " +
-                  id);
+    LOG_DEBUG("Parsing external action: {}", id);
 
     // 외부 액션은 ScriptAction으로 처리 (향후 외부 액션 지원 시 확장)
     auto action = std::make_shared<RSM::ScriptAction>("", id);
@@ -130,7 +254,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
     // 지연 시간은 무시 (현재 구현에서는 지원하지 않음)
     auto delayAttr = externalActionNode->get_attribute("delay");
     if (delayAttr) {
-        Logger::debug("RSM::ActionParser::parseExternalActionNode() - Delay ignored: " + delayAttr->get_value());
+        LOG_DEBUG("ActionParser: Delay attribute value: {}", delayAttr->get_value());
     }
 
     // 외부 구현 요소 파싱
@@ -158,14 +282,12 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
             // 이미 처리한 속성은 건너뜀
             if (name != "name" && name != "id" && name != "delay") {
                 // 추가 속성 무시 (현재 구현에서는 지원하지 않음)
-                Logger::debug("RSM::ActionParser::parseExternalActionNode() - Ignored attribute: " + name + " = " +
-                              value);
+                LOG_DEBUG("ActionParser: Additional attribute {} = {}", name, value);
             }
         }
     }
 
-    Logger::debug("RSM::ActionParser::parseExternalActionNode() - External "
-                  "action parsed successfully");
+    LOG_DEBUG("External action parsed successfully");
     return action;
 }
 
@@ -174,31 +296,40 @@ RSM::ActionParser::parseActionsInElement(const xmlpp::Element *parentElement) {
     std::vector<std::shared_ptr<RSM::IActionNode>> actions;
 
     if (!parentElement) {
-        Logger::warn("RSM::ActionParser::parseActionsInElement() - Null parent element");
+        LOG_WARN("Null parent element");
         return actions;
     }
 
-    Logger::debug("RSM::ActionParser::parseActionsInElement() - Parsing actions "
-                  "in element: " +
-                  parentElement->get_name());
+    LOG_DEBUG("ActionParser: Parsing actions in element: {}", parentElement->get_name());
 
     // 모든 자식 요소 검사
     auto children = parentElement->get_children();
+    LOG_DEBUG("ActionParser: Found {} child elements in {}", children.size(), parentElement->get_name());
+
     for (auto child : children) {
         auto element = dynamic_cast<const xmlpp::Element *>(child);
         if (!element) {
+            LOG_DEBUG("ActionParser: Skipping non-element child node");
             continue;
         }
 
+        LOG_DEBUG("ActionParser: Processing child element: '{}'", element->get_name());
+
         // 액션 노드 확인
         if (isActionNode(element)) {
+            LOG_DEBUG("ActionParser: '{}' is recognized as action node", element->get_name());
             auto action = parseActionNode(element);
             if (action) {
+                LOG_DEBUG("ActionParser: Successfully parsed action node: '{}'", element->get_name());
                 actions.push_back(action);
+            } else {
+                LOG_ERROR("ActionParser: Failed to parse action node: '{}'", element->get_name());
             }
+        } else {
+            LOG_DEBUG("ActionParser: '{}' is NOT recognized as action node", element->get_name());
         }
         // 외부 실행 액션 노드 확인
-        else if (isExternalActionNode(element)) {
+        if (isExternalActionNode(element)) {
             auto action = parseExternalActionNode(element);
             if (action) {
                 actions.push_back(action);
@@ -211,7 +342,7 @@ RSM::ActionParser::parseActionsInElement(const xmlpp::Element *parentElement) {
         }
     }
 
-    Logger::debug("RSM::ActionParser::parseActionsInElement() - Found " + std::to_string(actions.size()) + " actions");
+    LOG_DEBUG("ActionParser: Parsed {} actions", actions.size());
     return actions;
 }
 
@@ -222,9 +353,7 @@ void RSM::ActionParser::parseSpecialExecutableContent(const xmlpp::Element *elem
     }
 
     std::string nodeName = element->get_name();
-    Logger::debug("RSM::ActionParser::parseSpecialExecutableContent() - Parsing "
-                  "special content: " +
-                  nodeName);
+    LOG_DEBUG("Parsing special content: {}", nodeName);
 
     // 특수 요소에 대한 액션 노드 생성 (if 액션으로 처리)
     std::string localName = getLocalName(nodeName);
@@ -246,8 +375,7 @@ void RSM::ActionParser::parseSpecialExecutableContent(const xmlpp::Element *elem
         if (xmlAttr) {
             std::string name = xmlAttr->get_name();
             std::string value = xmlAttr->get_value();
-            Logger::debug("RSM::ActionParser::parseSpecialExecutableContent() - Ignored attribute: " + name + " = " +
-                          value);
+            LOG_DEBUG("ActionParser: Special content attribute {} = {}", name, value);
         }
     }
 
@@ -270,8 +398,7 @@ void RSM::ActionParser::parseSpecialExecutableContent(const xmlpp::Element *elem
 
     // 자식 액션 노드 처리 (현재 구현에서는 무시)
     if (!childActions.empty()) {
-        Logger::debug("RSM::ActionParser::parseSpecialExecutableContent() - Ignored " +
-                      std::to_string(childActions.size()) + " child actions for " + nodeName);
+        LOG_DEBUG("Ignored {} child actions for {}", childActions.size(), nodeName);
     }
 
     // 생성된 특수 액션 추가
@@ -284,6 +411,7 @@ bool RSM::ActionParser::isActionNode(const xmlpp::Element *element) const {
     }
 
     std::string nodeName = element->get_name();
+    LOG_DEBUG("ActionParser: isActionNode checking element: '{}'", nodeName);
 
     // 커스텀 액션 태그
     if (matchNodeName(nodeName, "action") || matchNodeName(nodeName, "code:action")) {
@@ -291,8 +419,12 @@ bool RSM::ActionParser::isActionNode(const xmlpp::Element *element) const {
     }
 
     // 표준 SCXML 실행 가능 콘텐츠 태그
-    return matchNodeName(nodeName, "raise") || matchNodeName(nodeName, "assign") || matchNodeName(nodeName, "script") ||
-           matchNodeName(nodeName, "log") || matchNodeName(nodeName, "send") || matchNodeName(nodeName, "cancel");
+    bool isStandardAction = matchNodeName(nodeName, "raise") || matchNodeName(nodeName, "assign") ||
+                            matchNodeName(nodeName, "script") || matchNodeName(nodeName, "log") ||
+                            matchNodeName(nodeName, "send") || matchNodeName(nodeName, "cancel");
+
+    LOG_DEBUG("ActionParser: isActionNode result for '{}': {}", nodeName, isStandardAction);
+    return isStandardAction;
 }
 
 bool RSM::ActionParser::isSpecialExecutableContent(const xmlpp::Element *element) const {
@@ -323,21 +455,19 @@ void RSM::ActionParser::parseExternalImplementation(const xmlpp::Element *elemen
         return;
     }
 
-    Logger::debug("RSM::ActionParser::parseExternalImplementation() - Parsing "
-                  "external implementation for action: " +
-                  actionNode->getId());
+    LOG_DEBUG("Parsing external implementation for action: {}", actionNode->getId());
 
     auto classAttr = element->get_attribute("class");
     auto factoryAttr = element->get_attribute("factory");
 
     if (classAttr) {
         std::string className = classAttr->get_value();
-        Logger::debug("RSM::ActionParser::parseExternalImplementation() - External class ignored: " + className);
+        LOG_DEBUG("Class name: {}", className);
     }
 
     if (factoryAttr) {
         std::string factory = factoryAttr->get_value();
-        Logger::debug("RSM::ActionParser::parseExternalImplementation() - External factory ignored: " + factory);
+        LOG_DEBUG("Factory: {}", factory);
     }
 }
 

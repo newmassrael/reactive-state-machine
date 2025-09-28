@@ -1,0 +1,6 @@
+id: 529
+specnum: 5.6
+conformance: mandatory
+manual: False
+description: If the 'expr' attribute is not present, the Processor MUST use the children of content as the output.
+variants: 1

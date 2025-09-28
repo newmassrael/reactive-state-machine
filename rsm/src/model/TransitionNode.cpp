@@ -6,8 +6,7 @@
 
 RSM::TransitionNode::TransitionNode(const std::string &event, const std::string &target)
     : event_(event), target_(target), guard_(""), reactive_(false), internal_(false), targetsDirty_(true) {
-    Logger::debug("RSM::TransitionNode::Constructor - Creating transition node: " +
-                  (event.empty() ? "<no event>" : event) + " -> " + target);
+    LOG_DEBUG("Creating transition node: {} -> {}", (event.empty() ? "<no event>" : event), target);
 
     if (!event.empty()) {
         events_.push_back(event);
@@ -15,8 +14,7 @@ RSM::TransitionNode::TransitionNode(const std::string &event, const std::string 
 }
 
 RSM::TransitionNode::~TransitionNode() {
-    Logger::debug("RSM::TransitionNode::Destructor - Destroying transition node: " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_);
+    LOG_DEBUG("Destroying transition node: {} -> {}", (event_.empty() ? "<no event>" : event_), target_);
 }
 
 const std::string &RSM::TransitionNode::getEvent() const {
@@ -33,8 +31,7 @@ std::vector<std::string> RSM::TransitionNode::getTargets() const {
 }
 
 void RSM::TransitionNode::addTarget(const std::string &target) {
-    Logger::debug("RSM::TransitionNode::addTarget() - Adding target to transition " +
-                  (event_.empty() ? "<no event>" : event_) + ": " + target);
+    LOG_DEBUG("Adding target to transition {}: {}", (event_.empty() ? "<no event>" : event_), target);
 
     if (target.empty()) {
         return;  // 빈 타겟은 추가하지 않음
@@ -49,8 +46,7 @@ void RSM::TransitionNode::addTarget(const std::string &target) {
 }
 
 void RSM::TransitionNode::clearTargets() {
-    Logger::debug("RSM::TransitionNode::clearTargets() - Clearing targets for transition " +
-                  (event_.empty() ? "<no event>" : event_));
+    LOG_DEBUG("Clearing targets for transition {}", (event_.empty() ? "<no event>" : event_));
 
     target_.clear();
     cachedTargets_.clear();
@@ -79,8 +75,7 @@ void RSM::TransitionNode::parseTargets() const {
 }
 
 void RSM::TransitionNode::setGuard(const std::string &guard) {
-    Logger::debug("RSM::TransitionNode::setGuard() - Setting guard for transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " + guard);
+    LOG_DEBUG("Setting guard for transition {} -> {}: {}", (event_.empty() ? "<no event>" : event_), target_, guard);
     guard_ = guard;
 }
 
@@ -89,9 +84,8 @@ const std::string &RSM::TransitionNode::getGuard() const {
 }
 
 void RSM::TransitionNode::addActionNode(std::shared_ptr<RSM::IActionNode> actionNode) {
-    Logger::debug("RSM::TransitionNode::addActionNode() - Adding ActionNode to transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " +
-                  (actionNode ? actionNode->getActionType() : "null"));
+    LOG_DEBUG("Adding ActionNode to transition {} -> {}: {}", (event_.empty() ? "<no event>" : event_), target_,
+              (actionNode ? actionNode->getActionType() : "null"));
     if (actionNode) {
         actionNodes_.push_back(actionNode);
     }
@@ -102,9 +96,8 @@ const std::vector<std::shared_ptr<RSM::IActionNode>> &RSM::TransitionNode::getAc
 }
 
 void RSM::TransitionNode::setReactive(bool reactive) {
-    Logger::debug("RSM::TransitionNode::setReactive() - Setting reactive flag "
-                  "for transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " + (reactive ? "true" : "false"));
+    LOG_DEBUG("Setting reactive flag for transition {} -> {}: {}", (event_.empty() ? "<no event>" : event_), target_,
+              (reactive ? "true" : "false"));
     reactive_ = reactive;
 }
 
@@ -113,9 +106,8 @@ bool RSM::TransitionNode::isReactive() const {
 }
 
 void RSM::TransitionNode::setInternal(bool internal) {
-    Logger::debug("RSM::TransitionNode::setInternal() - Setting internal flag "
-                  "for transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " + (internal ? "true" : "false"));
+    LOG_DEBUG("Setting internal flag for transition {} -> {}: {}", (event_.empty() ? "<no event>" : event_), target_,
+              (internal ? "true" : "false"));
     internal_ = internal;
 }
 
@@ -124,9 +116,8 @@ bool RSM::TransitionNode::isInternal() const {
 }
 
 void RSM::TransitionNode::setAttribute(const std::string &name, const std::string &value) {
-    Logger::debug("RSM::TransitionNode::setAttribute() - Setting attribute for "
-                  "transition " +
-                  (event_.empty() ? "<no event>" : event_) + " -> " + target_ + ": " + name + "=" + value);
+    LOG_DEBUG("Setting attribute for transition {} -> {}: {}={}", (event_.empty() ? "<no event>" : event_), target_,
+              name, value);
     attributes_[name] = value;
 }
 
@@ -140,7 +131,7 @@ std::string RSM::TransitionNode::getAttribute(const std::string &name) const {
 
 void RSM::TransitionNode::addEvent(const std::string &event) {
     if (std::find(events_.begin(), events_.end(), event) == events_.end()) {
-        Logger::debug("RSM::TransitionNode::addEvent() - Adding event to transition: " + event);
+        LOG_DEBUG("Adding event to transition: {}", event);
         events_.push_back(event);
     }
 }

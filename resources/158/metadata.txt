@@ -1,0 +1,6 @@
+id: 158
+specnum: 4.9
+conformance: mandatory
+manual: False
+description: The SCXML processor MUST execute the elements of a block of executable contentin document order.
+variants: 1

@@ -35,9 +35,9 @@ public:
                                 std::shared_ptr<IEventDispatcher> eventDispatcher = nullptr);
 
     /**
-     * @brief Destructor
+     * @brief Destructor - unregister from JSEngine EventDispatcher registry
      */
-    virtual ~ActionExecutorImpl() = default;
+    virtual ~ActionExecutorImpl();
 
     // High-level action execution methods (Command pattern)
     bool executeScriptAction(const ScriptAction &action) override;
@@ -55,21 +55,15 @@ public:
     std::string evaluateExpression(const std::string &expression) override;
     bool evaluateCondition(const std::string &condition) override;
     void log(const std::string &level, const std::string &message) override;
-    bool raiseEvent(const std::string &eventName, const std::string &eventData = "") override;
+
     bool hasVariable(const std::string &location) override;
     std::string getSessionId() const override;
 
     /**
-     * @brief Set callback for event raising (dependency injection)
-     * @param callback Function to call when raising events
+     * @brief Set event raiser for dependency injection
+     * @param eventRaiser Event raiser implementation
      */
-    void setEventRaiseCallback(std::function<bool(const std::string &, const std::string &)> callback);
-
-    /**
-     * @brief Get the EventRaiser instance for this ActionExecutor
-     * @return Shared pointer to EventRaiser for dependency injection
-     */
-    std::shared_ptr<IEventRaiser> getEventRaiser();
+    void setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser);
 
     /**
      * @brief Set current event data for _event variable access
@@ -96,7 +90,8 @@ public:
     void setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher);
 
     /**
-     * @brief Check if a string is an expression that needs JavaScript evaluation
+     * @brief DEPRECATED: Check if a string is an expression that needs JavaScript evaluation
+     * This method is kept for backward compatibility but is no longer used in the main evaluation path.
      * @param value String to check
      * @return true if value contains expressions that need evaluation
      */
@@ -104,11 +99,12 @@ public:
 
 private:
     std::string sessionId_;
-    std::function<bool(const std::string &, const std::string &)> eventRaiseCallback_;
     std::string currentEventName_;
     std::string currentEventData_;
     std::shared_ptr<IEventDispatcher> eventDispatcher_;
-    std::shared_ptr<EventRaiserImpl> eventRaiser_;
+    std::shared_ptr<IEventRaiser> eventRaiser_;
+
+    // Assignment context tracking to prevent _event updates during assign actions
 
     // Expression validation cache for performance
     mutable std::unordered_map<std::string, bool> expressionCache_;
@@ -122,21 +118,43 @@ private:
     bool isValidLocation(const std::string &location) const;
 
     /**
-     * @brief Fast check for obvious literal values
+     * @brief Transform SCXML variable names to valid JavaScript identifiers
+     * @param name Original SCXML variable name (may be numeric like "1", "2")
+     * @return JavaScript-compatible variable name (e.g., "1" -> "var1")
+     */
+    std::string transformVariableName(const std::string &name) const;
+
+    /**
+     * @brief Interpret a value as a literal following SCXML specification
+     * @param value String value to interpret as literal
+     * @return Processed literal value (e.g., unquoted strings)
+     */
+    std::string interpretAsLiteral(const std::string &value) const;
+
+    /**
+     * @brief Try to evaluate an expression using JavaScript engine
+     * @param expression Expression string to evaluate
+     * @param result Output parameter for the evaluation result
+     * @return true if JavaScript evaluation succeeded, false if fallback needed
+     */
+    bool tryJavaScriptEvaluation(const std::string &expression, std::string &result) const;
+
+    /**
+     * @brief DEPRECATED: Fast check for obvious literal values
      * @param value String to check
      * @return true if value is obviously a literal (no JS evaluation needed)
      */
     bool isObviousLiteral(const std::string &value) const;
 
     /**
-     * @brief Fast check for obvious expressions
+     * @brief DEPRECATED: Fast check for obvious expressions
      * @param value String to check
      * @return true if value is obviously an expression (needs JS evaluation)
      */
     bool isObviousExpression(const std::string &value) const;
 
     /**
-     * @brief Validate expression using JSEngine with caching
+     * @brief DEPRECATED: Validate expression using JSEngine with caching
      * @param value String to validate
      * @return true if value is a valid JavaScript expression
      */

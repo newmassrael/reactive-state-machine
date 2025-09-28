@@ -1,0 +1,222 @@
+#pragma once
+
+#include "events/IEventDispatcher.h"
+#include "model/IInvokeNode.h"
+#include "scripting/JSEngine.h"
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace RSM {
+
+// Forward declarations
+class StateMachine;
+
+/**
+ * @brief Interface for invoke handler implementations (Open/Closed Principle)
+ *
+ * Allows extension for different invoke types (SCXML, HTTP, etc.)
+ * without modifying existing code.
+ */
+class IInvokeHandler {
+public:
+    virtual ~IInvokeHandler() = default;
+
+    /**
+     * @brief Start an invoke operation
+     * @param invoke Invoke node containing configuration
+     * @param parentSessionId Parent session ID for hierarchical sessions
+     * @param eventDispatcher Event dispatcher for communication
+     * @return Generated invokeid for tracking
+     */
+    virtual std::string startInvoke(const std::shared_ptr<IInvokeNode> &invoke, const std::string &parentSessionId,
+                                    std::shared_ptr<IEventDispatcher> eventDispatcher) = 0;
+
+    /**
+     * @brief Start an invoke operation with pre-allocated session ID (architectural fix for timing)
+     * @param invoke Invoke node containing configuration
+     * @param parentSessionId Parent session ID for hierarchical sessions
+     * @param eventDispatcher Event dispatcher for communication
+     * @param childSessionId Pre-allocated child session ID to ensure mapping consistency
+     * @return Generated invokeid for tracking (should match invoke ID)
+     */
+    virtual std::string startInvokeWithSessionId(const std::shared_ptr<IInvokeNode> &invoke,
+                                                 const std::string &parentSessionId,
+                                                 std::shared_ptr<IEventDispatcher> eventDispatcher,
+                                                 const std::string &childSessionId) = 0;
+
+    /**
+     * @brief Cancel an ongoing invoke operation
+     * @param invokeid ID of the invoke to cancel
+     * @return true if successfully cancelled
+     */
+    virtual bool cancelInvoke(const std::string &invokeid) = 0;
+
+    /**
+     * @brief Check if invoke is still active
+     * @param invokeid ID of the invoke to check
+     * @return true if invoke is active
+     */
+    virtual bool isInvokeActive(const std::string &invokeid) const = 0;
+
+    /**
+     * @brief Get supported invoke type
+     * @return Type string (e.g., "scxml", "http")
+     */
+    virtual std::string getType() const = 0;
+};
+
+/**
+ * @brief SCXML invoke handler implementation
+ *
+ * Handles SCXML-to-SCXML invocation using JSEngine sessions
+ * and hierarchical parent-child relationships.
+ */
+class SCXMLInvokeHandler : public IInvokeHandler {
+public:
+    SCXMLInvokeHandler();
+    ~SCXMLInvokeHandler() override;
+
+    std::string startInvoke(const std::shared_ptr<IInvokeNode> &invoke, const std::string &parentSessionId,
+                            std::shared_ptr<IEventDispatcher> eventDispatcher) override;
+
+    std::string startInvokeWithSessionId(const std::shared_ptr<IInvokeNode> &invoke, const std::string &parentSessionId,
+                                         std::shared_ptr<IEventDispatcher> eventDispatcher,
+                                         const std::string &childSessionId) override;
+
+    bool cancelInvoke(const std::string &invokeid) override;
+    bool isInvokeActive(const std::string &invokeid) const override;
+    std::string getType() const override;
+
+private:
+    struct InvokeSession {
+        std::string invokeid;
+        std::string sessionId;
+        std::string parentSessionId;
+        std::shared_ptr<IEventDispatcher> eventDispatcher;
+        std::unique_ptr<StateMachine> childStateMachine;
+        bool isActive = true;
+    };
+
+    std::unordered_map<std::string, InvokeSession> activeSessions_;
+
+    std::string generateInvokeId() const;
+
+    /**
+     * @brief Internal method containing shared invoke logic (DRY principle)
+     * @param invoke Invoke node configuration
+     * @param parentSessionId Parent session ID
+     * @param eventDispatcher Event dispatcher for communication
+     * @param childSessionId Child session ID (either generated or pre-allocated)
+     * @param sessionAlreadyExists Whether the child session was pre-created
+     * @return Generated invokeid for tracking
+     */
+    std::string startInvokeInternal(const std::shared_ptr<IInvokeNode> &invoke, const std::string &parentSessionId,
+                                    std::shared_ptr<IEventDispatcher> eventDispatcher,
+                                    const std::string &childSessionId, bool sessionAlreadyExists);
+};
+
+/**
+ * @brief Factory for creating invoke handlers (Factory Pattern)
+ */
+class InvokeHandlerFactory {
+public:
+    static std::shared_ptr<IInvokeHandler> createHandler(const std::string &type);
+    static void registerHandler(const std::string &type, std::function<std::shared_ptr<IInvokeHandler>()> creator);
+
+private:
+    static std::unordered_map<std::string, std::function<std::shared_ptr<IInvokeHandler>()>> creators_;
+};
+
+/**
+ * @brief Main invoke execution coordinator (Single Responsibility Principle)
+ *
+ * Coordinates invoke lifecycle management by delegating to appropriate handlers
+ * while maintaining SCXML W3C compliance. Leverages existing infrastructure:
+ * - JSEngine for session management
+ * - IEventDispatcher for event communication
+ * - IInvokeNode for parsed invoke data
+ */
+class InvokeExecutor {
+public:
+    /**
+     * @brief Constructor with dependency injection (Dependency Inversion Principle)
+     * @param eventDispatcher Event dispatcher for inter-session communication
+     */
+    explicit InvokeExecutor(std::shared_ptr<IEventDispatcher> eventDispatcher = nullptr);
+
+    /**
+     * @brief Destructor - ensures cleanup of active invokes
+     */
+    ~InvokeExecutor();
+
+    /**
+     * @brief Execute invoke nodes for a state entry
+     * @param invokes Vector of invoke nodes to execute
+     * @param sessionId Current session ID (parent for child invokes)
+     * @return true if all invokes started successfully
+     */
+    bool executeInvokes(const std::vector<std::shared_ptr<IInvokeNode>> &invokes, const std::string &sessionId);
+
+    /**
+     * @brief Execute a single invoke node
+     * @param invoke Invoke node to execute
+     * @param sessionId Current session ID (parent for child invoke)
+     * @return Generated invokeid, empty string on failure
+     */
+    std::string executeInvoke(const std::shared_ptr<IInvokeNode> &invoke, const std::string &sessionId);
+
+    /**
+     * @brief Cancel specific invoke by ID
+     * @param invokeid ID of invoke to cancel
+     * @return true if successfully cancelled
+     */
+    bool cancelInvoke(const std::string &invokeid);
+
+    /**
+     * @brief Cancel all invokes for a session (W3C SCXML compliance)
+     * @param sessionId Session whose invokes should be cancelled
+     * @return Number of invokes cancelled
+     */
+    size_t cancelInvokesForSession(const std::string &sessionId);
+
+    /**
+     * @brief Cancel all active invokes
+     * @return Number of invokes cancelled
+     */
+    size_t cancelAllInvokes();
+
+    /**
+     * @brief Check if invoke is active
+     * @param invokeid ID of invoke to check
+     * @return true if invoke is active
+     */
+    bool isInvokeActive(const std::string &invokeid) const;
+
+    /**
+     * @brief Get statistics for monitoring
+     * @return Statistics string
+     */
+    std::string getStatistics() const;
+
+    /**
+     * @brief Set event dispatcher (for late binding)
+     * @param eventDispatcher Event dispatcher instance
+     */
+    void setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher);
+
+private:
+    std::shared_ptr<IEventDispatcher> eventDispatcher_;
+
+    // Track invoke sessions by parent session (for cancellation on state exit)
+    std::unordered_map<std::string, std::vector<std::string>> sessionInvokes_;
+
+    // Track handlers by invokeid for cancellation
+    std::unordered_map<std::string, std::shared_ptr<IInvokeHandler>> invokeHandlers_;
+
+    std::string generateInvokeId() const;
+    void cleanupInvoke(const std::string &invokeid);
+};
+
+}  // namespace RSM

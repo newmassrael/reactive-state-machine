@@ -1,0 +1,6 @@
+id: 338
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: If an event is generated from an invoked child process, the Processor MUST set the invokeid field to the invoke id of the invocation that triggered the child process.
+variants: 1

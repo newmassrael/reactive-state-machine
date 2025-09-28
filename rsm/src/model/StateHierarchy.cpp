@@ -7,17 +7,16 @@
 #include <unordered_set>
 
 RSM::StateHierarchy::StateHierarchy() : rootState_(nullptr) {
-    Logger::debug("RSM::StateHierarchy::Constructor - Creating state hierarchy");
+    LOG_DEBUG("Creating state hierarchy");
 }
 
 RSM::StateHierarchy::~StateHierarchy() {
-    Logger::debug("RSM::StateHierarchy::Destructor - Destroying state hierarchy");
+    LOG_DEBUG("Destroying state hierarchy");
     // 스마트 포인터가 자원 정리를 담당
 }
 
 void RSM::StateHierarchy::setRootState(std::shared_ptr<RSM::IStateNode> rootState) {
-    Logger::debug("RSM::StateHierarchy::setRootState() - Setting root state: " +
-                  (rootState ? rootState->getId() : "null"));
+    LOG_DEBUG("Setting root state: {}", (rootState ? rootState->getId() : "null"));
     rootState_ = rootState;
 
     if (rootState_) {
@@ -32,17 +31,17 @@ RSM::IStateNode *RSM::StateHierarchy::getRootState() const {
 
 bool RSM::StateHierarchy::addState(std::shared_ptr<RSM::IStateNode> state, const std::string &parentId) {
     if (!state) {
-        Logger::warn("RSM::StateHierarchy::addState() - Attempt to add null state");
+        LOG_WARN("Attempt to add null state");
         return false;
     }
 
-    Logger::debug("RSM::StateHierarchy::addState() - Adding state: " + state->getId());
+    LOG_DEBUG("Adding state: {}", state->getId());
 
     // 부모 ID가 지정된 경우, 해당 부모를 찾고 자식으로 추가
     if (!parentId.empty()) {
         RSM::IStateNode *parent = findStateById(parentId);
         if (!parent) {
-            Logger::error("RSM::StateHierarchy::addState() - Parent state not found: " + parentId);
+            LOG_ERROR("Parent state not found: {}", parentId);
             return false;
         }
 
@@ -113,8 +112,7 @@ const std::vector<std::shared_ptr<RSM::IStateNode>> &RSM::StateHierarchy::getAll
 }
 
 bool RSM::StateHierarchy::validateRelationships() const {
-    Logger::info("RSM::StateHierarchy::validateRelationships() - Validating "
-                 "state relationships");
+    LOG_INFO("Validating state relationships");
 
     // 모든 상태에 대해 검증
     for (const auto &state : allStates_) {
@@ -131,8 +129,8 @@ bool RSM::StateHierarchy::validateRelationships() const {
             }
 
             if (!foundAsChild) {
-                Logger::error("RSM::StateHierarchy::validateRelationships() - State '" + state->getId() +
-                              "' has parent '" + parent->getId() + "' but is not in parent's children list");
+                LOG_ERROR("State '{}' has parent '{}' but is not in parent's children list", state->getId(),
+                          parent->getId());
                 return false;
             }
         }
@@ -148,21 +146,19 @@ bool RSM::StateHierarchy::validateRelationships() const {
             }
 
             if (!initialStateExists && !state->getChildren().empty()) {
-                Logger::error("RSM::StateHierarchy::validateRelationships() - State '" + state->getId() +
-                              "' references non-existent initial state '" + state->getInitialState() + "'");
+                LOG_ERROR("State '{}' references non-existent initial state '{}'", state->getId(),
+                          state->getInitialState());
                 return false;
             }
         }
     }
 
-    Logger::info("RSM::StateHierarchy::validateRelationships() - All state "
-                 "relationships are valid");
+    LOG_INFO("All state relationships are valid");
     return true;
 }
 
 std::vector<std::string> RSM::StateHierarchy::findMissingStateIds() const {
-    Logger::info("RSM::StateHierarchy::findMissingStateIds() - Looking for "
-                 "missing state IDs");
+    LOG_INFO("Looking for missing state IDs");
 
     std::vector<std::string> missingIds;
     std::unordered_set<std::string> existingIds;
@@ -177,9 +173,7 @@ std::vector<std::string> RSM::StateHierarchy::findMissingStateIds() const {
         // 초기 상태 확인
         if (!state->getInitialState().empty() && existingIds.find(state->getInitialState()) == existingIds.end()) {
             missingIds.push_back(state->getInitialState());
-            Logger::warn("RSM::StateHierarchy::findMissingStateIds() - Missing state "
-                         "ID referenced as initial state: " +
-                         state->getInitialState());
+            LOG_WARN("Missing state ID referenced as initial state: {}", state->getInitialState());
         }
 
         // 전환 타겟 확인
@@ -188,9 +182,7 @@ std::vector<std::string> RSM::StateHierarchy::findMissingStateIds() const {
             for (const auto &target : targets) {
                 if (!target.empty() && existingIds.find(target) == existingIds.end()) {
                     missingIds.push_back(target);
-                    Logger::warn("RSM::StateHierarchy::findMissingStateIds() - Missing "
-                                 "state ID referenced as transition target: " +
-                                 target);
+                    LOG_WARN("Missing state ID referenced as transition target: {}", target);
                 }
             }
         }
@@ -200,24 +192,23 @@ std::vector<std::string> RSM::StateHierarchy::findMissingStateIds() const {
     std::sort(missingIds.begin(), missingIds.end());
     missingIds.erase(std::unique(missingIds.begin(), missingIds.end()), missingIds.end());
 
-    Logger::info("RSM::StateHierarchy::findMissingStateIds() - Found " + std::to_string(missingIds.size()) +
-                 " missing state IDs");
+    LOG_INFO("Found {} missing state IDs", missingIds.size());
     return missingIds;
 }
 
 void RSM::StateHierarchy::printHierarchy() const {
-    Logger::info("RSM::StateHierarchy::printHierarchy() - Printing state hierarchy");
+    LOG_INFO("Printing state hierarchy");
 
-    Logger::info("State Hierarchy:");
-    Logger::info("===============");
+    LOG_INFO("State Hierarchy:");
+    LOG_INFO("===============");
 
     if (rootState_) {
         printStateHierarchy(rootState_.get(), 0);
     } else {
-        Logger::info("  <No root state>");
+        LOG_INFO("  <No root state>");
     }
 
-    Logger::info("RSM::StateHierarchy::printHierarchy() - State hierarchy printed");
+    LOG_INFO("State hierarchy printed");
 }
 
 void RSM::StateHierarchy::printStateHierarchy(RSM::IStateNode *state, int depth) const {
@@ -229,56 +220,56 @@ void RSM::StateHierarchy::printStateHierarchy(RSM::IStateNode *state, int depth)
     std::string indent(depth * 2, ' ');
 
     // 현재 상태 정보 출력
-    Logger::info(indent + "State: " + state->getId());
+    LOG_INFO("{}State: {}", indent, state->getId());
 
     // 상태 타입 출력
     switch (state->getType()) {
     case Type::ATOMIC:
-        Logger::info(" (atomic)");
+        LOG_INFO(" (atomic)");
         break;
     case Type::COMPOUND:
-        Logger::info(" (compound)");
+        LOG_INFO(" (compound)");
         break;
     case Type::PARALLEL:
-        Logger::info(" (parallel)");
+        LOG_INFO(" (parallel)");
         break;
     case Type::FINAL:
-        Logger::info(" (final)");
+        LOG_INFO(" (final)");
         break;
     case Type::HISTORY:
-        Logger::info(" (history)");
+        LOG_INFO(" (history)");
         break;
     case Type::INITIAL:
-        Logger::info(" (initial)");
+        LOG_INFO(" (initial)");
         break;
     }
 
     // 초기 상태 정보 출력
     if (!state->getInitialState().empty()) {
-        Logger::info(" [initial: " + state->getInitialState() + "]");
+        LOG_INFO(" [initial: {}]", state->getInitialState());
     }
 
     // Line break handled by previous Logger::info calls
 
     // 전환 정보 출력
     for (const auto &transition : state->getTransitions()) {
-        Logger::info(indent + "  Transition: " +
-                     (transition->getEvent().empty() ? "<no event>" : transition->getEvent()) + " -> ");
+        LOG_INFO("{}  Transition: {} -> ", indent,
+                 (transition->getEvent().empty() ? "<no event>" : transition->getEvent()));
 
         const auto &targets = transition->getTargets();
         if (targets.empty()) {
-            Logger::info("<no target>");
+            LOG_INFO("<no target>");
         } else {
             for (size_t i = 0; i < targets.size(); ++i) {
-                Logger::info(targets[i]);
+                LOG_INFO("{}", targets[i]);
                 if (i < targets.size() - 1) {
-                    Logger::info(", ");
+                    LOG_INFO(", ");
                 }
             }
         }
 
         if (!transition->getGuard().empty()) {
-            Logger::info(" [guard: " + transition->getGuard() + "]");
+            LOG_INFO(" [guard: {}]", transition->getGuard());
         }
 
         // Line break handled by previous Logger::info calls

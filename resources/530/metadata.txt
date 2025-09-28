@@ -1,0 +1,6 @@
+id: 530
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST evaluate a child content element when the parent invoke element is evaluated and pass the resulting data to the invoked service.
+variants: 1

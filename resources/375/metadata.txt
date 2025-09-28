@@ -1,0 +1,6 @@
+id: 375
+specnum: 3.8
+conformance: mandatory
+manual: False
+description: The SCXML processor MUST execute the onentry handlers of a state in document order when the state is entered.
+variants: 1

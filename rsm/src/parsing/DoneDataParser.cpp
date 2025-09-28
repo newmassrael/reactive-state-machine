@@ -3,17 +3,16 @@
 #include "parsing/ParsingCommon.h"
 
 RSM::DoneDataParser::DoneDataParser(std::shared_ptr<INodeFactory> factory) : factory_(factory) {
-    Logger::debug("RSM::DoneDataParser::Constructor - Creating DoneData parser");
+    LOG_DEBUG("Creating DoneData parser");
 }
 
 bool RSM::DoneDataParser::parseDoneData(const xmlpp::Element *doneDataElement, IStateNode *stateNode) {
     if (!doneDataElement || !stateNode) {
-        Logger::error("RSM::DoneDataParser::parseDoneData - Null doneData element "
-                      "or state node");
+        LOG_ERROR("Null doneData element or state node");
         return false;
     }
 
-    Logger::debug("RSM::DoneDataParser::parseDoneData - Parsing <donedata> for state " + stateNode->getId());
+    LOG_DEBUG("Parsing <donedata> for state {}", stateNode->getId());
 
     bool hasContent = false;
     bool hasParam = false;
@@ -22,8 +21,7 @@ bool RSM::DoneDataParser::parseDoneData(const xmlpp::Element *doneDataElement, I
     const xmlpp::Element *contentElement = ParsingCommon::findFirstChildElement(doneDataElement, "content");
     if (contentElement) {
         hasContent = parseContent(contentElement, stateNode);
-        Logger::debug(std::string("RSM::DoneDataParser::parseDoneData - Found <content> element: ") +
-                      (hasContent ? "valid" : "invalid"));
+        LOG_DEBUG("Found <content> element: {}", (hasContent ? "valid" : "invalid"));
     }
 
     // <param> 요소들 파싱
@@ -34,13 +32,11 @@ bool RSM::DoneDataParser::parseDoneData(const xmlpp::Element *doneDataElement, I
         }
     }
 
-    Logger::debug("RSM::DoneDataParser::parseDoneData - Found " + std::to_string(paramElements.size()) +
-                  " <param> elements: " + (hasParam ? "valid" : "invalid"));
+    LOG_DEBUG("Found {} <param> elements: {}", paramElements.size(), (hasParam ? "valid" : "invalid"));
 
     // <content>와 <param>은 함께 사용할 수 없음
     if (hasContent && hasParam) {
-        Logger::error("RSM::DoneDataParser::parseDoneData - <content> and <param> "
-                      "cannot be used together in <donedata>");
+        LOG_ERROR("<content> and <param> cannot be used together in <donedata>");
 
         // 충돌 감지 시 명확한 정리
         // content와 param이 둘 다 설정되어 있으므로 하나를 제거하여 XOR 조건 충족
@@ -63,8 +59,7 @@ bool RSM::DoneDataParser::parseDoneData(const xmlpp::Element *doneDataElement, I
 
 bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, IStateNode *stateNode) {
     if (!contentElement || !stateNode) {
-        Logger::error("RSM::DoneDataParser::parseContent - Null content element or "
-                      "state node");
+        LOG_ERROR("Null content element or state node");
         return false;
     }
 
@@ -73,7 +68,7 @@ bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, ISt
     std::string exprValue;
     if (exprAttr) {
         exprValue = exprAttr->get_value();
-        Logger::debug("RSM::DoneDataParser::parseContent - Found 'expr' attribute: " + exprValue);
+        LOG_DEBUG("Found 'expr' attribute: {}", exprValue);
     }
 
     // 내용 확인
@@ -85,15 +80,14 @@ bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, ISt
         if (textNode) {
             textContent = textNode->get_content();
             textContent = ParsingCommon::trimString(textContent);
-            Logger::debug("RSM::DoneDataParser::parseContent - Found text content: " +
-                          (textContent.length() > 30 ? textContent.substr(0, 27) + "..." : textContent));
+            LOG_DEBUG("Found text content: {}",
+                      (textContent.length() > 30 ? textContent.substr(0, 27) + "..." : textContent));
         }
     }
 
     // expr과 내용은 함께 사용할 수 없음
     if (!exprValue.empty() && !textContent.empty()) {
-        Logger::error("RSM::DoneDataParser::parseContent - <content> cannot have "
-                      "both 'expr' attribute and child content");
+        LOG_ERROR("<content> cannot have both 'expr' attribute and child content");
         return false;
     }
 
@@ -113,15 +107,14 @@ bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, ISt
 
 bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateNode *stateNode) {
     if (!paramElement || !stateNode) {
-        Logger::error("RSM::DoneDataParser::parseParam - Null param element or state node");
+        LOG_ERROR("Null param element or state node");
         return false;
     }
 
     // name 속성 (필수)
     auto nameAttr = paramElement->get_attribute("name");
     if (!nameAttr) {
-        Logger::error("RSM::DoneDataParser::parseParam - <param> element must have "
-                      "'name' attribute");
+        LOG_ERROR("<param> element must have 'name' attribute");
         return false;
     }
 
@@ -132,8 +125,7 @@ bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateN
     auto locationAttr = paramElement->get_attribute("location");
 
     if (exprAttr && locationAttr) {
-        Logger::error("RSM::DoneDataParser::parseParam - <param> cannot have both "
-                      "'expr' and 'location' attributes");
+        LOG_ERROR("<param> cannot have both 'expr' and 'location' attributes");
         return false;
     }
 
@@ -141,8 +133,7 @@ bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateN
     if (locationAttr) {
         std::string locationValue = locationAttr->get_value();
         stateNode->addDoneDataParam(nameValue, locationValue);
-        Logger::debug("RSM::DoneDataParser::parseParam - Added param: " + nameValue +
-                      " with location: " + locationValue);
+        LOG_DEBUG("Added param: {} with location: {}", nameValue, locationValue);
         return true;
     }
 
@@ -152,11 +143,10 @@ bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateN
         // 단순히 expr 값을 location으로 변환하여 사용
         // 필요에 따라 더 복잡한 처리를 추가할 수 있음
         stateNode->addDoneDataParam(nameValue, exprValue);
-        Logger::debug("RSM::DoneDataParser::parseParam - Added param: " + nameValue + " with expr: " + exprValue);
+        LOG_DEBUG("Added param: {} with expr: {}", nameValue, exprValue);
         return true;
     }
 
-    Logger::error("RSM::DoneDataParser::parseParam - <param> must have either "
-                  "'expr' or 'location' attribute");
+    LOG_ERROR("<param> must have either 'expr' or 'location' attribute");
     return false;
 }

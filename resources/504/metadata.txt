@@ -1,0 +1,6 @@
+id: 504
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: if [a transition's] 'type' is "external", its exit set consists of all active states that are proper descendents of the Least Common Compound Ancestor (LCCA) of the source and target states.
+variants: 1

@@ -1,0 +1,6 @@
+id: 457
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, the legal iterable collections are arrays, namely objects that satisfy instanceof(Array) in ECMAScript.  The legal values for the 'item' attribute on foreach are legal ECMAScript variable names.
+variants: 1

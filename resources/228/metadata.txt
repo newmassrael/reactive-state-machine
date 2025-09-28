@@ -1,0 +1,6 @@
+id: 228
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: the Processor MUST keep track of the unique invokeid and insure that it is included in all events that the invoked service returns to the invoking session.
+variants: 1

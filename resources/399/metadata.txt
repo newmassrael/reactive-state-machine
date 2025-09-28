@@ -1,0 +1,6 @@
+id: 399
+specnum: 3.12
+conformance: mandatory
+manual: False
+description: [Definition: A transition matches an event if at least one of its event descriptors matches the event's name. ] [Definition: An event descriptor matches an event name if its string of tokens is an exact match or a prefix of the set of tokens in the event's name. In all cases, the token matching is case sensitive. ]
+variants: 1

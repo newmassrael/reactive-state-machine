@@ -1,0 +1,6 @@
+id: 337
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: For internal and platform events, the Processor MUST leave the origintype field blank.
+variants: 1

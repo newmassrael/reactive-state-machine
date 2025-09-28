@@ -3,7 +3,9 @@
 #include "SCXMLTypes.h"
 #include <climits>
 #include <cmath>
+#include <cstdio>
 #include <string>
+#include <typeinfo>
 #include <variant>
 
 namespace RSM {
@@ -49,10 +51,51 @@ public:
         return !success_internal;
     }
 
+    std::string getErrorMessage() const {
+        return errorMessage_internal;
+    }
+
     template <typename T> T getValue() const {
+        // Debug logging for getValue calls
+        std::string type_name = typeid(T).name();
+        std::string variant_type = "unknown";
+        std::string variant_value = "unknown";
+
+        // Determine current variant type and value
+        if (std::holds_alternative<ScriptUndefined>(value_internal)) {
+            variant_type = "ScriptUndefined";
+            variant_value = "undefined";
+        } else if (std::holds_alternative<ScriptNull>(value_internal)) {
+            variant_type = "ScriptNull";
+            variant_value = "null";
+        } else if (std::holds_alternative<bool>(value_internal)) {
+            variant_type = "bool";
+            variant_value = std::get<bool>(value_internal) ? "true" : "false";
+        } else if (std::holds_alternative<int64_t>(value_internal)) {
+            variant_type = "int64_t";
+            variant_value = std::to_string(std::get<int64_t>(value_internal));
+        } else if (std::holds_alternative<double>(value_internal)) {
+            variant_type = "double";
+            variant_value = std::to_string(std::get<double>(value_internal));
+        } else if (std::holds_alternative<std::string>(value_internal)) {
+            variant_type = "string";
+            variant_value = "\"" + std::get<std::string>(value_internal) + "\"";
+        } else if (std::holds_alternative<std::shared_ptr<ScriptArray>>(value_internal)) {
+            variant_type = "ScriptArray";
+            variant_value = "[array]";
+        } else if (std::holds_alternative<std::shared_ptr<ScriptObject>>(value_internal)) {
+            variant_type = "ScriptObject";
+            variant_value = "[object]";
+        }
+
+        printf("DEBUG JSResult::getValue(): Requested type=%s, Stored type=%s, Stored value=%s\n", type_name.c_str(),
+               variant_type.c_str(), variant_value.c_str());
+
         // Direct type match - fastest path
         if (std::holds_alternative<T>(value_internal)) {
-            return std::get<T>(value_internal);
+            T result = std::get<T>(value_internal);
+            printf("DEBUG JSResult::getValue(): Direct match successful, returning value\n");
+            return result;
         }
 
         // SCXML W3C compliance: Support automatic numeric type conversion
@@ -60,19 +103,25 @@ public:
         if constexpr (std::is_same_v<T, double>) {
             // Request double: convert from int64_t if needed
             if (std::holds_alternative<int64_t>(value_internal)) {
-                return static_cast<double>(std::get<int64_t>(value_internal));
+                int64_t int_val = std::get<int64_t>(value_internal);
+                double result = static_cast<double>(int_val);
+                printf("DEBUG JSResult::getValue(): Converting int64_t(%ld) to double(%f)\n", int_val, result);
+                return result;
             }
         } else if constexpr (std::is_same_v<T, int64_t>) {
             // Request int64_t: convert from double if it's a whole number
             if (std::holds_alternative<double>(value_internal)) {
                 double d = std::get<double>(value_internal);
                 if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
-                    return static_cast<int64_t>(d);
+                    int64_t result = static_cast<int64_t>(d);
+                    printf("DEBUG JSResult::getValue(): Converting double(%f) to int64_t(%ld)\n", d, result);
+                    return result;
                 }
             }
         }
 
         // No conversion possible - return default value
+        printf("DEBUG JSResult::getValue(): No conversion possible, returning default T{}\n");
         return T{};
     }
 

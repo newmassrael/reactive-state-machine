@@ -1,0 +1,6 @@
+id: 311
+specnum: 5.9
+conformance: mandatory
+manual: False
+description: If a location expression cannot be evaluated to yield a valid location, the SCXML processor MUST place the error error.execution in the internal event queue.
+variants: 1

@@ -1,0 +1,6 @@
+id: 459
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, the iteration order for the foreach element is the order of the underlying ECMAScript array, and goes from an index of 0 by increments of one to an index of array_name.length - 1.
+variants: 1

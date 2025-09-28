@@ -3,6 +3,7 @@
 #include "scripting/JSEngine.h"
 #include <climits>
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 
 namespace RSM {
@@ -18,31 +19,37 @@ JSResult JSEngine::executeScriptInternal(const std::string &sessionId, const std
     JSContext *ctx = session->jsContext;
 
     // Execute script with QuickJS global evaluation
-    Logger::debug("JSEngine: Executing script with QuickJS...");
+    LOG_DEBUG("JSEngine: Executing script with QuickJS...");
 
     ::JSValue result = JS_Eval(ctx, script.c_str(), script.length(), "<script>", JS_EVAL_TYPE_GLOBAL);
 
-    Logger::debug("JSEngine: JS_Eval completed, checking result...");
+    LOG_DEBUG("JSEngine: JS_Eval completed, checking result...");
 
     if (JS_IsException(result)) {
-        Logger::debug("JSEngine: Exception occurred in script execution");
+        LOG_DEBUG("JSEngine: Exception occurred in script execution");
         JSResult error = createErrorFromException(ctx);
         JS_FreeValue(ctx, result);
         return error;
     }
 
-    Logger::debug("JSEngine: Script execution successful, converting result...");
+    LOG_DEBUG("JSEngine: Script execution successful, converting result...");
     ScriptValue jsResult = quickJSToJSValue(ctx, result);
     JS_FreeValue(ctx, result);
-    Logger::debug("JSEngine: Result conversion completed, returning success");
+    LOG_DEBUG("JSEngine: Result conversion completed, returning success");
     return JSResult::createSuccess(jsResult);
 }
 
 JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, const std::string &expression) {
+    SPDLOG_DEBUG("JSEngine::evaluateExpressionInternal - Evaluating expression '{}' in session '{}'", expression,
+                 sessionId);
+
     SessionContext *session = getSession(sessionId);
     if (!session || !session->jsContext) {
+        SPDLOG_ERROR("JSEngine::evaluateExpressionInternal - Session not found: {}", sessionId);
         return JSResult::createError("Session not found: " + sessionId);
     }
+
+    SPDLOG_DEBUG("JSEngine::evaluateExpressionInternal - Session found, context valid");
 
     JSContext *ctx = session->jsContext;
 
@@ -51,6 +58,8 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
 
     // If it failed and the expression starts with '{', try wrapping in parentheses for object literals
     if (JS_IsException(result) && !expression.empty() && expression[0] == '{') {
+        SPDLOG_DEBUG("JSEngine::evaluateExpressionInternal - First evaluation failed, trying wrapped expression for "
+                     "object literal");
         JS_FreeValue(ctx, result);  // Free the exception
 
         std::string wrappedExpression = "(" + expression + ")";
@@ -59,13 +68,90 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
     }
 
     if (JS_IsException(result)) {
+        SPDLOG_ERROR("JSEngine::evaluateExpressionInternal - Final JS_Eval failed for expression '{}'", expression);
+
+        // 루트 원인 분석: _event.data.aParam 실패 시 _event 객체 상태 확인
+        if (expression.find("_event.data") != std::string::npos) {
+            LOG_ERROR("JSEngine: _event.data 접근 실패 - 디버깅 정보:");
+
+            // _event 객체 존재 확인
+            ::JSValue eventCheck = JS_Eval(ctx, "_event", 6, "<debug>", JS_EVAL_TYPE_GLOBAL);
+            if (JS_IsException(eventCheck)) {
+                LOG_ERROR("JSEngine: _event 객체가 존재하지 않음");
+                JS_FreeValue(ctx, eventCheck);
+            } else if (JS_IsUndefined(eventCheck)) {
+                LOG_ERROR("JSEngine: _event이 undefined임");
+                JS_FreeValue(ctx, eventCheck);
+            } else {
+                LOG_DEBUG("JSEngine: _event 객체 존재함");
+
+                // _event.data 확인
+                ::JSValue dataCheck = JS_Eval(ctx, "_event.data", 11, "<debug>", JS_EVAL_TYPE_GLOBAL);
+                if (JS_IsException(dataCheck)) {
+                    LOG_ERROR("JSEngine: _event.data 접근 실패");
+                    JS_FreeValue(ctx, dataCheck);
+                } else if (JS_IsUndefined(dataCheck)) {
+                    LOG_ERROR("JSEngine: _event.data가 undefined임");
+                    JS_FreeValue(ctx, dataCheck);
+                } else {
+                    LOG_DEBUG("JSEngine: _event.data 존재함");
+
+                    // _event.data.aParam 확인
+                    ::JSValue aParamCheck = JS_Eval(ctx, "_event.data.aParam", 17, "<debug>", JS_EVAL_TYPE_GLOBAL);
+                    if (JS_IsException(aParamCheck)) {
+                        LOG_ERROR("JSEngine: _event.data.aParam 접근 실패");
+                    } else if (JS_IsUndefined(aParamCheck)) {
+                        LOG_ERROR("JSEngine: _event.data.aParam이 undefined임");
+                    } else {
+                        const char *aParamStr = JS_ToCString(ctx, aParamCheck);
+                        LOG_DEBUG("JSEngine: _event.data.aParam = '{}'", aParamStr ? aParamStr : "null");
+                        if (aParamStr) {
+                            JS_FreeCString(ctx, aParamStr);
+                        }
+                    }
+                    JS_FreeValue(ctx, aParamCheck);
+                }
+                JS_FreeValue(ctx, dataCheck);
+                JS_FreeValue(ctx, eventCheck);
+            }
+        }
+
         JSResult error = createErrorFromException(ctx);
         JS_FreeValue(ctx, result);
         return error;
     }
 
+    SPDLOG_DEBUG("JSEngine::evaluateExpressionInternal - JS_Eval succeeded for expression '{}'", expression);
+
     ScriptValue jsResult = quickJSToJSValue(ctx, result);
     JS_FreeValue(ctx, result);
+
+    // Debug logging for ScriptValue conversion
+    std::string debug_type = "unknown";
+    std::string debug_value = "unknown";
+    if (std::holds_alternative<ScriptUndefined>(jsResult)) {
+        debug_type = "ScriptUndefined";
+        debug_value = "undefined";
+    } else if (std::holds_alternative<ScriptNull>(jsResult)) {
+        debug_type = "ScriptNull";
+        debug_value = "null";
+    } else if (std::holds_alternative<bool>(jsResult)) {
+        debug_type = "bool";
+        debug_value = std::get<bool>(jsResult) ? "true" : "false";
+    } else if (std::holds_alternative<int64_t>(jsResult)) {
+        debug_type = "int64_t";
+        debug_value = std::to_string(std::get<int64_t>(jsResult));
+    } else if (std::holds_alternative<double>(jsResult)) {
+        debug_type = "double";
+        debug_value = std::to_string(std::get<double>(jsResult));
+    } else if (std::holds_alternative<std::string>(jsResult)) {
+        debug_type = "string";
+        debug_value = "\"" + std::get<std::string>(jsResult) + "\"";
+    }
+
+    printf("DEBUG evaluateExpressionInternal(): Expression='%s', ScriptValue type=%s, value=%s\n", expression.c_str(),
+           debug_type.c_str(), debug_value.c_str());
+
     return JSResult::createSuccess(jsResult);
 }
 
@@ -93,57 +179,126 @@ JSResult JSEngine::validateExpressionInternal(const std::string &sessionId, cons
 
 JSResult JSEngine::setVariableInternal(const std::string &sessionId, const std::string &name,
                                        const ScriptValue &value) {
+    SPDLOG_DEBUG("JSEngine::setVariableInternal - Setting variable '{}' in session '{}'", name, sessionId);
+
     SessionContext *session = getSession(sessionId);
     if (!session || !session->jsContext) {
+        SPDLOG_ERROR("JSEngine::setVariableInternal - Session not found: {}", sessionId);
         return JSResult::createError("Session not found: " + sessionId);
     }
 
     JSContext *ctx = session->jsContext;
     ::JSValue global = JS_GetGlobalObject(ctx);
+
+    // Log the value using variant visit pattern
+    std::string valueStr = std::visit(
+        [](const auto &v) -> std::string {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, std::string>) {
+                return "STRING: '" + v + "'";
+            } else if constexpr (std::is_same_v<T, bool>) {
+                return "BOOLEAN: " + std::string(v ? "true" : "false");
+            } else if constexpr (std::is_same_v<T, int64_t>) {
+                return "NUMBER(int64): " + std::to_string(v);
+            } else if constexpr (std::is_same_v<T, double>) {
+                return "NUMBER(double): " + std::to_string(v);
+            } else if constexpr (std::is_same_v<T, std::shared_ptr<ScriptArray>>) {
+                return "ARRAY: [" + std::to_string(v->elements.size()) + " elements]";
+            } else if constexpr (std::is_same_v<T, std::shared_ptr<ScriptObject>>) {
+                return "OBJECT: [" + std::to_string(v->properties.size()) + " properties]";
+            } else if constexpr (std::is_same_v<T, ScriptNull>) {
+                return "NULL";
+            } else if constexpr (std::is_same_v<T, ScriptUndefined>) {
+                return "UNDEFINED";
+            } else {
+                return "UNKNOWN_TYPE";
+            }
+        },
+        value);
+
+    SPDLOG_DEBUG("JSEngine::setVariableInternal - Variable '{}' value: {}", name, valueStr);
+
     ::JSValue qjsValue = jsValueToQuickJS(ctx, value);
 
-    JS_SetPropertyStr(ctx, global, name.c_str(), qjsValue);
+    // Check if conversion was successful
+    if (JS_IsException(qjsValue)) {
+        SPDLOG_ERROR("JSEngine::setVariableInternal - Failed to convert ScriptValue to QuickJS value for variable '{}'",
+                     name);
+        JS_FreeValue(ctx, global);
+        return createErrorFromException(ctx);
+    }
+
+    // Set the property
+    int result = JS_SetPropertyStr(ctx, global, name.c_str(), qjsValue);
+    if (result < 0) {
+        SPDLOG_ERROR("JSEngine::setVariableInternal - Failed to set property '{}' in global object", name);
+        JS_FreeValue(ctx, global);
+        return JSResult::createError("Failed to set variable: " + name);
+    }
+
     JS_FreeValue(ctx, global);
 
+    SPDLOG_DEBUG("JSEngine::setVariableInternal - Successfully set variable '{}' in session '{}'", name, sessionId);
     return JSResult::createSuccess();
 }
 
 JSResult JSEngine::getVariableInternal(const std::string &sessionId, const std::string &name) {
+    SPDLOG_DEBUG("JSEngine::getVariableInternal - Getting variable '{}' from session '{}'", name, sessionId);
+
     SessionContext *session = getSession(sessionId);
     if (!session || !session->jsContext) {
+        SPDLOG_ERROR("JSEngine::getVariableInternal - Session not found: {}", sessionId);
         return JSResult::createError("Session not found: " + sessionId);
     }
 
+    SPDLOG_DEBUG("JSEngine::getVariableInternal - Session found, context valid");
+
     JSContext *ctx = session->jsContext;
     ::JSValue global = JS_GetGlobalObject(ctx);
+
+    // First check if the property exists before getting it
+    JSAtom atom = JS_NewAtom(ctx, name.c_str());
+    int hasProperty = JS_HasProperty(ctx, global, atom);
+    SPDLOG_DEBUG("JSEngine::getVariableInternal - JS_HasProperty('{}') returned: {}", name, hasProperty);
+    JS_FreeAtom(ctx, atom);
+    (void)hasProperty;  // Suppress unused variable warning
+
     ::JSValue qjsValue = JS_GetPropertyStr(ctx, global, name.c_str());
 
     if (JS_IsException(qjsValue)) {
+        SPDLOG_ERROR("JSEngine::getVariableInternal - JS_GetPropertyStr failed for variable '{}'", name);
         JS_FreeValue(ctx, global);
         return createErrorFromException(ctx);
     }
 
     // Check if the property actually exists (not just undefined)
     if (JS_IsUndefined(qjsValue)) {
+        SPDLOG_DEBUG("JSEngine::getVariableInternal - Variable '{}' is undefined, checking if property exists", name);
         // Use JS_HasProperty to distinguish between "not set" and "set to
         // undefined"
-        JSAtom atom = JS_NewAtom(ctx, name.c_str());
-        int hasProperty = JS_HasProperty(ctx, global, atom);
-        JS_FreeAtom(ctx, atom);  // Free the atom to prevent memory leak
-        if (hasProperty <= 0) {
+        JSAtom atom2 = JS_NewAtom(ctx, name.c_str());
+        int hasProperty2 = JS_HasProperty(ctx, global, atom2);
+        JS_FreeAtom(ctx, atom2);  // Free the atom to prevent memory leak
+        SPDLOG_DEBUG("JSEngine::getVariableInternal - Second JS_HasProperty('{}') returned: {}", name, hasProperty2);
+        if (hasProperty2 <= 0) {
             // Property doesn't exist - this is an error
+            SPDLOG_ERROR("JSEngine::getVariableInternal - Variable '{}' does not exist in global context", name);
             JS_FreeValue(ctx, qjsValue);
             JS_FreeValue(ctx, global);
             return JSResult::createError("Variable not found: " + name);
         }
         // Property exists but is undefined - this is valid, continue with existing
         // qjsValue
+        SPDLOG_DEBUG("JSEngine::getVariableInternal - Variable '{}' exists but is set to undefined", name);
+    } else {
+        SPDLOG_DEBUG("JSEngine::getVariableInternal - Variable '{}' found with value", name);
     }
 
     ScriptValue result = quickJSToJSValue(ctx, qjsValue);
     JS_FreeValue(ctx, qjsValue);
     JS_FreeValue(ctx, global);
 
+    SPDLOG_DEBUG("JSEngine::getVariableInternal - Successfully retrieved variable '{}'", name);
     return JSResult::createSuccess(result);
 }
 
@@ -215,13 +370,44 @@ JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const s
         // Parse and set event data as JSON or fallback to undefined
         if (event->hasData()) {
             std::string dataStr = event->getDataAsString();
+            LOG_DEBUG("JSEngine: Setting event data from string: '{}'", dataStr);
             ::JSValue dataValue = JS_ParseJSON(ctx, dataStr.c_str(), dataStr.length(), "<event-data>");
             if (!JS_IsException(dataValue)) {
                 JS_SetPropertyStr(ctx, eventDataProperty, "data", dataValue);
+                LOG_DEBUG("JSEngine: Successfully parsed and set event data JSON");
+
+                // 루트 원인 분석: _event.data 객체 내용 확인
+                ::JSValue dataObj = JS_GetPropertyStr(ctx, eventDataProperty, "data");
+                if (!JS_IsUndefined(dataObj)) {
+                    ::JSValue aParamValue = JS_GetPropertyStr(ctx, dataObj, "aParam");
+                    if (!JS_IsUndefined(aParamValue)) {
+                        const char *aParamStr = JS_ToCString(ctx, aParamValue);
+                        LOG_DEBUG("JSEngine: _event.data.aParam 설정됨: '{}'", aParamStr ? aParamStr : "null");
+                        if (aParamStr) {
+                            JS_FreeCString(ctx, aParamStr);
+                        }
+                    } else {
+                        LOG_ERROR("JSEngine: _event.data.aParam이 undefined임");
+                    }
+                    JS_FreeValue(ctx, aParamValue);
+                } else {
+                    LOG_ERROR("JSEngine: _event.data가 undefined임");
+                }
+                JS_FreeValue(ctx, dataObj);
             } else {
+                // Log JSON parsing error
+                ::JSValue exception = JS_GetException(ctx);
+                const char *errorStr = JS_ToCString(ctx, exception);
+                LOG_ERROR("JSEngine: Failed to parse event data as JSON: '{}', error: {}", dataStr,
+                          errorStr ? errorStr : "unknown");
+                if (errorStr) {
+                    JS_FreeCString(ctx, errorStr);
+                }
+                JS_FreeValue(ctx, exception);
                 JS_SetPropertyStr(ctx, eventDataProperty, "data", JS_UNDEFINED);
             }
         } else {
+            LOG_DEBUG("JSEngine: Event has no data, setting _event.data to undefined");
             JS_SetPropertyStr(ctx, eventDataProperty, "data", JS_UNDEFINED);
         }
     } else {
@@ -288,10 +474,15 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
         double d;
         JS_ToFloat64(ctx, &d, qjsValue);
 
+        printf("DEBUG quickJSToJSValue(): JS_IsNumber=true, extracted double=%f\n", d);
+
         // SCXML W3C compliance: Return as int64_t if it's a whole number within range
         if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
-            return static_cast<int64_t>(d);
+            int64_t int_result = static_cast<int64_t>(d);
+            printf("DEBUG quickJSToJSValue(): Converting to int64_t=%ld\n", int_result);
+            return int_result;
         }
+        printf("DEBUG quickJSToJSValue(): Returning as double=%f\n", d);
         return d;
     } else if (JS_IsString(qjsValue)) {
         const char *str = JS_ToCString(ctx, qjsValue);

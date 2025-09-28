@@ -1,0 +1,6 @@
+id: 404
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: To execute a set of transitions, the SCXML Processor MUST first exit all the states in the transitions' exit set in exit order.
+variants: 1

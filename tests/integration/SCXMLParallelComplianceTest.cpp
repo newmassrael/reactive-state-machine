@@ -861,12 +861,12 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_TransitionProcessing_Independen
 
         // W3C Test 1: Send "move" event - should only affect region1
         Logger::info("W3C COMPLIANCE TEST: Sending 'move' event - should only affect region1");
-        Logger::info("Current StateMachine state before move: {}", sm.getCurrentState());
-        Logger::info("StateMachine is running: {}", sm.isRunning());
+        LOG_INFO("Current StateMachine state before move: {}", sm.getCurrentState());
+        LOG_INFO("StateMachine is running: {}", sm.isRunning());
 
         auto moveResult = sm.processEvent("move", "");
-        Logger::info("Move event result - success: {}, from: {}, to: {}, error: {}", moveResult.success,
-                     moveResult.fromState, moveResult.toState, moveResult.errorMessage);
+        LOG_INFO("Move event result - success: {}, from: {}, to: {}, error: {}", moveResult.success,
+                 moveResult.fromState, moveResult.toState, moveResult.errorMessage);
         ASSERT_TRUE(moveResult.success) << "SCXML violation: 'move' event processing failed: "
                                         << moveResult.errorMessage;
 
@@ -886,11 +886,11 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_TransitionProcessing_Independen
 
         // W3C Test 2: Send "different_event" - should only affect region2
         Logger::info("W3C COMPLIANCE TEST: Sending 'different_event' - should only affect region2");
-        Logger::info("Current StateMachine state before different_event: {}", sm.getCurrentState());
+        LOG_INFO("Current StateMachine state before different_event: {}", sm.getCurrentState());
 
         auto differentResult = sm.processEvent("different_event", "");
-        Logger::info("Different event result - success: {}, from: {}, to: {}, error: {}", differentResult.success,
-                     differentResult.fromState, differentResult.toState, differentResult.errorMessage);
+        LOG_INFO("Different event result - success: {}, from: {}, to: {}, error: {}", differentResult.success,
+                 differentResult.fromState, differentResult.toState, differentResult.errorMessage);
         ASSERT_TRUE(differentResult.success)
             << "SCXML violation: 'different_event' processing failed: " << differentResult.errorMessage;
 

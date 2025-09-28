@@ -1,0 +1,6 @@
+id: 444
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript datamodel, for each data element in the document, the SCXML Processor must create an ECMAScript variable object whose name is the value of the id attribute of the data element.
+variants: 1

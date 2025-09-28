@@ -1,0 +1,6 @@
+id: 562
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, if the content provided to populate _event.data is neither key-value pairs nor JSON nor a valid XML document, the Processor MUST treat the content treat the content as a space-normalized string literal and assign it as the value of _event.data.
+variants: 1

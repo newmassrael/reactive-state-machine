@@ -1,0 +1,6 @@
+id: 520
+specnum: C.2
+conformance: optional
+manual: False
+description: If a content child is present, the SCXML Processor MUST use its value as the body of the message.
+variants: 1

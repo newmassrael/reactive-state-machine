@@ -95,6 +95,13 @@ public:
      */
     std::vector<std::string> getActiveSessions() const;
 
+    /**
+     * @brief Get parent session ID for a given session
+     * @param sessionId Session to get parent for
+     * @return Parent session ID or empty string if no parent
+     */
+    std::string getParentSessionId(const std::string &sessionId) const;
+
     // === Thread-safe JavaScript Execution ===
 
     /**
@@ -167,6 +174,100 @@ public:
      * @param sessionId Session ID to associate with this state machine
      */
     void setStateMachine(StateMachine *stateMachine, const std::string &sessionId);
+
+    // === Session ID Generation ===
+
+    /**
+     * @brief Generate unique session ID
+     * @return Unique session ID number
+     */
+    uint64_t generateSessionId() const;
+
+    /**
+     * @brief Generate unique session ID string with prefix
+     * @param prefix Prefix for session ID (e.g., "sm_", "session_")
+     * @return Unique session ID string
+     */
+    std::string generateSessionIdString(const std::string &prefix = "session_") const;
+
+    // === Session Cleanup Hooks ===
+
+    /**
+     * @brief Register EventDispatcher for session-aware delayed event cancellation
+     *
+     * W3C SCXML 6.2: When invoke sessions terminate, delayed events must be cancelled.
+     * This method enables automatic cancellation by registering EventDispatchers
+     * that should be notified when sessions are destroyed.
+     *
+     * @param sessionId Session identifier
+     * @param eventDispatcher EventDispatcher instance to register
+     */
+    void registerEventDispatcher(const std::string &sessionId, std::shared_ptr<class IEventDispatcher> eventDispatcher);
+
+    /**
+     * @brief Unregister EventDispatcher for session cleanup
+     *
+     * @param sessionId Session identifier
+     */
+    void unregisterEventDispatcher(const std::string &sessionId);
+
+    // === Invoke Session Management (W3C SCXML #_invokeid support) ===
+
+    /**
+     * @brief Register invoke mapping for session communication
+     *
+     * W3C SCXML: Enables #_invokeid target routing by mapping invoke IDs
+     * to their corresponding child sessions.
+     *
+     * @param parentSessionId Parent session that created the invoke
+     * @param invokeId Invoke identifier from the invoke element
+     * @param childSessionId Child session created by the invoke
+     */
+    void registerInvokeMapping(const std::string &parentSessionId, const std::string &invokeId,
+                               const std::string &childSessionId);
+
+    /**
+     * @brief Get child session ID for an invoke ID
+     *
+     * @param parentSessionId Parent session to search in
+     * @param invokeId Invoke identifier to lookup
+     * @return Child session ID or empty string if not found
+     */
+    std::string getInvokeSessionId(const std::string &parentSessionId, const std::string &invokeId) const;
+
+    /**
+     * @brief Unregister invoke mapping during session cleanup
+     *
+     * @param parentSessionId Parent session
+     * @param invokeId Invoke identifier to remove
+     */
+    void unregisterInvokeMapping(const std::string &parentSessionId, const std::string &invokeId);
+
+    /**
+     * @brief Register EventRaiser for a session (SOLID: Dependency Injection)
+     *
+     * Enables InvokeEventTarget to send events to child sessions by
+     * providing access to their EventRaiser instances.
+     *
+     * @param sessionId Target session
+     * @param eventRaiser EventRaiser instance for this session
+     */
+    void registerEventRaiser(const std::string &sessionId, std::shared_ptr<class IEventRaiser> eventRaiser);
+
+    /**
+     * @brief Get EventRaiser for a session
+     *
+     * @param sessionId Target session
+     * @return EventRaiser instance or nullptr if not found
+     */
+    std::shared_ptr<class IEventRaiser> getEventRaiser(const std::string &sessionId) const;
+
+    /**
+     * @brief Unregister EventRaiser during session cleanup
+     *
+     * @param sessionId Session to remove EventRaiser for
+     */
+    void unregisterEventRaiser(const std::string &sessionId);
 
     // === Engine Information ===
 
@@ -309,6 +410,8 @@ private:
         std::shared_ptr<Event> currentEvent;
         std::string sessionName;
         std::vector<std::string> ioProcessors;
+        // SOLID: Single Responsibility - session management includes invoke relationships
+        std::shared_ptr<class IEventRaiser> eventRaiser;
     };
 
     struct ExecutionRequest {
@@ -347,6 +450,16 @@ private:
     JSRuntime *runtime_ = nullptr;
     std::unordered_map<std::string, SessionContext> sessions_;
     mutable std::mutex sessionsMutex_;
+
+    // === Session Cleanup Management ===
+    // W3C SCXML 6.2: EventDispatcher registry for automatic delayed event cancellation
+    std::unordered_map<std::string, std::weak_ptr<class IEventDispatcher>> eventDispatchers_;
+    mutable std::mutex eventDispatchersMutex_;
+
+    // === Invoke Session Management (SOLID: Single Responsibility) ===
+    // W3C SCXML: Maps parent_session_id -> (invoke_id -> child_session_id)
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> invokeMappings_;
+    mutable std::mutex invokeMappingsMutex_;
 
     // === Thread-safe Execution ===
     mutable std::queue<std::unique_ptr<ExecutionRequest>> requestQueue_;

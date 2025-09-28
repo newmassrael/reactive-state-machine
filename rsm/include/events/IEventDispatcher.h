@@ -73,6 +73,13 @@ public:
      * @brief Shutdown the dispatcher and cancel all pending events
      */
     virtual void shutdown() = 0;
+
+    /**
+     * @brief Cancel all events for a specific session (W3C SCXML 6.2 compliance)
+     * @param sessionId Session whose events should be cancelled
+     * @return Number of events cancelled
+     */
+    virtual size_t cancelEventsForSession(const std::string &sessionId) = 0;
 };
 
 /**
@@ -91,11 +98,12 @@ public:
      * @param delay Delay before delivery
      * @param target Event target for delivery
      * @param sendId Optional send ID (auto-generated if empty)
+     * @param sessionId Session ID that created this event (for cancellation on session termination)
      * @return Future containing the assigned send ID
      */
     virtual std::future<std::string> scheduleEvent(const EventDescriptor &event, std::chrono::milliseconds delay,
-                                                   std::shared_ptr<IEventTarget> target,
-                                                   const std::string &sendId = "") = 0;
+                                                   std::shared_ptr<IEventTarget> target, const std::string &sendId = "",
+                                                   const std::string &sessionId = "") = 0;
 
     /**
      * @brief Cancel a scheduled event
@@ -103,6 +111,13 @@ public:
      * @return true if event was found and cancelled
      */
     virtual bool cancelEvent(const std::string &sendId) = 0;
+
+    /**
+     * @brief Cancel all scheduled events for a specific session
+     * @param sessionId Session ID whose events should be cancelled
+     * @return Number of events that were cancelled
+     */
+    virtual size_t cancelEventsForSession(const std::string &sessionId) = 0;
 
     /**
      * @brief Check if an event is still scheduled
@@ -129,5 +144,7 @@ public:
      */
     virtual bool isRunning() const = 0;
 };
+
+;
 
 }  // namespace RSM

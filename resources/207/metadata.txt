@@ -1,0 +1,6 @@
+id: 207
+specnum: 6.3
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST NOT allow cancel to affect events that were not raised in the same session.
+variants: 1

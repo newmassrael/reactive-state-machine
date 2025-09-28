@@ -1,0 +1,6 @@
+id: 577
+specnum: C.2
+conformance: optional
+manual: False
+description: If neither the 'target' nor the 'targetexpr' attribute is specified, the SCXML Processor MUST add the event error.communication to the internal event queue of the sending session.
+variants: 1

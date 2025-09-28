@@ -1,0 +1,6 @@
+id: 376
+specnum: 3.8
+conformance: mandatory
+manual: False
+description: The SCXML processor MUST treat each [onentry] handler as a separate block of executable content.
+variants: 1

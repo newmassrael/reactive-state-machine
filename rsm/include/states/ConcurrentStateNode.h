@@ -157,9 +157,10 @@ public:
     /**
      * @brief Exit this parallel state according to SCXML semantics
      * Automatically deactivates all child regions
+     * @param executionContext Execution context for proper exit action execution
      * @return Operation result indicating success/failure of exit
      */
-    ConcurrentOperationResult exitParallelState();
+    ConcurrentOperationResult exitParallelState(std::shared_ptr<IExecutionContext> executionContext);
 
     /**
      * @brief Activate all regions in this concurrent state
@@ -169,9 +170,10 @@ public:
 
     /**
      * @brief Deactivate all regions in this concurrent state
+     * @param executionContext Execution context for proper exit action execution
      * @return Vector of operation results for each region
      */
-    std::vector<ConcurrentOperationResult> deactivateAllRegions();
+    std::vector<ConcurrentOperationResult> deactivateAllRegions(std::shared_ptr<IExecutionContext> executionContext);
 
     /**
      * @brief Check if all regions are in final states

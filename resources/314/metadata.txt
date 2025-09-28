@@ -1,0 +1,6 @@
+id: 314
+specnum: 5.9
+conformance: mandatory
+manual: True
+description: If the SCXML processor waits until it evaluates the expressions at runtime to raise errors, it MUST raise errors caused by expressions returning illegal values at the points at which Appendix A Algorithm for SCXML Interpretation indicates that the expressions are to be evaluated.
+variants: 1

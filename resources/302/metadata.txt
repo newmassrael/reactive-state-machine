@@ -1,0 +1,6 @@
+id: 302
+specnum: 5.8
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST evaluate any script element that is a child of scxml at document load time. N.B. This test is valid only for datamodels that support scripting.
+variants: 1

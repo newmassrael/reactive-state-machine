@@ -34,7 +34,7 @@ std::shared_ptr<IActionNode> SendAction::clone() const {
     cloned->delayExpr_ = delayExpr_;
     cloned->sendId_ = sendId_;
     cloned->type_ = type_;
-    cloned->params_ = params_;
+    cloned->paramsWithExpr_ = paramsWithExpr_;
     return cloned;
 }
 
@@ -102,6 +102,14 @@ const std::string &SendAction::getSendId() const {
     return sendId_;
 }
 
+void SendAction::setIdLocation(const std::string &idLocation) {
+    idLocation_ = idLocation;
+}
+
+const std::string &SendAction::getIdLocation() const {
+    return idLocation_;
+}
+
 void SendAction::setType(const std::string &type) {
     type_ = type;
 }
@@ -110,16 +118,16 @@ const std::string &SendAction::getType() const {
     return type_;
 }
 
-void SendAction::addParam(const std::string &name, const std::string &value) {
-    params_[name] = value;
+void SendAction::addParamWithExpr(const std::string &name, const std::string &expr) {
+    paramsWithExpr_.emplace_back(name, expr);
 }
 
-const std::map<std::string, std::string> &SendAction::getParams() const {
-    return params_;
+const std::vector<SendAction::SendParam> &SendAction::getParamsWithExpr() const {
+    return paramsWithExpr_;
 }
 
 void SendAction::clearParams() {
-    params_.clear();
+    paramsWithExpr_.clear();
 }
 
 std::chrono::milliseconds SendAction::parseDelayString(const std::string &delayStr) const {
@@ -211,8 +219,8 @@ std::string SendAction::getSpecificDescription() const {
         desc += " sendid='" + sendId_ + "'";
     }
 
-    if (!params_.empty()) {
-        desc += " params=" + std::to_string(params_.size());
+    if (!paramsWithExpr_.empty()) {
+        desc += " params=" + std::to_string(paramsWithExpr_.size());
     }
 
     return desc;

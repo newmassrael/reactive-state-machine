@@ -1,0 +1,6 @@
+id: 176
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST evaluate param when the parent send element is evaluated and pass the resulting data unmodified to the external service when the message is delivered
+variants: 1

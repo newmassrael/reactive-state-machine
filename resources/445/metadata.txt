@@ -1,0 +1,6 @@
+id: 445
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript datamodel for each data element in the document, if the variable object associated with the element is not assigned at the time indicated by the 'binding' attribute on the scxml element, then the SCXML Processor must assign the variable the default value ECMAScript undefined.
+variants: 1

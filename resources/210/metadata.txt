@@ -1,0 +1,6 @@
+id: 210
+specnum: 6.3
+conformance: mandatory
+manual: False
+description: If the 'sendidexpr' attribute is present, the SCXML Processor MUST evaluate it when the parent cancel element is evaluated and treat the result as if it had been entered as the value of 'sendid'.
+variants: 1

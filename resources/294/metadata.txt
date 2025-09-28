@@ -1,0 +1,6 @@
+id: 294
+specnum: 5.5
+conformance: mandatory
+manual: False
+description: In cases where the SCXML Processor generates a 'done' event upon entry into the final state, it MUST evaluate the donedata elements param or content children and place the resulting data in the _event.data field. The exact format of that data will be determined by the datamodel
+variants: 1

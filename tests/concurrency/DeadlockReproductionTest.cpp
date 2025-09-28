@@ -4,11 +4,13 @@
 #include <gtest/gtest.h>
 #include <thread>
 
+#include "actions/RaiseAction.h"
 #include "actions/SendAction.h"
 #include "common/Logger.h"
 #include "events/EventDispatcherImpl.h"
 #include "events/EventSchedulerImpl.h"
 #include "events/EventTargetFactoryImpl.h"
+#include "mocks/MockEventRaiser.h"
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "scripting/JSEngine.h"
@@ -46,13 +48,15 @@ protected:
                 // Simulate what InternalEventTarget does - call back to ActionExecutor
                 if (actionExecutor_) {
                     // This should cause deadlock if JSEngine mutex is already held by main thread
-                    bool result = actionExecutor_->raiseEvent(event.eventName, event.data);
-                    Logger::debug("DeadlockTest: raiseEvent result: {}", result);
+                    RaiseAction raiseAction(event.eventName);
+                    raiseAction.setData(event.data);
+                    bool result = actionExecutor_->executeRaiseAction(raiseAction);
+                    LOG_DEBUG("DeadlockTest: executeRaiseAction result: {}", result);
                     return result;
                 }
                 return false;
             } catch (const std::exception &e) {
-                Logger::error("DeadlockTest: Exception in callback: {}", e.what());
+                LOG_ERROR("DeadlockTest: Exception in callback: {}", e.what());
                 return false;
             }
         };
@@ -60,15 +64,23 @@ protected:
         // Create components that can deadlock
         scheduler_ = std::make_shared<EventSchedulerImpl>(deadlockCallback_);
 
+        // Create MockEventRaiser for target factory
+        auto mockEventRaiser =
+            std::make_shared<RSM::Test::MockEventRaiser>([](const std::string &, const std::string &) -> bool {
+                return true;  // Always succeed for deadlock testing
+            });
+
         // Create ActionExecutor for target factory
         auto tempActionExecutor = std::make_shared<ActionExecutorImpl>("deadlock_test_session");
-        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(tempActionExecutor->getEventRaiser());
+        tempActionExecutor->setEventRaiser(mockEventRaiser);
+        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(mockEventRaiser);
 
         // Create dispatcher
         dispatcher_ = std::make_shared<EventDispatcherImpl>(scheduler_, targetFactory_);
 
         // Create ActionExecutor that will be used in main thread (potential deadlock source)
         actionExecutor_ = std::make_shared<ActionExecutorImpl>("deadlock_test_session", dispatcher_);
+        actionExecutor_->setEventRaiser(mockEventRaiser);
 
         deadlockDetected_.store(false);
     }
@@ -134,13 +146,13 @@ TEST_F(DeadlockReproductionTest, ReproduceJSEngineEventSchedulerDeadlock) {
             // 3. Timer thread callback tries to lock JSEngine queueMutex_ -> DEADLOCK
             bool success = sendAction.execute(context);
 
-            Logger::debug("DeadlockTest: Send action completed successfully: {}", success);
+            LOG_DEBUG("DeadlockTest: Send action completed successfully: {}", success);
             testCompleted.store(true);
 
             return success;
 
         } catch (const std::exception &e) {
-            Logger::error("DeadlockTest: Exception in main task: {}", e.what());
+            LOG_ERROR("DeadlockTest: Exception in main task: {}", e.what());
             testCompleted.store(true);
             return false;
         }
@@ -155,7 +167,7 @@ TEST_F(DeadlockReproductionTest, ReproduceJSEngineEventSchedulerDeadlock) {
     } else {
         try {
             bool result = mainTask.get();
-            Logger::debug("DeadlockTest: Main task completed with result: {}", result);
+            LOG_DEBUG("DeadlockTest: Main task completed with result: {}", result);
         } catch (...) {
             Logger::error("DeadlockTest: Main task threw exception");
         }
@@ -186,21 +198,21 @@ TEST_F(DeadlockReproductionTest, JSEngineMutexBehavior) {
             auto result1Future = jsEngine.evaluateExpression("deadlock_test_session", "1 + 1");
             auto result1 = result1Future.get();
             if (result1.isSuccess()) {
-                Logger::debug("DeadlockTest: First evaluation result: {}", result1.getValue<double>());
+                LOG_DEBUG("DeadlockTest: First evaluation result: {}", result1.getValue<double>());
             }
 
             // Second JSEngine call from same thread (should work if mutex is recursive)
             auto result2Future = jsEngine.evaluateExpression("deadlock_test_session", "2 + 2");
             auto result2 = result2Future.get();
             if (result2.isSuccess()) {
-                Logger::debug("DeadlockTest: Second evaluation result: {}", result2.getValue<double>());
+                LOG_DEBUG("DeadlockTest: Second evaluation result: {}", result2.getValue<double>());
             }
 
             nestedCallCompleted.store(true);
             return true;
 
         } catch (const std::exception &e) {
-            Logger::error("DeadlockTest: JSEngine nested call failed: {}", e.what());
+            LOG_ERROR("DeadlockTest: JSEngine nested call failed: {}", e.what());
             return false;
         }
     });

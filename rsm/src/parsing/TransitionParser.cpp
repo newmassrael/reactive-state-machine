@@ -5,23 +5,22 @@
 #include <sstream>
 
 RSM::TransitionParser::TransitionParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
-    Logger::debug("RSM::TransitionParser::Constructor - Creating transition parser");
+    LOG_DEBUG("Creating transition parser");
 }
 
 RSM::TransitionParser::~TransitionParser() {
-    Logger::debug("RSM::TransitionParser::Destructor - Destroying transition parser");
+    LOG_DEBUG("Destroying transition parser");
 }
 
 void RSM::TransitionParser::setActionParser(std::shared_ptr<RSM::ActionParser> actionParser) {
     actionParser_ = actionParser;
-    Logger::debug("RSM::TransitionParser::setActionParser() - Action parser set");
+    LOG_DEBUG("Action parser set");
 }
 
 std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode(const xmlpp::Element *transElement,
                                                                                  RSM::IStateNode *stateNode) {
     if (!transElement || !stateNode) {
-        Logger::warn("RSM::TransitionParser::parseTransitionNode() - Null "
-                     "transition element or state node");
+        LOG_WARN("Null transition element or state node");
         return nullptr;
     }
 
@@ -31,8 +30,8 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
     std::string event = eventAttr ? eventAttr->get_value() : "";
     std::string target = targetAttr ? targetAttr->get_value() : "";
 
-    Logger::debug("RSM::TransitionParser::parseTransitionNode() - Parsing transition: " +
-                  (event.empty() ? "<no event>" : event) + " -> " + (target.empty() ? "<internal>" : target));
+    LOG_DEBUG("Parsing transition: {} -> {}", (event.empty() ? "<no event>" : event),
+              (target.empty() ? "<internal>" : target));
 
     // target이 비어있는 경우 내부 전환으로 처리
     bool isInternal = target.empty();
@@ -41,8 +40,7 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
     std::shared_ptr<RSM::ITransitionNode> transition;
 
     if (isInternal) {
-        Logger::debug("RSM::TransitionParser::parseTransitionNode() - Internal "
-                      "transition detected (no target)");
+        LOG_DEBUG("Internal transition detected (no target)");
 
         // 빈 타겟으로 전환 생성
         transition = nodeFactory_->createTransitionNode(event, "");
@@ -50,9 +48,7 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
         // 명시적으로 타겟 목록 비우기
         transition->clearTargets();
 
-        Logger::debug("RSM::TransitionParser::parseTransitionNode() - After "
-                      "clearTargets() - targets count: " +
-                      std::to_string(transition->getTargets().size()));
+        LOG_DEBUG("After clearTargets() - targets count: {}", transition->getTargets().size());
     } else {
         // 초기화 시 빈 문자열로 생성
         transition = nodeFactory_->createTransitionNode(event, "");
@@ -68,7 +64,7 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
         while (ss >> targetId) {
             if (!targetId.empty()) {
                 transition->addTarget(targetId);
-                Logger::debug("RSM::TransitionParser::parseTransitionNode() - Added target: " + targetId);
+                LOG_DEBUG("Added target: {}", targetId);
             }
         }
     }
@@ -81,7 +77,7 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
     if (typeAttr) {
         std::string type = typeAttr->get_value();
         transition->setAttribute("type", type);
-        Logger::debug("RSM::TransitionParser::parseTransitionNode() - Type: " + type);
+        LOG_DEBUG("Type: {}", type);
 
         // type이 "internal"인 경우 내부 전환으로 설정
         if (type == "internal") {
@@ -96,14 +92,14 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
         std::string cond = condAttr->get_value();
         transition->setAttribute("cond", cond);
         transition->setGuard(cond);
-        Logger::debug("RSM::TransitionParser::parseTransitionNode() - Condition: " + cond);
+        LOG_DEBUG("Condition: {}", cond);
     }
 
     // 가드 속성 처리
     std::string guard = ParsingCommon::getAttributeValue(transElement, {"guard"});
     if (!guard.empty()) {
         transition->setGuard(guard);
-        Logger::debug("RSM::TransitionParser::parseTransitionNode() - Guard: " + guard);
+        LOG_DEBUG("Guard: {}", guard);
     }
 
     // 이벤트 목록 파싱
@@ -111,49 +107,41 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
         auto events = parseEventList(event);
         for (const auto &eventName : events) {
             transition->addEvent(eventName);
-            Logger::debug("RSM::TransitionParser::parseTransitionNode() - Added event: " + eventName);
+            LOG_DEBUG("Added event: {}", eventName);
         }
     }
 
     // 액션 파싱
     parseActions(transElement, transition);
 
-    Logger::debug("RSM::TransitionParser::parseTransitionNode() - Transition "
-                  "parsed successfully with " +
-                  std::to_string(transition->getActionNodes().size()) + " ActionNodes");
+    LOG_DEBUG("Transition parsed successfully with {} ActionNodes", transition->getActionNodes().size());
     return transition;
 }
 
 std::shared_ptr<RSM::ITransitionNode>
 RSM::TransitionParser::parseInitialTransition(const xmlpp::Element *initialElement) {
     if (!initialElement) {
-        Logger::warn("RSM::TransitionParser::parseInitialTransition() - Null "
-                     "initial element");
+        LOG_WARN("Null initial element");
         return nullptr;
     }
 
-    Logger::debug("RSM::TransitionParser::parseInitialTransition() - Parsing "
-                  "initial transition");
+    LOG_DEBUG("Parsing initial transition");
 
     // initial 요소 내의 transition 요소 찾기
     auto transElement = ParsingCommon::findFirstChildElement(initialElement, "transition");
     if (!transElement) {
-        Logger::warn("RSM::TransitionParser::parseInitialTransition() - No "
-                     "transition element found in initial");
+        LOG_WARN("No transition element found in initial");
         return nullptr;
     }
 
     auto targetAttr = transElement->get_attribute("target");
     if (!targetAttr) {
-        Logger::warn("RSM::TransitionParser::parseInitialTransition() - Initial "
-                     "transition missing target attribute");
+        LOG_WARN("Initial transition missing target attribute");
         return nullptr;
     }
 
     std::string target = targetAttr->get_value();
-    Logger::debug("RSM::TransitionParser::parseInitialTransition() - Initial "
-                  "transition target: " +
-                  target);
+    LOG_DEBUG("Initial transition target: {}", target);
 
     // 초기 전환 생성 - 이벤트 없음
     auto transition = nodeFactory_->createTransitionNode("", target);
@@ -164,8 +152,7 @@ RSM::TransitionParser::parseInitialTransition(const xmlpp::Element *initialEleme
     // 액션 파싱
     parseActions(transElement, transition);
 
-    Logger::debug("RSM::TransitionParser::parseInitialTransition() - Initial "
-                  "transition parsed successfully");
+    LOG_DEBUG("Initial transition parsed successfully");
     return transition;
 }
 
@@ -174,14 +161,11 @@ RSM::TransitionParser::parseTransitionsInState(const xmlpp::Element *stateElemen
     std::vector<std::shared_ptr<RSM::ITransitionNode>> transitions;
 
     if (!stateElement || !stateNode) {
-        Logger::warn("RSM::TransitionParser::parseTransitionsInState() - Null "
-                     "state element or node");
+        LOG_WARN("Null state element or node");
         return transitions;
     }
 
-    Logger::debug("RSM::TransitionParser::parseTransitionsInState() - Parsing "
-                  "transitions in state: " +
-                  stateNode->getId());
+    LOG_DEBUG("Parsing transitions in state: {}", stateNode->getId());
 
     // 모든 transition 요소 찾기
     auto transElements = ParsingCommon::findChildElements(stateElement, "transition");
@@ -192,8 +176,7 @@ RSM::TransitionParser::parseTransitionsInState(const xmlpp::Element *stateElemen
         }
     }
 
-    Logger::debug("RSM::TransitionParser::parseTransitionsInState() - Found " + std::to_string(transitions.size()) +
-                  " transitions");
+    LOG_DEBUG("Found {} transitions", transitions.size());
     return transitions;
 }
 
@@ -224,8 +207,7 @@ void RSM::TransitionParser::parseActions(const xmlpp::Element *transElement,
         for (const auto &actionNode : actionNodes) {
             if (actionNode) {
                 transition->addActionNode(actionNode);
-                Logger::debug("RSM::TransitionParser::parseActions() - Added ActionNode: " +
-                              actionNode->getActionType());
+                LOG_DEBUG("Added ActionNode: {}", actionNode->getActionType());
             }
         }
     }

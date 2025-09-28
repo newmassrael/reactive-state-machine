@@ -1,0 +1,6 @@
+id: 313
+specnum: 5.9
+conformance: mandatory
+manual: True
+description: The SCXML processor MAY reject documents containing syntactically ill-formed expressions at document load time, or it MAY wait and place error.execution in the internal event queue at runtime when the expressions are evaluated.
+variants: 1

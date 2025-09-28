@@ -1,0 +1,6 @@
+id: 496
+specnum: C.1
+conformance: mandatory
+manual: False
+description: If the sending SCXML session specifies a session that does not exist or is inaccessible, the SCXML Processor MUST place the error error.communication on the internal event queue of the sending session.
+variants: 1

@@ -1,0 +1,6 @@
+id: 569
+specnum: B.2
+conformance: optional
+manual: False
+description: For the _ioprocessors system variable in the ECMAScript datamodel the Processor MUST create an array with an object for each Event I/O processor that it supports, where the name of the object is the same as that of the I/O processor. For the SCXML and BasicHTTP Event I/O processors, the Processor MUST create a location property under the object, assigning the access URI as its String value.
+variants: 1

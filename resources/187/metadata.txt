@@ -1,0 +1,6 @@
+id: 187
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: If the SCXML session terminates before the delay interval has elapsed, the SCXML Processor MUST discard the message without attempting to deliver it.
+variants: 1

@@ -24,15 +24,24 @@ public:
     using EventCallback = std::function<bool(const std::string &, const std::string &)>;
 
     /**
-     * @brief Event descriptor for queued events
+     * @brief W3C SCXML event priority for queue processing
+     */
+    enum class EventPriority {
+        INTERNAL = 0,  // High priority - internal queue events (raise, send with target="#_internal")
+        EXTERNAL = 1   // Low priority - external queue events (send without target or with external targets)
+    };
+
+    /**
+     * @brief Event descriptor for queued events with W3C SCXML priority support
      */
     struct QueuedEvent {
         std::string eventName;
         std::string eventData;
         std::chrono::steady_clock::time_point timestamp;
+        EventPriority priority;
 
-        QueuedEvent(const std::string &name, const std::string &data)
-            : eventName(name), eventData(data), timestamp(std::chrono::steady_clock::now()) {}
+        QueuedEvent(const std::string &name, const std::string &data, EventPriority prio = EventPriority::INTERNAL)
+            : eventName(name), eventData(data), timestamp(std::chrono::steady_clock::now()), priority(prio) {}
     };
 
     /**
@@ -65,6 +74,17 @@ public:
     // IEventRaiser interface
     bool raiseEvent(const std::string &eventName, const std::string &eventData) override;
     bool isReady() const override;
+    void setImmediateMode(bool immediate) override;
+    void processQueuedEvents() override;
+
+    /**
+     * @brief Internal method to raise event with specific priority (for W3C SCXML compliance)
+     * @param eventName Name of the event to raise
+     * @param eventData Data associated with the event
+     * @param priority Event priority (INTERNAL or EXTERNAL)
+     * @return true if the event was successfully queued, false if the raiser is not ready
+     */
+    bool raiseEventWithPriority(const std::string &eventName, const std::string &eventData, EventPriority priority);
 
 private:
     /**
@@ -88,6 +108,11 @@ private:
     std::thread processingThread_;
     std::atomic<bool> shutdownRequested_;
     std::atomic<bool> isRunning_;
+
+    // SCXML compliance mode and synchronous queue
+    std::atomic<bool> immediateMode_;
+    std::queue<QueuedEvent> synchronousQueue_;
+    std::mutex synchronousQueueMutex_;
 };
 
 }  // namespace RSM

@@ -18,8 +18,9 @@ public:
     /**
      * @brief Construct internal event target
      * @param eventRaiser Event raiser for raising internal events
+     * @param isExternal true for external queue priority, false for internal queue priority
      */
-    explicit InternalEventTarget(std::shared_ptr<IEventRaiser> eventRaiser);
+    explicit InternalEventTarget(std::shared_ptr<IEventRaiser> eventRaiser, bool isExternal = false);
 
     /**
      * @brief Destructor
@@ -35,6 +36,7 @@ public:
 
 private:
     std::shared_ptr<IEventRaiser> eventRaiser_;
+    bool isExternal_;  // W3C SCXML: true for external queue priority, false for internal
 
     /**
      * @brief Resolve dynamic event name from expression

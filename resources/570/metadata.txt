@@ -1,0 +1,6 @@
+id: 570
+specnum: 3.7
+conformance: mandatory
+manual: False
+description: Immediately after generating done.state.id upon entering a final child of state, if the parent state is a child of a parallel element, and all of the parallel's other children are also in final states, the Processor MUST generate the event done.state.id where id is the id of the parallel element.
+variants: 1

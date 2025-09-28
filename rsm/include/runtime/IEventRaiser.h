@@ -34,6 +34,18 @@ public:
      * @return true if ready, false otherwise
      */
     virtual bool isReady() const = 0;
+
+    /**
+     * @brief Set execution mode for SCXML compliance
+     * @param immediate true for immediate processing, false for queued processing
+     */
+    virtual void setImmediateMode(bool immediate) = 0;
+
+    /**
+     * @brief Process all queued events synchronously (for SCXML compliance)
+     * This method processes queued events in order and returns when all are processed
+     */
+    virtual void processQueuedEvents() = 0;
 };
 
 }  // namespace RSM

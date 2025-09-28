@@ -1,5 +1,6 @@
 #include "scripting/JSEngine.h"
 #include "common/Logger.h"
+#include "events/IEventDispatcher.h"
 #include "quickjs.h"
 #include "runtime/StateMachine.h"
 #include <chrono>
@@ -16,9 +17,9 @@ JSEngine &JSEngine::instance() {
 }
 
 JSEngine::JSEngine() {
-    Logger::debug("JSEngine: Starting initialization in constructor...");
+    LOG_DEBUG("JSEngine: Starting initialization in constructor...");
     initializeInternal();
-    Logger::debug("JSEngine: Constructor completed - fully initialized");
+    LOG_DEBUG("JSEngine: Constructor completed - fully initialized");
 }
 
 JSEngine::~JSEngine() {
@@ -26,10 +27,10 @@ JSEngine::~JSEngine() {
 }
 
 void JSEngine::shutdown() {
-    Logger::debug("JSEngine: shutdown() called - shouldStop: {}", shouldStop_.load());
+    LOG_DEBUG("JSEngine: shutdown() called - shouldStop: {}", shouldStop_.load());
 
     if (shouldStop_) {
-        Logger::debug("JSEngine: Already shutting down, returning");
+        LOG_DEBUG("JSEngine: Already shutting down, returning");
         return;  // Already shutting down
     }
 
@@ -41,9 +42,9 @@ void JSEngine::shutdown() {
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -51,32 +52,32 @@ void JSEngine::shutdown() {
     future.get();
 
     // Now stop the worker thread
-    Logger::debug("JSEngine: Setting shouldStop = true");
+    LOG_DEBUG("JSEngine: Setting shouldStop = true");
     shouldStop_ = true;
     queueCondition_.notify_all();
 
     if (executionThread_.joinable()) {
-        Logger::debug("JSEngine: Attempting to join worker thread...");
+        LOG_DEBUG("JSEngine: Attempting to join worker thread...");
         auto start = std::chrono::steady_clock::now();
 
         // Try join with timeout using future
         std::future<void> joinFuture = std::async(std::launch::async, [this]() { executionThread_.join(); });
 
         if (joinFuture.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
-            Logger::error("JSEngine: Worker thread join TIMEOUT - thread is stuck!");
+            LOG_ERROR("JSEngine: Worker thread join TIMEOUT - thread is stuck!");
             // Cannot force terminate, but at least we know what happened
         } else {
             auto elapsed = std::chrono::steady_clock::now() - start;
-            Logger::debug("JSEngine: Worker thread joined successfully in {}ms",
-                          std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+            LOG_DEBUG("JSEngine: Worker thread joined successfully in {}ms",
+                      std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
         }
     }
 
-    Logger::debug("JSEngine: Shutdown complete");
+    LOG_DEBUG("JSEngine: Shutdown complete");
 }
 
 void JSEngine::reset() {
-    Logger::debug("JSEngine: Starting reset for test isolation...");
+    LOG_DEBUG("JSEngine: Starting reset for test isolation...");
 
     // First ensure complete shutdown
     shutdown();
@@ -92,21 +93,25 @@ void JSEngine::reset() {
         globalFunctions_.clear();
     }
 
+    // NOTE: Do NOT clear stateMachines_ during reset - StateMachine registrations
+    // should persist across JSEngine resets for SCXML W3C compliance.
+    // StateMachines register themselves automatically when created.
+
     // Clear request queue
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
         size_t queueSize = requestQueue_.size();
-        Logger::debug("JSEngine: Clearing request queue - size: {}", queueSize);
+        LOG_DEBUG("JSEngine: Clearing request queue - size: {}", queueSize);
         while (!requestQueue_.empty()) {
             requestQueue_.pop();
         }
-        Logger::debug("JSEngine: Request queue cleared");
+        LOG_DEBUG("JSEngine: Request queue cleared");
     }
 
     // Reinitialize
     initializeInternal();
 
-    Logger::debug("JSEngine: Reset completed - ready for fresh start");
+    LOG_DEBUG("JSEngine: Reset completed - ready for fresh start");
 }
 
 void JSEngine::initializeInternal() {
@@ -132,9 +137,9 @@ bool JSEngine::createSession(const std::string &sessionId, const std::string &pa
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -145,7 +150,7 @@ bool JSEngine::createSession(const std::string &sessionId, const std::string &pa
 bool JSEngine::destroySession(const std::string &sessionId) {
     // Check if JSEngine is already shutdown to prevent deadlock
     if (shouldStop_.load()) {
-        Logger::debug("JSEngine: Already shutdown, skipping destroySession for: {}", sessionId);
+        LOG_DEBUG("JSEngine: Already shutdown, skipping destroySession for: {}", sessionId);
         return true;
     }
 
@@ -154,9 +159,9 @@ bool JSEngine::destroySession(const std::string &sessionId) {
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -206,6 +211,51 @@ std::vector<std::string> JSEngine::getActiveSessions() const {
     return sessions;
 }
 
+std::string JSEngine::getParentSessionId(const std::string &sessionId) const {
+    std::lock_guard<std::mutex> lock(sessionsMutex_);
+
+    auto it = sessions_.find(sessionId);
+    if (it != sessions_.end()) {
+        return it->second.parentSessionId;
+    }
+
+    return "";  // Session not found or no parent
+}
+
+// === Session ID Generation ===
+
+uint64_t JSEngine::generateSessionId() const {
+    static std::atomic<uint64_t> sessionIdCounter{100000};
+    return sessionIdCounter.fetch_add(1);
+}
+
+std::string JSEngine::generateSessionIdString(const std::string &prefix) const {
+    return prefix + std::to_string(generateSessionId());
+}
+
+// === Session Cleanup Hooks ===
+
+void JSEngine::registerEventDispatcher(const std::string &sessionId,
+                                       std::shared_ptr<IEventDispatcher> eventDispatcher) {
+    if (!eventDispatcher) {
+        LOG_WARN("JSEngine: Attempted to register null EventDispatcher for session: {}", sessionId);
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(eventDispatchersMutex_);
+    eventDispatchers_[sessionId] = eventDispatcher;
+    LOG_DEBUG("JSEngine: Registered EventDispatcher for session: {}", sessionId);
+}
+
+void JSEngine::unregisterEventDispatcher(const std::string &sessionId) {
+    std::lock_guard<std::mutex> lock(eventDispatchersMutex_);
+    auto it = eventDispatchers_.find(sessionId);
+    if (it != eventDispatchers_.end()) {
+        eventDispatchers_.erase(it);
+        LOG_DEBUG("JSEngine: Unregistered EventDispatcher for session: {}", sessionId);
+    }
+}
+
 // === JavaScript Execution ===
 
 std::future<JSResult> JSEngine::executeScript(const std::string &sessionId, const std::string &script) {
@@ -215,9 +265,9 @@ std::future<JSResult> JSEngine::executeScript(const std::string &sessionId, cons
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -231,9 +281,9 @@ std::future<JSResult> JSEngine::evaluateExpression(const std::string &sessionId,
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -247,9 +297,9 @@ std::future<JSResult> JSEngine::validateExpression(const std::string &sessionId,
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -265,9 +315,9 @@ std::future<JSResult> JSEngine::setVariable(const std::string &sessionId, const 
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -281,9 +331,9 @@ std::future<JSResult> JSEngine::getVariable(const std::string &sessionId, const 
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -297,9 +347,9 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -315,9 +365,9 @@ std::future<JSResult> JSEngine::setupSystemVariables(const std::string &sessionI
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -353,9 +403,9 @@ void JSEngine::collectGarbage() {
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        Logger::debug("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        Logger::debug("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
+        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
@@ -366,42 +416,42 @@ void JSEngine::collectGarbage() {
 // === Thread-safe Execution Worker ===
 
 void JSEngine::executionWorker() {
-    Logger::debug("JSEngine: Worker LOOP START - Thread ID: {}",
-                  static_cast<size_t>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
+    LOG_DEBUG("JSEngine: Worker LOOP START - Thread ID: {}",
+              static_cast<size_t>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
 
     // Create QuickJS runtime in worker thread to ensure thread safety
     runtime_ = JS_NewRuntime();
     if (!runtime_) {
-        Logger::error("JSEngine: Failed to create QuickJS runtime in worker thread");
+        LOG_ERROR("JSEngine: Failed to create QuickJS runtime in worker thread");
         return;
     }
-    Logger::debug("JSEngine: QuickJS runtime created in worker thread");
+    LOG_DEBUG("JSEngine: QuickJS runtime created in worker thread");
 
     // RAII: Signal constructor that initialization is complete
     queueCondition_.notify_all();
-    Logger::debug("JSEngine: Worker thread initialization complete");
+    LOG_DEBUG("JSEngine: Worker thread initialization complete");
 
     while (!shouldStop_) {
-        Logger::debug("JSEngine: Worker loop iteration - shouldStop: {}, queue size: {}", shouldStop_.load(),
-                      requestQueue_.size());
+        LOG_DEBUG("JSEngine: Worker loop iteration - shouldStop: {}, queue size: {}", shouldStop_.load(),
+                  requestQueue_.size());
 
         std::unique_lock<std::mutex> lock(queueMutex_);
         queueCondition_.wait(lock, [this] { return !requestQueue_.empty() || shouldStop_; });
 
-        Logger::debug("JSEngine: Worker woke up - shouldStop: {}, queue size: {}", shouldStop_.load(),
-                      requestQueue_.size());
+        LOG_DEBUG("JSEngine: Worker woke up - shouldStop: {}, queue size: {}", shouldStop_.load(),
+                  requestQueue_.size());
 
         while (!requestQueue_.empty() && !shouldStop_) {
             auto request = std::move(requestQueue_.front());
             requestQueue_.pop();
             lock.unlock();
 
-            Logger::debug("JSEngine: Processing request type: {}", static_cast<int>(request->type));
+            LOG_DEBUG("JSEngine: Processing request type: {}", static_cast<int>(request->type));
             try {
                 processExecutionRequest(std::move(request));
-                Logger::debug("JSEngine: Request processed successfully");
+                LOG_DEBUG("JSEngine: Request processed successfully");
             } catch (const std::exception &e) {
-                Logger::error("JSEngine: EXCEPTION in worker thread: {}", e.what());
+                LOG_ERROR("JSEngine: EXCEPTION in worker thread: {}", e.what());
             }
 
             lock.lock();
@@ -426,10 +476,10 @@ void JSEngine::executionWorker() {
         // Free runtime
         JS_FreeRuntime(runtime_);
         runtime_ = nullptr;
-        Logger::debug("JSEngine: Worker thread cleaned up QuickJS resources");
+        LOG_DEBUG("JSEngine: Worker thread cleaned up QuickJS resources");
     }
 
-    Logger::debug("JSEngine: Worker LOOP END - shouldStop: {}", shouldStop_.load());
+    LOG_DEBUG("JSEngine: Worker LOOP END - shouldStop: {}", shouldStop_.load());
 }
 
 void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request) {
@@ -467,10 +517,10 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
             result = success ? JSResult::createSuccess() : JSResult::createError("Failed to destroy session");
         } break;
         case ExecutionRequest::HAS_SESSION: {
-            Logger::debug("JSEngine: HAS_SESSION check for '{}' - sessions_ map size: {}", request->sessionId,
-                          sessions_.size());
+            LOG_DEBUG("JSEngine: HAS_SESSION check for '{}' - sessions_ map size: {}", request->sessionId,
+                      sessions_.size());
             bool exists = sessions_.find(request->sessionId) != sessions_.end();
-            Logger::debug("JSEngine: Session '{}' exists: {}", request->sessionId, exists);
+            LOG_DEBUG("JSEngine: Session '{}' exists: {}", request->sessionId, exists);
             result = exists ? JSResult::createSuccess() : JSResult::createError("Session not found");
         } break;
         case ExecutionRequest::GET_ACTIVE_SESSIONS: {
@@ -513,7 +563,7 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
                 runtime_ = nullptr;
             }
             result = JSResult::createSuccess();
-            Logger::debug("JSEngine: Worker thread cleaned up QuickJS resources");
+            LOG_DEBUG("JSEngine: Worker thread cleaned up QuickJS resources");
         } break;
         }
 
@@ -529,12 +579,12 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
 bool JSEngine::createSessionInternal(const std::string &sessionId, const std::string &parentSessionId) {
     // Validate session ID is not empty
     if (sessionId.empty()) {
-        Logger::error("JSEngine: Session ID cannot be empty");
+        LOG_ERROR("JSEngine: Session ID cannot be empty");
         return false;
     }
 
     if (sessions_.find(sessionId) != sessions_.end()) {
-        Logger::error("JSEngine: Session already exists: {}", sessionId);
+        LOG_ERROR("JSEngine: Session already exists: {}", sessionId);
         return false;
     }
 
@@ -542,7 +592,7 @@ bool JSEngine::createSessionInternal(const std::string &sessionId, const std::st
     // Create QuickJS context
     JSContext *ctx = JS_NewContext(runtime_);
     if (!ctx) {
-        Logger::error("JSEngine: Failed to create context for session: {}", sessionId);
+        LOG_ERROR("JSEngine: Failed to create context for session: {}", sessionId);
         return false;
     }
 
@@ -560,7 +610,7 @@ bool JSEngine::createSessionInternal(const std::string &sessionId, const std::st
 
     sessions_[sessionId] = std::move(session);
 
-    Logger::debug("JSEngine: Created session '{}' - sessions_ map size now: {}", sessionId, sessions_.size());
+    LOG_DEBUG("JSEngine: Created session '{}' - sessions_ map size now: {}", sessionId, sessions_.size());
     return true;
 }
 
@@ -568,6 +618,21 @@ bool JSEngine::destroySessionInternal(const std::string &sessionId) {
     auto it = sessions_.find(sessionId);
     if (it == sessions_.end()) {
         return false;
+    }
+
+    // W3C SCXML 6.2: Cancel delayed events for terminating session
+    {
+        std::lock_guard<std::mutex> lock(eventDispatchersMutex_);
+        auto dispatcherIt = eventDispatchers_.find(sessionId);
+        if (dispatcherIt != eventDispatchers_.end()) {
+            auto eventDispatcher = dispatcherIt->second.lock();
+            if (eventDispatcher) {
+                size_t cancelledCount = eventDispatcher->cancelEventsForSession(sessionId);
+                LOG_DEBUG("JSEngine: Cancelled {} delayed events for session: {}", cancelledCount, sessionId);
+            }
+            // Remove the registry entry regardless of dispatcher availability
+            eventDispatchers_.erase(dispatcherIt);
+        }
     }
 
     if (it->second.jsContext) {
@@ -579,7 +644,7 @@ bool JSEngine::destroySessionInternal(const std::string &sessionId) {
     }
 
     sessions_.erase(it);
-    Logger::debug("JSEngine: Destroyed session '" + sessionId + "'");
+    LOG_DEBUG("JSEngine: Destroyed session '{}'", sessionId);
     return true;
 }
 
@@ -690,11 +755,11 @@ void JSEngine::setupEventObject(JSContext *ctx, const std::string &sessionId) {
     ::JSValue result =
         JS_Eval(ctx, eventSetupCode.c_str(), eventSetupCode.length(), "<event_setup>", JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(result)) {
-        Logger::error("JSEngine: Failed to setup _event object");
+        LOG_ERROR("JSEngine: Failed to setup _event object");
         ::JSValue exception = JS_GetException(ctx);
         const char *errorStr = JS_ToCString(ctx, exception);
         if (errorStr) {
-            Logger::error("JSEngine: _event setup error: {}", errorStr);
+            LOG_ERROR("JSEngine: _event setup error: {}", errorStr);
             JS_FreeCString(ctx, errorStr);
         }
         JS_FreeValue(ctx, exception);
@@ -809,7 +874,7 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
 
     // Log to our RSM logging system
     // For now, just print to stderr for testing
-    Logger::info("RSM console.log: {}", ss.str());
+    LOG_INFO("RSM console.log: {}", ss.str());
     return JS_UNDEFINED;
 }
 
@@ -826,7 +891,7 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
     if (sessionId && eventName) {
         // Get JSEngine instance through static access (SOLID: Dependency Inversion)
         JSEngine::instance().queueInternalEvent(std::string(sessionId), std::string(eventName));
-        Logger::debug("JSEngine: Queued internal event '{}' for session '{}'", eventName, sessionId);
+        LOG_DEBUG("JSEngine: Queued internal event '{}' for session '{}'", eventName, sessionId);
     }
 
     if (sessionId) {
@@ -863,19 +928,19 @@ void JSEngine::queueInternalEvent(const std::string &sessionId, const std::strin
     std::lock_guard<std::mutex> queueLock(*internalEventQueues_[sessionId].mutex);
     internalEventQueues_[sessionId].events.push(eventName);
 
-    Logger::debug("JSEngine: Queued internal event '{}' for session '{}'", eventName, sessionId);
+    LOG_DEBUG("JSEngine: Queued internal event '{}' for session '{}'", eventName, sessionId);
 }
 
 void JSEngine::setStateMachine(StateMachine *stateMachine, const std::string &sessionId) {
     std::lock_guard<std::mutex> lock(stateMachinesMutex_);
     if (stateMachine) {
         stateMachines_[sessionId] = stateMachine;
-        Logger::debug("JSEngine: StateMachine set for session: {}", sessionId);
+        LOG_DEBUG("JSEngine: StateMachine set for session: {}", sessionId);
     } else {
         auto it = stateMachines_.find(sessionId);
         if (it != stateMachines_.end()) {
             stateMachines_.erase(it);
-            Logger::debug("JSEngine: StateMachine removed for session: {}", sessionId);
+            LOG_DEBUG("JSEngine: StateMachine removed for session: {}", sessionId);
         }
     }
 }
@@ -955,11 +1020,11 @@ std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, c
                                                        const std::string &originalExpression) {
     std::vector<std::string> arrayValues;
 
-    Logger::debug("resultToStringArray: Starting with sessionId='{}', originalExpression='{}'", sessionId,
-                  originalExpression);
+    LOG_DEBUG("resultToStringArray: Starting with sessionId='{}', originalExpression='{}'", sessionId,
+              originalExpression);
 
     if (!result.success_internal) {
-        Logger::debug("resultToStringArray: Result not successful, returning empty array");
+        LOG_DEBUG("resultToStringArray: Result not successful, returning empty array");
         return arrayValues;
     }
 
@@ -968,43 +1033,43 @@ std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, c
     // SOLID: Handle all ScriptValue types internally (Single Responsibility)
     if (std::holds_alternative<std::string>(result.value_internal)) {
         arrayStr = std::get<std::string>(result.value_internal);
-        Logger::debug("resultToStringArray: Got string result: '{}'", arrayStr);
+        LOG_DEBUG("resultToStringArray: Got string result: '{}'", arrayStr);
     } else {
-        Logger::debug("resultToStringArray: Result is not string type, attempting JSON.stringify conversion");
+        LOG_DEBUG("resultToStringArray: Result is not string type, attempting JSON.stringify conversion");
         // SOLID: For non-string types, convert to JSON string using proven logic
         // This handles array objects, numbers, booleans, etc.
         if (!sessionId.empty() && !originalExpression.empty()) {
             // Use JSON.stringify for reliable array conversion
             std::string stringifyExpr = "JSON.stringify(" + originalExpression + ")";
-            Logger::debug("resultToStringArray: Evaluating stringify expression: '{}'", stringifyExpr);
+            LOG_DEBUG("resultToStringArray: Evaluating stringify expression: '{}'", stringifyExpr);
             auto stringifyResult = RSM::JSEngine::instance().evaluateExpression(sessionId, stringifyExpr).get();
             if (stringifyResult.isSuccess() && std::holds_alternative<std::string>(stringifyResult.value_internal)) {
                 arrayStr = std::get<std::string>(stringifyResult.value_internal);
-                Logger::debug("resultToStringArray: JSON.stringify succeeded, result: '{}'", arrayStr);
+                LOG_DEBUG("resultToStringArray: JSON.stringify succeeded, result: '{}'", arrayStr);
             } else {
-                Logger::debug("resultToStringArray: JSON.stringify failed or returned non-string");
+                LOG_DEBUG("resultToStringArray: JSON.stringify failed or returned non-string");
                 return arrayValues;  // Failed to convert to JSON string
             }
         } else {
-            Logger::debug("resultToStringArray: Missing sessionId or originalExpression for non-string type");
+            LOG_DEBUG("resultToStringArray: Missing sessionId or originalExpression for non-string type");
             return arrayValues;  // Cannot process non-string types without session context
         }
     }
 
-    Logger::debug("resultToStringArray: Final arrayStr before processing: '{}'", arrayStr);
+    LOG_DEBUG("resultToStringArray: Final arrayStr before processing: '{}'", arrayStr);
 
     // SOLID: Use JSON-based approach for reliable array parsing
     // This correctly handles nested arrays like [[1,2],[3,4]] and all JavaScript types
     if (!arrayStr.empty() && !sessionId.empty()) {
-        Logger::debug("resultToStringArray: Processing array using JSON approach");
+        LOG_DEBUG("resultToStringArray: Processing array using JSON approach");
 
         try {
             // SCXML W3C Compliance: Use original expression to preserve null/undefined distinction
             std::string setVarExpr = "var _tempArray = " + originalExpression + "; _tempArray.length";
-            Logger::debug("resultToStringArray: Evaluating temp variable length expression: '{}'", setVarExpr);
+            LOG_DEBUG("resultToStringArray: Evaluating temp variable length expression: '{}'", setVarExpr);
             auto lengthResult = RSM::JSEngine::instance().evaluateExpression(sessionId, setVarExpr).get();
 
-            Logger::debug("resultToStringArray: Length result type index: {}", lengthResult.value_internal.index());
+            LOG_DEBUG("resultToStringArray: Length result type index: {}", lengthResult.value_internal.index());
 
             int64_t arrayLength = 0;
             bool lengthValid = false;
@@ -1013,12 +1078,12 @@ std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, c
                 if (std::holds_alternative<int64_t>(lengthResult.value_internal)) {
                     arrayLength = std::get<int64_t>(lengthResult.value_internal);
                     lengthValid = true;
-                    Logger::debug("resultToStringArray: Got int64_t array length: {}", arrayLength);
+                    LOG_DEBUG("resultToStringArray: Got int64_t array length: {}", arrayLength);
                 } else if (std::holds_alternative<double>(lengthResult.value_internal)) {
                     double doubleLength = std::get<double>(lengthResult.value_internal);
                     arrayLength = static_cast<int64_t>(doubleLength);
                     lengthValid = true;
-                    Logger::debug("resultToStringArray: Got double array length: {} -> {}", doubleLength, arrayLength);
+                    LOG_DEBUG("resultToStringArray: Got double array length: {} -> {}", doubleLength, arrayLength);
                 }
             }
 
@@ -1035,20 +1100,20 @@ std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, c
                         if (typeStr == "undefined") {
                             // Preserve undefined values exactly
                             arrayValues.push_back("undefined");
-                            Logger::debug("resultToStringArray: Element {} is undefined", i);
+                            LOG_DEBUG("resultToStringArray: Element {} is undefined", i);
                             continue;
                         }
                     }
 
                     // For non-undefined values, use JSON.stringify
                     std::string elementExpr = "JSON.stringify(_tempArray[" + std::to_string(i) + "])";
-                    Logger::debug("resultToStringArray: Element {} expression: '{}'", i, elementExpr);
+                    LOG_DEBUG("resultToStringArray: Element {} expression: '{}'", i, elementExpr);
                     auto elementResult = RSM::JSEngine::instance().evaluateExpression(sessionId, elementExpr).get();
 
                     if (elementResult.isSuccess() &&
                         std::holds_alternative<std::string>(elementResult.value_internal)) {
                         std::string elementStr = std::get<std::string>(elementResult.value_internal);
-                        Logger::debug("resultToStringArray: Element {} result: '{}'", i, elementStr);
+                        LOG_DEBUG("resultToStringArray: Element {} result: '{}'", i, elementStr);
                         // Remove quotes for primitive types, keep JSON for complex types
                         if (elementStr.length() >= 2 && elementStr.front() == '"' && elementStr.back() == '"') {
                             // String value - remove quotes
@@ -1060,16 +1125,16 @@ std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, c
                     }
                 }
             } else {
-                Logger::debug("resultToStringArray: Length evaluation failed - success: {}, error: '{}'",
-                              lengthResult.isSuccess(),
-                              lengthResult.isSuccess() ? "no error" : lengthResult.errorMessage_internal);
+                LOG_DEBUG("resultToStringArray: Length evaluation failed - success: {}, error: '{}'",
+                          lengthResult.isSuccess(),
+                          lengthResult.isSuccess() ? "no error" : lengthResult.errorMessage_internal);
             }
         } catch (const std::exception &e) {
-            Logger::error("resultToStringArray: Exception during JSON processing: {}", e.what());
+            LOG_ERROR("resultToStringArray: Exception during JSON processing: {}", e.what());
         }
     }
 
-    Logger::debug("resultToStringArray: Returning {} elements", arrayValues.size());
+    LOG_DEBUG("resultToStringArray: Returning {} elements", arrayValues.size());
     return arrayValues;
 }
 
@@ -1081,6 +1146,86 @@ void JSEngine::requireSuccess(const JSResult &result, const std::string &operati
 
 bool JSEngine::isSuccess(const JSResult &result) noexcept {
     return result.success_internal;
+}
+
+// === Invoke Session Management Implementation ===
+
+void JSEngine::registerInvokeMapping(const std::string &parentSessionId, const std::string &invokeId,
+                                     const std::string &childSessionId) {
+    std::lock_guard<std::mutex> lock(invokeMappingsMutex_);
+    invokeMappings_[parentSessionId][invokeId] = childSessionId;
+    LOG_DEBUG("JSEngine: Registered invoke mapping - parent: {}, invoke: {}, child: {}", parentSessionId, invokeId,
+              childSessionId);
+}
+
+std::string JSEngine::getInvokeSessionId(const std::string &parentSessionId, const std::string &invokeId) const {
+    std::lock_guard<std::mutex> lock(invokeMappingsMutex_);
+
+    auto parentIt = invokeMappings_.find(parentSessionId);
+    if (parentIt == invokeMappings_.end()) {
+        LOG_DEBUG("JSEngine: No invoke mappings found for parent session: {}", parentSessionId);
+        return "";
+    }
+
+    auto invokeIt = parentIt->second.find(invokeId);
+    if (invokeIt == parentIt->second.end()) {
+        LOG_DEBUG("JSEngine: Invoke ID '{}' not found in parent session: {}", invokeId, parentSessionId);
+        return "";
+    }
+
+    LOG_DEBUG("JSEngine: Found invoke mapping - parent: {}, invoke: {}, child: {}", parentSessionId, invokeId,
+              invokeIt->second);
+    return invokeIt->second;
+}
+
+void JSEngine::unregisterInvokeMapping(const std::string &parentSessionId, const std::string &invokeId) {
+    std::lock_guard<std::mutex> lock(invokeMappingsMutex_);
+
+    auto parentIt = invokeMappings_.find(parentSessionId);
+    if (parentIt != invokeMappings_.end()) {
+        parentIt->second.erase(invokeId);
+
+        // Clean up empty parent entries
+        if (parentIt->second.empty()) {
+            invokeMappings_.erase(parentIt);
+        }
+
+        LOG_DEBUG("JSEngine: Unregistered invoke mapping - parent: {}, invoke: {}", parentSessionId, invokeId);
+    }
+}
+
+void JSEngine::registerEventRaiser(const std::string &sessionId, std::shared_ptr<IEventRaiser> eventRaiser) {
+    std::lock_guard<std::mutex> lock(sessionsMutex_);
+
+    auto it = sessions_.find(sessionId);
+    if (it != sessions_.end()) {
+        it->second.eventRaiser = eventRaiser;
+        LOG_DEBUG("JSEngine: Registered EventRaiser for session: {}", sessionId);
+    } else {
+        LOG_WARN("JSEngine: Cannot register EventRaiser - session not found: {}", sessionId);
+    }
+}
+
+std::shared_ptr<IEventRaiser> JSEngine::getEventRaiser(const std::string &sessionId) const {
+    std::lock_guard<std::mutex> lock(sessionsMutex_);
+
+    auto it = sessions_.find(sessionId);
+    if (it != sessions_.end()) {
+        return it->second.eventRaiser;
+    }
+
+    LOG_DEBUG("JSEngine: EventRaiser not found for session: {}", sessionId);
+    return nullptr;
+}
+
+void JSEngine::unregisterEventRaiser(const std::string &sessionId) {
+    std::lock_guard<std::mutex> lock(sessionsMutex_);
+
+    auto it = sessions_.find(sessionId);
+    if (it != sessions_.end()) {
+        it->second.eventRaiser.reset();
+        LOG_DEBUG("JSEngine: Unregistered EventRaiser for session: {}", sessionId);
+    }
 }
 
 // JSEngine internal functions are implemented in JSEngineImpl.cpp

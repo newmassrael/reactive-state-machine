@@ -43,6 +43,7 @@ public:
     bool isEventPending(const std::string &sendId) const override;
     std::string getStatistics() const override;
     void shutdown() override;
+    size_t cancelEventsForSession(const std::string &sessionId) override;
 
 private:
     /**

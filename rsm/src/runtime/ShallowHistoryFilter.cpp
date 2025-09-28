@@ -8,16 +8,16 @@ namespace RSM {
 ShallowHistoryFilter::ShallowHistoryFilter(
     std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider)
     : stateProvider_(std::move(stateProvider)) {
-    Logger::debug("ShallowHistoryFilter: Initialized shallow history filter");
+    LOG_DEBUG("ShallowHistoryFilter: Initialized shallow history filter");
 }
 
 std::vector<std::string> ShallowHistoryFilter::filterStates(const std::vector<std::string> &activeStateIds,
                                                             const std::string &parentStateId) const {
-    Logger::debug("ShallowHistoryFilter: Filtering states for shallow history - parent: " + parentStateId +
-                  ", active states: " + std::to_string(activeStateIds.size()));
+    LOG_DEBUG("Filtering states for shallow history - parent: {}, active states: {}", parentStateId,
+              activeStateIds.size());
 
     if (parentStateId.empty()) {
-        Logger::warn("ShallowHistoryFilter: Empty parent state ID provided");
+        LOG_WARN("ShallowHistoryFilter: Empty parent state ID provided");
         return {};
     }
 
@@ -27,37 +27,35 @@ std::vector<std::string> ShallowHistoryFilter::filterStates(const std::vector<st
     for (const auto &stateId : activeStateIds) {
         if (isImmediateChild(stateId, parentStateId)) {
             filteredStates.push_back(stateId);
-            Logger::debug("ShallowHistoryFilter: Recording immediate child state: " + stateId);
+            LOG_DEBUG("Recording immediate child state: {}", stateId);
         }
     }
 
-    Logger::info("ShallowHistoryFilter: Filtered " + std::to_string(activeStateIds.size()) + " states to " +
-                 std::to_string(filteredStates.size()) + " immediate children");
+    LOG_INFO("Filtered {} states to {} immediate children", activeStateIds.size(), filteredStates.size());
 
     return filteredStates;
 }
 
 bool ShallowHistoryFilter::isImmediateChild(const std::string &stateId, const std::string &parentStateId) const {
     if (!stateProvider_) {
-        Logger::error("ShallowHistoryFilter: No state provider available");
+        LOG_ERROR("ShallowHistoryFilter: No state provider available");
         return false;
     }
 
     auto state = stateProvider_(stateId);
     if (!state) {
-        Logger::warn("ShallowHistoryFilter: State not found: " + stateId);
+        LOG_WARN("State not found: {}", stateId);
         return false;
     }
 
     auto parent = state->getParent();
     if (!parent) {
-        Logger::debug("ShallowHistoryFilter: State " + stateId + " has no parent");
+        LOG_DEBUG("State {} has no parent", stateId);
         return false;
     }
 
     bool isImmediate = (parent->getId() == parentStateId);
-    Logger::debug("ShallowHistoryFilter: State " + stateId + " is " + (isImmediate ? "" : "not ") +
-                  "immediate child of " + parentStateId);
+    LOG_DEBUG("State {} is {}immediate child of {}", stateId, (isImmediate ? "" : "not "), parentStateId);
 
     return isImmediate;
 }

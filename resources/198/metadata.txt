@@ -1,0 +1,6 @@
+id: 198
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: If neither the 'type' nor the 'typeexpr' is defined, the SCXML Processor MUST assume the default value of http://www.w3.org/TR/scxml/#SCXMLEventProcessor.
+variants: 1

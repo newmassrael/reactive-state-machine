@@ -1,0 +1,6 @@
+id: 287
+specnum: 5.4
+conformance: mandatory
+manual: False
+description: If the location expression of an assign denotes a valid location in the datamodel and if the value specified by 'expr' is a legal value for the location specified, the processor MUST place the specified value at the specified location.
+variants: 1

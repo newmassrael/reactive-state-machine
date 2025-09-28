@@ -1,0 +1,6 @@
+id: 519
+specnum: C.2
+conformance: optional
+manual: False
+description: If one or more param children are present [in send], the SCXML Processor MUST map their names (i.e. name attributes) and values to HTTP POST parameters
+variants: 1

@@ -1,0 +1,7 @@
+id: 561
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, if the content provided to populate _event.data can be interpreted as a valid XML document
+ 	     (and cannot be interpreted as key-value pairs or JSON), the Processor MUST create the corresponding DOM structure and assign it as the value _event.data.
+variants: 1

@@ -1,0 +1,6 @@
+id: 224
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: When the platform generates an identifier for 'idlocation', the identifier MUST have the form stateid.platformid, where stateid is the id of the state containing this element and platformid is automatically generated.
+variants: 1

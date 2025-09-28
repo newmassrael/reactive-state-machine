@@ -1,0 +1,6 @@
+id: 531
+specnum: C.2
+conformance: optional
+manual: False
+description: If a single instance of the parameter '_scxmleventname' is present, the SCXML Processor MUST use its value as the name of the SCXML event that it raises.
+variants: 1

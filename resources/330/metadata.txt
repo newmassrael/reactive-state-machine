@@ -1,0 +1,6 @@
+id: 330
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST insure that the following fields (name, type, sendid, origin, origintype, invokeid, data) are present in all events (_event variable), whether internal or external.
+variants: 1

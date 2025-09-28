@@ -1,0 +1,6 @@
+id: 509
+specnum: C.2
+conformance: optional
+manual: False
+description: An SCXML Processor that supports the Basic HTTP Event I/O Processor MUST accept messages at the access URI as HTTP POST requests
+variants: 1

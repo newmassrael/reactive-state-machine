@@ -1,0 +1,9 @@
+id: 451
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript datamodel, the SCXML Processor must add an ECMAScript 
+ 	     function 'In()' to the SCXML namespace that takes a stateID as its argument and 
+ 	     returns 'true' if and only if that state is in the current state configuration, 
+ 	     as described in 5.10.1 Conditional Expressions.
+variants: 1

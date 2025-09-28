@@ -1,0 +1,6 @@
+id: 220
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: Platforms MUST support http://www.w3.org/TR/scxml/, as a value for the 'type' attribute
+variants: 1

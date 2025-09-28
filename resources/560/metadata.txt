@@ -1,0 +1,6 @@
+id: 560
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, if the content provided to populate _event.data can be interpeted as key-value pairs, then for each unique key, the SCXML Processor MUST create a property of _event.data whose name is the name of the key-value pair and whose value is the value of the key-value pair.
+variants: 1

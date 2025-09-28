@@ -1,0 +1,6 @@
+id: 191
+specnum: C.1
+conformance: mandatory
+manual: False
+description: [When using the scxml event i/o processor] If the target is the special term '#_parent', the Processor MUST add the event to the external event queue of the SCXML session that invoked the sending session, if there is one.
+variants: 1

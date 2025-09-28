@@ -1,0 +1,6 @@
+id: 156
+specnum: 4.6
+conformance: mandatory
+manual: False
+description: If the evaluation of any child element of foreach causes an error, the processor MUST cease execution of the foreach element and the block that contains it.
+variants: 1

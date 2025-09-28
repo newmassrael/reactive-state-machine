@@ -1,0 +1,6 @@
+id: 194
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: If the value of the 'target' or 'targetexpr' attribute is not supported or invalid, the Processor MUST place the error error.execution on the internal event queue
+variants: 1

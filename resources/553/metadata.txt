@@ -1,0 +1,6 @@
+id: 553
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: If the evaluation of send's arguments produces an error, If the evaluation of send's arguments produces an error, the Processor MUST discard the message without attempting to deliver it.
+variants: 1

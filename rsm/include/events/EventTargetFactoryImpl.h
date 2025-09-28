@@ -71,6 +71,21 @@ private:
      */
     std::shared_ptr<IEventTarget> createInternalTarget(const std::string &targetUri);
 
+    /**
+     * @brief Create external event target (for W3C SCXML external queue compliance)
+     *
+     * @return External event target that uses EXTERNAL priority
+     */
+    std::shared_ptr<IEventTarget> createExternalTarget();
+
+    /**
+     * @brief Create parent event target for #_parent routing
+     *
+     * @param targetUri Target URI (should be "#_parent")
+     * @return Parent event target
+     */
+    std::shared_ptr<IEventTarget> createParentTarget(const std::string &targetUri);
+
     std::shared_ptr<IEventRaiser> eventRaiser_;
     std::map<std::string, std::function<std::shared_ptr<IEventTarget>(const std::string &)>> targetCreators_;
 };

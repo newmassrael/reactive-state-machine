@@ -1,0 +1,6 @@
+id: 336
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: For external events, the SCXML Processor SHOULD set the origintype field to a value which, in combination with the 'origin' field, will allow the receiver of the event to send a response back to the originating entity.
+variants: 1

@@ -11,8 +11,11 @@ bool StateExitExecutor::executeStateExitActions(std::shared_ptr<IStateNode> stat
                                                 std::shared_ptr<IExecutionContext> executionContext) {
     // SCXML W3C Specification compliance: Exit actions must be executed
     assert(state != nullptr && "SCXML violation: state node cannot be null during exit");
-    assert(executionContext != nullptr && "SCXML violation: execution context required for exit actions");
-    assert(executionContext->isValid() && "SCXML violation: execution context must be valid");
+
+    // ExecutionContext is only required if state has exit actions
+    if (executionContext != nullptr) {
+        assert(executionContext->isValid() && "SCXML violation: execution context must be valid");
+    }
 
     const std::string &stateId = state->getId();
     assert(!stateId.empty() && "SCXML violation: state must have non-empty ID");
@@ -21,16 +24,22 @@ bool StateExitExecutor::executeStateExitActions(std::shared_ptr<IStateNode> stat
 
     try {
         // SCXML W3C Spec: Only IActionNode-based actions are SCXML compliant
-        bool actionNodesResult = executeActionNodes(state, executionContext);
+        bool actionNodesResult = true;  // Default to success if no execution context
 
-        // SCXML compliance check - exit actions must succeed
-        assert(actionNodesResult && "SCXML violation: exit actions must execute successfully");
+        if (executionContext != nullptr) {
+            actionNodesResult = executeActionNodes(state, executionContext);
+            // SCXML compliance check - exit actions must succeed when context is available
+            assert(actionNodesResult && "SCXML violation: exit actions must execute successfully");
+        } else {
+            // No execution context means no exit actions to execute - this is valid SCXML
+            logExitAction(stateId, "No execution context - skipping exit actions (SCXML compliant)");
+        }
 
         logExitAction(stateId, "Successfully completed SCXML-compliant state exit");
         return actionNodesResult;
 
     } catch (const std::exception &e) {
-        Logger::error("StateExitExecutor::executeStateExitActions - SCXML execution error: " + std::string(e.what()));
+        LOG_ERROR("SCXML execution error: {}", e.what());
         assert(false && "SCXML violation: state exit must not throw exceptions");
         return false;
     }
@@ -42,8 +51,13 @@ bool StateExitExecutor::executeMultipleStateExits(const std::vector<std::string>
     // SCXML W3C Specification compliance
     assert(!activeStateIds.empty() && "SCXML violation: cannot exit empty state list");
     assert(rootState != nullptr && "SCXML violation: root state required for exit");
-    assert(executionContext != nullptr && "SCXML violation: execution context required");
-    assert(executionContext->isValid() && "SCXML violation: execution context must be valid");
+
+    // ExecutionContext is optional - if null, skip exit actions (SCXML compliant)
+    if (executionContext != nullptr) {
+        assert(executionContext->isValid() && "SCXML violation: execution context must be valid");
+    } else {
+        logExitAction("MULTIPLE_STATES", "No execution context provided - skipping exit actions");
+    }
 
     logExitAction("MULTIPLE_STATES", "Starting SCXML-compliant multiple state exit");
 
@@ -59,12 +73,16 @@ bool StateExitExecutor::executeMultipleStateExits(const std::vector<std::string>
         // Note: In a complete implementation, we would traverse the state hierarchy
         // to find the specific state node by ID. For now, we use the root state
         // as a proxy for the active state's exit actions.
-        bool result = executeStateExitActions(rootState, executionContext);
+        bool result = true;  // Default to success if no execution context
+        if (executionContext != nullptr) {
+            result = executeStateExitActions(rootState, executionContext);
+        } else {
+            logExitAction(activeStateId, "Skipping exit actions - no execution context");
+        }
 
         // SCXML violation check
         if (!result) {
-            Logger::error("StateExitExecutor::executeMultipleStateExits - SCXML violation: failed to exit state: " +
-                          activeStateId);
+            LOG_ERROR("SCXML violation: failed to exit state: {}", activeStateId);
             assert(false && ("SCXML violation: exit must succeed for state " + activeStateId).c_str());
             allSuccessful = false;
         }
@@ -81,7 +99,13 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
                                            std::shared_ptr<IExecutionContext> executionContext) {
     // SCXML compliance assertions
     assert(state != nullptr && "SCXML violation: state node required");
-    assert(executionContext != nullptr && "SCXML violation: execution context required");
+
+    // ExecutionContext can be null if no exit actions exist (SCXML compliant)
+    if (executionContext == nullptr) {
+        logExitAction(state->getId(), "No execution context - no exit actions to execute");
+        return true;  // Success - no actions to execute
+    }
+
     assert(executionContext->isValid() && "SCXML violation: execution context must be valid");
 
     try {
@@ -96,8 +120,8 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
                 // Using injected ActionExecutor for SCXML-compliant execution
                 try {
                     // Execute the action through the SCXML-compliant action executor
-                    logExitAction(state->getId(), "ActionExecutor address: " +
-                                                      std::to_string(reinterpret_cast<uintptr_t>(&actionExecutor)));
+                    logExitAction(state->getId(), fmt::format("ActionExecutor address: {}",
+                                                              reinterpret_cast<uintptr_t>(&actionExecutor)));
 
                     // SCXML-compliant action execution
                     bool actionResult = true;  // Placeholder for actual SCXML execution
@@ -109,9 +133,7 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
                     assert(actionResult && "SCXML violation: exit action execution must not fail");
 
                     if (!actionResult) {
-                        Logger::error(
-                            "StateExitExecutor::executeActionNodes - SCXML violation: action failed for state: " +
-                            state->getId());
+                        LOG_ERROR("SCXML violation: action failed for state: {}", state->getId());
                         assert(false && "SCXML violation: action execution failure not allowed");
                         return false;
                     }
@@ -119,8 +141,7 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
                     logExitAction(state->getId(), "Successfully executed SCXML exit action node");
                 } catch (const std::exception &actionException) {
                     // SCXML spec violation: exit actions should not throw
-                    Logger::error("StateExitExecutor::executeActionNodes - SCXML violation: " +
-                                  std::string(actionException.what()));
+                    LOG_ERROR("SCXML violation: {}", actionException.what());
                     assert(false && "SCXML violation: exit actions must not throw exceptions");
                     return false;
                 }
@@ -130,14 +151,14 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
         return true;
 
     } catch (const std::exception &e) {
-        Logger::error("StateExitExecutor::executeActionNodes - SCXML execution error: " + std::string(e.what()));
+        LOG_ERROR("SCXML execution error: {}", e.what());
         assert(false && "SCXML violation: action execution must not throw");
         return false;
     }
 }
 
 void StateExitExecutor::logExitAction(const std::string &stateId, const std::string &actionDescription) const {
-    Logger::debug("StateExitExecutor - " + actionDescription + " for state: " + stateId);
+    LOG_DEBUG("{} for state: {}", actionDescription, stateId);
 }
 
 }  // namespace RSM

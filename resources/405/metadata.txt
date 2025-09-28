@@ -1,0 +1,6 @@
+id: 405
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: [the SCXML Processor executing a set of transitions] MUST then [after the onexits] execute the executable content contained in the transitions in document order.
+variants: 1

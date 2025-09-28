@@ -1,0 +1,6 @@
+id: 226
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: When the invoke element is executed, the SCXML Processor MUST start a new logical instance of the external service specified in 'type' or 'typexpr', passing it the URL specified by 'src' or the data specified by content, or param.
+variants: 1

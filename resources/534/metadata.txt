@@ -1,0 +1,6 @@
+id: 534
+specnum: C.2
+conformance: optional
+manual: False
+description: If the 'event' parameter of send is defined, the SCXML Processor MUST use its value as the value of the HTTP POST parameter _scxmleventname
+variants: 1

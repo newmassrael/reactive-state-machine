@@ -69,9 +69,11 @@ add_library(rsm_unified
     src/runtime/StateMachineFactory.cpp
     src/runtime/SCXMLModelExtractor.cpp
     src/runtime/ActionExecutorImpl.cpp
+    src/runtime/StateMachineEventRaiser.cpp
     src/runtime/ExecutionContextImpl.cpp
     src/runtime/StateHierarchyManager.cpp
     src/runtime/EventRaiserImpl.cpp
+    src/runtime/InvokeExecutor.cpp
     
     # History state management (SOLID architecture)
     src/runtime/HistoryManager.cpp
@@ -93,7 +95,9 @@ add_library(rsm_unified
 
     # Events implementation
     src/events/InternalEventTarget.cpp
+    src/events/ParentEventTarget.cpp
     src/events/HttpEventTarget.cpp
+    src/events/InvokeEventTarget.cpp
     src/events/EventSchedulerImpl.cpp
     src/events/EventDispatcherImpl.cpp
     src/events/EventTargetFactoryImpl.cpp
@@ -144,6 +148,15 @@ target_include_directories(rsm_unified
 
 # Make rsm_unified depend on the external libxml++ build
 add_dependencies(rsm_unified libxmlxx_external)
+
+# RSM 코드베이스에서 std::cout 사용 금지 설정  
+# printf 계열은 시스템 헤더 충돌로 인해 비활성화됨
+
+# DisableStdOut.h를 전역적으로 강제 포함
+target_compile_options(rsm_unified 
+    PRIVATE
+        -include common/DisableStdOut.h
+)
 
 target_link_libraries(rsm_unified
     PUBLIC

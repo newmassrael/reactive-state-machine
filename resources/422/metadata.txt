@@ -1,0 +1,6 @@
+id: 422
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: After completing a macrostep, the SCXML Processor MUST execute in document order the invoke handlers in all states that have been entered (and not exited) since the completion of the last macrostep.
+variants: 1

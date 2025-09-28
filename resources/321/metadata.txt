@@ -1,0 +1,6 @@
+id: 321
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The Processor MUST bind the variable _sessionid at load time to the system-generated id for the current SCXML session.
+variants: 1

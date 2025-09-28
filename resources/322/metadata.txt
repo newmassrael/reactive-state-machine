@@ -1,0 +1,6 @@
+id: 322
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The Processor MUST keep the _sessionid variable bound to the system-generated id until the session terminates.
+variants: 1

@@ -1,0 +1,6 @@
+id: 242
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: Invoked services MUST also treat values specified by 'src' and content identically.
+variants: 1

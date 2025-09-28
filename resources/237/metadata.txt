@@ -1,0 +1,6 @@
+id: 237
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: If the invoking session takes a transition out of the state containing the invoke before it receives the 'done.invoke.id' event, the SCXML Processor MUST automatically cancel the invoked component and stop its processing.
+variants: 1

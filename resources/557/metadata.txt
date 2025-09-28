@@ -1,0 +1,6 @@
+id: 557
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript data model, if either the 'src' attribute or in-line content is provided in the data element, then if the content (whether fetched or provided in-line) is an XML document, the SCXML Processor MUST create the corresponding DOM structure and assign it as the value of the data element.
+variants: 1

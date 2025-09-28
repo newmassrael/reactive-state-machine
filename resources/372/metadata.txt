@@ -1,0 +1,6 @@
+id: 372
+specnum: 3.7
+conformance: mandatory
+manual: False
+description: When the state machine enters the final child of a state element, the SCXML processor MUST generate the event done.state.id after completion of the onentry elements, where id is the id of the parent state.
+variants: 1

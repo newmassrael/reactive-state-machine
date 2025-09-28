@@ -1,0 +1,6 @@
+id: 304
+specnum: 5.8
+conformance: mandatory
+manual: False
+description: In a conformant SCXML document, the name of any script variable MAY be used as a location expression. N.B. This test is valid only for datamodels that support scripting.
+variants: 1

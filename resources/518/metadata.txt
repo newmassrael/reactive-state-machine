@@ -1,0 +1,6 @@
+id: 518
+specnum: C.2
+conformance: optional
+manual: False
+description: If the namelist attribute is defined [in send], the SCXML Processor MUST map its variable names and values to HTTP POST parameters
+variants: 1

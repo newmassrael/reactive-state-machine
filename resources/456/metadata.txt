@@ -1,0 +1,6 @@
+id: 456
+specnum: B.2
+conformance: optional
+manual: False
+description: the SCXML Processor must accept any ECMAScript program as defined in Section 14 of [ECMASCRIPT-262] as the content of a script element.
+variants: 1

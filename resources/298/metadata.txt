@@ -1,0 +1,6 @@
+id: 298
+specnum: 5.7
+conformance: mandatory
+manual: False
+description: If the 'location' attribute on a param element does not refer to a valid location in the data model, the processor MUST place the error error.execution on the internal event queue.
+variants: 1

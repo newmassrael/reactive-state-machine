@@ -1,0 +1,6 @@
+id: 532
+specnum: C.2
+conformance: optional
+manual: False
+description: If _scxmleventname is not present, the Processor MUST the name of the HTTP method that was used to deliver the event as name of the SCXML event that it raises
+variants: 1

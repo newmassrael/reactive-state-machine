@@ -1,0 +1,6 @@
+id: 339
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: If an event is not generated from an invoked child process, the Processor MUST leave the invokeid field blank.
+variants: 1

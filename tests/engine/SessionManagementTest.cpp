@@ -9,6 +9,7 @@
 #include "events/EventDispatcherImpl.h"
 #include "events/EventSchedulerImpl.h"
 #include "events/EventTargetFactoryImpl.h"
+#include "mocks/MockEventRaiser.h"
 #include "runtime/ActionExecutorImpl.h"
 
 class SessionManagementTest : public ::testing::Test {
@@ -344,8 +345,11 @@ TEST_F(SessionManagementTest, EventSchedulingComponentCreationStepByStepTest) {
         auto actionExecutor = std::make_shared<RSM::ActionExecutorImpl>("test_session");
         EXPECT_TRUE(actionExecutor != nullptr) << "ActionExecutor creation failed";
 
-        // Step 3: Create EventTargetFactory (potential hang point?)
-        auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(actionExecutor->getEventRaiser());
+        // Step 3: Create EventTargetFactory with MockEventRaiser (potential hang point?)
+        auto mockEventRaiser = std::make_shared<RSM::Test::MockEventRaiser>(
+            [](const std::string &, const std::string &) -> bool { return true; });
+        actionExecutor->setEventRaiser(mockEventRaiser);
+        auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(mockEventRaiser);
         EXPECT_TRUE(targetFactory != nullptr) << "EventTargetFactory creation failed";
 
         // If we get here, the problem is NOT in basic component creation
@@ -366,7 +370,10 @@ TEST_F(SessionManagementTest, EventSchedulerCreationTest) {
     EXPECT_TRUE(sessionResult);
 
     auto actionExecutor = std::make_shared<RSM::ActionExecutorImpl>("test_session");
-    auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(actionExecutor->getEventRaiser());
+    auto mockEventRaiser = std::make_shared<RSM::Test::MockEventRaiser>(
+        [](const std::string &, const std::string &) -> bool { return true; });
+    actionExecutor->setEventRaiser(mockEventRaiser);
+    auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(mockEventRaiser);
 
     try {
         // Step 2: Create EventExecutionCallback (potential hang point?)

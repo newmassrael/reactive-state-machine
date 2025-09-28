@@ -1,0 +1,6 @@
+id: 580
+specnum: 3.10
+conformance: mandatory
+manual: False
+description: It follows from the semantics of history states that they never end up in the state configuration
+variants: 1

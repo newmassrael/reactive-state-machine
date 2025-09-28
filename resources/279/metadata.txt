@@ -1,0 +1,6 @@
+id: 279
+specnum: 5.3
+conformance: mandatory
+manual: False
+description: When 'binding' attribute on the scxml element is assigned the value "early" (the default), the SCXML Processor MUST create all data elements and assign their initial values at document initialization time.
+variants: 1

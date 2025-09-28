@@ -1,0 +1,6 @@
+id: 319
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST NOT bind _event at initialization time until the first event is processed.
+variants: 1

@@ -1,0 +1,6 @@
+id: 449
+specnum: B.2
+conformance: optional
+manual: False
+description: In the ECMAScript datamodel, the SCXML Processor must convert ECMAScript expressions used in conditional expressions into their effective boolean value using the ToBoolean operator as described in Section 9.2 of [ECMASCRIPT-262].
+variants: 1

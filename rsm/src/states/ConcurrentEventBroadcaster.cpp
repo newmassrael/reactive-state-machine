@@ -8,18 +8,17 @@
 namespace RSM {
 
 ConcurrentEventBroadcaster::ConcurrentEventBroadcaster(const EventBroadcastConfig &config) : config_(config) {
-    Logger::debug("ConcurrentEventBroadcaster::Constructor - Creating event broadcaster");
+    LOG_DEBUG("Creating event broadcaster");
 }
 
 ConcurrentEventBroadcaster::~ConcurrentEventBroadcaster() {
-    Logger::debug("ConcurrentEventBroadcaster::Destructor - Destroying event broadcaster");
+    LOG_DEBUG("Destroying event broadcaster");
 }
 
 EventBroadcastResult ConcurrentEventBroadcaster::broadcastEvent(const EventBroadcastRequest &request) {
     auto startTime = std::chrono::system_clock::now();
 
-    Logger::debug("ConcurrentEventBroadcaster::broadcastEvent() - Broadcasting event: " + request.event.eventName +
-                  " with priority: " + std::to_string(static_cast<int>(request.priority)));
+    LOG_DEBUG("Broadcasting event: {} with priority: {}", request.event.eventName, static_cast<int>(request.priority));
 
     // Get target regions based on scope
     auto targetRegions = getTargetRegions(request);
@@ -94,7 +93,7 @@ EventBroadcastResult ConcurrentEventBroadcaster::broadcastEventWithPriority(cons
 
 bool ConcurrentEventBroadcaster::registerRegion(std::shared_ptr<IConcurrentRegion> region) {
     if (!region) {
-        Logger::warn("ConcurrentEventBroadcaster::registerRegion() - Cannot register null region");
+        LOG_WARN("Cannot register null region");
         return false;
     }
 
@@ -103,12 +102,12 @@ bool ConcurrentEventBroadcaster::registerRegion(std::shared_ptr<IConcurrentRegio
     const std::string &regionId = region->getId();
 
     if (regions_.find(regionId) != regions_.end()) {
-        Logger::warn("ConcurrentEventBroadcaster::registerRegion() - Region already registered: " + regionId);
+        LOG_WARN("Region already registered: {}", regionId);
         return false;
     }
 
     regions_[regionId] = region;
-    Logger::debug("ConcurrentEventBroadcaster::registerRegion() - Registered region: " + regionId);
+    LOG_DEBUG("Registered region: {}", regionId);
 
     return true;
 }
@@ -118,12 +117,12 @@ bool ConcurrentEventBroadcaster::unregisterRegion(const std::string &regionId) {
 
     auto it = regions_.find(regionId);
     if (it == regions_.end()) {
-        Logger::warn("ConcurrentEventBroadcaster::unregisterRegion() - Region not found: " + regionId);
+        LOG_WARN("Region not found: {}", regionId);
         return false;
     }
 
     regions_.erase(it);
-    Logger::debug("ConcurrentEventBroadcaster::unregisterRegion() - Unregistered region: " + regionId);
+    LOG_DEBUG("Unregistered region: {}", regionId);
 
     return true;
 }
@@ -158,7 +157,7 @@ std::vector<std::shared_ptr<IConcurrentRegion>> ConcurrentEventBroadcaster::getA
 void ConcurrentEventBroadcaster::setConfiguration(const EventBroadcastConfig &config) {
     std::lock_guard<std::mutex> lock(configMutex_);
     config_ = config;
-    Logger::debug("ConcurrentEventBroadcaster::setConfiguration() - Configuration updated");
+    LOG_DEBUG("Configuration updated");
 }
 
 const EventBroadcastConfig &ConcurrentEventBroadcaster::getConfiguration() const {
@@ -169,7 +168,7 @@ const EventBroadcastConfig &ConcurrentEventBroadcaster::getConfiguration() const
 void ConcurrentEventBroadcaster::setEventBroadcastCallback(
     std::function<void(const EventBroadcastRequest &, const EventBroadcastResult &)> callback) {
     eventCallback_ = callback;
-    Logger::debug("ConcurrentEventBroadcaster::setEventBroadcastCallback() - Callback set");
+    LOG_DEBUG("Callback set");
 }
 
 const EventBroadcastStatistics &ConcurrentEventBroadcaster::getStatistics() const {
@@ -180,7 +179,7 @@ const EventBroadcastStatistics &ConcurrentEventBroadcaster::getStatistics() cons
 void ConcurrentEventBroadcaster::resetStatistics() {
     std::lock_guard<std::mutex> lock(statisticsMutex_);
     statistics_.reset();
-    Logger::debug("ConcurrentEventBroadcaster::resetStatistics() - Statistics reset");
+    LOG_DEBUG("Statistics reset");
 }
 
 bool ConcurrentEventBroadcaster::isRegionActive(const std::string &regionId) const {
@@ -264,8 +263,7 @@ ConcurrentEventBroadcaster::getTargetRegions(const EventBroadcastRequest &reques
 EventBroadcastResult ConcurrentEventBroadcaster::broadcastToRegionsParallel(
     const EventDescriptor &event, const std::vector<std::shared_ptr<IConcurrentRegion>> &targetRegions,
     const EventBroadcastConfig &config) {
-    Logger::debug("ConcurrentEventBroadcaster::broadcastToRegionsParallel() - Broadcasting to " +
-                  std::to_string(targetRegions.size()) + " regions in parallel");
+    LOG_DEBUG("Broadcasting to {} regions in parallel", targetRegions.size());
 
     std::vector<std::future<ConcurrentOperationResult>> futures;
     futures.reserve(targetRegions.size());
@@ -299,7 +297,7 @@ EventBroadcastResult ConcurrentEventBroadcaster::broadcastToRegionsParallel(
             if (!combinedError.empty()) {
                 combinedError += "; ";
             }
-            combinedError += "Exception in region " + regionId + ": " + e.what();
+            combinedError += fmt::format("Exception in region {}: {}", regionId, e.what());
         }
     }
 
@@ -316,8 +314,7 @@ EventBroadcastResult ConcurrentEventBroadcaster::broadcastToRegionsParallel(
 EventBroadcastResult ConcurrentEventBroadcaster::broadcastToRegionsSequential(
     const EventDescriptor &event, const std::vector<std::shared_ptr<IConcurrentRegion>> &targetRegions,
     const EventBroadcastConfig &config) {
-    Logger::debug("ConcurrentEventBroadcaster::broadcastToRegionsSequential() - Broadcasting to " +
-                  std::to_string(targetRegions.size()) + " regions sequentially");
+    LOG_DEBUG("Broadcasting to {} regions sequentially", targetRegions.size());
 
     std::vector<std::string> successfulRegions;
     std::vector<std::string> failedRegions;
@@ -346,7 +343,7 @@ EventBroadcastResult ConcurrentEventBroadcaster::broadcastToRegionsSequential(
             if (!combinedError.empty()) {
                 combinedError += "; ";
             }
-            combinedError += "Exception in region " + regionId + ": " + e.what();
+            combinedError += fmt::format("Exception in region {}: {}", regionId, e.what());
 
             if (config.stopOnFirstFailure) {
                 break;
@@ -374,7 +371,7 @@ ConcurrentEventBroadcaster::processEventInRegion(std::shared_ptr<IConcurrentRegi
             return region->processEvent(event);
         } catch (const std::exception &e) {
             return ConcurrentOperationResult::failure(region->getId(),
-                                                      "Exception during event processing: " + std::string(e.what()));
+                                                      fmt::format("Exception during event processing: {}", e.what()));
         }
     });
 }
@@ -425,9 +422,9 @@ void ConcurrentEventBroadcaster::logBroadcastOperation(const EventBroadcastReque
     logMessage << ", Duration: " << duration.count() << "ms";
 
     if (result.isSuccess) {
-        Logger::debug(logMessage.str());
+        LOG_DEBUG("{}", logMessage.str());
     } else {
-        Logger::warn(logMessage.str() + ", Error: " + result.errorMessage);
+        LOG_WARN("{}, Error: {}", logMessage.str(), result.errorMessage);
     }
 }
 

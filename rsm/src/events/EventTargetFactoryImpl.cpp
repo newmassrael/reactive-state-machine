@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "events/HttpEventTarget.h"
 #include "events/InternalEventTarget.h"
+#include "events/ParentEventTarget.h"
 #include "runtime/IEventRaiser.h"
 #include <algorithm>
 #include <stdexcept>
@@ -25,13 +26,14 @@ EventTargetFactoryImpl::EventTargetFactoryImpl(std::shared_ptr<IEventRaiser> eve
     registerTargetType("https",
                        [](const std::string &targetUri) { return std::make_shared<HttpEventTarget>(targetUri); });
 
-    Logger::debug("EventTargetFactoryImpl: Factory created with internal, HTTP, and HTTPS target support");
+    LOG_DEBUG("EventTargetFactoryImpl: Factory created with internal, HTTP, and HTTPS target support");
 }
 
 std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createTarget(const std::string &targetUri) {
     if (targetUri.empty()) {
-        Logger::warn("EventTargetFactoryImpl: Empty target URI, defaulting to internal");
-        return createInternalTarget("#_internal");
+        // W3C SCXML compliance: Empty target means external queue (Test 189)
+        LOG_DEBUG("EventTargetFactoryImpl: Empty target URI, creating external queue target");
+        return createExternalTarget();
     }
 
     // Handle special internal target URI
@@ -39,37 +41,43 @@ std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createTarget(const std::st
         return createInternalTarget(targetUri);
     }
 
+    // Handle special parent target URI (#_parent)
+    if (targetUri == "#_parent") {
+        LOG_DEBUG("EventTargetFactoryImpl::createTarget() - Creating #_parent target");
+        return createParentTarget(targetUri);
+    }
+
     // Extract scheme and find appropriate creator
     std::string scheme = extractScheme(targetUri);
 
     auto creatorIt = targetCreators_.find(scheme);
     if (creatorIt != targetCreators_.end()) {
-        Logger::debug("EventTargetFactoryImpl: Creating '{}' target for URI: {}", scheme, targetUri);
+        LOG_DEBUG("EventTargetFactoryImpl: Creating '{}' target for URI: {}", scheme, targetUri);
 
         try {
             auto target = creatorIt->second(targetUri);
             if (!target) {
-                Logger::error("EventTargetFactoryImpl: Target creator returned null for URI: {}", targetUri);
+                LOG_ERROR("EventTargetFactoryImpl: Target creator returned null for URI: {}", targetUri);
                 return nullptr;
             }
 
             // Validate the created target
             auto errors = target->validate();
             if (!errors.empty()) {
-                Logger::error("EventTargetFactoryImpl: Target validation failed for URI '{}': {}", targetUri,
-                              errors.front());
+                LOG_ERROR("EventTargetFactoryImpl: Target validation failed for URI '{}': {}", targetUri,
+                          errors.front());
                 return nullptr;
             }
 
             return target;
 
         } catch (const std::exception &e) {
-            Logger::error("EventTargetFactoryImpl: Error creating target for URI '{}': {}", targetUri, e.what());
+            LOG_ERROR("EventTargetFactoryImpl: Error creating target for URI '{}': {}", targetUri, e.what());
             return nullptr;
         }
     }
 
-    Logger::warn("EventTargetFactoryImpl: No creator found for scheme '{}' in URI: {}", scheme, targetUri);
+    LOG_WARN("EventTargetFactoryImpl: No creator found for scheme '{}' in URI: {}", scheme, targetUri);
     return nullptr;
 }
 
@@ -98,7 +106,7 @@ void EventTargetFactoryImpl::registerTargetType(
         throw std::invalid_argument("Target creator cannot be null");
     }
 
-    Logger::debug("EventTargetFactoryImpl: Registering target type for scheme: {}", scheme);
+    LOG_DEBUG("EventTargetFactoryImpl: Registering target type for scheme: {}", scheme);
     targetCreators_[scheme] = creator;
 }
 
@@ -116,15 +124,15 @@ bool EventTargetFactoryImpl::isSchemeSupported(const std::string &scheme) const 
 
 void EventTargetFactoryImpl::unregisterTargetCreator(const std::string &scheme) {
     if (scheme == "internal") {
-        Logger::warn("EventTargetFactoryImpl: Cannot unregister internal target creator");
+        LOG_WARN("EventTargetFactoryImpl: Cannot unregister internal target creator");
         return;
     }
 
     auto removed = targetCreators_.erase(scheme);
     if (removed > 0) {
-        Logger::debug("EventTargetFactoryImpl: Unregistered target creator for scheme: {}", scheme);
+        LOG_DEBUG("EventTargetFactoryImpl: Unregistered target creator for scheme: {}", scheme);
     } else {
-        Logger::debug("EventTargetFactoryImpl: No target creator found for scheme: {}", scheme);
+        LOG_DEBUG("EventTargetFactoryImpl: No target creator found for scheme: {}", scheme);
     }
 }
 
@@ -155,13 +163,46 @@ std::string EventTargetFactoryImpl::extractScheme(const std::string &targetUri) 
 
 std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createInternalTarget(const std::string &targetUri) {
     try {
-        auto target = std::make_shared<InternalEventTarget>(eventRaiser_);
+        auto target = std::make_shared<InternalEventTarget>(eventRaiser_, false);  // Internal queue priority
 
-        Logger::debug("EventTargetFactoryImpl: Created internal target for URI: {}", targetUri);
+        LOG_DEBUG("EventTargetFactoryImpl: Created internal target for URI: {}", targetUri);
         return target;
 
     } catch (const std::exception &e) {
-        Logger::error("EventTargetFactoryImpl: Error creating internal target: {}", e.what());
+        LOG_ERROR("EventTargetFactoryImpl: Error creating internal target: {}", e.what());
+        return nullptr;
+    }
+}
+
+std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createExternalTarget() {
+    try {
+        // W3C SCXML compliance: External target uses EXTERNAL priority for proper queue ordering
+        auto target = std::make_shared<InternalEventTarget>(eventRaiser_, true);  // External queue priority
+
+        LOG_DEBUG("EventTargetFactoryImpl: Created external target for W3C SCXML compliance");
+        return target;
+
+    } catch (const std::exception &e) {
+        LOG_ERROR("EventTargetFactoryImpl: Error creating external target: {}", e.what());
+        return nullptr;
+    }
+}
+
+std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createParentTarget(const std::string &targetUri) {
+    try {
+        // For parent target, we need to determine the child session ID
+        // This will be passed through the event dispatcher context
+        // For now, we create a ParentEventTarget that will resolve the child session at send time
+
+        // Note: The actual child session ID will be determined when the event is sent
+        // ParentEventTarget will use the current session context to find the parent
+        auto target = std::make_shared<ParentEventTarget>("dynamic", eventRaiser_);
+
+        LOG_DEBUG("EventTargetFactoryImpl: Created parent target for URI: {}", targetUri);
+        return target;
+
+    } catch (const std::exception &e) {
+        LOG_ERROR("EventTargetFactoryImpl: Error creating parent target: {}", e.what());
         return nullptr;
     }
 }

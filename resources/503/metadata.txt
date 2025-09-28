@@ -1,0 +1,6 @@
+id: 503
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: If the transition does not contain a 'target', its exit set is empty.
+variants: 1

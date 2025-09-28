@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/IActionExecutor.h"
+#include "runtime/IEventRaiser.h"
 #include "runtime/IExecutionContext.h"
 #include <functional>
 #include <map>
@@ -34,7 +35,7 @@ public:
     bool assignVariable(const std::string &location, const std::string &expr) override;
     std::string evaluateExpression(const std::string &expression) override;
     void log(const std::string &level, const std::string &message) override;
-    bool raiseEvent(const std::string &eventName, const std::string &eventData = "") override;
+    void setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) override;
     bool hasVariable(const std::string &location) override;
     std::string getSessionId() const override;
 
@@ -142,6 +143,7 @@ public:
 
 private:
     std::string sessionId_;
+    std::shared_ptr<IEventRaiser> eventRaiser_;
 
     // Recorded operations
     std::vector<std::string> executedScripts_;

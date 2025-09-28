@@ -1,0 +1,6 @@
+id: 488
+specnum: 5.7
+conformance: mandatory
+manual: False
+description: if the evaluation of the 'expr' produces an error, the processor MUST place the error error.execution on the internal event queue.
+variants: 1

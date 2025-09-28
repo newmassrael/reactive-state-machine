@@ -1,0 +1,6 @@
+id: 401
+specnum: 3.12
+conformance: mandatory
+manual: False
+description: The processor MUST place these [error] events in the internal event queue.
+variants: 1

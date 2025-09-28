@@ -1,0 +1,7 @@
+id: 333
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: For events other than error events triggered by a failed attempt to send an event, if the sending entity
+ 	     did not specify a value for the sendid field, the Processor MUST leave the sendid field (of _event) blank.
+variants: 1

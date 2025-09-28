@@ -46,10 +46,11 @@ public:
 
     // IEventScheduler implementation
     std::future<std::string> scheduleEvent(const EventDescriptor &event, std::chrono::milliseconds delay,
-                                           std::shared_ptr<IEventTarget> target,
-                                           const std::string &sendId = "") override;
+                                           std::shared_ptr<IEventTarget> target, const std::string &sendId = "",
+                                           const std::string &sessionId = "") override;
 
     bool cancelEvent(const std::string &sendId) override;
+    size_t cancelEventsForSession(const std::string &sessionId) override;
     bool hasEvent(const std::string &sendId) const override;
     size_t getScheduledEventCount() const override;
     void shutdown(bool waitForCompletion = true) override;
@@ -65,11 +66,12 @@ private:
         std::shared_ptr<IEventTarget> target;
         std::promise<std::string> sendIdPromise;
         std::string sendId;
+        std::string sessionId;
         bool cancelled = false;
 
         ScheduledEvent(const EventDescriptor &evt, std::chrono::steady_clock::time_point execTime,
-                       std::shared_ptr<IEventTarget> tgt, const std::string &id)
-            : event(evt), executeAt(execTime), target(std::move(tgt)), sendId(id) {}
+                       std::shared_ptr<IEventTarget> tgt, const std::string &id, const std::string &sessId)
+            : event(evt), executeAt(execTime), target(std::move(tgt)), sendId(id), sessionId(sessId) {}
     };
 
     /**

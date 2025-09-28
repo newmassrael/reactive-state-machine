@@ -1,0 +1,6 @@
+id: 201
+specnum: 6.2
+conformance: optional
+manual: False
+description: Processors that support HTTP POST must use the value http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor for the "type" attribute
+variants: 1

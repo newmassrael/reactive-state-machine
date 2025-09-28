@@ -1,0 +1,6 @@
+id: 189
+specnum: C.1
+conformance: mandatory
+manual: False
+description: When using the scxml event i/o processor] If the target is the special term '#_internal', the Processor MUST add the event to the internal event queue of the sending session
+variants: 1

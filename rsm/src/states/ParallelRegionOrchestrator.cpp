@@ -38,11 +38,11 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::Orch
 
 ParallelRegionOrchestrator::ParallelRegionOrchestrator(const std::string &parentStateId)
     : parentStateId_(parentStateId) {
-    Logger::debug("ParallelRegionOrchestrator::Constructor - Creating orchestrator for state: " + parentStateId_);
+    LOG_DEBUG("Creating orchestrator for state: {}", parentStateId_);
 }
 
 ParallelRegionOrchestrator::~ParallelRegionOrchestrator() {
-    Logger::debug("ParallelRegionOrchestrator::Destructor - Destroying orchestrator for state: " + parentStateId_);
+    LOG_DEBUG("Destroying orchestrator for state: {}", parentStateId_);
 
     // 안전한 종료: 모든 지역 비활성화
     if (!regions_.empty()) {
@@ -61,15 +61,15 @@ ConcurrentOperationResult ParallelRegionOrchestrator::addRegion(std::shared_ptr<
 
     // 중복 검사
     if (regionMap_.find(regionId) != regionMap_.end()) {
-        return ConcurrentOperationResult::failure(regionId, "Region with ID '" + regionId + "' already exists");
+        return ConcurrentOperationResult::failure(regionId,
+                                                  fmt::format("Region with ID '{}' already exists", regionId));
     }
 
     // 지역 추가
     regions_.push_back(region);
     regionMap_[regionId] = region;
 
-    Logger::debug("ParallelRegionOrchestrator::addRegion() - Added region '" + regionId + "' to orchestrator for " +
-                  parentStateId_);
+    LOG_DEBUG("Added region '{}' to orchestrator for {}", regionId, parentStateId_);
 
     // 상태 변화 알림
     notifyStateChange(regionId, RegionStateChangeEvent::ACTIVATED, "Region added to orchestrator");
@@ -80,7 +80,7 @@ ConcurrentOperationResult ParallelRegionOrchestrator::addRegion(std::shared_ptr<
 ConcurrentOperationResult ParallelRegionOrchestrator::removeRegion(const std::string &regionId) {
     auto mapIt = regionMap_.find(regionId);
     if (mapIt == regionMap_.end()) {
-        return ConcurrentOperationResult::failure(regionId, "Region with ID '" + regionId + "' not found");
+        return ConcurrentOperationResult::failure(regionId, fmt::format("Region with ID '{}' not found", regionId));
     }
 
     // 지역이 활성화되어 있다면 먼저 비활성화
@@ -88,8 +88,7 @@ ConcurrentOperationResult ParallelRegionOrchestrator::removeRegion(const std::st
     if (region->isActive()) {
         auto deactivateResult = region->deactivate();
         if (!deactivateResult.isSuccess) {
-            Logger::warn("ParallelRegionOrchestrator::removeRegion() - Failed to deactivate region '" + regionId +
-                         "': " + deactivateResult.errorMessage);
+            LOG_WARN("Failed to deactivate region '{}': {}", regionId, deactivateResult.errorMessage);
         }
     }
 
@@ -105,8 +104,7 @@ ConcurrentOperationResult ParallelRegionOrchestrator::removeRegion(const std::st
     // 맵에서 제거
     regionMap_.erase(mapIt);
 
-    Logger::debug("ParallelRegionOrchestrator::removeRegion() - Removed region '" + regionId +
-                  "' from orchestrator for " + parentStateId_);
+    LOG_DEBUG("Removed region '{}' from orchestrator for {}", regionId, parentStateId_);
 
     // 상태 변화 알림
     notifyStateChange(regionId, RegionStateChangeEvent::DEACTIVATED, "Region removed from orchestrator");
@@ -138,8 +136,7 @@ std::vector<std::shared_ptr<IConcurrentRegion>> ParallelRegionOrchestrator::getA
 // 생명주기 조율
 
 ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::activateAllRegions() {
-    Logger::debug("ParallelRegionOrchestrator::activateAllRegions() - Activating " + std::to_string(regions_.size()) +
-                  " regions for " + parentStateId_);
+    LOG_DEBUG("Activating {} regions for {}", regions_.size(), parentStateId_);
 
     std::vector<std::string> successful;
     std::vector<std::string> failed;
@@ -152,8 +149,7 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::acti
         if (result.isSuccess) {
             successful.push_back(regionId);
             notifyStateChange(regionId, RegionStateChangeEvent::ACTIVATED);
-            Logger::debug("ParallelRegionOrchestrator::activateAllRegions() - Successfully activated region: " +
-                          regionId);
+            LOG_DEBUG("Successfully activated region: {}", regionId);
         } else {
             failed.push_back(regionId);
             if (!errorStream.str().empty()) {
@@ -161,8 +157,7 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::acti
             }
             errorStream << regionId << ": " << result.errorMessage;
             notifyStateChange(regionId, RegionStateChangeEvent::ERROR_OCCURRED, result.errorMessage);
-            Logger::warn("ParallelRegionOrchestrator::activateAllRegions() - Failed to activate region '" + regionId +
-                         "': " + result.errorMessage);
+            LOG_WARN("Failed to activate region '{}': {}", regionId, result.errorMessage);
         }
     }
 
@@ -170,8 +165,7 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::acti
 }
 
 ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::deactivateAllRegions() {
-    Logger::debug("ParallelRegionOrchestrator::deactivateAllRegions() - Deactivating " +
-                  std::to_string(regions_.size()) + " regions for " + parentStateId_);
+    LOG_DEBUG("Deactivating {} regions for {}", regions_.size(), parentStateId_);
 
     std::vector<std::string> successful;
     std::vector<std::string> failed;
@@ -184,8 +178,7 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::deac
         if (result.isSuccess) {
             successful.push_back(regionId);
             notifyStateChange(regionId, RegionStateChangeEvent::DEACTIVATED);
-            Logger::debug("ParallelRegionOrchestrator::deactivateAllRegions() - Successfully deactivated region: " +
-                          regionId);
+            LOG_DEBUG("Successfully deactivated region: {}", regionId);
         } else {
             failed.push_back(regionId);
             if (!errorStream.str().empty()) {
@@ -193,8 +186,7 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::deac
             }
             errorStream << regionId << ": " << result.errorMessage;
             notifyStateChange(regionId, RegionStateChangeEvent::ERROR_OCCURRED, result.errorMessage);
-            Logger::warn("ParallelRegionOrchestrator::deactivateAllRegions() - Failed to deactivate region '" +
-                         regionId + "': " + result.errorMessage);
+            LOG_WARN("Failed to deactivate region '{}': {}", regionId, result.errorMessage);
         }
     }
 
@@ -203,8 +195,7 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::deac
 
 ParallelRegionOrchestrator::OrchestrationResult
 ParallelRegionOrchestrator::activateRegions(const std::vector<std::string> &regionIds) {
-    Logger::debug("ParallelRegionOrchestrator::activateRegions() - Activating " + std::to_string(regionIds.size()) +
-                  " specific regions for " + parentStateId_);
+    LOG_DEBUG("Activating {} specific regions for {}", regionIds.size(), parentStateId_);
 
     std::vector<std::string> successful;
     std::vector<std::string> failed;
@@ -240,8 +231,7 @@ ParallelRegionOrchestrator::activateRegions(const std::vector<std::string> &regi
 
 ParallelRegionOrchestrator::OrchestrationResult
 ParallelRegionOrchestrator::deactivateRegions(const std::vector<std::string> &regionIds) {
-    Logger::debug("ParallelRegionOrchestrator::deactivateRegions() - Deactivating " + std::to_string(regionIds.size()) +
-                  " specific regions for " + parentStateId_);
+    LOG_DEBUG("Deactivating {} specific regions for {}", regionIds.size(), parentStateId_);
 
     std::vector<std::string> successful;
     std::vector<std::string> failed;
@@ -276,7 +266,7 @@ ParallelRegionOrchestrator::deactivateRegions(const std::vector<std::string> &re
 }
 
 ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::restartAllRegions() {
-    Logger::debug("ParallelRegionOrchestrator::restartAllRegions() - Restarting all regions for " + parentStateId_);
+    LOG_DEBUG("Restarting all regions for {}", parentStateId_);
 
     // 먼저 모든 지역 비활성화
     auto deactivateResult = deactivateAllRegions();
@@ -349,8 +339,7 @@ std::unordered_map<std::string, ConcurrentRegionInfo> ParallelRegionOrchestrator
 // 이벤트 처리
 
 std::vector<ConcurrentOperationResult> ParallelRegionOrchestrator::broadcastEvent(const EventDescriptor &event) {
-    Logger::debug("ParallelRegionOrchestrator::broadcastEvent() - Broadcasting event to " +
-                  std::to_string(regions_.size()) + " regions for " + parentStateId_);
+    LOG_DEBUG("Broadcasting event to {} regions for {}", regions_.size(), parentStateId_);
 
     std::vector<ConcurrentOperationResult> results;
     results.reserve(regions_.size());
@@ -408,7 +397,7 @@ std::vector<std::string> ParallelRegionOrchestrator::validateOrchestrator() cons
     std::sort(regionIds.begin(), regionIds.end());
     for (size_t i = 1; i < regionIds.size(); ++i) {
         if (regionIds[i] == regionIds[i - 1]) {
-            errors.push_back("Duplicate region ID found: " + regionIds[i]);
+            errors.push_back(fmt::format("Duplicate region ID found: {}", regionIds[i]));
         }
     }
 
@@ -416,7 +405,7 @@ std::vector<std::string> ParallelRegionOrchestrator::validateOrchestrator() cons
     for (const auto &region : regions_) {
         auto regionErrors = region->validate();
         for (const auto &error : regionErrors) {
-            errors.push_back("Region '" + region->getId() + "': " + error);
+            errors.push_back(fmt::format("Region '{}': {}", region->getId(), error));
         }
     }
 

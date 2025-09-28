@@ -1,0 +1,6 @@
+id: 387
+specnum: 3.10
+conformance: mandatory
+manual: False
+description: Before the parent state has been visited for the first time, if a transition is executed that takes the history state as its target, the SCXML processor MUST behave as if the transition had taken the default stored state configuration as its target.
+variants: 1

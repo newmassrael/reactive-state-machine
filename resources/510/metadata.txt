@@ -1,0 +1,6 @@
+id: 510
+specnum: C.2
+conformance: optional
+manual: False
+description: The SCXML Processor MUST validate the message it receives [via the Basic HTTP Event I/O Processor] and then MUST build the appropriate SCXML event and MUST add it to the external event queue
+variants: 1

@@ -1,0 +1,6 @@
+id: 505
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: Otherwise, if the transition has 'type' "internal", its source state is a compound state and all its target states are proper descendents of its source state, the target set consists of all active states that are proper descendents of its source state.
+variants: 1

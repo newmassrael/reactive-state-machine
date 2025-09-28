@@ -1,0 +1,6 @@
+id: 147
+specnum: 4.3
+conformance: mandatory
+manual: False
+description: When the if element is executed, the SCXML processor MUST execute the first partition in document order that is defined by a tag whose 'cond' attribute evaluates to true, if there is one.
+variants: 1

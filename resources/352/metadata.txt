@@ -1,0 +1,6 @@
+id: 352
+specnum: C.1
+conformance: mandatory
+manual: False
+description: 'sourcetype'. The sending SCXML Processor MUST assign this attribute the value "scxml". (Note that other types of senders will assign different values.) The receiving Processor MUST use this value as the value of the 'origintype' field of the event that it generates.
+variants: 1

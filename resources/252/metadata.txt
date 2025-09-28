@@ -1,0 +1,6 @@
+id: 252
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: Once it cancels an invoked session, the Processor MUST NOT insert any events it receives from the invoked session into the external event queue of the invoking session.
+variants: 1

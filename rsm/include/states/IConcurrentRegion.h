@@ -10,6 +10,7 @@ namespace RSM {
 // Forward declarations
 struct EventDescriptor;
 class IStateNode;
+class IExecutionContext;
 
 /**
  * @brief Interface for concurrent regions in parallel states
@@ -41,9 +42,10 @@ public:
 
     /**
      * @brief Deactivate this region
+     * @param executionContext Optional execution context for proper exit action execution
      * @return Operation result indicating success or failure
      */
-    virtual ConcurrentOperationResult deactivate() = 0;
+    virtual ConcurrentOperationResult deactivate(std::shared_ptr<IExecutionContext> executionContext = nullptr) = 0;
 
     /**
      * @brief Check if this region is currently active

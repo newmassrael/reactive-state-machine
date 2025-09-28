@@ -5,11 +5,11 @@
 
 RSM::DataModelItem::DataModelItem(const std::string &id, const std::string &expr)
     : id_(id), expr_(expr), scope_("global") {
-    Logger::debug("RSM::DataModelItem::Constructor - Creating data model item: " + id);
+    LOG_DEBUG("Creating data model item: {}", id);
 }
 
 RSM::DataModelItem::~DataModelItem() {
-    Logger::debug("RSM::DataModelItem::Destructor - Destroying data model item: " + id_);
+    LOG_DEBUG("Destroying data model item: {}", id_);
     // unique_ptr automatically manages memory - no manual delete needed
 }
 
@@ -18,7 +18,7 @@ const std::string &RSM::DataModelItem::getId() const {
 }
 
 void RSM::DataModelItem::setExpr(const std::string &expr) {
-    Logger::debug("RSM::DataModelItem::setExpr() - Setting expression for " + id_ + ": " + expr);
+    LOG_DEBUG("Setting expression for {}: {}", id_, expr);
     expr_ = expr;
 }
 
@@ -27,7 +27,7 @@ const std::string &RSM::DataModelItem::getExpr() const {
 }
 
 void RSM::DataModelItem::setType(const std::string &type) {
-    Logger::debug("RSM::DataModelItem::setType() - Setting type for " + id_ + ": " + type);
+    LOG_DEBUG("Setting type for {}: {}", id_, type);
     type_ = type;
 }
 
@@ -36,7 +36,7 @@ const std::string &RSM::DataModelItem::getType() const {
 }
 
 void RSM::DataModelItem::setScope(const std::string &scope) {
-    Logger::debug("RSM::DataModelItem::setScope() - Setting scope for " + id_ + ": " + scope);
+    LOG_DEBUG("Setting scope for {}: {}", id_, scope);
     scope_ = scope;
 }
 
@@ -45,7 +45,7 @@ const std::string &RSM::DataModelItem::getScope() const {
 }
 
 void RSM::DataModelItem::setContent(const std::string &content) {
-    Logger::debug("RSM::DataModelItem::setContent() - Setting content for " + id_);
+    LOG_DEBUG("Setting content for {}", id_);
 
     // 데이터 모델이 xpath 또는 xml 유형인 경우 XML 파싱 시도
     if (type_ == "xpath" || type_ == "xml") {
@@ -63,7 +63,7 @@ void RSM::DataModelItem::setContent(const std::string &content) {
 }
 
 void RSM::DataModelItem::addContent(const std::string &content) {
-    Logger::debug("RSM::DataModelItem::addContent() - Adding content for " + id_);
+    LOG_DEBUG("Adding content for {}", id_);
 
     // contentItems_에 항상 추가
     contentItems_.push_back(content);
@@ -89,8 +89,7 @@ void RSM::DataModelItem::addContent(const std::string &content) {
                     }
                 }
             } catch (const std::exception &ex) {
-                Logger::error("RSM::DataModelItem::addContent() - Failed to parse XML content: " +
-                              std::string(ex.what()));
+                LOG_ERROR("Failed to parse XML content: {}", ex.what());
             }
         } else {
             // xmlContent_가 없으면 새로 생성
@@ -116,7 +115,7 @@ const std::string &RSM::DataModelItem::getContent() const {
             // XML 문서를 문자열로 직렬화
             xmlContent_->write_to_string(serialized);
         } catch (const std::exception &ex) {
-            Logger::error("RSM::DataModelItem::getContent() - Failed to serialize XML: " + std::string(ex.what()));
+            LOG_ERROR("Failed to serialize XML: {}", ex.what());
         }
 
         return serialized;
@@ -126,7 +125,7 @@ const std::string &RSM::DataModelItem::getContent() const {
 }
 
 void RSM::DataModelItem::setSrc(const std::string &src) {
-    Logger::debug("RSM::DataModelItem::setSrc() - Setting source URL for " + id_ + ": " + src);
+    LOG_DEBUG("Setting source URL for {}: {}", id_, src);
     src_ = src;
 }
 
@@ -135,7 +134,7 @@ const std::string &RSM::DataModelItem::getSrc() const {
 }
 
 void RSM::DataModelItem::setAttribute(const std::string &name, const std::string &value) {
-    Logger::debug("RSM::DataModelItem::setAttribute() - Setting attribute for " + id_ + ": " + name + " = " + value);
+    LOG_DEBUG("Setting attribute for {}: {} = {}", id_, name, value);
     attributes_[name] = value;
 }
 
@@ -152,7 +151,7 @@ const std::unordered_map<std::string, std::string> &RSM::DataModelItem::getAttri
 }
 
 void RSM::DataModelItem::setXmlContent(const std::string &content) {
-    Logger::debug("RSM::DataModelItem::setXmlContent() - Setting XML content for " + id_);
+    LOG_DEBUG("Setting XML content for {}", id_);
 
     // 기존 XML 문서가 있다면 삭제
     xmlContent_.reset();
@@ -171,7 +170,7 @@ void RSM::DataModelItem::setXmlContent(const std::string &content) {
         // 파싱 성공하면 content_는 비움 (필요시 getContent()에서 재생성)
         content_ = "";
     } catch (const std::exception &ex) {
-        Logger::error("RSM::DataModelItem::setXmlContent() - Failed to parse XML content: " + std::string(ex.what()));
+        LOG_ERROR("Failed to parse XML content: {}", ex.what());
         xmlContent_.reset();
 
         // 파싱 실패 시 일반 문자열로 저장
@@ -236,7 +235,7 @@ std::optional<std::string> RSM::DataModelItem::queryXPath(const std::string &xpa
             return result.str();
         }
     } catch (const std::exception &ex) {
-        Logger::error("RSM::DataModelItem::queryXPath() - XPath query failed: " + std::string(ex.what()));
+        LOG_ERROR("XPath query failed: {}", ex.what());
     }
 
     return std::nullopt;

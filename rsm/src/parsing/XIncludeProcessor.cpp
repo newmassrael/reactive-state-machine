@@ -4,11 +4,11 @@
 #include <filesystem>
 
 RSM::XIncludeProcessor::XIncludeProcessor() : isProcessing_(false), maxRecursionDepth_(10), currentRecursionDepth_(0) {
-    Logger::debug("RSM::XIncludeProcessor::Constructor - Creating XInclude processor");
+    LOG_DEBUG("Creating XInclude processor");
 }
 
 RSM::XIncludeProcessor::~XIncludeProcessor() {
-    Logger::debug("RSM::XIncludeProcessor::Destructor - Destroying XInclude processor");
+    LOG_DEBUG("Destroying XInclude processor");
 }
 
 bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
@@ -29,7 +29,7 @@ bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
         isProcessing_ = true;
         currentRecursionDepth_ = 0;
 
-        Logger::debug("RSM::XIncludeProcessor::process() - Starting XInclude processing");
+        LOG_DEBUG("Starting XInclude processing");
 
         // 문서의 기본 디렉토리 경로 결정
         std::string baseDir = basePath_;
@@ -41,8 +41,7 @@ bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
         auto rootElement = doc->get_root_node();
         if (rootElement) {
             int processedCount = findAndProcessXIncludes(rootElement, baseDir);
-            Logger::debug("RSM::XIncludeProcessor::process() - Processed " + std::to_string(processedCount) +
-                          " XInclude directives");
+            LOG_DEBUG("Processed {} XInclude directives", processedCount);
         } else {
             addWarning("Document has no root element");
         }
@@ -51,8 +50,7 @@ bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
         // libxml++의 XInclude 처리 함수가 있다면 사용, 없으면 libxml2 직접 호출
         try {
             doc->process_xinclude();
-            Logger::debug("RSM::XIncludeProcessor::process() - Native XInclude processing "
-                          "successful");
+            LOG_DEBUG("Native XInclude processing successful");
         } catch (const std::exception &ex) {
             addWarning("Native XInclude processing failed: " + std::string(ex.what()));
         }
@@ -68,12 +66,12 @@ bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
 
 void RSM::XIncludeProcessor::setBasePath(const std::string &basePath) {
     basePath_ = basePath;
-    Logger::debug("RSM::XIncludeProcessor::setBasePath() - Base path set to: " + basePath);
+    LOG_DEBUG("Base path set to: {}", basePath);
 }
 
 void RSM::XIncludeProcessor::addSearchPath(const std::string &searchPath) {
     searchPaths_.push_back(searchPath);
-    Logger::debug("RSM::XIncludeProcessor::addSearchPath() - Added search path: " + searchPath);
+    LOG_DEBUG("Added search path: {}", searchPath);
 }
 
 const std::vector<std::string> &RSM::XIncludeProcessor::getErrorMessages() const {
@@ -130,8 +128,7 @@ bool RSM::XIncludeProcessor::processXIncludeElement(xmlpp::Element *xincludeElem
         return false;
     }
 
-    Logger::debug("RSM::XIncludeProcessor::processXIncludeElement() - Processing "
-                  "XInclude element");
+    LOG_DEBUG("Processing XInclude element");
 
     // href 속성 확인
     auto hrefAttr = xincludeElement->get_attribute("href");
@@ -176,7 +173,7 @@ bool RSM::XIncludeProcessor::loadAndMergeFile(const std::string &href, xmlpp::El
         return false;
     }
 
-    Logger::debug("RSM::XIncludeProcessor::loadAndMergeFile() - Loading: " + fullPath);
+    LOG_DEBUG("Loading: {}", fullPath);
 
     try {
         // 파일 존재 여부 확인
@@ -244,7 +241,7 @@ bool RSM::XIncludeProcessor::loadAndMergeFile(const std::string &href, xmlpp::El
         // 처리된 파일 추적
         processedFiles_[fullPath]++;
 
-        Logger::debug("RSM::XIncludeProcessor::loadAndMergeFile() - Successfully merged: " + fullPath);
+        LOG_DEBUG("Successfully merged: {}", fullPath);
         return true;
     } catch (const std::exception &ex) {
         addError("Exception while processing included file " + fullPath + ": " + std::string(ex.what()));
@@ -278,11 +275,11 @@ std::string RSM::XIncludeProcessor::resolveFilePath(const std::string &href, con
 }
 
 void RSM::XIncludeProcessor::addError(const std::string &message) {
-    Logger::error("XIncludeProcessor - " + message);
+    LOG_ERROR("XIncludeProcessor - {}", message);
     errorMessages_.push_back(message);
 }
 
 void RSM::XIncludeProcessor::addWarning(const std::string &message) {
-    Logger::warn("XIncludeProcessor - " + message);
+    LOG_WARN("XIncludeProcessor - {}", message);
     warningMessages_.push_back(message);
 }

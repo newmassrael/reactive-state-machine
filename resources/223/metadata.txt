@@ -1,0 +1,6 @@
+id: 223
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: If the 'idlocation' attribute is present, the SCXML Processor MUST generate an id automatically when the invoke element is evaluated and store it in the location specified by 'idlocation'.
+variants: 1

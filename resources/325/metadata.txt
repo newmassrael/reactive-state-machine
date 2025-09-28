@@ -1,0 +1,6 @@
+id: 325
+specnum: 5.10
+conformance: mandatory
+manual: False
+description: The Processor MUST bind the variable _ioprocessors to a set of values, one for each Event I/O Processor that it supports.
+variants: 1

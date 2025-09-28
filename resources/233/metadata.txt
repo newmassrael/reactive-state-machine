@@ -1,0 +1,6 @@
+id: 233
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: If there is a finalize handler in the instance of invoke that created the service that generated the event, the SCXML Processor MUST execute the code in that finalize handler right before it removes the event from the event queue for processing.
+variants: 1

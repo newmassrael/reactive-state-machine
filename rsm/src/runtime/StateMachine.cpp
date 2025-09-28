@@ -20,12 +20,34 @@
 namespace RSM {
 
 StateMachine::StateMachine() : isRunning_(false), jsEnvironmentReady_(false) {
-    sessionId_ = generateSessionId();
+    sessionId_ = JSEngine::instance().generateSessionIdString("sm_");
     // JS 환경은 지연 초기화로 변경
     // ActionExecutor와 ExecutionContext는 setupJSEnvironment에서 초기화
 
     // Initialize History Manager with SOLID architecture (Dependency Injection)
     initializeHistoryManager();
+
+    // Initialize InvokeExecutor with SOLID architecture (W3C SCXML invoke support)
+    invokeExecutor_ = std::make_unique<InvokeExecutor>(nullptr);  // EventDispatcher will be set later if needed
+}
+
+// Constructor with session ID injection for invoke scenarios
+StateMachine::StateMachine(const std::string &sessionId) : isRunning_(false), jsEnvironmentReady_(false) {
+    if (sessionId.empty()) {
+        throw std::invalid_argument("StateMachine: Session ID cannot be empty when using injection constructor");
+    }
+
+    sessionId_ = sessionId;
+    LOG_DEBUG("StateMachine: Created with injected session ID: {}", sessionId_);
+
+    // JS 환경은 지연 초기화로 변경 - 이미 생성된 세션을 사용
+    // ActionExecutor와 ExecutionContext는 setupJSEnvironment에서 초기화
+
+    // Initialize History Manager with SOLID architecture (Dependency Injection)
+    initializeHistoryManager();
+
+    // Initialize InvokeExecutor with SOLID architecture (W3C SCXML invoke support)
+    invokeExecutor_ = std::make_unique<InvokeExecutor>(nullptr);  // EventDispatcher will be set later if needed
 }
 
 StateMachine::~StateMachine() {
@@ -46,13 +68,13 @@ bool StateMachine::loadSCXML(const std::string &filename) {
 
         model_ = parser.parseFile(filename);
         if (!model_) {
-            Logger::error("StateMachine: Failed to parse SCXML file: " + filename);
+            LOG_ERROR("Failed to parse SCXML file: {}", filename);
             return false;
         }
 
         return initializeFromModel();
     } catch (const std::exception &e) {
-        Logger::error("StateMachine: Exception loading SCXML: " + std::string(e.what()));
+        LOG_ERROR("Exception loading SCXML: {}", e.what());
         return false;
     }
 }
@@ -66,42 +88,45 @@ bool StateMachine::loadSCXMLFromString(const std::string &scxmlContent) {
         // Use parseContent method which exists in SCXMLParser
         model_ = parser.parseContent(scxmlContent);
         if (!model_) {
-            Logger::error("StateMachine: Failed to parse SCXML content");
+            LOG_ERROR("StateMachine: Failed to parse SCXML content");
             return false;
         }
 
         return initializeFromModel();
     } catch (const std::exception &e) {
-        Logger::error("StateMachine: Exception parsing SCXML content: " + std::string(e.what()));
+        LOG_ERROR("Exception parsing SCXML content: {}", e.what());
         return false;
     }
 }
 
 bool StateMachine::start() {
     if (initialState_.empty()) {
-        Logger::error("StateMachine: Cannot start - no initial state defined");
+        LOG_ERROR("StateMachine: Cannot start - no initial state defined");
         return false;
     }
 
     // JS 환경 초기화 보장
     if (!ensureJSEnvironment()) {
-        Logger::error("StateMachine: Cannot start - JavaScript environment initialization failed");
+        LOG_ERROR("StateMachine: Cannot start - JavaScript environment initialization failed");
         return false;
     }
 
-    Logger::debug("StateMachine: Starting with initial state: " + initialState_);
+    LOG_DEBUG("Starting with initial state: {}", initialState_);
 
     // Set running state before entering initial state to handle immediate done.state events
     isRunning_ = true;
 
     if (!enterState(initialState_)) {
-        Logger::error("StateMachine: Failed to enter initial state: " + initialState_);
+        LOG_ERROR("Failed to enter initial state: {}", initialState_);
         isRunning_ = false;  // Rollback on failure
         return false;
     }
+
+    // W3C SCXML compliance: Execute deferred invokes after initial state entry completes
+    executePendingInvokes();
     updateStatistics();
 
-    Logger::info("StateMachine: Started successfully");
+    LOG_INFO("StateMachine: Started successfully");
     return true;
 }
 
@@ -110,7 +135,7 @@ void StateMachine::stop() {
         return;
     }
 
-    Logger::debug("StateMachine: Stopping state machine");
+    LOG_DEBUG("StateMachine: Stopping state machine");
 
     // Use StateHierarchyManager to check current state
     std::string currentState = getCurrentState();
@@ -126,15 +151,15 @@ void StateMachine::stop() {
 
     // Unregister from JSEngine
     RSM::JSEngine::instance().setStateMachine(nullptr, sessionId_);
-    Logger::debug("StateMachine: Unregistered from JSEngine");
+    LOG_DEBUG("StateMachine: Unregistered from JSEngine");
 
     updateStatistics();
-    Logger::info("StateMachine: Stopped");
+    LOG_INFO("StateMachine: Stopped");
 }
 
 StateMachine::TransitionResult StateMachine::processEvent(const std::string &eventName, const std::string &eventData) {
     if (!isRunning_) {
-        Logger::warn("StateMachine: Cannot process event - state machine not running");
+        LOG_WARN("StateMachine: Cannot process event - state machine not running");
         TransitionResult result;
         result.success = false;
         result.errorMessage = "State machine not running";
@@ -143,14 +168,35 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
 
     // JS 환경 확인
     if (!jsEnvironmentReady_) {
-        Logger::error("StateMachine: Cannot process event - JavaScript environment not ready");
+        LOG_ERROR("StateMachine: Cannot process event - JavaScript environment not ready");
         TransitionResult result;
         result.success = false;
         result.errorMessage = "JavaScript environment not ready";
         return result;
     }
 
-    Logger::debug("StateMachine: Processing event: " + eventName);
+    LOG_DEBUG("StateMachine: Processing event: '{}' with data: '{}'", eventName, eventData);
+
+    // Set event processing flag with RAII for exception safety
+    struct ProcessingEventGuard {
+        bool &flag_;
+
+        explicit ProcessingEventGuard(bool &flag) : flag_(flag) {
+            LOG_DEBUG("ProcessingEventGuard: Setting isProcessingEvent_ = true");
+            flag_ = true;
+        }
+
+        ~ProcessingEventGuard() {
+            LOG_DEBUG("ProcessingEventGuard: Setting isProcessingEvent_ = false");
+            flag_ = false;
+        }
+
+        // Delete copy constructor and assignment
+        ProcessingEventGuard(const ProcessingEventGuard &) = delete;
+        ProcessingEventGuard &operator=(const ProcessingEventGuard &) = delete;
+    };
+
+    ProcessingEventGuard eventGuard(isProcessingEvent_);
 
     // Count this event
     stats_.totalEvents++;
@@ -158,13 +204,19 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     // Store event data for access in guards/actions
     currentEventData_ = eventData;
 
-    // Set event data in JavaScript context
-    RSM::JSEngine::instance().setVariable(sessionId_, "_event", ScriptValue{eventData});
-    RSM::JSEngine::instance().setVariable(sessionId_, "_eventname", ScriptValue{eventName});
+    // W3C SCXML compliance: Set current event in ActionExecutor for _event context
+    if (actionExecutor_) {
+        auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
+        if (actionExecutorImpl) {
+            actionExecutorImpl->setCurrentEvent(eventName, eventData);
+            LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,
+                      eventData);
+        }
+    }
 
     // Find applicable transitions from SCXML model
     if (!model_) {
-        Logger::error("StateMachine: No SCXML model available");
+        LOG_ERROR("StateMachine: No SCXML model available");
         TransitionResult result;
         result.success = false;
         result.fromState = getCurrentState();
@@ -177,7 +229,7 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     std::string currentState = getCurrentState();
     auto currentStateNode = model_->findStateById(currentState);
     if (!currentStateNode) {
-        Logger::debug("StateMachine: Current state not found in model: " + currentState);
+        LOG_DEBUG("Current state not found in model: {}", currentState);
         TransitionResult result;
         result.success = false;
         result.fromState = getCurrentState();
@@ -191,19 +243,19 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
         auto parallelState = dynamic_cast<ConcurrentStateNode *>(currentStateNode);
         assert(parallelState && "SCXML violation: PARALLEL type state must be ConcurrentStateNode");
 
-        Logger::debug("StateMachine: Processing event '" + eventName + "' for parallel state: " + currentState);
+        LOG_DEBUG("Processing event '{}' for parallel state: {}", eventName, currentState);
 
         // SCXML W3C specification: First check transitions on the parallel state itself
         // This follows the same transition evaluation logic as non-parallel states
         auto stateTransitionResult = processStateTransitions(currentStateNode, eventName, eventData);
         if (stateTransitionResult.success) {
-            Logger::debug("StateMachine: SCXML compliant - parallel state transition executed: " +
-                          stateTransitionResult.fromState + " -> " + stateTransitionResult.toState);
+            LOG_DEBUG("SCXML compliant - parallel state transition executed: {} -> {}", stateTransitionResult.fromState,
+                      stateTransitionResult.toState);
             return stateTransitionResult;
         }
 
         // SCXML W3C specification: If no transition on parallel state, broadcast to all active regions
-        Logger::debug("StateMachine: No transitions on parallel state, broadcasting to all regions");
+        LOG_DEBUG("StateMachine: No transitions on parallel state, broadcasting to all regions");
 
         // Create EventDescriptor for SCXML-compliant event processing
         EventDescriptor event;
@@ -225,10 +277,11 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
 
         if (anyTransitionExecuted) {
             stats_.totalTransitions++;
-            Logger::info("StateMachine: SCXML compliant parallel region processing succeeded. Transitions: [" +
-                         std::to_string(successfulTransitions.size()) + "/" + std::to_string(results.size()) + "]");
+            LOG_INFO("SCXML compliant parallel region processing succeeded. Transitions: [{}/{}]",
+                     successfulTransitions.size(), results.size());
 
-            // Return success with parallel state as context
+            // Invoke execution consolidated to key lifecycle points            // Return success with parallel state as
+            // context
             TransitionResult finalResult;
             finalResult.success = true;
             finalResult.fromState = currentState;
@@ -236,7 +289,7 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             finalResult.eventName = eventName;
             return finalResult;
         } else {
-            Logger::debug("StateMachine: No transitions executed in any region for event: " + eventName);
+            LOG_DEBUG("No transitions executed in any region for event: {}", eventName);
             stats_.failedTransitions++;
             TransitionResult result;
             result.success = false;
@@ -247,15 +300,41 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
         }
     }
 
-    // Non-parallel state: process state transitions using unified logic
-    return processStateTransitions(currentStateNode, eventName, eventData);
+    // Non-parallel state: SCXML W3C compliant hierarchical event processing
+    // Process transitions in active state hierarchy (innermost to outermost)
+    auto activeStates = hierarchyManager_->getActiveStates();
 
-    // This should not be reached, but just in case
+    LOG_DEBUG("SCXML hierarchical processing: Checking {} active states for event '{}'", activeStates.size(),
+              eventName);
+
+    // Process states from most specific (innermost) to least specific (outermost)
+    for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
+        const std::string &stateId = *it;
+        auto stateNode = model_->findStateById(stateId);
+        if (stateNode) {
+            LOG_DEBUG("SCXML hierarchical processing: Checking state '{}' for transitions", stateId);
+            auto transitionResult = processStateTransitions(stateNode, eventName, eventData);
+            if (transitionResult.success) {
+                LOG_DEBUG("SCXML hierarchical processing: Transition found in state '{}': {} -> {}", stateId,
+                          transitionResult.fromState, transitionResult.toState);
+
+                // Invoke execution consolidated to key lifecycle points
+                return transitionResult;
+            }
+        } else {
+            LOG_WARN("SCXML hierarchical processing: State node not found: {}", stateId);
+        }
+    }
+
+    // No transitions found in any active state
+    LOG_DEBUG("SCXML hierarchical processing: No transitions found in any active state for event '{}'", eventName);
+    stats_.failedTransitions++;
+
     TransitionResult result;
     result.success = false;
     result.fromState = getCurrentState();
     result.eventName = eventName;
-    result.errorMessage = "Unexpected end of transition processing";
+    result.errorMessage = "No valid transitions found in active state hierarchy";
     return result;
 }
 
@@ -277,39 +356,49 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
     // SCXML W3C specification: Process transitions in document order
     const auto &transitions = stateNode->getTransitions();
 
-    Logger::debug("StateMachine: Checking " + std::to_string(transitions.size()) + " transitions for event '" +
-                  eventName + "' on state: " + stateNode->getId());
+    LOG_DEBUG("Checking {} transitions for event '{}' on state: {}", transitions.size(), eventName, stateNode->getId());
 
     // Execute first valid transition (SCXML W3C specification)
     for (const auto &transitionNode : transitions) {
+        std::string transitionEvent = transitionNode->getEvent();
+
         // Check if this transition matches the event
-        if (transitionNode->getEvent() != eventName) {
+        // Allow eventless transitions when eventName is empty (automatic transitions)
+        bool eventMatches = false;
+        if (eventName.empty()) {
+            // For automatic transitions, only consider transitions without events
+            eventMatches = transitionEvent.empty();
+        } else {
+            // For normal event processing, support wildcard (*) and exact matching
+            eventMatches = (transitionEvent == eventName) || (transitionEvent == "*");
+        }
+
+        if (!eventMatches) {
             continue;
         }
 
         const auto &targets = transitionNode->getTargets();
         if (targets.empty()) {
-            Logger::debug("StateMachine: Skipping transition with no targets");
+            LOG_DEBUG("StateMachine: Skipping transition with no targets");
             continue;
         }
 
         std::string targetState = targets[0];
         std::string condition = transitionNode->getGuard();
 
-        Logger::debug("StateMachine: Checking transition: " + stateNode->getId() + " -> " + targetState +
-                      " with condition: '" + condition + "'");
+        LOG_DEBUG("Checking transition: {} -> {} with condition: '{}' (event: '{}')", stateNode->getId(), targetState,
+                  condition, transitionEvent);
 
         bool conditionResult = condition.empty() || evaluateCondition(condition);
-        Logger::debug("StateMachine: Condition result: " + std::string(conditionResult ? "true" : "false"));
+        LOG_DEBUG("Condition result: {}", conditionResult ? "true" : "false");
 
         if (conditionResult) {
             std::string fromState = getCurrentState();  // Save the original state
-            Logger::debug("StateMachine: Executing SCXML compliant transition from " + fromState + " to " +
-                          targetState);
+            LOG_DEBUG("Executing SCXML compliant transition from {} to {}", fromState, targetState);
 
             // Exit current state
             if (!exitState(fromState)) {
-                Logger::error("StateMachine: Failed to exit state: " + fromState);
+                LOG_ERROR("Failed to exit state: {}", fromState);
                 TransitionResult result;
                 result.success = false;
                 result.fromState = fromState;
@@ -321,22 +410,22 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             // Execute transition actions (SCXML W3C specification)
             const auto &actionNodes = transitionNode->getActionNodes();
             if (!actionNodes.empty()) {
-                Logger::debug("StateMachine: Executing transition actions");
+                LOG_DEBUG("StateMachine: Executing transition actions");
                 for (const auto &actionNode : actionNodes) {
                     if (actionNode && actionNode->execute(*executionContext_)) {
-                        Logger::debug("StateMachine: Successfully executed ActionNode: " + actionNode->getActionType());
+                        LOG_DEBUG("Successfully executed ActionNode: {}", actionNode->getActionType());
                     } else {
-                        Logger::warn("StateMachine: ActionNode execution failed: " +
-                                     (actionNode ? actionNode->getActionType() : "null") + ", but continuing");
+                        LOG_WARN("ActionNode execution failed: {}, but continuing",
+                                 actionNode ? actionNode->getActionType() : "null");
                     }
                 }
             } else {
-                Logger::debug("StateMachine: No transition actions for this transition");
+                LOG_DEBUG("StateMachine: No transition actions for this transition");
             }
 
             // Enter new state
             if (!enterState(targetState)) {
-                Logger::error("StateMachine: Failed to enter state: " + targetState);
+                LOG_ERROR("Failed to enter state: {}", targetState);
                 TransitionResult result;
                 result.success = false;
                 result.fromState = fromState;
@@ -349,19 +438,19 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             updateStatistics();
             stats_.totalTransitions++;
 
-            Logger::info("StateMachine: Successfully transitioned from " + fromState + " to " + targetState);
+            LOG_INFO("Successfully transitioned from {} to {}", fromState, targetState);
+
+            // W3C SCXML compliance: Execute deferred invokes after transition completes
+            executePendingInvokes();
+
             return TransitionResult(true, fromState, targetState, eventName);
         }
     }
 
     // No valid transitions found
-    Logger::debug("StateMachine: No valid transitions found for event: " + eventName +
-                  " from state: " + stateNode->getId());
+    LOG_DEBUG("No valid transitions found for event: {} from state: {}", eventName, stateNode->getId());
 
-    // CRITICAL: Increment failed transitions counter for statistics
-    stats_.failedTransitions++;
-    Logger::debug("StateMachine: Incremented failedTransitions counter to: " +
-                  std::to_string(stats_.failedTransitions));
+    // Note: Failed transition counter is managed at processEvent() level to avoid double counting
 
     TransitionResult result;
     result.success = false;
@@ -414,15 +503,8 @@ StateMachine::Statistics StateMachine::getStatistics() const {
     return stats_;
 }
 
-std::string StateMachine::generateSessionId() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(100000, 999999);
-    return "sm_" + std::to_string(dis(gen));
-}
-
 bool StateMachine::initializeFromModel() {
-    Logger::debug("StateMachine: Initializing from SCXML model");
+    LOG_DEBUG("StateMachine: Initializing from SCXML model");
 
     // Clear existing state
     initialState_.clear();
@@ -430,20 +512,28 @@ bool StateMachine::initializeFromModel() {
     // Get initial state
     initialState_ = model_->getInitialState();
     if (initialState_.empty()) {
-        Logger::error("StateMachine: No initial state defined in SCXML model");
+        LOG_ERROR("StateMachine: No initial state defined in SCXML model");
         return false;
     }
 
     // Extract all states from the model
     const auto &allStates = model_->getAllStates();
     if (allStates.empty()) {
-        Logger::error("StateMachine: No states found in SCXML model");
+        LOG_ERROR("StateMachine: No states found in SCXML model");
         return false;
     }
 
     try {
         // Initialize hierarchy manager for hierarchical state support
         hierarchyManager_ = std::make_unique<StateHierarchyManager>(model_);
+
+        // Set up onentry callback for W3C SCXML compliance
+        LOG_DEBUG("StateMachine: Setting up onentry callback for StateHierarchyManager");
+        hierarchyManager_->setOnEntryCallback([this](const std::string &stateId) {
+            LOG_DEBUG("StateMachine: Onentry callback triggered for state: {}", stateId);
+            executeOnEntryActions(stateId);
+        });
+        LOG_DEBUG("StateMachine: Onentry callback successfully configured");
 
         // Set up completion callbacks for parallel states (SCXML W3C compliance)
         setupParallelStateCallbacks();
@@ -454,72 +544,89 @@ bool StateMachine::initializeFromModel() {
             historyAutoRegistrar_->autoRegisterHistoryStates(model_, historyManager_.get());
         }
 
-        Logger::debug("StateMachine: Model initialized with initial state: " + initialState_);
-        Logger::info("StateMachine: Model initialized with " + std::to_string(allStates.size()) + " states");
+        LOG_DEBUG("Model initialized with initial state: {}", initialState_);
+        LOG_INFO("Model initialized with {} states", allStates.size());
         return true;
     } catch (const std::exception &e) {
-        Logger::error("StateMachine: Failed to extract model: " + std::string(e.what()));
+        LOG_ERROR("Failed to extract model: {}", e.what());
         return false;
     }
 }
 
 bool StateMachine::evaluateCondition(const std::string &condition) {
     if (condition.empty()) {
+        LOG_DEBUG("Empty condition, returning true");
         return true;
     }
 
     try {
-        // Debug: Check counter value before evaluating condition
-        auto counterCheck = RSM::JSEngine::instance().evaluateExpression(sessionId_, "counter").get();
-        if (RSM::JSEngine::isSuccess(counterCheck)) {
-            auto counterValue = RSM::JSEngine::resultToValue<double>(counterCheck);
-            if (counterValue.has_value()) {
-                Logger::debug("StateMachine: Current counter value before condition '" + condition +
-                              "': " + std::to_string(counterValue.value()));
-            }
-        }
+        LOG_DEBUG("Evaluating condition: '{}'", condition);
 
         auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, condition);
         auto result = future.get();
 
         if (!RSM::JSEngine::isSuccess(result)) {
-            Logger::error("StateMachine: Failed to evaluate condition: evaluation failed");
+            LOG_ERROR("StateMachine: Failed to evaluate condition '{}': evaluation failed", condition);
             return false;
         }
 
         // Convert result to boolean using integrated JSEngine method
-        return RSM::JSEngine::resultToBool(result);
+        bool conditionResult = RSM::JSEngine::resultToBool(result);
+        LOG_DEBUG("Condition '{}' evaluated to: {}", condition, conditionResult ? "true" : "false");
 
-        return false;
+        return conditionResult;
+
     } catch (const std::exception &e) {
-        Logger::error("StateMachine: Exception evaluating condition: " + std::string(e.what()));
+        LOG_ERROR("Exception evaluating condition '{}': {}", condition, e.what());
         return false;
     }
 }
 
 bool StateMachine::enterState(const std::string &stateId) {
-    Logger::debug("StateMachine: Entering state: " + stateId);
+    LOG_DEBUG("Entering state: {}", stateId);
+
+    // Guard against invalid reentrant calls, but allow legitimate done.state event processing
+    if (isEnteringState_ && !isProcessingEvent_) {
+        LOG_DEBUG(
+            "Invalid reentrant enterState call detected (isEnteringState_={}, isProcessingEvent_={}), ignoring: {}",
+            isEnteringState_, isProcessingEvent_, stateId);
+        return true;  // Return success to avoid breaking the transition chain
+    }
+
+    // Allow reentrant calls during event processing (done.state events are legitimate)
+    if (isEnteringState_ && isProcessingEvent_) {
+        LOG_DEBUG("Legitimate reentrant enterState call during event processing (isEnteringState_={}, "
+                  "isProcessingEvent_={}): {}",
+                  isEnteringState_, isProcessingEvent_, stateId);
+    }
+
+    // Set guard flag
+    isEnteringState_ = true;
 
     // Check if this is a history state and handle restoration (SCXML W3C specification section 3.6)
     if (historyManager_ && historyManager_->isHistoryState(stateId)) {
-        Logger::info("StateMachine: Entering history state: " + stateId);
+        LOG_INFO("Entering history state: {}", stateId);
 
         auto restorationResult = historyManager_->restoreHistory(stateId);
         if (restorationResult.success && !restorationResult.targetStateIds.empty()) {
-            Logger::info("StateMachine: History restoration successful, entering " +
-                         std::to_string(restorationResult.targetStateIds.size()) + " target states");
+            LOG_INFO("History restoration successful, entering {} target states",
+                     restorationResult.targetStateIds.size());
 
             // Enter all target states from history restoration
             bool allSucceeded = true;
             for (const auto &targetStateId : restorationResult.targetStateIds) {
                 if (!enterState(targetStateId)) {
-                    Logger::error("StateMachine: Failed to enter restored target state: " + targetStateId);
+                    LOG_ERROR("Failed to enter restored target state: {}", targetStateId);
                     allSucceeded = false;
                 }
             }
+            // Clear guard flag before returning
+            isEnteringState_ = false;
             return allSucceeded;
         } else {
-            Logger::error("StateMachine: History restoration failed: " + restorationResult.errorMessage);
+            LOG_ERROR("History restoration failed: {}", restorationResult.errorMessage);
+            // Clear guard flag before returning
+            isEnteringState_ = false;
             return false;
         }
     }
@@ -527,66 +634,92 @@ bool StateMachine::enterState(const std::string &stateId) {
     // SCXML W3C specification: hierarchy manager is required for compliant state entry
     assert(hierarchyManager_ && "SCXML violation: hierarchy manager required for state management");
 
+    // SCXML W3C compliant: Provide ExecutionContext to parallel states for action execution
+    if (model_) {
+        auto stateNode = model_->findStateById(stateId);
+        if (stateNode && stateNode->getType() == Type::PARALLEL && executionContext_) {
+            auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
+            if (parallelState) {
+                parallelState->setExecutionContextForRegions(executionContext_);
+                LOG_DEBUG("SCXML compliant: Injected ExecutionContext into parallel state regions: {}", stateId);
+            }
+        }
+    }
+
     bool hierarchyResult = hierarchyManager_->enterState(stateId);
     assert(hierarchyResult && "SCXML violation: state entry must succeed");
     (void)hierarchyResult;  // Suppress unused variable warning in release builds
 
-    // SCXML W3C specification section 3.4: Execute entry actions in correct order for parallel states
-    auto stateNode = model_->findStateById(stateId);
-    assert(stateNode && "SCXML violation: state must exist in model");
+    // SCXML W3C macrostep compliance: Check if reentrant transition occurred during state entry
+    // This handles cases where done.state events cause immediate transitions (e.g., parallel state completion)
+    std::string actualCurrentState = getCurrentState();
+    if (actualCurrentState != stateId) {
+        LOG_DEBUG("SCXML macrostep: State transition occurred during entry (expected: {}, actual: {})", stateId,
+                  actualCurrentState);
+        LOG_DEBUG("This indicates a valid internal transition (e.g., done.state event) - macrostep continuing");
 
-    if (stateNode->getType() == Type::PARALLEL) {
-        // SCXML W3C section 3.4: Execute parallel state entry in proper phases
-        Logger::debug("StateMachine: Executing parallel state entry in proper phases");
-
-        // Phase 1: Execute entry actions (parallel state first, then regions)
-        bool parallelEntryResult = executeEntryActions(stateId);
-        assert(parallelEntryResult && "SCXML violation: parallel state entry actions must succeed");
-        (void)parallelEntryResult;
-
-        // Phase 2: Execute entry actions for all child regions
-        auto activeStates = getActiveStates();
-        for (const auto &activeState : activeStates) {
-            if (activeState != stateId) {  // Skip the parallel state itself (already executed)
-                bool childEntryResult = executeEntryActions(activeState);
-                assert(childEntryResult && "SCXML violation: child region entry actions must succeed");
-                (void)childEntryResult;
-            }
-        }
-
-        // Parallel state entry phases completed
-        Logger::debug("StateMachine: Parallel state entry phases completed");
-
-        // SCXML W3C specification: Check for completion after initial entry
-        // If all regions are immediately in final states, generate done.state event
-        auto parallelState = static_cast<ConcurrentStateNode *>(stateNode);
-        parallelState->areAllRegionsComplete();  // Completion check after initial entry
-    } else {
-        // For non-parallel states: Execute entry actions for all entered states
-        auto activeStates = getActiveStates();
-        for (const auto &activeState : activeStates) {
-            bool entryResult = executeEntryActions(activeState);
-            assert(entryResult && "SCXML violation: state entry actions must succeed");
-            (void)entryResult;  // Suppress unused variable warning in release builds
-        }
+        // Note: Invokes are executed immediately during state entry        // Clear guard flag - macrostep will
+        // complete with the actual final state
+        isEnteringState_ = false;
+        return true;
     }
+
+    // W3C SCXML: onentry actions (including invokes) are executed via callback from StateHierarchyManager
+    // This ensures proper execution order per W3C specification
 
     // Set state variable in JavaScript context
     RSM::JSEngine::instance().setVariable(sessionId_, "_state", ScriptValue{getCurrentState()});
 
-    Logger::debug("StateMachine: Successfully entered state using hierarchy manager: " + stateId +
-                  " (current: " + getCurrentState() + ")");
+    LOG_DEBUG("Successfully entered state using hierarchy manager: {} (current: {})", stateId, getCurrentState());
+
+    // Clear guard flag before checking automatic transitions
+    isEnteringState_ = false;
+
+    // SCXML W3C specification: After entering a state, check for automatic transitions (eventless transitions)
+    if (model_) {
+        auto currentStateNode = model_->findStateById(stateId);
+        if (currentStateNode) {
+            const auto &transitions = currentStateNode->getTransitions();
+            bool hasAutomaticTransitions = false;
+
+            // Check if there are any eventless transitions
+            for (const auto &transition : transitions) {
+                if (transition->getEvent().empty()) {
+                    hasAutomaticTransitions = true;
+                    break;
+                }
+            }
+
+            if (hasAutomaticTransitions) {
+                LOG_DEBUG("State {} has automatic transitions, checking conditions...", stateId);
+
+                // Process automatic transitions (with empty event name)
+                auto transitionResult = processStateTransitions(currentStateNode, "", "");
+                if (transitionResult.success) {
+                    LOG_INFO("Automatic transition executed: {} -> {}", transitionResult.fromState,
+                             transitionResult.toState);
+
+                    // Invoke execution consolidated to key lifecycle points
+                } else {
+                    LOG_DEBUG("No automatic transition conditions met for state: {}", stateId);
+                }
+            } else {
+                LOG_DEBUG("State {} has no automatic transitions", stateId);
+            }
+        }
+    }
+
     return true;
 }
 
 bool StateMachine::exitState(const std::string &stateId) {
-    Logger::debug("StateMachine: Exiting state: " + stateId);
+    LOG_DEBUG("Exiting state: {}", stateId);
 
     // SCXML W3C specification section 3.4: Execute exit actions in correct order for parallel states
     auto stateNode = model_->findStateById(stateId);
     if (stateNode && stateNode->getType() == Type::PARALLEL) {
         // For parallel states: Child regions exit FIRST, then parallel state exits
-        Logger::debug("StateMachine: SCXML W3C compliant - executing parallel state exit actions in correct order");
+        LOG_DEBUG("StateMachine: SCXML W3C compliant - executing parallel state exit actions in correct order");
 
         // Exit actions for child regions are already handled by executeExitActions for parallel
         // Execute parallel state's own onexit actions LAST
@@ -610,18 +743,19 @@ bool StateMachine::exitState(const std::string &stateId) {
             // Record history for this compound state
             bool recorded = historyManager_->recordHistory(stateId, activeStates);
             if (recorded) {
-                Logger::debug("StateMachine: Recorded history for compound state: " + stateId);
+                LOG_DEBUG("Recorded history for compound state: {}", stateId);
             }
         }
     }
 
     // Use hierarchy manager for SCXML-compliant state exit
     assert(hierarchyManager_ && "SCXML violation: hierarchy manager required for state management");
-    hierarchyManager_->exitState(stateId);
+    LOG_DEBUG("StateMachine::exitState - executionContext_ is {}", executionContext_ ? "valid" : "NULL");
+    hierarchyManager_->exitState(stateId, executionContext_);
 
     // State management fully delegated to StateHierarchyManager
 
-    Logger::debug("StateMachine: Successfully exited state: " + stateId);
+    LOG_DEBUG("Successfully exited state: {}", stateId);
     return true;
 }
 
@@ -636,13 +770,22 @@ bool StateMachine::ensureJSEnvironment() {
 bool StateMachine::setupJSEnvironment() {
     // JSEngine은 생성자에서 자동 초기화됨 (RAII)
     auto &jsEngine = RSM::JSEngine::instance();  // RAII 보장
-    Logger::debug("StateMachine: JSEngine automatically initialized via RAII at address: {}",
-                  static_cast<void *>(&jsEngine));
+    LOG_DEBUG("StateMachine: JSEngine automatically initialized via RAII at address: {}",
+              static_cast<void *>(&jsEngine));
 
-    // Create JavaScript session
-    if (!RSM::JSEngine::instance().createSession(sessionId_)) {
-        Logger::error("StateMachine: Failed to create JavaScript session");
-        return false;
+    // Create JavaScript session only if it doesn't exist (for invoke scenarios)
+    // Check if session already exists (created by InvokeExecutor for child sessions)
+    bool sessionExists = RSM::JSEngine::instance().hasSession(sessionId_);
+
+    if (!sessionExists) {
+        // Create new session for standalone StateMachine
+        if (!RSM::JSEngine::instance().createSession(sessionId_)) {
+            LOG_ERROR("StateMachine: Failed to create JavaScript session");
+            return false;
+        }
+        LOG_DEBUG("StateMachine: Created new JavaScript session: {}", sessionId_);
+    } else {
+        LOG_DEBUG("StateMachine: Using existing JavaScript session (injected): {}", sessionId_);
     }
 
     // Set up basic variables
@@ -651,16 +794,22 @@ bool StateMachine::setupJSEnvironment() {
 
     // Register this StateMachine instance with JSEngine for In() function support
     RSM::JSEngine::instance().setStateMachine(this, sessionId_);
-    Logger::debug("StateMachine: Registered with JSEngine for In() function support");
+    LOG_DEBUG("StateMachine: Registered with JSEngine for In() function support");
 
     // Initialize data model variables from SCXML model
     if (model_) {
         const auto &dataModelItems = model_->getDataModelItems();
+        LOG_DEBUG("StateMachine: Found {} data model items to initialize", dataModelItems.size());
+
         for (const auto &item : dataModelItems) {
             std::string id = item->getId();
             std::string expr = item->getExpr();
+            std::string content = item->getContent();
+
+            LOG_DEBUG("StateMachine: Processing data model item '{}' - expr: '{}', content: '{}'", id, expr, content);
 
             if (!expr.empty()) {
+                LOG_DEBUG("StateMachine: Evaluating expression '{}' for variable '{}'", expr, id);
                 // Execute the expression to get initial value
                 auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, expr);
                 auto result = future.get();
@@ -668,24 +817,79 @@ bool StateMachine::setupJSEnvironment() {
                 if (RSM::JSEngine::isSuccess(result)) {
                     // Direct access to value through friend class access
                     RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
-                    Logger::debug("StateMachine: Initialized data model variable: " + id + " = " + expr);
+                    LOG_DEBUG("StateMachine: Initialized data model variable '{}' from expression '{}' with result", id,
+                              expr);
                 } else {
+                    LOG_ERROR("StateMachine: Failed to evaluate expression '{}' for variable '{}': {}", expr, id,
+                              result.getErrorMessage());
                     // Default to 0 for numeric expressions
                     RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{static_cast<long>(0)});
-                    Logger::debug("StateMachine: Set default value for data model variable: " + id);
+                    LOG_DEBUG("StateMachine: Set default value for data model variable '{}'", id);
                 }
+            } else if (!content.empty()) {
+                LOG_DEBUG("StateMachine: Evaluating content '{}' for variable '{}'", content, id);
+                // Use content as expression
+                auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, content);
+                auto result = future.get();
+
+                if (RSM::JSEngine::isSuccess(result)) {
+                    RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+                    LOG_DEBUG("StateMachine: Initialized data model variable '{}' from content '{}' with result", id,
+                              content);
+                } else {
+                    LOG_ERROR("StateMachine: Failed to evaluate content '{}' for variable '{}': {}", content, id,
+                              result.getErrorMessage());
+                    // Try setting content as string literal
+                    RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{content});
+                    LOG_DEBUG("StateMachine: Set data model variable '{}' as string literal from content", id);
+                }
+            } else {
+                LOG_DEBUG("StateMachine: No expression or content for variable '{}', skipping", id);
             }
         }
+    } else {
+        LOG_DEBUG("StateMachine: No model available for data model initialization");
     }
 
     // Initialize ActionExecutor and ExecutionContext
     if (!initializeActionExecutor()) {
-        Logger::error("StateMachine: Failed to initialize action executor");
+        LOG_ERROR("StateMachine: Failed to initialize action executor");
         return false;
     }
 
+    // Pass EventDispatcher to ActionExecutor if it was set before initialization
+    if (eventDispatcher_ && actionExecutor_) {
+        auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
+        if (actionExecutorImpl) {
+            actionExecutorImpl->setEventDispatcher(eventDispatcher_);
+            LOG_DEBUG(
+                "StateMachine: EventDispatcher passed to ActionExecutor during JS environment setup for session: {}",
+                sessionId_);
+        }
+    }
+
+    // Pass EventRaiser to ActionExecutor if available
+    if (eventRaiser_ && actionExecutor_) {
+        actionExecutor_->setEventRaiser(eventRaiser_);
+        LOG_DEBUG("StateMachine: EventRaiser passed to ActionExecutor for session: {}", sessionId_);
+    }
+
+    // Register EventRaiser with JSEngine after session creation
+    // This handles both cases: EventRaiser set before session creation (deferred) and after
+    if (eventRaiser_) {
+        // Check if EventRaiser is already registered to avoid duplicate registration
+        auto existingEventRaiser = JSEngine::instance().getEventRaiser(sessionId_);
+        if (!existingEventRaiser) {
+            JSEngine::instance().registerEventRaiser(sessionId_, eventRaiser_);
+            LOG_DEBUG("StateMachine: EventRaiser registered with JSEngine after session creation for session: {}",
+                      sessionId_);
+        } else {
+            LOG_DEBUG("StateMachine: EventRaiser already registered with JSEngine for session: {}", sessionId_);
+        }
+    }
+
     jsEnvironmentReady_ = true;
-    Logger::debug("StateMachine: JavaScript environment setup completed");
+    LOG_DEBUG("StateMachine: JavaScript environment setup completed");
     return true;
 }
 
@@ -699,52 +903,84 @@ bool StateMachine::initializeActionExecutor() {
         // Create ActionExecutor using the same session as StateMachine
         actionExecutor_ = std::make_shared<ActionExecutorImpl>(sessionId_);
 
+        // Inject EventRaiser if already set via builder pattern
+        if (eventRaiser_) {
+            actionExecutor_->setEventRaiser(eventRaiser_);
+            LOG_DEBUG("StateMachine: EventRaiser injected to ActionExecutor during initialization for session: {}",
+                      sessionId_);
+        }
+
         // Create ExecutionContext with shared_ptr and sessionId
         executionContext_ = std::make_shared<ExecutionContextImpl>(actionExecutor_, sessionId_);
 
-        Logger::debug("StateMachine: ActionExecutor and ExecutionContext initialized for session: " + sessionId_);
+        LOG_DEBUG("ActionExecutor and ExecutionContext initialized for session: {}", sessionId_);
         return true;
     } catch (const std::exception &e) {
-        Logger::error("StateMachine: Failed to initialize ActionExecutor: " + std::string(e.what()));
+        LOG_ERROR("Failed to initialize ActionExecutor: {}", e.what());
         return false;
     }
 }
 
 bool StateMachine::executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions) {
     if (!executionContext_) {
-        Logger::warn("StateMachine: ExecutionContext not initialized, skipping action node execution");
+        LOG_WARN("StateMachine: ExecutionContext not initialized, skipping action node execution");
         return true;  // Not a failure, just no actions to execute
     }
 
-    bool anySuccess = false;
     bool allSucceeded = true;
+
+    // W3C SCXML compliance: Set immediate mode to false during executable content execution
+    // This ensures events raised during execution are queued and processed after completion
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            eventRaiserImpl->setImmediateMode(false);
+            LOG_DEBUG("SCXML compliance: Set immediate mode to false for executable content execution");
+        }
+    }
 
     for (const auto &action : actions) {
         if (!action) {
-            Logger::warn("StateMachine: Null action node encountered, skipping");
+            LOG_WARN("StateMachine: Null action node encountered, skipping");
             continue;
         }
 
         try {
-            Logger::debug("StateMachine: Executing action: " + action->getActionType());
+            LOG_DEBUG("Executing action: {}", action->getActionType());
             if (action->execute(*executionContext_)) {
-                Logger::debug("StateMachine: Successfully executed action: " + action->getActionType());
-                anySuccess = true;
+                LOG_DEBUG("Successfully executed action: {}", action->getActionType());
             } else {
-                Logger::warn("StateMachine: Failed to execute action: " + action->getActionType() +
-                             " (continuing with remaining actions)");
+                LOG_WARN("Failed to execute action: {} - W3C compliance: stopping remaining actions",
+                         action->getActionType());
                 allSucceeded = false;
+                // W3C SCXML specification: If error occurs in executable content,
+                // processor MUST NOT process remaining elements in the block
+                break;
             }
         } catch (const std::exception &e) {
-            Logger::warn("StateMachine: Exception executing action " + action->getActionType() + ": " +
-                         std::string(e.what()) + " (continuing with remaining actions)");
+            LOG_WARN("Exception executing action {}: {} - W3C compliance: stopping remaining actions",
+                     action->getActionType(), e.what());
             allSucceeded = false;
+            // W3C SCXML specification: If error occurs in executable content,
+            // processor MUST NOT process remaining elements in the block
+            break;
         }
     }
 
-    // Return true if we had no actions or if at least some actions succeeded
-    // This allows the state machine to continue even if some actions fail
-    return actions.empty() || anySuccess || allSucceeded;
+    // W3C SCXML compliance: Restore immediate mode and process queued events
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            eventRaiserImpl->setImmediateMode(true);
+            // Process any events that were queued during executable content execution
+            eventRaiserImpl->processQueuedEvents();
+            LOG_DEBUG("SCXML compliance: Restored immediate mode and processed queued events");
+        }
+    }
+
+    // W3C SCXML compliance: Return true only if all actions succeeded or no actions to execute
+    // If any action failed, we stopped execution per W3C spec, so return false to indicate failure
+    return actions.empty() || allSucceeded;
 }
 
 bool StateMachine::executeEntryActions(const std::string &stateId) {
@@ -761,7 +997,7 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
         return false;
     }
 
-    Logger::debug("StateMachine: Executing entry actions for state: " + stateId);
+    LOG_DEBUG("Executing entry actions for state: {}", stateId);
 
     // SCXML W3C specification section 3.4: Parallel states require special handling
     if (stateNode->getType() == Type::PARALLEL) {
@@ -771,11 +1007,10 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
         // SCXML W3C specification section 3.4: Execute parallel state's own onentry actions FIRST
         const auto &parallelEntryActions = parallelState->getEntryActionNodes();
         if (!parallelEntryActions.empty()) {
-            Logger::debug("StateMachine: SCXML W3C compliant - executing " +
-                          std::to_string(parallelEntryActions.size()) +
-                          " entry actions for parallel state itself: " + stateId);
+            LOG_DEBUG("SCXML W3C compliant - executing {} entry actions for parallel state itself: {}",
+                      parallelEntryActions.size(), stateId);
             if (!executeActionNodes(parallelEntryActions)) {
-                Logger::error("StateMachine: Failed to execute parallel state entry actions for: " + stateId);
+                LOG_ERROR("Failed to execute parallel state entry actions for: {}", stateId);
                 return false;
             }
         }
@@ -783,15 +1018,15 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
         // provide ExecutionContext to all regions for action execution
         if (executionContext_) {
             parallelState->setExecutionContextForRegions(executionContext_);
-            Logger::debug("StateMachine: Injected ExecutionContext into all regions of parallel state: " + stateId);
+            LOG_DEBUG("Injected ExecutionContext into all regions of parallel state: {}", stateId);
         }
 
         // SCXML W3C specification: ALL child regions MUST have their entry actions executed AFTER parallel state
         const auto &regions = parallelState->getRegions();
         assert(!regions.empty() && "SCXML violation: parallel state must have at least one region");
 
-        Logger::debug("StateMachine: SCXML W3C compliant - executing entry actions for " +
-                      std::to_string(regions.size()) + " child regions in parallel state: " + stateId);
+        LOG_DEBUG("SCXML W3C compliant - executing entry actions for {} child regions in parallel state: {}",
+                  regions.size(), stateId);
 
         // Execute entry actions for each region's root state
         for (const auto &region : regions) {
@@ -803,10 +1038,9 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
             // Execute entry actions for the region's root state
             const auto &regionEntryActions = rootState->getEntryActionNodes();
             if (!regionEntryActions.empty()) {
-                Logger::debug("StateMachine: Executing " + std::to_string(regionEntryActions.size()) +
-                              " entry actions for region: " + region->getId());
+                LOG_DEBUG("Executing {} entry actions for region: {}", regionEntryActions.size(), region->getId());
                 if (!executeActionNodes(regionEntryActions)) {
-                    Logger::error("StateMachine: Failed to execute entry actions for region: " + region->getId());
+                    LOG_ERROR("Failed to execute entry actions for region: {}", region->getId());
                     return false;
                 }
             }
@@ -822,20 +1056,17 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
                         initialChild = children[0]->getId();
                     }
 
-                    Logger::debug("StateMachine: Entering initial child state for INACTIVE region " + region->getId() +
-                                  ": " + initialChild);
+                    LOG_DEBUG("Entering initial child state for INACTIVE region {}: {}", region->getId(), initialChild);
 
                     // Execute entry actions for the initial child state
                     auto childState = model_->findStateById(initialChild);
                     if (childState) {
                         const auto &childEntryActions = childState->getEntryActionNodes();
                         if (!childEntryActions.empty()) {
-                            Logger::debug("StateMachine: Executing " + std::to_string(childEntryActions.size()) +
-                                          " entry actions for initial child state: " + initialChild);
+                            LOG_DEBUG("Executing {} entry actions for initial child state: {}",
+                                      childEntryActions.size(), initialChild);
                             if (!executeActionNodes(childEntryActions)) {
-                                Logger::error(
-                                    "StateMachine: Failed to execute entry actions for initial child state: " +
-                                    initialChild);
+                                LOG_ERROR("Failed to execute entry actions for initial child state: {}", initialChild);
                                 return false;
                             }
                         }
@@ -845,9 +1076,9 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
                     auto concreteRegion = std::dynamic_pointer_cast<ConcurrentRegion>(region);
                     std::string currentState = concreteRegion ? concreteRegion->getCurrentState() : "unknown";
 
-                    Logger::debug("StateMachine: SCXML W3C compliance - skipping initial state entry for already "
-                                  "ACTIVE region: " +
-                                  region->getId() + " (current state: " + currentState + ")");
+                    LOG_DEBUG("SCXML W3C compliance - skipping initial state entry for already ACTIVE region: {} "
+                              "(current state: {})",
+                              region->getId(), currentState);
 
                     // SCXML W3C 사양 위반 방지: 이미 활성화된 영역의 현재 상태 유지
                     assert(concreteRegion && !concreteRegion->getCurrentState().empty() &&
@@ -870,8 +1101,7 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
     // Execute IActionNode-based entry actions for non-parallel states
     const auto &entryActions = stateNode->getEntryActionNodes();
     if (!entryActions.empty()) {
-        Logger::debug("StateMachine: Executing " + std::to_string(entryActions.size()) +
-                      " entry action nodes for state: " + stateId);
+        LOG_DEBUG("Executing {} entry action nodes for state: {}", entryActions.size(), stateId);
         return executeActionNodes(entryActions);
     }
 
@@ -886,7 +1116,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
     // Find the StateNode in the SCXML model
     auto stateNode = model_->findStateById(stateId);
     if (!stateNode) {
-        Logger::debug("StateMachine: State " + stateId + " not found in SCXML model, skipping exit actions");
+        LOG_DEBUG("State {} not found in SCXML model, skipping exit actions", stateId);
         return true;  // Not an error if state not found in model
     }
 
@@ -898,7 +1128,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
         const auto &regions = parallelState->getRegions();
         assert(!regions.empty() && "SCXML violation: parallel state must have at least one region");
 
-        Logger::debug("StateMachine: SCXML W3C compliant - executing exit sequence for parallel state: " + stateId);
+        LOG_DEBUG("SCXML W3C compliant - executing exit sequence for parallel state: {}", stateId);
 
         // SCXML W3C specification: Execute child region exit actions FIRST
         for (const auto &region : regions) {
@@ -918,12 +1148,10 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
                     if (child && isChildActive) {
                         const auto &childExitActions = child->getExitActionNodes();
                         if (!childExitActions.empty()) {
-                            Logger::debug("StateMachine: SCXML W3C compliant - executing " +
-                                          std::to_string(childExitActions.size()) +
-                                          " exit actions for active child state: " + child->getId());
+                            LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for active child state: {}",
+                                      childExitActions.size(), child->getId());
                             if (!executeActionNodes(childExitActions)) {
-                                Logger::error("StateMachine: Failed to execute exit actions for child state: " +
-                                              child->getId());
+                                LOG_ERROR("Failed to execute exit actions for child state: {}", child->getId());
                                 return false;
                             }
                         }
@@ -934,11 +1162,10 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
                 // Execute exit actions for the region's root state
                 const auto &regionExitActions = rootState->getExitActionNodes();
                 if (!regionExitActions.empty()) {
-                    Logger::debug("StateMachine: SCXML W3C compliant - executing " +
-                                  std::to_string(regionExitActions.size()) +
-                                  " exit actions for region: " + region->getId());
+                    LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for region: {}",
+                              regionExitActions.size(), region->getId());
                     if (!executeActionNodes(regionExitActions)) {
-                        Logger::error("StateMachine: Failed to execute exit actions for region: " + region->getId());
+                        LOG_ERROR("Failed to execute exit actions for region: {}", region->getId());
                         return false;
                     }
                 }
@@ -948,9 +1175,8 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
         // SCXML W3C specification: Execute parallel state's own onexit actions LAST
         const auto &parallelExitActions = parallelState->getExitActionNodes();
         if (!parallelExitActions.empty()) {
-            Logger::debug("StateMachine: SCXML W3C compliant - executing " +
-                          std::to_string(parallelExitActions.size()) +
-                          " exit actions for parallel state itself: " + stateId);
+            LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for parallel state itself: {}",
+                      parallelExitActions.size(), stateId);
             return executeActionNodes(parallelExitActions);
         }
 
@@ -960,8 +1186,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
     // Execute IActionNode-based exit actions for non-parallel states
     const auto &exitActions = stateNode->getExitActionNodes();
     if (!exitActions.empty()) {
-        Logger::debug("StateMachine: Executing " + std::to_string(exitActions.size()) +
-                      " exit action nodes for state: " + stateId);
+        LOG_DEBUG("Executing {} exit action nodes for state: {}", exitActions.size(), stateId);
         return executeActionNodes(exitActions);
     }
 
@@ -969,36 +1194,35 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
 }
 
 void StateMachine::handleParallelStateCompletion(const std::string &stateId) {
-    Logger::debug("StateMachine: Handling parallel state completion for: " + stateId);
+    LOG_DEBUG("Handling parallel state completion for: {}", stateId);
 
     // Generate done.state.{stateId} event according to SCXML W3C specification section 3.4
     std::string doneEventName = "done.state." + stateId;
 
-    Logger::info("StateMachine: Generating done.state event: " + doneEventName +
-                 " for completed parallel state: " + stateId);
+    LOG_INFO("Generating done.state event: {} for completed parallel state: {}", doneEventName, stateId);
 
     // Process the done.state event to trigger any transitions waiting for it
     if (isRunning_) {
         auto result = processEvent(doneEventName, "");
         if (result.success) {
-            Logger::debug("StateMachine: Successfully processed done.state event: " + doneEventName);
+            LOG_DEBUG("Successfully processed done.state event: {}", doneEventName);
         } else {
-            Logger::debug("StateMachine: No transitions found for done.state event: " + doneEventName +
-                          " (this is normal if no transitions are waiting for this event)");
+            LOG_DEBUG("No transitions found for done.state event: {} (this is normal if no transitions are waiting for "
+                      "this event)",
+                      doneEventName);
         }
     } else {
-        Logger::warn("StateMachine: Cannot process done.state event " + doneEventName +
-                     " - state machine is not running");
+        LOG_WARN("Cannot process done.state event {} - state machine is not running", doneEventName);
     }
 }
 
 void StateMachine::setupParallelStateCallbacks() {
     if (!model_) {
-        Logger::warn("StateMachine: Cannot setup parallel state callbacks - no model available");
+        LOG_WARN("StateMachine: Cannot setup parallel state callbacks - no model available");
         return;
     }
 
-    Logger::debug("StateMachine: Setting up completion callbacks for parallel states");
+    LOG_DEBUG("StateMachine: Setting up completion callbacks for parallel states");
 
     const auto &allStates = model_->getAllStates();
     int parallelStateCount = 0;
@@ -1014,19 +1238,18 @@ void StateMachine::setupParallelStateCallbacks() {
                 });
 
                 parallelStateCount++;
-                Logger::debug("StateMachine: Set up completion callback for parallel state: " + state->getId());
+                LOG_DEBUG("Set up completion callback for parallel state: {}", state->getId());
             } else {
-                Logger::warn("StateMachine: Found parallel state that is not a ConcurrentStateNode: " + state->getId());
+                LOG_WARN("Found parallel state that is not a ConcurrentStateNode: {}", state->getId());
             }
         }
     }
 
-    Logger::info("StateMachine: Set up completion callbacks for " + std::to_string(parallelStateCount) +
-                 " parallel states");
+    LOG_INFO("Set up completion callbacks for {} parallel states", parallelStateCount);
 }
 
 void StateMachine::initializeHistoryManager() {
-    Logger::debug("StateMachine: Initializing History Manager with SOLID architecture");
+    LOG_DEBUG("StateMachine: Initializing History Manager with SOLID architecture");
 
     // Create state provider function for dependency injection
     auto stateProvider = [this](const std::string &stateId) -> std::shared_ptr<IStateNode> {
@@ -1052,11 +1275,11 @@ void StateMachine::initializeHistoryManager() {
     historyManager_ = std::make_unique<HistoryManager>(stateProvider, std::move(shallowFilter), std::move(deepFilter),
                                                        std::move(validator));
 
-    Logger::info("StateMachine: History Manager initialized with SOLID dependencies");
+    LOG_INFO("StateMachine: History Manager initialized with SOLID dependencies");
 }
 
 void StateMachine::initializeHistoryAutoRegistrar() {
-    Logger::debug("StateMachine: Initializing History Auto-Registrar with SOLID architecture");
+    LOG_DEBUG("StateMachine: Initializing History Auto-Registrar with SOLID architecture");
 
     // Create state provider function for dependency injection (same as history manager)
     auto stateProvider = [this](const std::string &stateId) -> std::shared_ptr<IStateNode> {
@@ -1076,13 +1299,13 @@ void StateMachine::initializeHistoryAutoRegistrar() {
     // Create HistoryStateAutoRegistrar with dependency injection
     historyAutoRegistrar_ = std::make_unique<HistoryStateAutoRegistrar>(stateProvider);
 
-    Logger::info("StateMachine: History Auto-Registrar initialized with SOLID dependencies");
+    LOG_INFO("StateMachine: History Auto-Registrar initialized with SOLID dependencies");
 }
 
 bool StateMachine::registerHistoryState(const std::string &historyStateId, const std::string &parentStateId,
                                         HistoryType type, const std::string &defaultStateId) {
     if (!historyManager_) {
-        Logger::error("StateMachine: History Manager not initialized");
+        LOG_ERROR("StateMachine: History Manager not initialized");
         return false;
     }
 
@@ -1109,6 +1332,237 @@ std::vector<HistoryEntry> StateMachine::getHistoryEntries() const {
     }
 
     return historyManager_->getHistoryEntries();
+}
+
+void StateMachine::executeOnEntryActions(const std::string &stateId) {
+    if (!model_) {
+        LOG_ERROR("Cannot execute onentry actions: SCXML model is null");
+        return;
+    }
+
+    // Find the state node
+    auto stateNode = model_->findStateById(stateId);
+    if (!stateNode) {
+        LOG_ERROR("Cannot find state node for onentry execution: {}", stateId);
+        return;
+    }
+
+    // Get entry actions from the state
+    const auto &entryActions = stateNode->getEntryActionNodes();
+    if (entryActions.empty()) {
+        LOG_DEBUG("No onentry actions to execute for state: {}", stateId);
+        return;
+    }
+
+    LOG_DEBUG("Executing {} onentry actions for state: {}", entryActions.size(), stateId);
+
+    // W3C SCXML compliance: Set immediate mode to false during executable content execution
+    // This ensures events raised during execution are queued and processed after completion
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            eventRaiserImpl->setImmediateMode(false);
+            LOG_DEBUG("SCXML compliance: Set immediate mode to false for onentry actions execution");
+        }
+    }
+
+    // W3C SCXML: Execute onentry handlers in document order
+    for (const auto &action : entryActions) {
+        if (!action) {
+            LOG_WARN("Null onentry action found in state: {}", stateId);
+            continue;
+        }
+
+        LOG_DEBUG("StateMachine: Executing onentry action: {} in state: {}", action->getActionType(), stateId);
+
+        // Create execution context for the action
+        if (actionExecutor_) {
+            auto sharedActionExecutor =
+                std::shared_ptr<IActionExecutor>(actionExecutor_.get(), [](IActionExecutor *) {});
+            ExecutionContextImpl context(sharedActionExecutor, sessionId_);
+
+            // Execute the action
+            if (!action->execute(context)) {
+                LOG_ERROR("StateMachine: Failed to execute onentry action: {} in state: {} - W3C compliance: stopping "
+                          "remaining actions",
+                          action->getActionType(), stateId);
+                // W3C SCXML specification: If error occurs in executable content,
+                // processor MUST NOT process remaining elements in the block
+                break;
+            } else {
+                LOG_DEBUG("StateMachine: Successfully executed onentry action: {} in state: {}",
+                          action->getActionType(), stateId);
+            }
+        } else {
+            LOG_ERROR("Cannot execute onentry action: ActionExecutor is null");
+        }
+    }
+
+    // W3C SCXML compliance: Restore immediate mode and process queued events
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            eventRaiserImpl->setImmediateMode(true);
+            // Process any events that were queued during executable content execution
+            eventRaiserImpl->processQueuedEvents();
+            LOG_DEBUG("SCXML compliance: Restored immediate mode and processed queued events");
+        }
+    }
+
+    // W3C SCXML: Defer invoke execution until after state entry completes
+    // This ensures proper timing with transition actions and pre-registration pattern
+    const auto &invokes = stateNode->getInvoke();
+    if (!invokes.empty()) {
+        LOG_DEBUG("StateMachine: Deferring {} invokes for state: {}", invokes.size(), stateId);
+        deferInvokeExecution(stateId, invokes);
+    } else {
+        LOG_DEBUG("StateMachine: No invokes to defer for state: {}", stateId);
+    }
+}
+
+// EventDispatcher management
+void StateMachine::setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher) {
+    eventDispatcher_ = eventDispatcher;
+
+    // Pass EventDispatcher to ActionExecutor for send actions
+    if (actionExecutor_) {
+        auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
+        if (actionExecutorImpl) {
+            actionExecutorImpl->setEventDispatcher(eventDispatcher);
+            LOG_DEBUG("StateMachine: EventDispatcher passed to ActionExecutor for session: {}", sessionId_);
+        }
+    }
+
+    // Pass EventDispatcher to InvokeExecutor for child session management
+    if (invokeExecutor_) {
+        invokeExecutor_->setEventDispatcher(eventDispatcher);
+        LOG_DEBUG("StateMachine: EventDispatcher passed to InvokeExecutor for session: {}", sessionId_);
+    }
+}
+
+// EventRaiser management
+void StateMachine::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) {
+    LOG_DEBUG("StateMachine: setEventRaiser called for session: {}", sessionId_);
+    eventRaiser_ = eventRaiser;
+
+    // SCXML W3C 준수: EventRaiser 콜백을 StateMachine의 processEvent로 설정
+    // 이렇게 하면 raise 액션으로 발생한 이벤트가 실제로 상태 전환을 트리거할 수 있음
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            LOG_DEBUG("StateMachine: EventRaiser 콜백 설정 - EventRaiser 인스턴스: {}, StateMachine 인스턴스: {}",
+                      (void *)eventRaiserImpl.get(), (void *)this);
+            // StateMachine의 processEvent 메서드를 EventRaiser 콜백으로 설정
+            eventRaiserImpl->setEventCallback(
+                [this](const std::string &eventName, const std::string &eventData) -> bool {
+                    if (isRunning_) {
+                        LOG_DEBUG("EventRaiser 콜백: StateMachine::processEvent 호출 - 이벤트: '{}', 데이터: '{}', "
+                                  "StateMachine 인스턴스: {}",
+                                  eventName, eventData, (void *)this);
+                        auto result = processEvent(eventName, eventData);
+                        LOG_DEBUG("EventRaiser 콜백: processEvent 결과 - 성공: {}, 상태 전환: {} -> {}", result.success,
+                                  result.fromState, result.toState);
+                        return result.success;
+                    } else {
+                        LOG_WARN("EventRaiser 콜백: StateMachine이 실행 중이 아님 - 이벤트 '{}' 무시", eventName);
+                        return false;
+                    }
+                });
+            LOG_DEBUG("StateMachine: EventRaiser 콜백이 processEvent로 설정됨 - 세션: {}, EventRaiser 인스턴스: {}",
+                      sessionId_, (void *)eventRaiserImpl.get());
+        }
+    }
+
+    // Register EventRaiser with JSEngine for #_invokeid target support
+    // Check if JSEngine session exists before registration to avoid timing issues
+    if (eventRaiser_) {
+        if (JSEngine::instance().hasSession(sessionId_)) {
+            JSEngine::instance().registerEventRaiser(sessionId_, eventRaiser_);
+            LOG_DEBUG("StateMachine: EventRaiser registered with JSEngine for session: {}", sessionId_);
+        } else {
+            LOG_DEBUG("StateMachine: JSEngine session not found, EventRaiser registration deferred for session: {}",
+                      sessionId_);
+            // EventRaiser will be registered later in setupJavaScriptEnvironment() after session creation
+        }
+    }
+
+    // Pass EventRaiser to ActionExecutor if it exists (during build phase)
+    if (actionExecutor_) {
+        actionExecutor_->setEventRaiser(eventRaiser);
+        LOG_DEBUG("StateMachine: EventRaiser passed to ActionExecutor for session: {}", sessionId_);
+    }
+    // Note: If ActionExecutor doesn't exist yet, it will be set during loadSCXMLFromString
+}
+
+std::shared_ptr<IEventDispatcher> StateMachine::getEventDispatcher() const {
+    return eventDispatcher_;
+}
+
+void StateMachine::deferInvokeExecution(const std::string &stateId,
+                                        const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
+    LOG_DEBUG("StateMachine: DETAILED DEBUG - deferInvokeExecution called for session {}, stateId: {}, invokeCount: {}",
+              sessionId_, stateId, invokes.size());
+
+    // Log each invoke being deferred
+    for (size_t i = 0; i < invokes.size(); ++i) {
+        const auto &invoke = invokes[i];
+        std::string invokeId = invoke ? invoke->getId() : "null";
+        std::string invokeType = invoke ? invoke->getType() : "null";
+        LOG_DEBUG("StateMachine: DETAILED DEBUG - Deferring invoke[{}]: id='{}', type='{}'", i, invokeId, invokeType);
+    }
+
+    DeferredInvoke deferred;
+    deferred.stateId = stateId;
+    deferred.invokes = invokes;
+
+    size_t beforeSize = pendingInvokes_.size();
+    pendingInvokes_.push_back(std::move(deferred));
+
+    LOG_DEBUG("StateMachine: DETAILED DEBUG - Pending invokes count: {} -> {}", beforeSize, pendingInvokes_.size());
+}
+
+void StateMachine::executePendingInvokes() {
+    if (pendingInvokes_.empty()) {
+        LOG_DEBUG("StateMachine: No pending invokes to execute");
+        return;
+    }
+
+    LOG_DEBUG("StateMachine: DETAILED DEBUG - Executing {} pending invokes for session {}", pendingInvokes_.size(),
+              sessionId_);
+
+    // Log all pending invokes for debugging
+    for (size_t i = 0; i < pendingInvokes_.size(); ++i) {
+        const auto &deferred = pendingInvokes_[i];
+        LOG_DEBUG("StateMachine: DETAILED DEBUG - Pending invoke[{}]: stateId='{}', invokeCount={}", i,
+                  deferred.stateId, deferred.invokes.size());
+        for (size_t j = 0; j < deferred.invokes.size(); ++j) {
+            const auto &invoke = deferred.invokes[j];
+            std::string invokeId = invoke ? invoke->getId() : "null";
+            LOG_DEBUG("StateMachine: DETAILED DEBUG - Pending invoke[{}][{}]: id='{}', type='{}'", i, j, invokeId,
+                      invoke ? invoke->getType() : "null");
+        }
+    }
+
+    for (const auto &deferred : pendingInvokes_) {
+        LOG_DEBUG("StateMachine: Executing {} deferred invokes for state: {}", deferred.invokes.size(),
+                  deferred.stateId);
+
+        if (invokeExecutor_) {
+            bool invokeSuccess = invokeExecutor_->executeInvokes(deferred.invokes, sessionId_);
+            if (invokeSuccess) {
+                LOG_DEBUG("StateMachine: Successfully executed all deferred invokes for state: {}", deferred.stateId);
+            } else {
+                LOG_ERROR("StateMachine: Failed to execute some deferred invokes for state: {}", deferred.stateId);
+                // W3C SCXML: Continue execution even if invokes fail
+            }
+        } else {
+            LOG_ERROR("StateMachine: Cannot execute deferred invokes - InvokeExecutor is null");
+        }
+    }
+
+    // Clear all pending invokes after execution
+    pendingInvokes_.clear();
+    LOG_DEBUG("StateMachine: Cleared all pending invokes");
 }
 
 }  // namespace RSM

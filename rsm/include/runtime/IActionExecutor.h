@@ -14,6 +14,7 @@ class AssignAction;
 class SendAction;
 class CancelAction;
 class ForeachAction;
+class IEventRaiser;
 
 /**
  * @brief Interface for executing SCXML actions
@@ -124,14 +125,6 @@ public:
     virtual void log(const std::string &level, const std::string &message) = 0;
 
     /**
-     * @brief Raise an internal event
-     * @param eventName Name of the event to raise
-     * @param eventData Optional event data as JSON string
-     * @return true if event was raised successfully
-     */
-    virtual bool raiseEvent(const std::string &eventName, const std::string &eventData = "") = 0;
-
-    /**
      * @brief Check if a variable exists in the data model
      * @param location Variable location to check
      * @return true if variable exists
@@ -143,6 +136,12 @@ public:
      * @return Session identifier string
      */
     virtual std::string getSessionId() const = 0;
+
+    /**
+     * @brief Set event raiser for dependency injection
+     * @param eventRaiser Event raiser implementation
+     */
+    virtual void setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) = 0;
 };
 
 }  // namespace RSM

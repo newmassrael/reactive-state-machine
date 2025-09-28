@@ -1,0 +1,6 @@
+id: 301
+specnum: 5.8
+conformance: mandatory
+manual: True
+description: If the script specified by the 'src' attribute of a script element cannot be downloaded within a platform-specific timeout interval, the document is considered non-conformant, and the platform MUST reject it. N.B. This test is valid only for datamodels that support scripting.
+variants: 1

@@ -1,0 +1,6 @@
+id: 554
+specnum: 6.4
+conformance: mandatory
+manual: False
+description: if the evaluation of the invoke element's arguments arguments produces an error, the SCXML Processor MUST terminate the processing of the element without further action.
+variants: 1

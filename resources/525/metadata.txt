@@ -1,0 +1,6 @@
+id: 525
+specnum: 4.6
+conformance: mandatory
+manual: False
+description: The SCXML processor MUST act as if it has made a shallow copy of the collection produced by the evaluation of 'array'. Specifically, modifications to the collection during the execution of foreach MUST NOT affect the iteration behavior.
+variants: 1

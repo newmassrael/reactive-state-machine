@@ -1,0 +1,6 @@
+id: 551
+specnum: 5.3
+conformance: mandatory
+manual: False
+description: f child content is specified, the Platform MUST assign it as the value of the data element at the time specified by the 'binding' attribute of scxml.
+variants: 1

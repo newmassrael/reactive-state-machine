@@ -1,0 +1,6 @@
+id: 312
+specnum: 5.9
+conformance: mandatory
+manual: False
+description: If a value expression does not return a legal data value, the SCXML processor MUST place the error error.execution in the internal event queue.
+variants: 1

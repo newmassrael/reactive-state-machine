@@ -9,6 +9,7 @@
 #include "common/Logger.h"
 #include "events/EventTargetFactoryImpl.h"
 #include "events/HttpEventTarget.h"
+#include "mocks/MockEventRaiser.h"
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 
@@ -25,11 +26,17 @@ protected:
         mockServerUrl_ = mockServer_->start();
         ASSERT_FALSE(mockServerUrl_.empty()) << "Failed to start mock HTTP server";
 
-        Logger::info("HttpEventTargetTest: Mock server started at {}", mockServerUrl_);
+        LOG_INFO("HttpEventTargetTest: Mock server started at {}", mockServerUrl_);
 
-        // Create basic infrastructure
+        // Create basic infrastructure with MockEventRaiser
+        auto mockEventRaiser =
+            std::make_shared<RSM::Test::MockEventRaiser>([](const std::string &, const std::string &) -> bool {
+                return true;  // Always succeed for HTTP tests
+            });
+
         actionExecutor_ = std::make_shared<ActionExecutorImpl>("test_session");
-        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(actionExecutor_->getEventRaiser());
+        actionExecutor_->setEventRaiser(mockEventRaiser);
+        targetFactory_ = std::make_shared<EventTargetFactoryImpl>(mockEventRaiser);
     }
 
     void TearDown() override {
@@ -166,7 +173,7 @@ TEST_F(HttpEventTargetTest, BasicHttpEventSending) {
     EXPECT_EQ(result.sendId, "test_001");
     EXPECT_TRUE(result.errorMessage.empty());
 
-    Logger::info("HTTP test successful - sent event to mock server at {}", mockServerUrl_);
+    LOG_INFO("HTTP test successful - sent event to mock server at {}", mockServerUrl_);
 }
 
 /**
@@ -219,7 +226,7 @@ TEST_F(HttpEventTargetTest, HttpErrorHandling) {
     EXPECT_FALSE(result.errorMessage.empty());
     EXPECT_EQ(result.errorType, SendResult::ErrorType::NETWORK_ERROR);
 
-    Logger::debug("Expected error for non-existent server: {}", result.errorMessage);
+    LOG_DEBUG("Expected error for non-existent server: {}", result.errorMessage);
 }
 
 /**

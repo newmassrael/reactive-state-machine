@@ -1,0 +1,6 @@
+id: 527
+specnum: 5.6
+conformance: mandatory
+manual: False
+description: When the SCXML Processor evaluates the content element, if the 'expr' value expression is present, the Processor MUST evaluate it and use the result as the output of the content element.
+variants: 1

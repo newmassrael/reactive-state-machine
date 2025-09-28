@@ -1,0 +1,6 @@
+id: 413
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: At startup, the SCXML Processor MUST place the state machine in the configuration specified by the 'initial' attribute of the scxml element.
+variants: 1

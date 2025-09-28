@@ -1,0 +1,6 @@
+id: 310
+specnum: 5.9
+conformance: mandatory
+manual: False
+description: All datamodels MUST support the 'In()' predicate, which takes a stateID as its argument and returns true if the state machine is in that state.
+variants: 1

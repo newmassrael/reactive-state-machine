@@ -1,0 +1,6 @@
+id: 533
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: If a transition has 'type' of "internal", but its source state is not a compound state, its exit set is defined as if it had 'type' of "external".
+variants: 1

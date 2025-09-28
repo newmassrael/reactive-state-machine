@@ -1,0 +1,7 @@
+id: 205
+specnum: 6.2
+conformance: mandatory
+manual: False
+description: The sending SCXML Interpreter MUST not alter the content of the send
+ 	     and include it in the message that it sends to the destination specified in the target attribute of send.
+variants: 1

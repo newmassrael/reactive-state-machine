@@ -1,0 +1,7 @@
+id: 403
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: To execute a microstep, the SCXML Processor MUST execute the transitions in the corresponding optimal enabled transition set, where the optimal transition set enabled by event E in state configuration C is the largest set of transitions such that a) each transition in the set is optimally enabled by E in an atomic state in C b) no transition conflicts with another transition in the set c) there is no optimally enabled transition outside 
+      the set that has a higher priority than some member of the set.
+variants: 3

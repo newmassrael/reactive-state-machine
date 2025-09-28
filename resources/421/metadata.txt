@@ -1,0 +1,7 @@
+id: 421
+specnum: 3.13
+conformance: mandatory
+manual: False
+description: If the set (of eventless transitions) is empty, the Processor MUST remove events from the internal event queue until the queue is empty or it finds an event that enables a non-empty optimal transition set in the current configuration.  
+    	If it finds such a set [a non-empty optimal transition set], the processor MUST then execute it as a microstep.
+variants: 1

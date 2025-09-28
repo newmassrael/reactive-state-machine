@@ -1,108 +1,66 @@
 #pragma once
 
+#include <memory>
 #include <source_location>
+#include <spdlog/fmt/fmt.h>
 #include <spdlog/spdlog.h>
-#include <sstream>
 #include <string>
+
+// 현대적 매크로 기반 private 관리
+#define RSM_LOGGER_PRIVATE_NS __detail
+#define RSM_PRIVATE_CALL(func) RSM_LOGGER_PRIVATE_NS::func
 
 namespace RSM {
 
-// Forward declaration for LoggerStream
-class LoggerStream;
+// 숨겨진 구현 네임스페이스
+namespace RSM_LOGGER_PRIVATE_NS {
+void doFormatAndLog(spdlog::level::level_enum level, const std::string &message, const std::source_location &loc);
+void doInitializeLogger(const std::string &logDir, bool logToFile);
+std::string extractCleanFunctionName(const std::source_location &loc);
+void ensureLoggerInitialized();
+}  // namespace RSM_LOGGER_PRIVATE_NS
 
 class Logger {
 public:
-    enum class Level { DEBUG, INFO, WARNING, ERROR };
+    static void initialize() {
+        RSM_PRIVATE_CALL(doInitializeLogger)("", false);
+    }
 
-    // String-based methods with automatic function name
-    static void log(Level level, const std::string &message,
-                    const std::source_location &location = std::source_location::current());
-    static void debug(const std::string &message,
-                      const std::source_location &location = std::source_location::current());
-    static void info(const std::string &message,
-                     const std::source_location &location = std::source_location::current());
-    static void warn(const std::string &message,
-                     const std::source_location &location = std::source_location::current());
-    static void error(const std::string &message,
-                      const std::source_location &location = std::source_location::current());
+    static void initialize(const std::string &logDir, bool logToFile = true) {
+        RSM_PRIVATE_CALL(doInitializeLogger)(logDir, logToFile);
+    }
 
-    // Format-based methods with automatic function name
-    template <typename... Args> static void debug(const std::string &format, Args &&...args);
+    // Legacy interface - keep for runtime string concatenation (with caller location)
+    static void debug(const std::string &message, const std::source_location &loc = std::source_location::current()) {
+        RSM_PRIVATE_CALL(doFormatAndLog)(spdlog::level::debug, message, loc);
+    }
 
-    template <typename... Args> static void info(const std::string &format, Args &&...args);
+    static void info(const std::string &message, const std::source_location &loc = std::source_location::current()) {
+        RSM_PRIVATE_CALL(doFormatAndLog)(spdlog::level::info, message, loc);
+    }
 
-    template <typename... Args> static void warn(const std::string &format, Args &&...args);
+    static void warn(const std::string &message, const std::source_location &loc = std::source_location::current()) {
+        RSM_PRIVATE_CALL(doFormatAndLog)(spdlog::level::warn, message, loc);
+    }
 
-    template <typename... Args> static void error(const std::string &format, Args &&...args);
-
-    // Stream-based methods with automatic function name
-    static LoggerStream debug(const std::source_location &location = std::source_location::current());
-    static LoggerStream info(const std::source_location &location = std::source_location::current());
-    static LoggerStream warn(const std::source_location &location = std::source_location::current());
-    static LoggerStream error(const std::source_location &location = std::source_location::current());
+    static void error(const std::string &message, const std::source_location &loc = std::source_location::current()) {
+        RSM_PRIVATE_CALL(doFormatAndLog)(spdlog::level::err, message, loc);
+    }
 
 private:
-    // Helper to format message with function name
-    static std::string formatWithFunction(const std::string &message, const std::source_location &location);
+    static std::shared_ptr<spdlog::logger> logger_;
+
+    // Friend declaration for private namespace access
+    friend void RSM_LOGGER_PRIVATE_NS::ensureLoggerInitialized();
+    friend void RSM_LOGGER_PRIVATE_NS::doFormatAndLog(spdlog::level::level_enum level, const std::string &message,
+                                                      const std::source_location &loc);
+    friend void RSM_LOGGER_PRIVATE_NS::doInitializeLogger(const std::string &logDir, bool logToFile);
 };
-
-;
-;
-
-// LoggerStream class for supporting << operator
-class LoggerStream {
-private:
-    std::string buffer_;
-    Logger::Level level_;
-    std::source_location location_;
-
-public:
-    explicit LoggerStream(Logger::Level level, const std::source_location &location = std::source_location::current());
-    ~LoggerStream();
-
-    // Copy constructor and assignment operator (deleted to prevent issues)
-    LoggerStream(const LoggerStream &) = delete;
-    LoggerStream &operator=(const LoggerStream &) = delete;
-
-    // Move constructor and assignment operator
-    LoggerStream(LoggerStream &&other) noexcept;
-    LoggerStream &operator=(LoggerStream &&other) noexcept;
-
-    // Stream operator for string and other basic types
-    LoggerStream &operator<<(const std::string &value);
-    LoggerStream &operator<<(const char *value);
-    LoggerStream &operator<<(int value);
-    LoggerStream &operator<<(long value);
-    LoggerStream &operator<<(long long value);
-    LoggerStream &operator<<(unsigned int value);
-    LoggerStream &operator<<(unsigned long value);
-    LoggerStream &operator<<(unsigned long long value);
-    LoggerStream &operator<<(float value);
-    LoggerStream &operator<<(double value);
-    LoggerStream &operator<<(bool value);
-    LoggerStream &operator<<(char value);
-};
-
-// === Template method implementations ===
-// Internal helper to access spdlog logger
-namespace detail {
-std::shared_ptr<spdlog::logger> getLogger();
-}
-
-template <typename... Args> void Logger::debug(const std::string &format, Args &&...args) {
-    debug(fmt::format(fmt::runtime(format), std::forward<Args>(args)...));
-}
-
-template <typename... Args> void Logger::info(const std::string &format, Args &&...args) {
-    info(fmt::format(fmt::runtime(format), std::forward<Args>(args)...));
-}
-
-template <typename... Args> void Logger::warn(const std::string &format, Args &&...args) {
-    warn(fmt::format(fmt::runtime(format), std::forward<Args>(args)...));
-}
-
-template <typename... Args> void Logger::error(const std::string &format, Args &&...args) {
-    error(fmt::format(fmt::runtime(format), std::forward<Args>(args)...));
-}
 
 }  // namespace RSM
+
+// Macro definitions for proper source_location capture with fmt::format support
+#define LOG_DEBUG(...) RSM::Logger::debug(fmt::format(__VA_ARGS__), std::source_location::current())
+#define LOG_INFO(...) RSM::Logger::info(fmt::format(__VA_ARGS__), std::source_location::current())
+#define LOG_WARN(...) RSM::Logger::warn(fmt::format(__VA_ARGS__), std::source_location::current())
+#define LOG_ERROR(...) RSM::Logger::error(fmt::format(__VA_ARGS__), std::source_location::current())

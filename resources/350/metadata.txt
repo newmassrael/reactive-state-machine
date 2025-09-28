@@ -1,0 +1,6 @@
+id: 350
+specnum: C.1
+conformance: mandatory
+manual: False
+description: target'. The sending SCXML Processor MUST take the value of this attribute from the 'target' attribute of the send element. The receiving SCXML Processor MUST use this value to determine which session to deliver the message to.
+variants: 1

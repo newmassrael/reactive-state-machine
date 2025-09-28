@@ -1,0 +1,6 @@
+id: 495
+specnum: C.1
+conformance: mandatory
+manual: False
+description: If no errors occur, the receiving Processor MUST convert the message into an SCXML event, using the mapping defined above and insert it into the appropriate queue, as defined in Send Targets.
+variants: 1

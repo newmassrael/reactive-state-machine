@@ -5,7 +5,9 @@
 #include <thread>
 
 #include "common/Logger.h"
+#include "runtime/EventRaiserImpl.h"
 #include "runtime/StateMachine.h"
+#include "runtime/StateMachineBuilder.h"
 #include "scripting/JSEngine.h"
 
 using namespace RSM;
@@ -15,7 +17,13 @@ protected:
     void SetUp() override {
         // JSEngine 리셋으로 테스트 간 격리 보장
         RSM::JSEngine::instance().reset();
-        stateMachine_ = std::make_unique<StateMachine>();
+
+        // Use builder pattern to properly set up EventRaiser
+        // StateMachine에서 자동으로 processEvent 콜백을 설정하므로 기본 생성자 사용
+        auto eventRaiser = std::make_shared<EventRaiserImpl>();
+
+        StateMachineBuilder builder;
+        stateMachine_ = builder.withEventRaiser(eventRaiser).build();
     }
 
     void TearDown() override {
@@ -349,6 +357,276 @@ TEST_F(ActionIntegrationTest, BackwardCompatibilityWithLegacyActions) {
     EXPECT_EQ(result.toState, "final");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+    removeTestFile(filename);
+}
+
+TEST_F(ActionIntegrationTest, OnEntryForeachExecution) {
+    // Test to verify that onentry actions (specifically foreach) are properly executed
+    // This addresses the issue found in W3C test 150 where onentry actions were not running
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <datamodel>
+        <data id="testArray">[1,2,3]</data>
+    </datamodel>
+
+    <state id="s0">
+        <onentry>
+            <!-- This foreach should create newVar even though it doesn't exist -->
+            <foreach item="newVar" index="newIndex" array="testArray"/>
+            <raise event="continue"/>
+        </onentry>
+        <transition event="error" target="fail"/>
+        <transition event="continue" target="s1"/>
+    </state>
+
+    <state id="s1">
+        <onentry>
+            <!-- Set a flag to indicate we reached this state -->
+            <script>reachedS1 = true;</script>
+        </onentry>
+        <!-- Check if newVar was created by foreach -->
+        <transition cond="typeof newVar !== 'undefined'" target="pass"/>
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    std::string filename = "test_onentry_foreach.scxml";
+    createTestSCXMLFile(filename, scxmlContent);
+
+    ASSERT_TRUE(stateMachine_->loadSCXML(filename));
+    ASSERT_TRUE(stateMachine_->start());
+
+    // According to SCXML W3C specification, start() should complete the entire macrostep
+    // including onentry actions and automatic transitions, ending in a stable configuration
+    std::string currentState = stateMachine_->getCurrentState();
+
+    // The test passes if we reach 'pass' state, indicating:
+    // 1. onentry foreach action executed successfully
+    // 2. newVar was created by foreach
+    // 3. Automatic transitions worked correctly per SCXML specification
+    EXPECT_EQ(currentState, "pass")
+        << "OnEntry foreach action should create newVar and reach pass state per SCXML W3C specification";
+
+    removeTestFile(filename);
+}
+
+TEST_F(ActionIntegrationTest, OnEntryActionExecutionOrder) {
+    // Test to verify that onentry actions are executed in document order
+    // W3C requirement: "execute the <onentry> handlers of a state in document order"
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="orderTest" datamodel="ecmascript">
+    <datamodel>
+        <data id="executionOrder">""</data>
+    </datamodel>
+
+    <state id="orderTest">
+        <onentry>
+            <!-- These should execute in document order: 1, 2, 3 -->
+            <script>executionOrder += "1";</script>
+            <assign location="tempVar" expr="'step2'"/>
+            <script>executionOrder += "2";</script>
+            <script>executionOrder += "3";</script>
+            <raise event="checkOrder"/>
+        </onentry>
+        <transition event="checkOrder" target="validate"/>
+    </state>
+
+    <state id="validate">
+        <!-- Check if execution order was 1-2-3 -->
+        <transition cond="executionOrder === '123'" target="pass"/>
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    std::string filename = "test_onentry_order.scxml";
+    createTestSCXMLFile(filename, scxmlContent);
+
+    ASSERT_TRUE(stateMachine_->loadSCXML(filename));
+    ASSERT_TRUE(stateMachine_->start());
+
+    // Give time for state transitions and action execution
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    std::string currentState = stateMachine_->getCurrentState();
+
+    if (currentState == "pass") {
+        SUCCEED() << "OnEntry actions executed in correct document order (1-2-3)";
+    } else if (currentState == "fail") {
+        FAIL() << "OnEntry actions did not execute in document order";
+    } else if (currentState == "orderTest") {
+        FAIL() << "OnEntry actions were not executed at all";
+    } else {
+        FAIL() << "Unexpected state: " << currentState;
+    }
+
+    removeTestFile(filename);
+}
+
+TEST_F(ActionIntegrationTest, ForeachErrorHandling) {
+    // Test W3C requirement: foreach with invalid array should generate error.execution
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="errorTest" datamodel="ecmascript">
+    <datamodel>
+        <data id="invalidArray">null</data>
+        <data id="validArray">[1,2,3]</data>
+    </datamodel>
+
+    <state id="errorTest">
+        <onentry>
+            <!-- This foreach should generate error.execution due to null array -->
+            <foreach item="testItem" array="invalidArray"/>
+            <!-- This should not execute if error occurred -->
+            <script>shouldNotExecute = true;</script>
+        </onentry>
+        <transition event="error.execution" target="errorHandled"/>
+        <transition event="*" target="fail"/>
+    </state>
+
+    <state id="errorHandled">
+        <onentry>
+            <!-- Test with valid array after error -->
+            <foreach item="validItem" array="validArray"/>
+        </onentry>
+        <!-- Check if valid foreach worked after error handling -->
+        <transition cond="typeof validItem !== 'undefined'" target="pass"/>
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    std::string filename = "test_foreach_error.scxml";
+    createTestSCXMLFile(filename, scxmlContent);
+
+    ASSERT_TRUE(stateMachine_->loadSCXML(filename));
+    ASSERT_TRUE(stateMachine_->start());
+
+    // Give time for error handling and state transitions
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+
+    std::string currentState = stateMachine_->getCurrentState();
+
+    if (currentState == "pass") {
+        SUCCEED() << "Foreach error handling works correctly - error.execution generated and valid foreach executed";
+    } else if (currentState == "fail") {
+        FAIL() << "Foreach error handling failed";
+    } else if (currentState == "errorTest") {
+        FAIL() << "OnEntry actions were not executed or error.execution not generated";
+    } else if (currentState == "errorHandled") {
+        FAIL() << "Error was handled but valid foreach did not create variable";
+    } else {
+        FAIL() << "Unexpected state: " << currentState;
+    }
+
+    removeTestFile(filename);
+}
+
+TEST_F(ActionIntegrationTest, IfElseIfElseExecution) {
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <datamodel>
+        <data id="counter" expr="0"/>
+        <data id="result" expr="''"/>
+    </datamodel>
+
+    <state id="s0">
+        <onentry>
+            <if cond="false">
+                <assign location="result" expr="'if_branch'"/>
+                <assign location="counter" expr="counter + 10"/>
+            <elseif cond="true"/>
+                <assign location="result" expr="'elseif_branch'"/>
+                <assign location="counter" expr="counter + 1"/>
+            <else/>
+                <assign location="result" expr="'else_branch'"/>
+                <assign location="counter" expr="counter + 100"/>
+            </if>
+            <raise event="continue"/>
+        </onentry>
+        <transition event="continue" cond="counter == 1 &amp;&amp; result == 'elseif_branch'" target="pass"/>
+        <transition event="continue" target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    std::string filename = "test_if_elseif_else.scxml";
+    createTestSCXMLFile(filename, scxmlContent);
+
+    ASSERT_TRUE(stateMachine_->loadSCXML(filename));
+    ASSERT_TRUE(stateMachine_->start());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    std::string currentState = stateMachine_->getCurrentState();
+
+    if (currentState == "pass") {
+        SUCCEED() << "If-ElseIf-Else executed correctly - elseif branch taken, counter=1, result='elseif_branch'";
+    } else if (currentState == "fail") {
+        FAIL() << "If-ElseIf-Else failed - wrong branch executed or incorrect variable values";
+    } else {
+        FAIL() << "Unexpected state: " << currentState;
+    }
+
+    removeTestFile(filename);
+}
+
+TEST_F(ActionIntegrationTest, IfElseIfElseElseBranchExecution) {
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <datamodel>
+        <data id="counter" expr="0"/>
+        <data id="result" expr="''"/>
+    </datamodel>
+
+    <state id="s0">
+        <onentry>
+            <if cond="false">
+                <assign location="result" expr="'if_branch'"/>
+                <assign location="counter" expr="counter + 10"/>
+            <elseif cond="false"/>
+                <assign location="result" expr="'elseif_branch'"/>
+                <assign location="counter" expr="counter + 1"/>
+            <else/>
+                <assign location="result" expr="'else_branch'"/>
+                <assign location="counter" expr="counter + 100"/>
+            </if>
+            <raise event="continue"/>
+        </onentry>
+        <transition event="continue" cond="counter == 100 &amp;&amp; result == 'else_branch'" target="pass"/>
+        <transition event="continue" target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    std::string filename = "test_if_elseif_else_branch.scxml";
+    createTestSCXMLFile(filename, scxmlContent);
+
+    ASSERT_TRUE(stateMachine_->loadSCXML(filename));
+    ASSERT_TRUE(stateMachine_->start());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    std::string currentState = stateMachine_->getCurrentState();
+
+    if (currentState == "pass") {
+        SUCCEED() << "If-ElseIf-Else executed correctly - else branch taken, counter=100, result='else_branch'";
+    } else if (currentState == "fail") {
+        FAIL() << "If-ElseIf-Else failed - wrong branch executed or incorrect variable values";
+    } else {
+        FAIL() << "Unexpected state: " << currentState;
+    }
 
     removeTestFile(filename);
 }

@@ -1,0 +1,6 @@
+id: 303
+specnum: 5.8
+conformance: mandatory
+manual: False
+description: The SCXML Processor MUST evaluate all script elements not children of scxml as part of normal executable content evaluation. N.B. This test is valid only for datamodels that support scripting.
+variants: 1
