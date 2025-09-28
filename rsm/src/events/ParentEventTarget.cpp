@@ -1,5 +1,6 @@
 #include "events/ParentEventTarget.h"
 #include "common/Logger.h"
+#include "events/EventRaiserService.h"
 #include "runtime/IEventRaiser.h"
 #include "scripting/JSEngine.h"
 #include <sstream>
@@ -44,8 +45,8 @@ std::future<SendResult> ParentEventTarget::send(const EventDescriptor &event) {
         LOG_DEBUG("ParentEventTarget: Routing event '{}' from child '{}' to parent '{}'", event.eventName,
                   actualChildSessionId, parentSessionId);
 
-        // Get parent session's EventRaiser from JSEngine
-        auto parentEventRaiser = JSEngine::instance().getEventRaiser(parentSessionId);
+        // Get parent session's EventRaiser from centralized service
+        auto parentEventRaiser = EventRaiserService::getInstance().getEventRaiser(parentSessionId);
         if (!parentEventRaiser) {
             LOG_ERROR("ParentEventTarget: No EventRaiser found for parent session: {}", parentSessionId);
             resultPromise.set_value(SendResult::error("No EventRaiser found for parent session: " + parentSessionId,

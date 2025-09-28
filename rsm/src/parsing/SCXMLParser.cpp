@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <filesystem>
 
-RSM::SCXMLParser::SCXMLParser(std::shared_ptr<RSM::INodeFactory> nodeFactory,
+RSM::SCXMLParser::SCXMLParser(std::shared_ptr<RSM::NodeFactory> nodeFactory,
                               std::shared_ptr<RSM::IXIncludeProcessor> xincludeProcessor)
     : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating SCXML parser");

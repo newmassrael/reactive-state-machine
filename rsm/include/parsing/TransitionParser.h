@@ -1,6 +1,6 @@
 #pragma once
 
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include "model/IStateNode.h"
 #include "model/ITransitionNode.h"
 #include "parsing/ActionParser.h"
@@ -25,7 +25,7 @@ public:
      * @brief 생성자
      * @param nodeFactory 노드 생성을 위한 팩토리 인스턴스
      */
-    explicit TransitionParser(std::shared_ptr<INodeFactory> nodeFactory);
+    explicit TransitionParser(std::shared_ptr<NodeFactory> nodeFactory);
 
     /**
      * @brief 소멸자
@@ -94,7 +94,7 @@ private:
 
     std::vector<std::string> parseTargetList(const std::string &targetStr) const;
 
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    std::shared_ptr<NodeFactory> nodeFactory_;
     std::shared_ptr<ActionParser> actionParser_;
 };
 

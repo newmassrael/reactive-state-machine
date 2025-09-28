@@ -127,6 +127,101 @@ public:
                                                               const std::string &sessionName,
                                                               const std::vector<std::string> &ioProcessors) = 0;
 
+    // === High-Level SCXML State Machine API (NEW) ===
+
+    /**
+     * @brief Load SCXML from string and prepare for execution (synchronous)
+     * @param scxmlContent SCXML document as string
+     * @param sessionId Optional session ID (auto-generated if empty)
+     * @return true if loaded successfully
+     */
+    virtual bool loadSCXMLFromString(const std::string &scxmlContent, const std::string &sessionId = "") = 0;
+
+    /**
+     * @brief Load SCXML from file and prepare for execution (synchronous)
+     * @param scxmlFile Path to SCXML file
+     * @param sessionId Optional session ID (auto-generated if empty)
+     * @return true if loaded successfully
+     */
+    virtual bool loadSCXMLFromFile(const std::string &scxmlFile, const std::string &sessionId = "") = 0;
+
+    /**
+     * @brief Start the state machine (synchronous)
+     * @param sessionId Target session (uses default if empty)
+     * @return true if started successfully
+     */
+    virtual bool startStateMachine(const std::string &sessionId = "") = 0;
+
+    /**
+     * @brief Stop the state machine (synchronous)
+     * @param sessionId Target session (uses default if empty)
+     */
+    virtual void stopStateMachine(const std::string &sessionId = "") = 0;
+
+    /**
+     * @brief Send event to state machine (synchronous)
+     * @param eventName Name of the event
+     * @param sessionId Target session (uses default if empty)
+     * @param eventData Optional event data (JSON string)
+     * @return true if event was processed successfully
+     */
+    virtual bool sendEventSync(const std::string &eventName, const std::string &sessionId = "",
+                               const std::string &eventData = "") = 0;
+
+    /**
+     * @brief Check if state machine is running (synchronous)
+     * @param sessionId Target session (uses default if empty)
+     * @return true if running
+     */
+    virtual bool isStateMachineRunning(const std::string &sessionId = "") const = 0;
+
+    /**
+     * @brief Get current active state (synchronous)
+     * @param sessionId Target session (uses default if empty)
+     * @return Current state ID, empty if not started
+     */
+    virtual std::string getCurrentStateSync(const std::string &sessionId = "") const = 0;
+
+    /**
+     * @brief Check if a specific state is currently active (synchronous)
+     * @param stateId State ID to check
+     * @param sessionId Target session (uses default if empty)
+     * @return true if state is active
+     */
+    virtual bool isInStateSync(const std::string &stateId, const std::string &sessionId = "") const = 0;
+
+    /**
+     * @brief Get all currently active states (synchronous)
+     * @param sessionId Target session (uses default if empty)
+     * @return Vector of active state IDs
+     */
+    virtual std::vector<std::string> getActiveStatesSync(const std::string &sessionId = "") const = 0;
+
+    /**
+     * @brief Set a variable in the state machine's data model (synchronous)
+     * @param name Variable name
+     * @param value Variable value (will be converted to appropriate type)
+     * @param sessionId Target session (uses default if empty)
+     * @return true if variable was set successfully
+     */
+    virtual bool setVariableSync(const std::string &name, const std::string &value,
+                                 const std::string &sessionId = "") = 0;
+
+    /**
+     * @brief Get a variable from the state machine's data model (synchronous)
+     * @param name Variable name
+     * @param sessionId Target session (uses default if empty)
+     * @return Variable value as string, empty if not found
+     */
+    virtual std::string getVariableSync(const std::string &name, const std::string &sessionId = "") const = 0;
+
+    /**
+     * @brief Get last error message for the state machine operations
+     * @param sessionId Target session (uses default if empty)
+     * @return Error message, empty if no error
+     */
+    virtual std::string getLastStateMachineError(const std::string &sessionId = "") const = 0;
+
     // === Engine Information ===
 
     /**

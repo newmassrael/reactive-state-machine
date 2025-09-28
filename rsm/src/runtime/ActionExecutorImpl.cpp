@@ -10,6 +10,8 @@
 #include "common/Logger.h"
 #include "common/TypeRegistry.h"
 #include "events/EventDescriptor.h"
+#include "events/EventRaiserService.h"
+
 #include "events/IEventDispatcher.h"
 #include "events/InvokeEventTarget.h"
 #include "events/ParentEventTarget.h"
@@ -275,6 +277,16 @@ std::string ActionExecutorImpl::getSessionId() const {
 void ActionExecutorImpl::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) {
     LOG_DEBUG("ActionExecutorImpl: Setting EventRaiser - eventRaiser is: {}", eventRaiser ? "VALID" : "NULL");
     eventRaiser_ = eventRaiser;
+
+    // Use centralized EventRaiserService to eliminate code duplication
+    if (eventRaiser) {
+        if (EventRaiserService::getInstance().registerEventRaiser(sessionId_, eventRaiser)) {
+            LOG_DEBUG("ActionExecutorImpl: EventRaiser automatically registered via Service for session: {}",
+                      sessionId_);
+        } else {
+            LOG_DEBUG("ActionExecutorImpl: EventRaiser already registered for session: {}", sessionId_);
+        }
+    }
 }
 
 void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData) {

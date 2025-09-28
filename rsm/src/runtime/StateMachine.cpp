@@ -1,5 +1,7 @@
 #include "runtime/StateMachine.h"
 #include "common/Logger.h"
+#include "events/EventRaiserService.h"
+
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
 #include "parsing/SCXMLParser.h"
@@ -877,14 +879,12 @@ bool StateMachine::setupJSEnvironment() {
     // Register EventRaiser with JSEngine after session creation
     // This handles both cases: EventRaiser set before session creation (deferred) and after
     if (eventRaiser_) {
-        // Check if EventRaiser is already registered to avoid duplicate registration
-        auto existingEventRaiser = JSEngine::instance().getEventRaiser(sessionId_);
-        if (!existingEventRaiser) {
-            JSEngine::instance().registerEventRaiser(sessionId_, eventRaiser_);
-            LOG_DEBUG("StateMachine: EventRaiser registered with JSEngine after session creation for session: {}",
+        // Use EventRaiserService for centralized registration
+        if (EventRaiserService::getInstance().registerEventRaiser(sessionId_, eventRaiser_)) {
+            LOG_DEBUG("StateMachine: EventRaiser registered via Service after session creation for session: {}",
                       sessionId_);
         } else {
-            LOG_DEBUG("StateMachine: EventRaiser already registered with JSEngine for session: {}", sessionId_);
+            LOG_DEBUG("StateMachine: EventRaiser already registered for session: {}", sessionId_);
         }
     }
 
@@ -1474,15 +1474,12 @@ void StateMachine::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) {
     }
 
     // Register EventRaiser with JSEngine for #_invokeid target support
-    // Check if JSEngine session exists before registration to avoid timing issues
+    // Use EventRaiserService for centralized registration
     if (eventRaiser_) {
-        if (JSEngine::instance().hasSession(sessionId_)) {
-            JSEngine::instance().registerEventRaiser(sessionId_, eventRaiser_);
-            LOG_DEBUG("StateMachine: EventRaiser registered with JSEngine for session: {}", sessionId_);
+        if (EventRaiserService::getInstance().registerEventRaiser(sessionId_, eventRaiser_)) {
+            LOG_DEBUG("StateMachine: EventRaiser registered via Service for session: {}", sessionId_);
         } else {
-            LOG_DEBUG("StateMachine: JSEngine session not found, EventRaiser registration deferred for session: {}",
-                      sessionId_);
-            // EventRaiser will be registered later in setupJavaScriptEnvironment() after session creation
+            LOG_DEBUG("StateMachine: EventRaiser registration deferred or already exists for session: {}", sessionId_);
         }
     }
 

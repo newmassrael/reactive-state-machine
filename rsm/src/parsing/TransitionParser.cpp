@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <sstream>
 
-RSM::TransitionParser::TransitionParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+RSM::TransitionParser::TransitionParser(std::shared_ptr<RSM::NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating transition parser");
 }
 

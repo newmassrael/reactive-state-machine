@@ -1,7 +1,10 @@
 #pragma once
 
 #include "../SCXMLTypes.h"
+#include "ISessionManager.h"
 #include "JSResult.h"
+#include "events/IEventRaiserRegistry.h"
+#include "runtime/ISessionObserver.h"
 #include <atomic>
 #include <condition_variable>
 #include <future>
@@ -31,12 +34,26 @@ class StateMachine;
  * Each session has its own variable space, event context, and system variables.
  * All JavaScript execution happens in a single background thread for QuickJS thread safety.
  */
-class JSEngine {
+class JSEngine : public ISessionManager {
 public:
     /**
      * @brief Get the global JSEngine instance
      */
     static JSEngine &instance();
+
+    /**
+     * @brief Get the global EventRaiserRegistry instance
+     * @return Shared pointer to the singleton registry
+     */
+    static std::shared_ptr<IEventRaiserRegistry> getEventRaiserRegistry();
+
+    /**
+     * @brief Clear the global EventRaiserRegistry for test isolation
+     *
+     * This method should only be used in test environments to ensure
+     * clean state between test cases and prevent cross-test interference.
+     */
+    static void clearEventRaiserRegistry();
 
     /**
      * @brief Reset the JavaScript engine for test isolation
@@ -73,34 +90,48 @@ public:
      * @param parentSessionId Optional parent session for hierarchical contexts
      * @return true if session created successfully
      */
-    bool createSession(const std::string &sessionId, const std::string &parentSessionId = "");
+    bool createSession(const std::string &sessionId, const std::string &parentSessionId = "") override;
 
     /**
      * @brief Destroy a JavaScript session and cleanup its context
      * @param sessionId Session to destroy
      * @return true if session destroyed successfully
      */
-    bool destroySession(const std::string &sessionId);
+    bool destroySession(const std::string &sessionId) override;
+
+    // === Observer Pattern Support (ISessionManager extension) ===
+
+    /**
+     * @brief Add observer for session lifecycle events
+     * @param observer Observer to be notified of session events
+     */
+    void addObserver(ISessionObserver *observer) override;
+
+    /**
+     * @brief Remove observer from session lifecycle events
+     * @param observer Observer to be removed
+     */
+    void removeObserver(ISessionObserver *observer) override;
 
     /**
      * @brief Check if a session exists
      * @param sessionId Session to check
      * @return true if session exists
      */
-    bool hasSession(const std::string &sessionId) const;
+    bool hasSession(const std::string &sessionId) const override;
 
     /**
      * @brief Get list of all active sessions
      * @return Vector of session IDs
      */
-    std::vector<std::string> getActiveSessions() const;
+    std::vector<std::string> getActiveSessions() const override;
 
     /**
      * @brief Get parent session ID for a given session
      * @param sessionId Session to get parent for
      * @return Parent session ID or empty string if no parent
      */
-    std::string getParentSessionId(const std::string &sessionId) const;
+    std::string getParentSessionId(const std::string &sessionId) const override;
 
     // === Thread-safe JavaScript Execution ===
 
@@ -242,32 +273,6 @@ public:
      * @param invokeId Invoke identifier to remove
      */
     void unregisterInvokeMapping(const std::string &parentSessionId, const std::string &invokeId);
-
-    /**
-     * @brief Register EventRaiser for a session (SOLID: Dependency Injection)
-     *
-     * Enables InvokeEventTarget to send events to child sessions by
-     * providing access to their EventRaiser instances.
-     *
-     * @param sessionId Target session
-     * @param eventRaiser EventRaiser instance for this session
-     */
-    void registerEventRaiser(const std::string &sessionId, std::shared_ptr<class IEventRaiser> eventRaiser);
-
-    /**
-     * @brief Get EventRaiser for a session
-     *
-     * @param sessionId Target session
-     * @return EventRaiser instance or nullptr if not found
-     */
-    std::shared_ptr<class IEventRaiser> getEventRaiser(const std::string &sessionId) const;
-
-    /**
-     * @brief Unregister EventRaiser during session cleanup
-     *
-     * @param sessionId Session to remove EventRaiser for
-     */
-    void unregisterEventRaiser(const std::string &sessionId);
 
     // === Engine Information ===
 
@@ -501,7 +506,8 @@ private:
     // === Internal Methods ===
     void executionWorker();
     void processExecutionRequest(std::unique_ptr<ExecutionRequest> request);
-    void initializeInternal();  // 공통 초기화 로직
+    void initializeInternal();            // 공통 초기화 로직
+    void initializeEventRaiserService();  // EventRaiserService 초기화
 
     // QuickJS helpers
     JSResult executeScriptInternal(const std::string &sessionId, const std::string &script);
@@ -544,6 +550,18 @@ private:
 
     // Error handling
     JSResult createErrorFromException(JSContext *ctx);
+
+    // === Internal EventRaiser Management (Private) ===
+    /**
+     * @brief Register EventRaiser for a session (Internal use only)
+     *
+     * Enables ParentEventTarget to send events to parent sessions by
+     * providing access to their EventRaiser instances.
+     * Only accessible by friend classes (StateMachine).
+     *
+     * @param sessionId Target session
+     * @param eventRaiser EventRaiser instance for this session
+     */
 };
 
 }  // namespace RSM

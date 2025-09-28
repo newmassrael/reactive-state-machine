@@ -66,6 +66,7 @@ set(RSM_TEST_TARGETS
     w3c_test_cli
     w3c_full_runner
     w3c_simple_tests
+    # simple_scxml_engine_tests  # Temporarily disabled
 )
 
 # ============================================================================
@@ -94,8 +95,7 @@ target_link_libraries(rsm_scxml_tests
 # RSM 테스트 정책 적용 (cout 금지 등)
 apply_rsm_test_policies(rsm_scxml_tests)
 
-# CTest에 작동하는 테스트 추가
-add_test(NAME RSMSCXMLTests COMMAND rsm_scxml_tests)
+# CTest 등록은 하단에서 최적화된 순서로 일괄 처리
 
 # ============================================================================
 # 2. JavaScript Engine Tests (완전히 RSM으로 업데이트됨)
@@ -218,6 +218,29 @@ target_link_libraries(history_tests
         GTest::gtest_main
         pthread
 )
+
+# ============================================================================
+# 4.6. ReadySCXMLEngine API Tests (High-level Facade) - TEMPORARILY DISABLED
+# ============================================================================
+
+# Temporarily disabled - will be re-enabled when converting existing tests
+# add_executable(simple_scxml_engine_tests
+#     api/ReadySCXMLEngineTest.cpp
+# )
+# 
+# target_include_directories(simple_scxml_engine_tests
+#     PRIVATE
+#         ${CMAKE_SOURCE_DIR}
+#         ${CMAKE_SOURCE_DIR}/rsm/include
+#         ${CMAKE_SOURCE_DIR}/tests
+# )
+# 
+# target_link_libraries(simple_scxml_engine_tests
+#     PRIVATE
+#         rsm_unified
+#         GTest::gtest_main
+#         pthread
+# )
 
 # ============================================================================
 # 5. Core Parser Tests (RSM namespace updated)
@@ -425,25 +448,61 @@ target_include_directories(w3c_test_cli
 
 add_dependencies(w3c_test_cli libxmlxx_external rsm_unified)
 
-# CTest에 모든 테스트들 추가
+# ============================================================================
+# CTest 실행 순서 최적화 (빠른 피드백 → 종합 검증)
+# ============================================================================
+
+# Phase 1: 빠른 단위 테스트 (개발 중 빠른 피드백, ~1-5초)
+add_test(NAME RSMSCXMLTests COMMAND rsm_scxml_tests)
+# add_test(NAME ReadySCXMLEngineTests COMMAND simple_scxml_engine_tests)  # Temporarily disabled
+
+# Phase 2: 핵심 컴포넌트 테스트 (기본 기능 검증, ~5-15초)
 add_test(NAME JSEngineTests COMMAND js_engine_tests)
+add_test(NAME CoreParserTests COMMAND core_parser_tests)
 add_test(NAME StateMachineTests COMMAND state_machine_tests)
+
+# Phase 3: 고급 기능 테스트 (특화 기능 검증, ~10-30초)  
 add_test(NAME ActionTests COMMAND action_tests)
 add_test(NAME HistoryTests COMMAND history_tests)
-add_test(NAME CoreParserTests COMMAND core_parser_tests)
-add_test(NAME TXMLConverterTests COMMAND txml_converter_tests)
-# 테스트 등록이 제거되어 비활성화됨
-# add_test(NAME ConcurrentFoundationTests COMMAND concurrent_foundation_tests)
-# add_test(NAME ConcurrentOrchestrationTests COMMAND concurrent_orchestration_tests)
-# add_test(NAME ConcurrentEventTests COMMAND concurrent_event_tests)
-# add_test(NAME ConcurrentMonitoringTests COMMAND concurrent_monitoring_tests)
-# add_test(NAME ExternalTransitionTests COMMAND external_transition_tests)
+add_test(NAME StatesTests COMMAND states_tests)
+
+# Phase 4: 통합 테스트 (시스템 레벨 검증, ~30-60초)
 add_test(NAME IntegrationTests COMMAND integration_tests)
 add_test(NAME ConcurrencyTests COMMAND concurrency_tests)
 
-# W3C Compliance Test Categories
-# W3C Tests는 가장 포괄적이고 시간이 오래 걸리므로 별도 카테고리로 분리
+# Phase 5: W3C 호환성 테스트 (표준 준수 검증, ~60초+)
+add_test(NAME TXMLConverterTests COMMAND txml_converter_tests)
 add_test(NAME W3CFullComplianceTests COMMAND w3c_test_cli)
+
+# ============================================================================
+# 테스트 의존성 및 우선순위 설정
+# ============================================================================
+
+# 핵심 테스트들이 먼저 통과해야 고급 테스트 실행
+set_tests_properties(ActionTests PROPERTIES DEPENDS "JSEngineTests;StateMachineTests")
+set_tests_properties(HistoryTests PROPERTIES DEPENDS "StateMachineTests")
+set_tests_properties(StatesTests PROPERTIES DEPENDS "StateMachineTests")
+
+# 통합 테스트는 핵심 컴포넌트들이 통과한 후 실행
+set_tests_properties(IntegrationTests PROPERTIES DEPENDS "JSEngineTests;StateMachineTests;ActionTests")
+set_tests_properties(ConcurrencyTests PROPERTIES DEPENDS "StateMachineTests;StatesTests")
+
+# W3C 테스트는 모든 기본 기능이 검증된 후 실행
+set_tests_properties(TXMLConverterTests PROPERTIES DEPENDS "CoreParserTests")
+set_tests_properties(W3CFullComplianceTests PROPERTIES DEPENDS "IntegrationTests;TXMLConverterTests")
+
+# 테스트 타임아웃 설정 (초 단위)
+set_tests_properties(RSMSCXMLTests PROPERTIES TIMEOUT 30)
+# set_tests_properties(ReadySCXMLEngineTests PROPERTIES TIMEOUT 30)  # Temporarily disabled
+set_tests_properties(JSEngineTests CoreParserTests StateMachineTests PROPERTIES TIMEOUT 60)
+set_tests_properties(ActionTests HistoryTests StatesTests PROPERTIES TIMEOUT 90)
+set_tests_properties(IntegrationTests ConcurrencyTests PROPERTIES TIMEOUT 180)
+set_tests_properties(TXMLConverterTests PROPERTIES TIMEOUT 120)
+set_tests_properties(W3CFullComplianceTests PROPERTIES TIMEOUT 300)
+
+# 병렬 실행 제한 (리소스 집약적 테스트)
+set_tests_properties(W3CFullComplianceTests PROPERTIES RUN_SERIAL TRUE)
+set_tests_properties(ConcurrencyTests PROPERTIES RUN_SERIAL TRUE)
 
 # 모든 테스트 타겟에 RSM 정책 일괄 적용
 foreach(test_target ${RSM_TEST_TARGETS})

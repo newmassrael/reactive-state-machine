@@ -4,7 +4,9 @@
 
 #include "model/SCXMLModel.h"
 #include "runtime/IActionExecutor.h"
+#include "runtime/StateMachine.h"
 #include "scripting/JSEngine.h"
+#include <map>
 
 namespace RSM {
 
@@ -45,6 +47,21 @@ public:
     std::future<ExecutionResult> setupSystemVariables(const std::string &sessionId, const std::string &sessionName,
                                                       const std::vector<std::string> &ioProcessors) override;
 
+    // === High-Level SCXML State Machine API (NEW) ===
+    bool loadSCXMLFromString(const std::string &scxmlContent, const std::string &sessionId = "") override;
+    bool loadSCXMLFromFile(const std::string &scxmlFile, const std::string &sessionId = "") override;
+    bool startStateMachine(const std::string &sessionId = "") override;
+    void stopStateMachine(const std::string &sessionId = "") override;
+    bool sendEventSync(const std::string &eventName, const std::string &sessionId = "",
+                       const std::string &eventData = "") override;
+    bool isStateMachineRunning(const std::string &sessionId = "") const override;
+    std::string getCurrentStateSync(const std::string &sessionId = "") const override;
+    bool isInStateSync(const std::string &stateId, const std::string &sessionId = "") const override;
+    std::vector<std::string> getActiveStatesSync(const std::string &sessionId = "") const override;
+    bool setVariableSync(const std::string &name, const std::string &value, const std::string &sessionId = "") override;
+    std::string getVariableSync(const std::string &name, const std::string &sessionId = "") const override;
+    std::string getLastStateMachineError(const std::string &sessionId = "") const override;
+
     // === Engine Information ===
     size_t getMemoryUsage() const override;
     void collectGarbage() override;
@@ -62,10 +79,20 @@ private:
      */
     void executeOnEntryActions(const std::string &stateId);
 
+    /**
+     * @brief Generate a unique session ID for internal use
+     */
+    std::string generateSessionId() const;
+
     bool initialized_ = false;
     std::shared_ptr<RSM::SCXMLModel> scxmlModel_;
     std::shared_ptr<IActionExecutor> actionExecutor_;
     std::string sessionId_;
+
+    // === High-Level State Machine Support ===
+    std::string defaultSessionId_;
+    std::unique_ptr<StateMachine> stateMachine_;
+    std::map<std::string, std::string> sessionErrors_;
 };
 
 }  // namespace RSM

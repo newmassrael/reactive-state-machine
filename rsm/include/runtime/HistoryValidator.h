@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime/IHistoryManager.h"
+#include "runtime/HistoryManager.h"
 #include <functional>
 #include <memory>
 #include <unordered_set>

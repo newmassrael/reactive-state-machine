@@ -1,5 +1,6 @@
 #include "events/InvokeEventTarget.h"
 #include "common/Logger.h"
+#include "events/EventRaiserService.h"
 #include "runtime/IEventRaiser.h"
 #include "scripting/JSEngine.h"
 #include <sstream>
@@ -39,8 +40,8 @@ std::future<SendResult> InvokeEventTarget::send(const EventDescriptor &event) {
 
         LOG_DEBUG("InvokeEventTarget: Found child session '{}' for invoke ID '{}'", childSessionId, invokeId_);
 
-        // Get EventRaiser for child session
-        auto eventRaiser = JSEngine::instance().getEventRaiser(childSessionId);
+        // Get EventRaiser for child session from centralized service
+        auto eventRaiser = EventRaiserService::getInstance().getEventRaiser(childSessionId);
         if (!eventRaiser) {
             LOG_ERROR("InvokeEventTarget: No EventRaiser found for child session '{}'", childSessionId);
             resultPromise.set_value(SendResult::error("No EventRaiser found for child session: " + childSessionId,
@@ -119,7 +120,7 @@ std::vector<std::string> InvokeEventTarget::validate() const {
         errors.push_back("No child session found for invoke ID: " + invokeId_);
     } else {
         // Check if EventRaiser exists for child session
-        auto eventRaiser = JSEngine::instance().getEventRaiser(childSessionId);
+        auto eventRaiser = EventRaiserService::getInstance().getEventRaiser(childSessionId);
         if (!eventRaiser) {
             errors.push_back("No EventRaiser found for child session: " + childSessionId);
         }

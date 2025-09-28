@@ -1,7 +1,7 @@
 // InvokeParser.h
 #pragma once
 
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include "model/IInvokeNode.h"
 #include <libxml++/libxml++.h>
 #include <memory>
@@ -11,7 +11,7 @@ namespace RSM {
 
 class InvokeParser {
 public:
-    InvokeParser(std::shared_ptr<INodeFactory> nodeFactory);
+    InvokeParser(std::shared_ptr<NodeFactory> nodeFactory);
     ~InvokeParser();
 
     // invoke 요소 파싱
@@ -25,7 +25,7 @@ public:
     parseParamElementsAndCreateDataItems(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);
 
 private:
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    std::shared_ptr<NodeFactory> nodeFactory_;
 
     void parseFinalizeElement(const xmlpp::Element *finalizeElement, std::shared_ptr<IInvokeNode> invokeNode);
     void parseParamElements(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);

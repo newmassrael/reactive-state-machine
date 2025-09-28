@@ -5,7 +5,7 @@
 #include <libxml++/nodes/textnode.h>
 #include <libxml/tree.h>
 
-RSM::InvokeParser::InvokeParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+RSM::InvokeParser::InvokeParser(std::shared_ptr<RSM::NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating invoke parser");
 }
 

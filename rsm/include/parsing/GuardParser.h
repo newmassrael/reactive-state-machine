@@ -1,6 +1,6 @@
 #pragma once
 
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include "model/IGuardNode.h"
 #include <libxml++/libxml++.h>
 #include <memory>
@@ -23,7 +23,7 @@ public:
      * @brief 생성자
      * @param nodeFactory 노드 생성을 위한 팩토리 인스턴스
      */
-    explicit GuardParser(std::shared_ptr<INodeFactory> nodeFactory);
+    explicit GuardParser(std::shared_ptr<NodeFactory> nodeFactory);
 
     /**
      * @brief 소멸자
@@ -113,7 +113,7 @@ private:
     void parseTargetAndCondition(const xmlpp::Element *guardNode, std::shared_ptr<IGuardNode> guardObject,
                                  const std::string &target);
 
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    std::shared_ptr<NodeFactory> nodeFactory_;
 };
 
 }  // namespace RSM

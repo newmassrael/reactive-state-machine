@@ -2,7 +2,7 @@
 #include "common/Logger.h"
 #include "model/IStateNode.h"
 #include "runtime/HistoryValidator.h"
-#include "runtime/IHistoryManager.h"
+
 #include <algorithm>
 
 namespace RSM {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "IHistoryStateAutoRegistrar.h"
 #include "types.h"
 #include <functional>
 #include <memory>
@@ -11,7 +10,7 @@ namespace RSM {
 
 // Forward declarations
 class SCXMLModel;
-class IHistoryManager;
+class HistoryManager;
 class IStateNode;
 
 /**
@@ -30,7 +29,7 @@ class IStateNode;
  * - Extensible for future SCXML features
  * - Clear separation of concerns
  */
-class HistoryStateAutoRegistrar : public IHistoryStateAutoRegistrar {
+class HistoryStateAutoRegistrar {
 public:
     /**
      * @brief Constructor with dependency injection
@@ -38,17 +37,31 @@ public:
      */
     explicit HistoryStateAutoRegistrar(std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider);
 
+    virtual ~HistoryStateAutoRegistrar() = default;
+
     /**
-     * @brief Destructor
+     * @brief Auto-register all history states from SCXML model
+     * @param model SCXML model containing parsed history states
+     * @param historyManager History manager to register states with
+     * @return true if all history states were successfully registered
      */
-    ~HistoryStateAutoRegistrar() override = default;
+    virtual bool autoRegisterHistoryStates(const std::shared_ptr<SCXMLModel> &model, HistoryManager *historyManager);
 
-    // IHistoryStateAutoRegistrar interface
-    bool autoRegisterHistoryStates(const std::shared_ptr<SCXMLModel> &model, IHistoryManager *historyManager) override;
-
-    size_t getRegisteredHistoryStateCount() const override;
-    bool isAutoRegistrationEnabled() const override;
-    void setAutoRegistrationEnabled(bool enabled) override;
+    /**
+     * @brief Get count of auto-registered history states
+     * @return Number of history states that were auto-registered
+     */
+    virtual size_t getRegisteredHistoryStateCount() const;
+    /**
+     * @brief Check if auto-registration is enabled
+     * @return true if auto-registration is enabled
+     */
+    virtual bool isAutoRegistrationEnabled() const;
+    /**
+     * @brief Enable or disable auto-registration
+     * @param enabled Whether to enable auto-registration
+     */
+    virtual void setAutoRegistrationEnabled(bool enabled);
 
 private:
     // State provider for dependency injection
@@ -71,7 +84,7 @@ private:
      */
     bool registerSingleHistoryState(const std::string &historyStateId, const std::string &parentStateId,
                                     HistoryType historyType, const std::string &defaultStateId,
-                                    IHistoryManager *historyManager);
+                                    HistoryManager *historyManager);
 
     /**
      * @brief Extract history states from SCXML model

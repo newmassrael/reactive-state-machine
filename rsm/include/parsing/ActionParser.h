@@ -1,7 +1,7 @@
 #pragma once
 
 #include "actions/IActionNode.h"
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include <libxml++/libxml++.h>
 #include <memory>
 #include <string>
@@ -23,7 +23,7 @@ public:
      * @brief 생성자
      * @param nodeFactory 노드 생성을 위한 팩토리 인스턴스
      */
-    explicit ActionParser(std::shared_ptr<INodeFactory> nodeFactory);
+    explicit ActionParser(std::shared_ptr<NodeFactory> nodeFactory);
 
     /**
      * @brief 소멸자
@@ -103,7 +103,7 @@ private:
      */
     std::string getLocalName(const std::string &nodeName) const;
 
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    std::shared_ptr<NodeFactory> nodeFactory_;
 };
 
 }  // namespace RSM

@@ -78,6 +78,7 @@ add_library(rsm_unified
     src/runtime/StateHierarchyManager.cpp
     src/runtime/EventRaiserImpl.cpp
     src/runtime/InvokeExecutor.cpp
+    src/runtime/SessionManagerImpl.cpp
     
     # History state management (SOLID architecture)
     src/runtime/HistoryManager.cpp
@@ -108,6 +109,9 @@ add_library(rsm_unified
     src/events/EventSchedulerImpl.cpp
     src/events/EventDispatcherImpl.cpp
     src/events/EventTargetFactoryImpl.cpp
+    src/events/EventRaiserRegistry.cpp
+    src/events/EventRaiserService.cpp
+
 
     # Concurrent states implementation
     src/states/ConcurrentStateNode.cpp
@@ -122,6 +126,7 @@ add_library(rsm_unified
     # Scripting implementation
     src/scripting/JSEngine.cpp
     src/scripting/JSEngineImpl.cpp
+    src/scripting/JSExecutionEngineImpl.cpp
 
     # Parsing implementation
     src/parsing/StateNodeParser.cpp
@@ -134,6 +139,9 @@ add_library(rsm_unified
     src/parsing/DoneDataParser.cpp
     src/parsing/ParsingCommon.cpp
     src/parsing/XIncludeProcessor.cpp
+    
+    # High-level API
+    src/ReadySCXMLEngineImpl.cpp
 )
 
 target_include_directories(rsm_unified

@@ -2,7 +2,7 @@
 
 #include "SCXMLContext.h"
 #include "actions/IActionNode.h"
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include "model/IStateNode.h"
 #include <libxml++/libxml++.h>
 #include <memory>
@@ -18,7 +18,7 @@ class DoneDataParser;
 
 class StateNodeParser {
 public:
-    explicit StateNodeParser(std::shared_ptr<INodeFactory> nodeFactory);
+    explicit StateNodeParser(std::shared_ptr<NodeFactory> nodeFactory);
     ~StateNodeParser();
 
     // 상태 노드 파싱
@@ -64,7 +64,7 @@ private:
     // initial 요소 파싱 메서드 추가
     void parseInitialElement(const xmlpp::Element *initialElement, std::shared_ptr<IStateNode> state);
 
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    std::shared_ptr<NodeFactory> nodeFactory_;
     std::shared_ptr<TransitionParser> transitionParser_;
     std::shared_ptr<ActionParser> actionParser_;
     std::shared_ptr<DataModelParser> dataModelParser_;

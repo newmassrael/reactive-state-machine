@@ -138,7 +138,7 @@ TEST_F(StateMachineTest, Constructor) {
 
 TEST_F(StateMachineTest, FactoryPattern_CreateForTesting) {
     // Factory 패턴으로 Mock 기반 테스트 가능
-    auto result = StateMachineFactory::createForTesting();
+    auto result = StateMachineFactory::createProduction();
 
     // Factory는 Mock 엔진 사용하므로 성공할 수 있음
     if (result.has_value()) {

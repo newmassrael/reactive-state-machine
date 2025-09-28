@@ -2,7 +2,7 @@
 #include "common/Logger.h"
 #include "parsing/ParsingCommon.h"
 
-RSM::DoneDataParser::DoneDataParser(std::shared_ptr<INodeFactory> factory) : factory_(factory) {
+RSM::DoneDataParser::DoneDataParser(std::shared_ptr<NodeFactory> factory) : factory_(factory) {
     LOG_DEBUG("Creating DoneData parser");
 }
 

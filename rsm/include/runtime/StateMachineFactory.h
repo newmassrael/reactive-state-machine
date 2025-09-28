@@ -46,41 +46,21 @@ public:
     static CreationResult createProduction();
 
     /**
-     * @brief Create StateMachine for testing with mocks
-     * @return StateMachine instance with mock dependencies
-     */
-    static CreationResult createForTesting();
-
-    /**
-     * @brief Create StateMachine with custom script engine
-     * @param scriptEngine Custom script engine implementation
-     * @return StateMachine instance or error message
-     */
-    static CreationResult createWithScriptEngine(std::shared_ptr<ISessionBasedScriptEngine> scriptEngine);
-
-    /**
      * @brief Create StateMachine with SCXML content
      * @param scxmlContent SCXML document content
-     * @param useProductionEngine Use production or mock engine
      * @return Fully configured StateMachine or error message
      */
-    static CreationResult createWithSCXML(const std::string &scxmlContent, bool useProductionEngine = true);
+    static CreationResult createWithSCXML(const std::string &scxmlContent);
 
     /**
-     * @brief Builder pattern for complex configurations
+     * @brief Builder pattern for StateMachine configuration
      */
     class Builder {
     private:
-        std::shared_ptr<ISessionBasedScriptEngine> scriptEngine_;
         std::string scxmlContent_;
         bool autoInitialize_ = true;
 
     public:
-        Builder &withScriptEngine(std::shared_ptr<ISessionBasedScriptEngine> engine) {
-            scriptEngine_ = engine;
-            return *this;
-        }
-
         Builder &withSCXML(const std::string &content) {
             scxmlContent_ = content;
             return *this;
@@ -108,52 +88,12 @@ public:
 
 private:
     /**
-     * @brief Create StateMachine with dependencies - internal method
-     * @param scriptEngine Script engine to use
+     * @brief Internal StateMachine creation
      * @param scxmlContent Optional SCXML content
      * @param autoInitialize Whether to initialize automatically
      * @return StateMachine instance or error message
      */
-    static CreationResult createInternal(std::shared_ptr<ISessionBasedScriptEngine> scriptEngine,
-                                         const std::string &scxmlContent = "", bool autoInitialize = true);
-};
-
-/**
- * @brief Adapter to make existing JSEngine work with new interface
- *
- * This adapter allows gradual migration from old JSEngine to new interface.
- * Can be removed once full migration is complete.
- */
-class JSEngineAdapter : public ISessionBasedScriptEngine {
-private:
-    std::string defaultSessionId_;
-    bool initialized_ = false;
-
-public:
-    JSEngineAdapter();
-    ~JSEngineAdapter() override;
-
-    // IScriptEngine implementation
-    bool initialize() override;
-    void shutdown() override;
-    std::future<JSResult> executeScript(const std::string &script) override;
-    std::future<JSResult> evaluateExpression(const std::string &expression) override;
-    std::future<JSResult> setVariable(const std::string &name, const ScriptValue &value) override;
-    std::future<JSResult> getVariable(const std::string &name) override;
-    std::string getEngineInfo() const override;
-    size_t getMemoryUsage() const override;
-    void collectGarbage() override;
-
-    // ISessionBasedScriptEngine implementation
-    bool createSession(const std::string &sessionId, const std::string &parentSessionId = "") override;
-    bool destroySession(const std::string &sessionId) override;
-    bool hasSession(const std::string &sessionId) override;
-    std::vector<std::string> getActiveSessions() const override;
-    std::future<JSResult> executeScript(const std::string &sessionId, const std::string &script) override;
-    std::future<JSResult> evaluateExpression(const std::string &sessionId, const std::string &expression) override;
-    std::future<JSResult> setVariable(const std::string &sessionId, const std::string &name,
-                                      const ScriptValue &value) override;
-    std::future<JSResult> getVariable(const std::string &sessionId, const std::string &name) override;
+    static CreationResult createInternal(const std::string &scxmlContent = "", bool autoInitialize = true);
 };
 
 }  // namespace RSM

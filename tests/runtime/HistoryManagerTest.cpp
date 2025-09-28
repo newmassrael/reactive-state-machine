@@ -4,8 +4,8 @@
 #include "model/IStateNode.h"
 #include "model/ITransitionNode.h"
 #include "runtime/DeepHistoryFilter.h"
+#include "runtime/HistoryManager.h"
 #include "runtime/HistoryValidator.h"
-#include "runtime/IHistoryManager.h"
 #include "runtime/ShallowHistoryFilter.h"
 #include <atomic>
 #include <gtest/gtest.h>

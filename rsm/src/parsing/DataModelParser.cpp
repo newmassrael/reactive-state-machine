@@ -2,7 +2,7 @@
 #include "common/Logger.h"
 #include <algorithm>
 
-RSM::DataModelParser::DataModelParser(std::shared_ptr<INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+RSM::DataModelParser::DataModelParser(std::shared_ptr<NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating data model parser");
 }
 

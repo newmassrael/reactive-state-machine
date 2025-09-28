@@ -1,6 +1,6 @@
 #pragma once
 
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include "model/SCXMLContext.h"
 #include "model/SCXMLModel.h"
 #include "parsing/ActionParser.h"
@@ -33,7 +33,7 @@ public:
      * @param nodeFactory 노드 생성을 위한 팩토리 인스턴스
      * @param xincludeProcessor XInclude 처리를 위한 프로세서 인스턴스 (선택적)
      */
-    explicit SCXMLParser(std::shared_ptr<INodeFactory> nodeFactory,
+    explicit SCXMLParser(std::shared_ptr<NodeFactory> nodeFactory,
                          std::shared_ptr<IXIncludeProcessor> xincludeProcessor = nullptr);
 
     /**
@@ -193,7 +193,7 @@ private:
 
     void addSystemVariables(std::shared_ptr<SCXMLModel> model);
 
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    std::shared_ptr<NodeFactory> nodeFactory_;
     std::shared_ptr<StateNodeParser> stateNodeParser_;
     std::shared_ptr<TransitionParser> transitionParser_;
     std::shared_ptr<ActionParser> actionParser_;

@@ -1,5 +1,7 @@
 #include "scripting/JSEngine.h"
 #include "common/Logger.h"
+#include "events/EventRaiserRegistry.h"
+#include "events/EventRaiserService.h"
 #include "events/IEventDispatcher.h"
 #include "quickjs.h"
 #include "runtime/StateMachine.h"
@@ -19,6 +21,10 @@ JSEngine &JSEngine::instance() {
 JSEngine::JSEngine() {
     LOG_DEBUG("JSEngine: Starting initialization in constructor...");
     initializeInternal();
+
+    // Initialize EventRaiserService with dependency injection
+    initializeEventRaiserService();
+
     LOG_DEBUG("JSEngine: Constructor completed - fully initialized");
 }
 
@@ -107,6 +113,9 @@ void JSEngine::reset() {
         }
         LOG_DEBUG("JSEngine: Request queue cleared");
     }
+
+    // Clear EventRaiser registry for complete test isolation
+    clearEventRaiserRegistry();
 
     // Reinitialize
     initializeInternal();
@@ -644,6 +653,18 @@ bool JSEngine::destroySessionInternal(const std::string &sessionId) {
     }
 
     sessions_.erase(it);
+
+    // Clean up EventRaiser from global registry to prevent memory leaks
+    auto registry = getEventRaiserRegistry();
+    if (registry && registry->hasEventRaiser(sessionId)) {
+        bool unregistered = registry->unregisterEventRaiser(sessionId);
+        if (unregistered) {
+            LOG_DEBUG("JSEngine: Cleaned up EventRaiser for destroyed session: {}", sessionId);
+        } else {
+            LOG_WARN("JSEngine: Failed to clean up EventRaiser for destroyed session: {}", sessionId);
+        }
+    }
+
     LOG_DEBUG("JSEngine: Destroyed session '{}'", sessionId);
     return true;
 }
@@ -1194,38 +1215,67 @@ void JSEngine::unregisterInvokeMapping(const std::string &parentSessionId, const
     }
 }
 
-void JSEngine::registerEventRaiser(const std::string &sessionId, std::shared_ptr<IEventRaiser> eventRaiser) {
-    std::lock_guard<std::mutex> lock(sessionsMutex_);
+void JSEngine::initializeEventRaiserService() {
+    try {
+        // Create registry and use JSEngine directly as session manager
+        auto registry = std::make_shared<EventRaiserRegistry>();
 
-    auto it = sessions_.find(sessionId);
-    if (it != sessions_.end()) {
-        it->second.eventRaiser = eventRaiser;
-        LOG_DEBUG("JSEngine: Registered EventRaiser for session: {}", sessionId);
-    } else {
-        LOG_WARN("JSEngine: Cannot register EventRaiser - session not found: {}", sessionId);
+        // JSEngine implements ISessionManager directly - no adapter needed
+        EventRaiserService::initialize(registry, std::shared_ptr<ISessionManager>(this, [](ISessionManager *) {
+                                           // Custom deleter that does nothing - JSEngine is a singleton
+                                       }));
+
+        LOG_DEBUG("JSEngine: EventRaiserService initialized with dependency injection");
+    } catch (const std::exception &e) {
+        LOG_ERROR("JSEngine: Failed to initialize EventRaiserService: {}", e.what());
+        throw;
     }
 }
 
-std::shared_ptr<IEventRaiser> JSEngine::getEventRaiser(const std::string &sessionId) const {
-    std::lock_guard<std::mutex> lock(sessionsMutex_);
-
-    auto it = sessions_.find(sessionId);
-    if (it != sessions_.end()) {
-        return it->second.eventRaiser;
+std::shared_ptr<IEventRaiserRegistry> JSEngine::getEventRaiserRegistry() {
+    // Delegate to EventRaiserService for consistency
+    try {
+        return EventRaiserService::getInstance().getRegistry();
+    } catch (const std::exception &e) {
+        LOG_ERROR("JSEngine: Failed to get EventRaiserRegistry: {}", e.what());
+        // Fallback to static creation for backward compatibility
+        static std::shared_ptr<IEventRaiserRegistry> fallbackRegistry = std::make_shared<EventRaiserRegistry>();
+        return fallbackRegistry;
     }
-
-    LOG_DEBUG("JSEngine: EventRaiser not found for session: {}", sessionId);
-    return nullptr;
 }
 
-void JSEngine::unregisterEventRaiser(const std::string &sessionId) {
-    std::lock_guard<std::mutex> lock(sessionsMutex_);
-
-    auto it = sessions_.find(sessionId);
-    if (it != sessions_.end()) {
-        it->second.eventRaiser.reset();
-        LOG_DEBUG("JSEngine: Unregistered EventRaiser for session: {}", sessionId);
+void JSEngine::clearEventRaiserRegistry() {
+    try {
+        EventRaiserService::getInstance().clearAll();
+        LOG_DEBUG("JSEngine: EventRaiser registry cleared via EventRaiserService");
+    } catch (const std::exception &e) {
+        LOG_ERROR("JSEngine: Failed to clear EventRaiser registry: {}", e.what());
+        // Fallback to old method for backward compatibility
+        auto registry = getEventRaiserRegistry();
+        if (registry) {
+            auto concreteRegistry = std::dynamic_pointer_cast<EventRaiserRegistry>(registry);
+            if (concreteRegistry) {
+                concreteRegistry->clear();
+                LOG_DEBUG("JSEngine: EventRaiser registry cleared using fallback method");
+            }
+        }
     }
+}
+
+// === Observer Pattern Support (Temporary implementation until Facade refactoring) ===
+
+void JSEngine::addObserver(ISessionObserver *observer) {
+    // Temporary implementation - will be delegated to SessionManager after refactoring
+    (void)observer;  // Suppress unused parameter warning
+    LOG_DEBUG("JSEngine: Observer support not yet implemented in current architecture");
+    // TODO: Delegate to internal SessionManager after Facade pattern implementation
+}
+
+void JSEngine::removeObserver(ISessionObserver *observer) {
+    // Temporary implementation - will be delegated to SessionManager after refactoring
+    (void)observer;  // Suppress unused parameter warning
+    LOG_DEBUG("JSEngine: Observer support not yet implemented in current architecture");
+    // TODO: Delegate to internal SessionManager after Facade pattern implementation
 }
 
 // JSEngine internal functions are implemented in JSEngineImpl.cpp

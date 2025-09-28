@@ -3,10 +3,10 @@
 #include "events/IEventDispatcher.h"
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
+#include "runtime/HistoryManager.h"
+#include "runtime/HistoryStateAutoRegistrar.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
-#include "runtime/IHistoryManager.h"
-#include "runtime/IHistoryStateAutoRegistrar.h"
 #include "runtime/InvokeExecutor.h"
 #include "runtime/StateHierarchyManager.h"
 #include "runtime/StateMachineEventRaiser.h"
@@ -226,8 +226,8 @@ private:
     std::unique_ptr<StateHierarchyManager> hierarchyManager_;
 
     // History state management (SOLID architecture)
-    std::unique_ptr<IHistoryManager> historyManager_;
-    std::unique_ptr<IHistoryStateAutoRegistrar> historyAutoRegistrar_;
+    std::unique_ptr<HistoryManager> historyManager_;
+    std::unique_ptr<HistoryStateAutoRegistrar> historyAutoRegistrar_;
 
     // W3C SCXML invoke execution (SOLID architecture)
     std::unique_ptr<InvokeExecutor> invokeExecutor_;

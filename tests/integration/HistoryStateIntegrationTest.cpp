@@ -1,5 +1,4 @@
 #include "runtime/HistoryManager.h"
-#include "runtime/IHistoryManager.h"
 #include "runtime/StateMachine.h"
 #include "scripting/JSEngine.h"
 #include <atomic>

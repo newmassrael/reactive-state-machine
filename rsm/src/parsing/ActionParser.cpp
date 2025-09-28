@@ -11,7 +11,7 @@
 #include "parsing/ParsingCommon.h"  // ✅ Fix: Missing ParsingCommon header
 #include <algorithm>
 
-RSM::ActionParser::ActionParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+RSM::ActionParser::ActionParser(std::shared_ptr<RSM::NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating action parser");
 }
 

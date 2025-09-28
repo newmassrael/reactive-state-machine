@@ -9,7 +9,7 @@
 #include "parsing/ParsingCommon.h"
 #include "parsing/TransitionParser.h"
 
-RSM::StateNodeParser::StateNodeParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+RSM::StateNodeParser::StateNodeParser(std::shared_ptr<RSM::NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating state node parser");
 }
 

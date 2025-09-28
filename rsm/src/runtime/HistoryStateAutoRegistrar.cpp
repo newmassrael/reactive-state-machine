@@ -2,7 +2,7 @@
 #include "common/Logger.h"
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
-#include "runtime/IHistoryManager.h"
+#include "runtime/HistoryManager.h"
 #include "types.h"
 #include <algorithm>
 
@@ -15,7 +15,7 @@ HistoryStateAutoRegistrar::HistoryStateAutoRegistrar(
 }
 
 bool HistoryStateAutoRegistrar::autoRegisterHistoryStates(const std::shared_ptr<SCXMLModel> &model,
-                                                          IHistoryManager *historyManager) {
+                                                          HistoryManager *historyManager) {
     if (!autoRegistrationEnabled_) {
         LOG_DEBUG("HistoryStateAutoRegistrar: Auto-registration is disabled");
         return true;
@@ -80,7 +80,7 @@ void HistoryStateAutoRegistrar::setAutoRegistrationEnabled(bool enabled) {
 bool HistoryStateAutoRegistrar::registerSingleHistoryState(const std::string &historyStateId,
                                                            const std::string &parentStateId, HistoryType historyType,
                                                            const std::string &defaultStateId,
-                                                           IHistoryManager *historyManager) {
+                                                           HistoryManager *historyManager) {
     // Validate history type
     if (historyType == HistoryType::NONE) {
         LOG_ERROR("Invalid history type NONE for state '{}'", historyStateId);

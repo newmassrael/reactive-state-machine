@@ -1,6 +1,6 @@
 #pragma once
 
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include "model/IDataModelItem.h"
 #include "model/SCXMLContext.h"
 #include <fstream>
@@ -26,7 +26,7 @@ public:
      * @brief 생성자
      * @param nodeFactory 노드 생성을 위한 팩토리 인스턴스
      */
-    explicit DataModelParser(std::shared_ptr<INodeFactory> nodeFactory);
+    explicit DataModelParser(std::shared_ptr<NodeFactory> nodeFactory);
 
     /**
      * @brief 소멸자
@@ -93,7 +93,7 @@ private:
      */
     void loadExternalContent(const std::string &src, std::shared_ptr<IDataModelItem> dataItem);
 
-    std::shared_ptr<INodeFactory> nodeFactory_;
+    std::shared_ptr<NodeFactory> nodeFactory_;
 };
 
 }  // namespace RSM

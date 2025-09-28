@@ -9,48 +9,21 @@ namespace RSM {
 // === StateMachineFactory Implementation ===
 
 StateMachineFactory::CreationResult StateMachineFactory::createProduction() {
-    auto scriptEngine = std::make_shared<JSEngineAdapter>();
-    return createInternal(scriptEngine, "", true);
+    return createInternal("", true);
 }
 
-StateMachineFactory::CreationResult StateMachineFactory::createForTesting() {
-    auto mockEngine = std::make_shared<MockScriptEngine>();
-    return createInternal(mockEngine, "", true);
-}
-
-StateMachineFactory::CreationResult
-StateMachineFactory::createWithScriptEngine(std::shared_ptr<ISessionBasedScriptEngine> scriptEngine) {
-    if (!scriptEngine) {
-        return CreationResult("Script engine cannot be null");
-    }
-    return createInternal(scriptEngine, "", true);
-}
-
-StateMachineFactory::CreationResult StateMachineFactory::createWithSCXML(const std::string &scxmlContent,
-                                                                         bool useProductionEngine) {
+StateMachineFactory::CreationResult StateMachineFactory::createWithSCXML(const std::string &scxmlContent) {
     if (scxmlContent.empty()) {
         return CreationResult("SCXML content cannot be empty");
     }
 
-    std::shared_ptr<ISessionBasedScriptEngine> scriptEngine;
-    if (useProductionEngine) {
-        scriptEngine = std::make_shared<JSEngineAdapter>();
-    } else {
-        scriptEngine = std::make_shared<MockScriptEngine>();
-    }
-
-    return createInternal(scriptEngine, scxmlContent, true);
+    return createInternal(scxmlContent, true);
 }
 
-StateMachineFactory::CreationResult
-StateMachineFactory::createInternal(std::shared_ptr<ISessionBasedScriptEngine> scriptEngine,
-                                    const std::string &scxmlContent, bool autoInitialize) {
-    if (!scriptEngine) {
-        return CreationResult("Script engine is required");
-    }
-
+StateMachineFactory::CreationResult StateMachineFactory::createInternal(const std::string &scxmlContent,
+                                                                        bool autoInitialize) {
     try {
-        // Create StateMachine with dependency injection
+        // Create StateMachine - uses JSEngine::instance() internally
         auto stateMachine = std::make_unique<StateMachine>();
 
         // Load SCXML if provided
@@ -78,157 +51,7 @@ StateMachineFactory::createInternal(std::shared_ptr<ISessionBasedScriptEngine> s
 // === Builder Implementation ===
 
 StateMachineFactory::CreationResult StateMachineFactory::Builder::build() {
-    // Use mock engine if no engine specified
-    if (!scriptEngine_) {
-        scriptEngine_ = std::make_shared<MockScriptEngine>();
-    }
-
-    return StateMachineFactory::createInternal(scriptEngine_, scxmlContent_, autoInitialize_);
-}
-
-// === JSEngineAdapter Implementation ===
-
-JSEngineAdapter::JSEngineAdapter() {
-    // Generate default session ID
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(100000, 999999);
-    defaultSessionId_ = "adapter_" + std::to_string(dis(gen));
-}
-
-JSEngineAdapter::~JSEngineAdapter() {
-    if (initialized_) {
-        shutdown();
-    }
-}
-
-bool JSEngineAdapter::initialize() {
-    if (initialized_) {
-        return true;
-    }
-
-    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
-    RSM::JSEngine::instance();  // RAII 보장
-    LOG_DEBUG("JSEngineAdapter: JSEngine automatically initialized via RAII");
-
-    // Create default session
-    if (!RSM::JSEngine::instance().createSession(defaultSessionId_)) {
-        LOG_ERROR("JSEngineAdapter: Failed to create default session");
-        return false;
-    }
-
-    initialized_ = true;
-    LOG_DEBUG("JSEngineAdapter: Successfully initialized");
-    return true;
-}
-
-void JSEngineAdapter::shutdown() {
-    if (!initialized_) {
-        return;
-    }
-
-    // Destroy default session
-    RSM::JSEngine::instance().destroySession(defaultSessionId_);
-
-    // Note: We don't shutdown the JSEngine instance as it's a singleton
-    // and might be used by other components
-
-    initialized_ = false;
-    LOG_DEBUG("JSEngineAdapter: Shutdown completed");
-}
-
-std::future<JSResult> JSEngineAdapter::executeScript(const std::string &script) {
-    return executeScript(defaultSessionId_, script);
-}
-
-std::future<JSResult> JSEngineAdapter::evaluateExpression(const std::string &expression) {
-    return evaluateExpression(defaultSessionId_, expression);
-}
-
-std::future<JSResult> JSEngineAdapter::setVariable(const std::string &name, const ScriptValue &value) {
-    return setVariable(defaultSessionId_, name, value);
-}
-
-std::future<JSResult> JSEngineAdapter::getVariable(const std::string &name) {
-    return getVariable(defaultSessionId_, name);
-}
-
-std::string JSEngineAdapter::getEngineInfo() const {
-    return RSM::JSEngine::instance().getEngineInfo() + " (via Adapter)";
-}
-
-size_t JSEngineAdapter::getMemoryUsage() const {
-    return RSM::JSEngine::instance().getMemoryUsage();
-}
-
-void JSEngineAdapter::collectGarbage() {
-    RSM::JSEngine::instance().collectGarbage();
-}
-
-bool JSEngineAdapter::createSession(const std::string &sessionId, const std::string &parentSessionId) {
-    if (!initialized_) {
-        LOG_ERROR("JSEngineAdapter: Not initialized");
-        return false;
-    }
-    return RSM::JSEngine::instance().createSession(sessionId, parentSessionId);
-}
-
-bool JSEngineAdapter::destroySession(const std::string &sessionId) {
-    if (!initialized_) {
-        return false;
-    }
-    return RSM::JSEngine::instance().destroySession(sessionId);
-}
-
-bool JSEngineAdapter::hasSession(const std::string &sessionId) {
-    if (!initialized_) {
-        return false;
-    }
-    return RSM::JSEngine::instance().hasSession(sessionId);
-}
-
-std::vector<std::string> JSEngineAdapter::getActiveSessions() const {
-    if (!initialized_) {
-        return {};
-    }
-    return RSM::JSEngine::instance().getActiveSessions();
-}
-
-std::future<JSResult> JSEngineAdapter::executeScript(const std::string &sessionId, const std::string &script) {
-    if (!initialized_) {
-        std::promise<JSResult> promise;
-        promise.set_value(JSResult::createError("Adapter not initialized"));
-        return promise.get_future();
-    }
-    return RSM::JSEngine::instance().executeScript(sessionId, script);
-}
-
-std::future<JSResult> JSEngineAdapter::evaluateExpression(const std::string &sessionId, const std::string &expression) {
-    if (!initialized_) {
-        std::promise<JSResult> promise;
-        promise.set_value(JSResult::createError("Adapter not initialized"));
-        return promise.get_future();
-    }
-    return RSM::JSEngine::instance().evaluateExpression(sessionId, expression);
-}
-
-std::future<JSResult> JSEngineAdapter::setVariable(const std::string &sessionId, const std::string &name,
-                                                   const ScriptValue &value) {
-    if (!initialized_) {
-        std::promise<JSResult> promise;
-        promise.set_value(JSResult::createError("Adapter not initialized"));
-        return promise.get_future();
-    }
-    return RSM::JSEngine::instance().setVariable(sessionId, name, value);
-}
-
-std::future<JSResult> JSEngineAdapter::getVariable(const std::string &sessionId, const std::string &name) {
-    if (!initialized_) {
-        std::promise<JSResult> promise;
-        promise.set_value(JSResult::createError("Adapter not initialized"));
-        return promise.get_future();
-    }
-    return RSM::JSEngine::instance().getVariable(sessionId, name);
+    return StateMachineFactory::createInternal(scxmlContent_, autoInitialize_);
 }
 
 }  // namespace RSM

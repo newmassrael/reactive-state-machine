@@ -1,6 +1,6 @@
 #pragma once
 
-#include "factory/INodeFactory.h"
+#include "factory/NodeFactory.h"
 #include "model/IStateNode.h"
 #include <libxml++/libxml++.h>
 #include <memory>
@@ -21,7 +21,7 @@ public:
      * @brief 생성자
      * @param factory 노드 생성을 위한 팩토리 인스턴스
      */
-    explicit DoneDataParser(std::shared_ptr<INodeFactory> factory);
+    explicit DoneDataParser(std::shared_ptr<NodeFactory> factory);
 
     /**
      * @brief 소멸자
@@ -53,7 +53,7 @@ private:
      */
     bool parseParam(const xmlpp::Element *paramElement, IStateNode *stateNode);
 
-    std::shared_ptr<INodeFactory> factory_;  // 노드 생성 팩토리
+    std::shared_ptr<NodeFactory> factory_;  // 노드 생성 팩토리
 };
 
 }  // namespace RSM

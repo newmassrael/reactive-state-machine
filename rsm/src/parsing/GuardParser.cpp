@@ -4,7 +4,7 @@
 #include "common/Logger.h"
 #include <algorithm>
 
-RSM::GuardParser::GuardParser(std::shared_ptr<RSM::INodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
+RSM::GuardParser::GuardParser(std::shared_ptr<RSM::NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating guard parser");
 }
 
