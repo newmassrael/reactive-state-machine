@@ -233,10 +233,18 @@ httplib::Result HttpEventTarget::performRequestWithRetry(httplib::Client &client
     while (attempts <= maxRetries_) {
         attempts++;
 
-        LOG_DEBUG("HttpEventTarget: HTTP POST attempt {} to '{}'", attempts, path);
+        LOG_DEBUG("HttpEventTarget: HTTP POST attempt {} to '{}' with payload: {}", attempts, path, payload);
 
         // Perform POST request
+        LOG_DEBUG("HttpEventTarget: Executing client.Post('{}', payload, 'application/json')", path);
         result = client.Post(path, payload, "application/json");
+
+        if (result) {
+            LOG_DEBUG("HttpEventTarget: HTTP POST completed, status: {}, response body: {}", result->status,
+                      result->body);
+        } else {
+            LOG_ERROR("HttpEventTarget: HTTP POST failed, error: {}", static_cast<int>(result.error()));
+        }
 
         if (result && result->status >= 200 && result->status < 300) {
             // Success

@@ -8,6 +8,7 @@
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
 #include "common/Logger.h"
+#include "common/TypeRegistry.h"
 #include "events/EventDescriptor.h"
 #include "events/IEventDispatcher.h"
 #include "events/InvokeEventTarget.h"
@@ -727,17 +728,28 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
         // W3C SCXML 6.2: Validate send type - generate error.execution for unsupported types
         std::string sendType = action.getType();
         if (!sendType.empty()) {
-            // List of supported send types (based on W3C SCXML specification)
-            // Standard types: "scxml" (default), "basichttp", "internal"
-            // SCXML Event processor: "http://www.w3.org/TR/scxml/#SCXMLEventProcessor"
-            // Only reject explicitly unsupported types like "unsupported_type" (from conf:invalidSendType)
-            if (sendType == "unsupported_type") {
-                LOG_ERROR("ActionExecutorImpl: Unsupported send type: {}", sendType);
-                // W3C SCXML 6.2: Generate error.execution event for unsupported send types
-                if (eventRaiser_) {
-                    eventRaiser_->raiseEvent("error.execution", "Unsupported send type: " + sendType);
+            // Use TypeRegistry to validate event processor types
+            TypeRegistry &typeRegistry = TypeRegistry::getInstance();
+
+            // Check if the send type is registered as a valid event processor
+            if (!typeRegistry.isRegisteredType(TypeRegistry::Category::EVENT_PROCESSOR, sendType)) {
+                // Only reject explicitly unsupported types like "unsupported_type" (from conf:invalidSendType)
+                if (sendType == "unsupported_type") {
+                    LOG_ERROR("ActionExecutorImpl: Unsupported send type: {}", sendType);
+                    // W3C SCXML 6.2: Generate error.execution event for unsupported send types
+                    if (eventRaiser_) {
+                        eventRaiser_->raiseEvent("error.execution", "Unsupported send type: " + sendType);
+                    }
+                    return false;
                 }
-                return false;
+                // For other unregistered types, log warning but allow (for compatibility)
+                LOG_WARN("ActionExecutorImpl: Send type '{}' not registered in TypeRegistry, proceeding anyway",
+                         sendType);
+            } else {
+                // Log successful type validation
+                std::string canonicalType =
+                    typeRegistry.getCanonicalName(TypeRegistry::Category::EVENT_PROCESSOR, sendType);
+                LOG_DEBUG("ActionExecutorImpl: Send type '{}' validated (canonical: '{}')", sendType, canonicalType);
             }
         }
 

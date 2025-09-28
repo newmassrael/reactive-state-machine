@@ -11,6 +11,9 @@
 
 namespace RSM::W3C {
 
+// Forward declarations
+class W3CHttpTestServer;
+
 /**
  * @brief Factory for creating W3C test components
  *
@@ -49,6 +52,11 @@ private:
      * @brief Run a single test
      */
     TestReport runSingleTest(const std::string &testDirectory);
+
+    /**
+     * @brief Run a single test with HTTP server for bidirectional communication
+     */
+    TestReport runSingleTestWithHttpServer(const std::string &testDirectory, W3CHttpTestServer *httpServer);
 
     /**
      * @brief Calculate test run statistics

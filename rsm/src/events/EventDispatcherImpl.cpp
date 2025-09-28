@@ -126,8 +126,22 @@ std::future<SendResult> EventDispatcherImpl::executeEventImmediately(const Event
     try {
         LOG_DEBUG("EventDispatcherImpl: Executing immediate event '{}' to target '{}'", event.eventName, event.target);
 
+        // Validate target before sending
+        if (!target) {
+            LOG_ERROR("EventDispatcherImpl: Target is null for event '{}'", event.eventName);
+            std::promise<SendResult> errorPromise;
+            errorPromise.set_value(SendResult::error("Target is null", SendResult::ErrorType::TARGET_NOT_FOUND));
+            return errorPromise.get_future();
+        }
+
+        LOG_DEBUG("EventDispatcherImpl: Calling target->send() for event '{}' with target type: {}", event.eventName,
+                  target->getTargetType());
+
         // Execute the event directly on the target
-        return target->send(event);
+        auto resultFuture = target->send(event);
+
+        LOG_DEBUG("EventDispatcherImpl: target->send() called successfully for event '{}'", event.eventName);
+        return resultFuture;
 
     } catch (const std::exception &e) {
         LOG_ERROR("EventDispatcherImpl: Error executing immediate event '{}': {}", event.eventName, e.what());

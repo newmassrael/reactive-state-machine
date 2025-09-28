@@ -46,6 +46,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/spdlog ${CMAKE_CURRE
 # Add cpp-httplib subdirectory
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cpp-httplib ${CMAKE_CURRENT_BINARY_DIR}/cpp-httplib)
 
+# Add jsoncpp subdirectory
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/jsoncpp ${CMAKE_CURRENT_BINARY_DIR}/jsoncpp)
+
 add_library(rsm_unified
     # Model implementation
     src/model/SCXMLModel.cpp
@@ -62,6 +65,7 @@ add_library(rsm_unified
     src/common/GuardUtils.cpp
     src/common/Logger.cpp
     src/common/NodeFactory.cpp
+    src/common/TypeRegistry.cpp
 
     # Runtime implementation
     src/runtime/SCXMLEngineImpl.cpp
@@ -97,6 +101,9 @@ add_library(rsm_unified
     src/events/InternalEventTarget.cpp
     src/events/ParentEventTarget.cpp
     src/events/HttpEventTarget.cpp
+    src/events/HttpEventReceiver.cpp
+    src/events/HttpEventBridge.cpp
+    src/events/HttpEventCoordinator.cpp
     src/events/InvokeEventTarget.cpp
     src/events/EventSchedulerImpl.cpp
     src/events/EventDispatcherImpl.cpp
@@ -141,6 +148,7 @@ target_include_directories(rsm_unified
         include/actions
         include/events
         include/states
+        ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/jsoncpp/include
     PRIVATE
         ${LIBXMLPP_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}
@@ -163,6 +171,7 @@ target_link_libraries(rsm_unified
         qjs                          # QuickJS library
         spdlog::spdlog               # spdlog library
         httplib::httplib             # cpp-httplib library
+        jsoncpp_static               # jsoncpp library
     PRIVATE
         ${LIBXMLXX_LIBRARIES}
         ${LIBXML2_LIBRARIES}         # libxml2 dependency for libxml++

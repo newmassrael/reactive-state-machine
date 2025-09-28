@@ -1,4 +1,5 @@
 #include "W3CTestRunner.h"
+#include "W3CHttpTestServer.h"
 #include "common/Logger.h"
 #include "events/EventDispatcherImpl.h"
 #include "events/EventSchedulerImpl.h"
@@ -696,6 +697,37 @@ TestReport W3CTestRunner::runSpecificTest(int testId) {
         std::string dirName = path.filename().string();
 
         if (std::stoi(dirName) == testId) {
+            // Special handling for HTTP tests that require bidirectional communication
+            if (testId == 201) {
+                LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+
+                // Create and start the generic W3C HTTP test server
+                W3CHttpTestServer httpServer(8080, "/test");
+
+                if (!httpServer.start()) {
+                    LOG_ERROR("W3C Test {}: Failed to start HTTP server on port 8080", testId);
+                    throw std::runtime_error("Failed to start HTTP server for test " + std::to_string(testId));
+                }
+
+                LOG_INFO("W3C Test {}: HTTP server started successfully on localhost:8080/test", testId);
+
+                try {
+                    // Run the test with HTTP server running
+                    TestReport result = runSingleTestWithHttpServer(testDir, &httpServer);
+
+                    // Stop the server after test completion
+                    httpServer.stop();
+                    LOG_INFO("W3C Test {}: HTTP server stopped successfully", testId);
+
+                    return result;
+                } catch (const std::exception &e) {
+                    // Ensure server is stopped even if test fails
+                    httpServer.stop();
+                    LOG_ERROR("W3C Test {}: Test execution failed, HTTP server stopped: {}", testId, e.what());
+                    throw;
+                }
+            }
+
             return runSingleTest(testDir);
         }
     }
@@ -727,6 +759,160 @@ TestRunSummary W3CTestRunner::runFilteredTests(const std::string &conformanceLev
     reporter_->endTestRun();
 
     return summary;
+}
+
+TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDirectory, W3CHttpTestServer *httpServer) {
+    TestReport report;
+    report.timestamp = std::chrono::system_clock::now();
+
+    try {
+        // Parse metadata
+        std::string metadataPath = testSuite_->getMetadataPath(testDirectory);
+        LOG_DEBUG("W3C Single Test (HTTP): Parsing metadata from {}", metadataPath);
+        report.metadata = metadataParser_->parseMetadata(metadataPath);
+        report.testId = std::to_string(report.metadata.id);
+
+        // Skip if necessary
+        if (validator_->shouldSkipTest(report.metadata)) {
+            LOG_DEBUG("W3C Single Test (HTTP): Skipping test {} (manual test)", report.testId);
+            report.validationResult = ValidationResult(true, TestResult::PASS, "Test skipped");
+            return report;
+        }
+
+        // Read and convert TXML
+        std::string txmlPath = testSuite_->getTXMLPath(testDirectory);
+        LOG_DEBUG("W3C Single Test (HTTP): Reading TXML from {}", txmlPath);
+        std::ifstream txmlFile(txmlPath);
+        std::string txml((std::istreambuf_iterator<char>(txmlFile)), std::istreambuf_iterator<char>());
+
+        LOG_DEBUG("W3C Single Test (HTTP): Converting TXML to SCXML for test {}", report.testId);
+        std::string scxml = converter_->convertTXMLToSCXML(txml);
+
+        // Create custom executor with HTTP server integration
+        auto startTime = std::chrono::steady_clock::now();
+
+        TestExecutionContext context;
+        context.scxmlContent = scxml;
+        context.metadata = report.metadata;
+        context.expectedTarget = "pass";
+
+        try {
+            LOG_DEBUG("StateMachineTestExecutor (HTTP): Starting test execution for test {}", report.metadata.id);
+
+            // Create EventDispatcher infrastructure for delayed events and #_parent routing
+            auto eventRaiser = std::make_shared<RSM::EventRaiserImpl>();
+            auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(eventRaiser);
+
+            // Set up HTTP server eventCallback to use the EventRaiser
+            httpServer->setEventCallback([eventRaiser](const std::string &eventName, const std::string &eventData) {
+                LOG_INFO("W3CHttpTestServer: Receiving echoed event '{}' - raising to SCXML", eventName);
+                eventRaiser->raiseEvent(eventName, eventData);
+            });
+
+            // Create StateMachine using Builder pattern with proper dependency injection
+            auto builder = RSM::StateMachineBuilder().withEventDispatcher(std::make_shared<RSM::EventDispatcherImpl>(
+                std::make_shared<RSM::EventSchedulerImpl>([](const RSM::EventDescriptor &event,
+                                                             std::shared_ptr<RSM::IEventTarget> target,
+                                                             const std::string &sendId) -> bool {
+                    LOG_DEBUG("EventScheduler (HTTP): Executing event '{}' on target '{}' with sendId '{}'",
+                              event.eventName, target->getDebugInfo(), sendId);
+
+                    if (!target->canHandle(event.target)) {
+                        LOG_WARN("EventScheduler (HTTP): Target '{}' cannot handle target '{}'", target->getDebugInfo(),
+                                 event.target);
+                        return false;
+                    }
+
+                    auto future = target->send(event);
+                    bool targetResult = false;
+                    try {
+                        auto sendResult = future.get();
+                        targetResult = sendResult.isSuccess;
+                    } catch (const std::exception &e) {
+                        LOG_ERROR("EventScheduler (HTTP): Failed to send event '{}': {}", event.eventName, e.what());
+                        targetResult = false;
+                    }
+
+                    return targetResult;
+                }),
+                targetFactory));
+
+            // Inject EventRaiser into builder for proper dependency injection
+            builder.withEventRaiser(eventRaiser);
+
+            auto stateMachine = builder.build();
+
+            // Load SCXML content
+            if (!stateMachine->loadSCXMLFromString(scxml)) {
+                LOG_ERROR("StateMachineTestExecutor (HTTP): Failed to load SCXML content");
+                context.finalState = "error";
+                context.errorMessage = "Failed to load SCXML content";
+                report.executionContext = context;
+                return report;
+            }
+
+            // Ensure EventRaiser callback is properly set after SCXML loading
+            stateMachine->setEventRaiser(eventRaiser);
+
+            // Start the state machine
+            if (!stateMachine->start()) {
+                LOG_ERROR("StateMachineTestExecutor (HTTP): Failed to start StateMachine");
+                context.finalState = "error";
+                context.errorMessage = "Failed to start StateMachine";
+                report.executionContext = context;
+                return report;
+            }
+
+            // Wait for StateMachine to reach final state or timeout
+            auto waitStart = std::chrono::steady_clock::now();
+            std::string currentState;
+            const std::chrono::milliseconds timeout{2000};
+
+            while (std::chrono::steady_clock::now() - waitStart < timeout) {
+                currentState = stateMachine->getCurrentState();
+
+                // Check if we reached a final state (pass or fail)
+                if (currentState == "pass" || currentState == "fail") {
+                    LOG_DEBUG("StateMachineTestExecutor (HTTP): Reached final state: {}", currentState);
+                    break;
+                }
+
+                // Small sleep to avoid busy waiting
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+
+            // Get final state
+            context.finalState = currentState;
+            LOG_DEBUG("StateMachineTestExecutor (HTTP): Test completed with final state: {}", context.finalState);
+
+            auto endTime = std::chrono::steady_clock::now();
+            context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+            report.executionContext = context;
+
+        } catch (const std::exception &e) {
+            LOG_ERROR("StateMachineTestExecutor (HTTP): Exception during test execution: {}", e.what());
+            context.finalState = "error";
+            context.errorMessage = "Exception: " + std::string(e.what());
+
+            auto endTime = std::chrono::steady_clock::now();
+            context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+            report.executionContext = context;
+        }
+
+        // Validate result
+        LOG_DEBUG("W3C Single Test (HTTP): Validating result for test {}", report.testId);
+        report.validationResult = validator_->validateResult(report.executionContext);
+
+        LOG_DEBUG("W3C Single Test (HTTP): Test {} completed with result: {}", report.testId,
+                  static_cast<int>(report.validationResult.finalResult));
+
+        return report;
+    } catch (const std::exception &e) {
+        LOG_ERROR("W3C Single Test (HTTP): Exception in test {}: {}", testDirectory, e.what());
+        throw;  // Re-throw to be caught by runSpecificTest
+    }
 }
 
 }  // namespace RSM::W3C

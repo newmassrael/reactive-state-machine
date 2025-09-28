@@ -19,12 +19,20 @@ EventTargetFactoryImpl::EventTargetFactoryImpl(std::shared_ptr<IEventRaiser> eve
     registerTargetType("internal", [this](const std::string &targetUri) { return createInternalTarget(targetUri); });
 
     // Register HTTP target creator
-    registerTargetType("http",
-                       [](const std::string &targetUri) { return std::make_shared<HttpEventTarget>(targetUri); });
+    registerTargetType("http", [](const std::string &targetUri) {
+        LOG_DEBUG("EventTargetFactoryImpl: Creating HTTP target for URI: {}", targetUri);
+        auto target = std::make_shared<HttpEventTarget>(targetUri);
+        LOG_DEBUG("EventTargetFactoryImpl: HTTP target created successfully: {}", target->getDebugInfo());
+        return target;
+    });
 
     // Register HTTPS target creator
-    registerTargetType("https",
-                       [](const std::string &targetUri) { return std::make_shared<HttpEventTarget>(targetUri); });
+    registerTargetType("https", [](const std::string &targetUri) {
+        LOG_DEBUG("EventTargetFactoryImpl: Creating HTTPS target for URI: {}", targetUri);
+        auto target = std::make_shared<HttpEventTarget>(targetUri);
+        LOG_DEBUG("EventTargetFactoryImpl: HTTPS target created successfully: {}", target->getDebugInfo());
+        return target;
+    });
 
     LOG_DEBUG("EventTargetFactoryImpl: Factory created with internal, HTTP, and HTTPS target support");
 }

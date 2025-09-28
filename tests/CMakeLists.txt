@@ -73,6 +73,8 @@ set(RSM_TEST_TARGETS
 # ============================================================================
 add_executable(rsm_scxml_tests
     simple_scxml_test.cpp
+    core/TypeRegistryTest.cpp
+    concurrency/TypeRegistryThreadSafetyTest.cpp
 )
 
 target_include_directories(rsm_scxml_tests
@@ -398,7 +400,7 @@ add_executable(w3c_test_cli
     w3c/W3CTestRunner.cpp
     w3c/impl/TXMLConverter.cpp
     w3c/impl/TestMetadataParser.cpp
-
+    w3c/W3CHttpTestServer.cpp
     w3c/impl/W3CTestEventDispatcher.cpp
     mocks/MockEventRaiser.cpp
 )
@@ -406,6 +408,7 @@ add_executable(w3c_test_cli
 target_link_libraries(w3c_test_cli
     PRIVATE
         rsm_unified
+        jsoncpp_static
         ${LIBXMLXX_LIBRARIES}
         xml2
         pthread
