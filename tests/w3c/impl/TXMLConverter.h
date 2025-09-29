@@ -95,6 +95,9 @@ private:
     // Test 183 specific patterns - send idlocation and variable binding
     static const std::regex CONF_IDLOCATION_ATTR;
 
+    // Test 225 specific patterns - variable equality comparison
+    static const std::regex CONF_VAREQVAR_ATTR;
+
     // General patterns to remove all remaining conf: references
     static const std::regex CONF_ALL_ATTRIBUTES;
     static const std::regex CONF_ALL_ELEMENTS;

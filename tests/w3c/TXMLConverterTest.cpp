@@ -1870,3 +1870,40 @@ TEST_F(TXMLConverterTest, ConvertsInvokeSrcExprAttribute) {
     EXPECT_TRUE(result.find("location=\"var1\"") != std::string::npos);
     EXPECT_TRUE(result.find("expr=\"'file:test216sub1.scxml'\"") != std::string::npos);
 }
+
+// ============================================================================
+// W3C Test 225: Variable Equality Comparison (conf:VarEqVar)
+// ============================================================================
+
+TEST_F(TXMLConverterTest, ConvertsVarEqVarAttribute) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml initial="s0" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1"/>
+  <data conf:id="2"/>
+</datamodel>
+<state id="s0">
+  <invoke type="http://www.w3.org/TR/scxml/" conf:idlocation="1">
+    <content><scxml initial="subFinal1" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance"><final id="subFinal1"/></scxml></content>
+  </invoke>
+  <invoke type="http://www.w3.org/TR/scxml/" conf:idlocation="2">
+    <content><scxml initial="subFinal2" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance"><final id="subFinal2"/></scxml></content>
+  </invoke>
+  <transition event="*" target="s1"/>
+</state>
+<state id="s1">
+  <transition conf:VarEqVar="1 2" conf:targetfail=""/>
+  <transition conf:targetpass=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // VarEqVar="1 2" should convert to cond="var1 === var2" and target="fail"
+    EXPECT_TRUE(result.find("cond=\"var1 === var2\"") != std::string::npos);
+    EXPECT_TRUE(result.find("target=\"fail\"") != std::string::npos);
+    EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
+    EXPECT_TRUE(result.find("conf:VarEqVar") == std::string::npos);
+}

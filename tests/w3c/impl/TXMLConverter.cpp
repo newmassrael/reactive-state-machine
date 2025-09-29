@@ -127,6 +127,10 @@ const std::regex TXMLConverter::CONF_IDVAL_COMPARISON_ATTR{R"def(conf:idVal="([0
 // Test 183 specific patterns - send idlocation and variable binding
 const std::regex TXMLConverter::CONF_IDLOCATION_ATTR{R"def(conf:idlocation="([^"]*)")def", std::regex::optimize};
 
+// Test 225 specific patterns - variable equality comparison
+// Pattern matches numeric variable indices separated by space: "1 2" -> var1, var2
+const std::regex TXMLConverter::CONF_VAREQVAR_ATTR{R"def(conf:VarEqVar="([0-9]+) ([0-9]+)")def", std::regex::optimize};
+
 // General patterns to remove all conf: references
 const std::regex TXMLConverter::CONF_ALL_ATTRIBUTES{R"abc(\s+conf:[^=\s>]+\s*=\s*"[^"]*")abc", std::regex::optimize};
 
@@ -370,6 +374,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     std::regex idlocation_general_pattern(R"def(conf:idlocation="([^"]*)")def");
     result = std::regex_replace(result, idlocation_numeric_pattern, R"(idlocation="var$1")");
     result = std::regex_replace(result, idlocation_general_pattern, R"(idlocation="$1")");
+
+    // Test 225 specific patterns - variable equality comparison
+    // conf:VarEqVar="1 2" -> cond="var1 === var2"
+    result = std::regex_replace(result, CONF_VAREQVAR_ATTR, R"(cond="var$1 === var$2")");
 
     // Legacy generic conf:idVal pattern for other cases
     result = std::regex_replace(result, CONF_ID_VAL_ATTR, R"(cond="$1")");
