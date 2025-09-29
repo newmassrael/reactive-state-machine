@@ -26,6 +26,10 @@ public:
     virtual const std::vector<std::tuple<std::string, std::string, std::string>> &getParams() const = 0;
     virtual const std::string &getContent() const = 0;
     virtual const std::string &getFinalize() const = 0;
+
+    // W3C SCXML 1.0: typeexpr attribute support for dynamic type evaluation
+    virtual void setTypeExpr(const std::string &typeExpr) = 0;
+    virtual const std::string &getTypeExpr() const = 0;
 };
 
 }  // namespace RSM

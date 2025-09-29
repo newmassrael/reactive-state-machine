@@ -124,6 +124,18 @@ public:
     bool isStateActive(const std::string &stateId) const;
 
     /**
+     * @brief Check if the state machine is currently in a final state
+     * @return true if current state is a final state
+     */
+    bool isInFinalState() const;
+
+    /**
+     * @brief Check if the initial state of the SCXML model is a final state
+     * @return true if the initial state is a final state
+     */
+    bool isInitialStateFinal() const;
+
+    /**
      * @brief Bind C++ object for JavaScript access
      * @param name Object name in JavaScript
      * @param object Pointer to C++ object
@@ -284,6 +296,9 @@ private:
     // Deferred invoke execution for W3C SCXML compliance
     void deferInvokeExecution(const std::string &stateId, const std::vector<std::shared_ptr<IInvokeNode>> &invokes);
     void executePendingInvokes();
+
+    // Helper method to reduce code duplication between isInFinalState() and isInitialStateFinal()
+    bool isStateInFinalState(const std::string &stateId) const;
 };
 
 // Template implementation

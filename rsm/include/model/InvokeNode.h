@@ -38,6 +38,10 @@ public:
     const std::string &getFinalize() const override;
     const std::vector<std::tuple<std::string, std::string, std::string>> &getParams() const override;
 
+    // W3C SCXML 1.0: typeexpr attribute support for dynamic type evaluation
+    void setTypeExpr(const std::string &typeExpr) override;
+    const std::string &getTypeExpr() const override;
+
 private:
     std::string id_;
     std::string type_;
@@ -46,6 +50,7 @@ private:
     std::string namelist_;
     std::string content_;
     std::string finalize_;
+    std::string typeExpr_;
     bool autoForward_;
     std::vector<std::tuple<std::string, std::string, std::string>> params_;  // name, expr, location
 };

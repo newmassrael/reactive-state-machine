@@ -2,6 +2,7 @@
 #include "SCXMLTypes.h"
 #include "common/Logger.h"
 #include "common/UniqueIdGenerator.h"
+#include "events/EventDescriptor.h"
 #include "runtime/EventRaiserImpl.h"
 #include "runtime/InvokeExecutor.h"
 #include "runtime/StateMachine.h"
@@ -205,6 +206,30 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         return "";
     }
 
+    // W3C SCXML: Check if child SCXML has initial state as final state
+    // This handles the case where child SCXML has initial="finalStateId" (e.g., test 215)
+    // We check BEFORE event processing to avoid confusion with runtime transitions (e.g., test 192)
+    LOG_DEBUG("SCXMLInvokeHandler: Checking if child initial state is final - initialState: '{}', isRunning: {}",
+              childStateMachine->getCurrentState(), childStateMachine->isRunning());
+    if (childStateMachine->isInitialStateFinal()) {
+        // Generate done.invoke event immediately
+        std::string doneEvent = "done.invoke";
+        if (eventDispatcher) {
+            EventDescriptor event;
+            event.eventName = doneEvent;
+            event.target = "#_parent";
+            event.data = "";
+            event.delay = std::chrono::milliseconds(0);
+            event.sessionId = childSessionId;  // Use child session ID for ParentEventTarget routing
+
+            auto resultFuture = eventDispatcher->sendEvent(event);
+            LOG_DEBUG("SCXMLInvokeHandler: Child SCXML immediately reached final state, generated: {}", doneEvent);
+        } else {
+            LOG_WARN("SCXMLInvokeHandler: Child reached final state but no EventDispatcher available for: {}",
+                     doneEvent);
+        }
+    }
+
     // Register invoke mapping in JSEngine for #_invokeid target support
     // For pre-allocated sessions (sessionAlreadyExists=true), mapping may already be registered by InvokeExecutor
     if (!sessionAlreadyExists) {
@@ -359,6 +384,25 @@ std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &in
     }
 
     std::string invokeType = invoke->getType();
+
+    // W3C SCXML 1.0: Handle typeexpr attribute for dynamic type evaluation
+    if (invokeType.empty() && !invoke->getTypeExpr().empty()) {
+        try {
+            auto future = JSEngine::instance().evaluateExpression(sessionId, invoke->getTypeExpr());
+            auto jsResult = future.get();
+            if (!jsResult.isSuccess()) {
+                LOG_ERROR("InvokeExecutor: Failed to evaluate typeexpr '{}': {}", invoke->getTypeExpr(),
+                          jsResult.getErrorMessage());
+                return "";
+            }
+            invokeType = JSEngine::resultToString(jsResult, sessionId, invoke->getTypeExpr());
+            LOG_DEBUG("InvokeExecutor: Evaluated typeexpr '{}' to type: '{}'", invoke->getTypeExpr(), invokeType);
+        } catch (const std::exception &e) {
+            LOG_ERROR("InvokeExecutor: Failed to evaluate typeexpr '{}': {}", invoke->getTypeExpr(), e.what());
+            return "";
+        }
+    }
+
     if (invokeType.empty()) {
         invokeType = "scxml";  // Default to SCXML type
     }

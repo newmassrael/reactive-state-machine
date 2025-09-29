@@ -1809,3 +1809,34 @@ TEST_F(TXMLConverterTest, ConvertsCancelSendIDExprAttribute) {
     EXPECT_TRUE(result.find(R"(sendidexpr="var1")") != std::string::npos);
     EXPECT_TRUE(result.find("conf:sendIDExpr") == std::string::npos);
 }
+
+TEST_F(TXMLConverterTest, ConvertsInvokeTypeExprAttribute) {
+    std::string input = R"(<?xml version="1.0"?>
+<scxml initial="s0" conf:datamodel="" version="1.0"  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1" conf:quoteExpr="foo"/>
+</datamodel>
+<state id="s0">
+  <onentry>
+    <assign conf:location="1" conf:quoteExpr="http://www.w3.org/TR/scxml/"/>
+  </onentry>
+  <invoke conf:typeExpr="1">
+    <content>
+        <scxml initial="subFinal" conf:datamodel="" version="1.0" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+      <final id="subFinal"/>
+        </scxml>
+    </content>
+  </invoke>
+  <transition event="done.invoke" conf:targetpass=""/>
+  <transition event="*" conf:targetfail=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(input);
+
+    // Check that conf:typeExpr="1" is converted to typeexpr attribute with variable reference
+    EXPECT_TRUE(result.find(R"(typeexpr="var1")") != std::string::npos);
+    EXPECT_TRUE(result.find("conf:typeExpr") == std::string::npos);
+}

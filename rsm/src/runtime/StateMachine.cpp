@@ -503,6 +503,37 @@ bool StateMachine::isStateActive(const std::string &stateId) const {
     return hierarchyManager_->isStateActive(stateId);
 }
 
+bool StateMachine::isStateInFinalState(const std::string &stateId) const {
+    if (!model_) {
+        LOG_DEBUG("StateMachine::isStateInFinalState: No model available");
+        return false;
+    }
+
+    if (stateId.empty()) {
+        LOG_DEBUG("StateMachine::isStateInFinalState: State ID is empty");
+        return false;
+    }
+
+    auto state = model_->findStateById(stateId);
+    bool isFinal = state && state->isFinalState();
+    LOG_DEBUG("StateMachine::isStateInFinalState: stateId='{}', state found: {}, isFinalState: {}", stateId,
+              (void *)state, isFinal);
+    return isFinal;
+}
+
+bool StateMachine::isInFinalState() const {
+    if (!isRunning_) {
+        LOG_DEBUG("StateMachine::isInFinalState: State machine is not running");
+        return false;
+    }
+
+    return isStateInFinalState(getCurrentState());
+}
+
+bool StateMachine::isInitialStateFinal() const {
+    return isStateInFinalState(model_ ? model_->getInitialState() : "");
+}
+
 std::string StateMachine::getCurrentEventData() const {
     return currentEventData_;
 }

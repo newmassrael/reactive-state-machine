@@ -39,8 +39,8 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
     if (typeAttr) {
         invokeNode->setType(typeAttr->get_value());
     } else if (typeExprAttr) {
-        // typeexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        LOG_DEBUG("typeexpr attribute present: {}", typeExprAttr->get_value());
+        // W3C SCXML 1.0: Handle typeexpr attribute for dynamic type evaluation
+        invokeNode->setTypeExpr(typeExprAttr->get_value());
     }
 
     // src 속성 처리

@@ -51,6 +51,7 @@ private:
     static const std::regex CONF_TYPE_ATTR;
     static const std::regex CONF_SRC_ATTR;
     static const std::regex CONF_SENDIDEXPR_ATTR;
+    static const std::regex CONF_TYPEEXPR_ATTR;
 
     // Parameter and communication patterns
     static const std::regex CONF_NAME_ATTR;

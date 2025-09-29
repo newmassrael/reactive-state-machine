@@ -85,3 +85,13 @@ const std::string &RSM::InvokeNode::getFinalize() const {
 const std::vector<std::tuple<std::string, std::string, std::string>> &RSM::InvokeNode::getParams() const {
     return params_;
 }
+
+// W3C SCXML 1.0: typeexpr attribute support for dynamic type evaluation
+void RSM::InvokeNode::setTypeExpr(const std::string &typeExpr) {
+    typeExpr_ = typeExpr;
+    LOG_DEBUG("InvokeNode: Set typeexpr to '{}'", typeExpr);
+}
+
+const std::string &RSM::InvokeNode::getTypeExpr() const {
+    return typeExpr_;
+}
