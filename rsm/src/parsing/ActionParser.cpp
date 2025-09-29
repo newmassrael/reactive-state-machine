@@ -192,8 +192,17 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
 
     } else if (elementName == "cancel") {
         auto sendidAttr = actionElement->get_attribute("sendid");
+        auto sendidexprAttr = actionElement->get_attribute("sendidexpr");
+
         std::string sendid = sendidAttr ? sendidAttr->get_value() : "";
-        return std::make_shared<RSM::CancelAction>(sendid, id);
+        auto cancelAction = std::make_shared<RSM::CancelAction>(sendid, id);
+
+        // W3C SCXML 1.0: Handle sendidexpr attribute for dynamic send ID evaluation
+        if (sendidexprAttr) {
+            cancelAction->setSendIdExpr(sendidexprAttr->get_value());
+        }
+
+        return cancelAction;
 
     } else if (elementName == "foreach") {
         // SCXML W3C 표준: foreach 요소 파싱

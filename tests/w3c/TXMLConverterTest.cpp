@@ -1785,3 +1785,27 @@ TEST_F(TXMLConverterTest, ConvertInvalidSendTypeTest) {
     // Ensure all conf: references are removed
     EXPECT_EQ(result.find("conf:"), std::string::npos) << "All conf: references should be removed";
 }
+
+TEST_F(TXMLConverterTest, ConvertsCancelSendIDExprAttribute) {
+    std::string input = R"(<?xml version="1.0"?>
+<scxml initial="s0" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1" conf:quoteExpr="bar"/>
+</datamodel>
+<state id="s0">
+  <onentry>
+   <send  id="foo" event="event1" conf:delay="1"/>
+   <assign conf:location="1" conf:quoteExpr="foo"/>
+   <cancel conf:sendIDExpr="1"/>
+  </onentry>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(input);
+
+    // Check that conf:sendIDExpr="1" is converted to sendidexpr attribute with variable reference
+    EXPECT_TRUE(result.find(R"(sendidexpr="var1")") != std::string::npos);
+    EXPECT_TRUE(result.find("conf:sendIDExpr") == std::string::npos);
+}
