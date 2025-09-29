@@ -95,3 +95,13 @@ void RSM::InvokeNode::setTypeExpr(const std::string &typeExpr) {
 const std::string &RSM::InvokeNode::getTypeExpr() const {
     return typeExpr_;
 }
+
+// W3C SCXML 1.0: srcexpr attribute support for dynamic source evaluation
+void RSM::InvokeNode::setSrcExpr(const std::string &srcExpr) {
+    srcExpr_ = srcExpr;
+    LOG_DEBUG("InvokeNode: Set srcexpr to '{}'", srcExpr);
+}
+
+const std::string &RSM::InvokeNode::getSrcExpr() const {
+    return srcExpr_;
+}

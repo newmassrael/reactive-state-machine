@@ -8,6 +8,8 @@
 #include "runtime/StateMachine.h"
 #include "runtime/StateMachineBuilder.h"
 #include "scripting/JSEngine.h"
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <random>
 #include <sstream>
@@ -80,13 +82,45 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
 
     // Get invoke content (SCXML document)
     std::string scxmlContent = invoke->getContent();
-    if (scxmlContent.empty() && !invoke->getSrc().empty()) {
-        LOG_WARN("SCXMLInvokeHandler: src attribute not yet supported, using content: {}", invoke->getSrc());
-        return "";
+
+    // Handle srcexpr evaluation first
+    if (scxmlContent.empty() && !invoke->getSrcExpr().empty()) {
+        // Evaluate srcexpr in parent session context
+        auto future = JSEngine::instance().evaluateExpression(parentSessionId, invoke->getSrcExpr());
+        auto result = future.get();
+
+        if (result.isSuccess()) {
+            std::string evaluatedSrc = result.getValue<std::string>();
+            LOG_DEBUG("SCXMLInvokeHandler: srcexpr '{}' evaluated to '{}'", invoke->getSrcExpr(), evaluatedSrc);
+
+            // Remove surrounding quotes if present
+            if (evaluatedSrc.length() >= 2 && evaluatedSrc.front() == '\'' && evaluatedSrc.back() == '\'') {
+                evaluatedSrc = evaluatedSrc.substr(1, evaluatedSrc.length() - 2);
+            }
+
+            // Load SCXML content from file
+            scxmlContent = loadSCXMLFromFile(evaluatedSrc, parentSessionId);
+            if (scxmlContent.empty()) {
+                LOG_ERROR("SCXMLInvokeHandler: Failed to load SCXML from srcexpr file: {}", evaluatedSrc);
+                return "";
+            }
+        } else {
+            LOG_ERROR("SCXMLInvokeHandler: Failed to evaluate srcexpr '{}': {}", invoke->getSrcExpr(),
+                      result.getErrorMessage());
+            return "";
+        }
+    }
+    // Handle static src attribute
+    else if (scxmlContent.empty() && !invoke->getSrc().empty()) {
+        scxmlContent = loadSCXMLFromFile(invoke->getSrc(), parentSessionId);
+        if (scxmlContent.empty()) {
+            LOG_ERROR("SCXMLInvokeHandler: Failed to load SCXML from src file: {}", invoke->getSrc());
+            return "";
+        }
     }
 
     if (scxmlContent.empty()) {
-        LOG_ERROR("SCXMLInvokeHandler: No content or src specified for invoke: {}", invokeid);
+        LOG_ERROR("SCXMLInvokeHandler: No content, src, or srcexpr specified for invoke: {}", invokeid);
         return "";
     }
 
@@ -586,6 +620,105 @@ void InvokeExecutor::cleanupInvoke(const std::string &invokeid) {
     }
 
     LOG_DEBUG("InvokeExecutor: Cleaned up invoke: {}", invokeid);
+}
+
+std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, const std::string &parentSessionId) {
+    std::string cleanPath = filepath;
+
+    // Remove "file:" prefix if present
+    if (cleanPath.starts_with("file:")) {
+        cleanPath = cleanPath.substr(5);
+    }
+
+    // Security: Validate path to prevent directory traversal attacks
+    if (cleanPath.find("..") != std::string::npos) {
+        LOG_ERROR("SCXMLInvokeHandler: Invalid file path - directory traversal detected: '{}'", cleanPath);
+        return "";
+    }
+
+    // Security: Only allow .scxml file extension
+    std::filesystem::path pathCheck(cleanPath);
+    std::string ext = pathCheck.extension().string();
+    if (!ext.empty() && ext != ".scxml") {
+        LOG_ERROR("SCXMLInvokeHandler: Invalid file extension - only .scxml allowed: '{}'", cleanPath);
+        return "";
+    }
+
+    // Handle relative path resolution using parent session file path
+    std::filesystem::path resolvedPath;
+    if (std::filesystem::path(cleanPath).is_relative()) {
+        // Get parent session's file path for relative resolution
+        std::string parentFilePath = RSM::JSEngine::instance().getSessionFilePath(parentSessionId);
+
+        if (!parentFilePath.empty()) {
+            // Resolve relative to parent SCXML file directory
+            std::filesystem::path parentDir = std::filesystem::path(parentFilePath).parent_path();
+            resolvedPath = parentDir / cleanPath;
+
+            // Security: Normalize path and validate it stays within allowed boundaries
+            try {
+                resolvedPath = std::filesystem::weakly_canonical(resolvedPath);
+                std::filesystem::path normalizedParentDir = std::filesystem::weakly_canonical(parentDir);
+
+                // Check if resolved path is still within the parent directory tree
+                auto relativePath = std::filesystem::relative(resolvedPath, normalizedParentDir);
+                if (relativePath.string().starts_with("..")) {
+                    LOG_ERROR("SCXMLInvokeHandler: Security violation - path escapes parent directory: '{}'",
+                              resolvedPath.string());
+                    return "";
+                }
+            } catch (const std::filesystem::filesystem_error &e) {
+                LOG_ERROR("SCXMLInvokeHandler: Filesystem error during path normalization: {}", e.what());
+                return "";
+            }
+
+            LOG_DEBUG("SCXMLInvokeHandler: Resolving relative path '{}' to '{}' (parent: '{}')", cleanPath,
+                      resolvedPath.string(), parentFilePath);
+        } else {
+            // Production engine requires proper file path tracking - no fallback
+            LOG_ERROR(
+                "SCXMLInvokeHandler: No parent file path found for session '{}' - cannot resolve relative path: '{}'",
+                parentSessionId, cleanPath);
+            return "";
+        }
+    } else {
+        resolvedPath = cleanPath;
+    }
+
+    // Check if SCXML file exists
+    std::filesystem::path finalPath = resolvedPath;
+    if (!finalPath.has_extension()) {
+        finalPath += ".scxml";
+    }
+
+    if (!std::filesystem::exists(finalPath)) {
+        LOG_ERROR("SCXMLInvokeHandler: SCXML file not found: '{}'", finalPath.string());
+        return "";
+    }
+
+    LOG_DEBUG("SCXMLInvokeHandler: Found SCXML file at '{}'", finalPath.string());
+
+    // Read file content
+    std::ifstream file(finalPath);
+    if (!file.is_open()) {
+        LOG_ERROR("SCXMLInvokeHandler: Failed to open file: '{}'", finalPath.string());
+        return "";
+    }
+
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+
+    if (content.empty()) {
+        LOG_WARN("SCXMLInvokeHandler: File is empty: '{}'", finalPath.string());
+        return "";
+    }
+
+    // Production engine only handles pure SCXML files
+
+    LOG_INFO("SCXMLInvokeHandler: Successfully loaded SCXML content from file: '{}' ({} bytes)", finalPath.string(),
+             content.length());
+
+    return content;
 }
 
 }  // namespace RSM

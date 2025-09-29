@@ -49,8 +49,9 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
     if (srcAttr) {
         invokeNode->setSrc(srcAttr->get_value());
     } else if (srcExprAttr) {
-        // srcexpr 속성은 실행 시간에 평가됨 - 여기서는 표시만
-        LOG_DEBUG("srcexpr attribute present: {}", srcExprAttr->get_value());
+        // srcexpr 속성을 저장하여 런타임에 평가할 수 있도록 함
+        invokeNode->setSrcExpr(srcExprAttr->get_value());
+        LOG_DEBUG("srcexpr attribute set: {}", srcExprAttr->get_value());
     }
 
     // idlocation 속성 처리

@@ -50,6 +50,20 @@ public:
     virtual TestExecutionContext executeTest(const std::string &scxml, const TestMetadata &metadata) = 0;
 
     /**
+     * @brief Execute a single SCXML test with source file path for relative resolution
+     * @param scxml The SCXML content to execute
+     * @param metadata Test metadata for context
+     * @param sourceFilePath Path to the original TXML/SCXML file for relative path resolution
+     * @return Test execution result with full context
+     */
+    virtual TestExecutionContext executeTest(const std::string &scxml, const TestMetadata &metadata,
+                                             const std::string &sourceFilePath) {
+        // Default implementation calls the original method (for backward compatibility)
+        LOG_DEBUG("ITestExecutor: executeTest called with sourceFilePath: '{}'", sourceFilePath);
+        return executeTest(scxml, metadata);
+    }
+
+    /**
      * @brief Set execution timeout
      * @param timeoutMs Timeout in milliseconds (default: 5000ms)
      */

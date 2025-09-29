@@ -646,6 +646,9 @@ bool JSEngine::destroySessionInternal(const std::string &sessionId) {
         }
     }
 
+    // Clean up session file path mapping
+    unregisterSessionFilePath(sessionId);
+
     if (it->second.jsContext) {
         // Force garbage collection before freeing context
         if (runtime_) {
@@ -1214,6 +1217,35 @@ void JSEngine::unregisterInvokeMapping(const std::string &parentSessionId, const
         }
 
         LOG_DEBUG("JSEngine: Unregistered invoke mapping - parent: {}, invoke: {}", parentSessionId, invokeId);
+    }
+}
+
+void JSEngine::registerSessionFilePath(const std::string &sessionId, const std::string &filePath) {
+    std::lock_guard<std::mutex> lock(sessionFilePathsMutex_);
+    sessionFilePaths_[sessionId] = filePath;
+    LOG_DEBUG("JSEngine: Registered session file path - session: {}, path: {}", sessionId, filePath);
+}
+
+std::string JSEngine::getSessionFilePath(const std::string &sessionId) const {
+    std::lock_guard<std::mutex> lock(sessionFilePathsMutex_);
+
+    auto it = sessionFilePaths_.find(sessionId);
+    if (it == sessionFilePaths_.end()) {
+        LOG_DEBUG("JSEngine: No file path found for session: {}", sessionId);
+        return "";
+    }
+
+    LOG_DEBUG("JSEngine: Found session file path - session: {}, path: {}", sessionId, it->second);
+    return it->second;
+}
+
+void JSEngine::unregisterSessionFilePath(const std::string &sessionId) {
+    std::lock_guard<std::mutex> lock(sessionFilePathsMutex_);
+
+    auto it = sessionFilePaths_.find(sessionId);
+    if (it != sessionFilePaths_.end()) {
+        sessionFilePaths_.erase(it);
+        LOG_DEBUG("JSEngine: Unregistered session file path - session: {}", sessionId);
     }
 }
 

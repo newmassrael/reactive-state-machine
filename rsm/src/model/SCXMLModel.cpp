@@ -11,7 +11,7 @@ RSM::SCXMLModel::SCXMLModel() : rootState_(nullptr) {
 
 RSM::SCXMLModel::~SCXMLModel() {
     LOG_DEBUG("Destroying SCXML model");
-    // 스마트 포인터가 자원 정리를 담당
+    // Smart pointers handle resource cleanup
 }
 
 void RSM::SCXMLModel::setRootState(std::shared_ptr<RSM::IStateNode> rootState) {
@@ -95,14 +95,14 @@ const std::vector<std::shared_ptr<RSM::IStateNode>> &RSM::SCXMLModel::getAllStat
 }
 
 RSM::IStateNode *RSM::SCXMLModel::findStateById(const std::string &id) const {
-    // 먼저 맵에서 찾기
+    // Search in map first
     auto it = stateIdMap_.find(id);
     if (it != stateIdMap_.end()) {
         return it->second;
     }
 
-    // 맵에 없으면 모든 최상위 상태를 검색
-    std::set<std::string> visitedStates;  // 이미 방문한 상태 ID 추적
+    // If not in map, search all top-level states
+    std::set<std::string> visitedStates;  // Track already visited state IDs
     for (const auto &state : allStates_) {
         if (state->getId() == id) {
             return state.get();
@@ -123,19 +123,19 @@ RSM::IStateNode *RSM::SCXMLModel::findStateByIdRecursive(RSM::IStateNode *state,
         return nullptr;
     }
 
-    // 이미 방문한 상태는 건너뛰기
+    // Skip already visited states
     if (visitedStates.find(state->getId()) != visitedStates.end()) {
         return nullptr;
     }
 
     visitedStates.insert(state->getId());
 
-    // 현재 상태 확인
+    // Check current state
     if (state->getId() == id) {
         return state;
     }
 
-    // 자식 상태 검색
+    // Search child states
     for (const auto &child : state->getChildren()) {
         RSM::IStateNode *result = findStateByIdRecursive(child.get(), id, visitedStates);
         if (result) {
@@ -160,12 +160,12 @@ const std::vector<std::shared_ptr<RSM::IDataModelItem>> &RSM::SCXMLModel::getDat
 bool RSM::SCXMLModel::validateStateRelationships() const {
     LOG_INFO("Validating state relationships");
 
-    // 모든 상태에 대해 검증
+    // Validate all states
     for (const auto &state : allStates_) {
-        // 부모 상태 검증
+        // Validate parent state
         RSM::IStateNode *parent = state->getParent();
         if (parent) {
-            // 부모가 실제로 이 상태를 자식으로 가지고 있는지 확인
+            // Check if parent actually has this state as a child
             bool foundAsChild = false;
             for (const auto &childState : parent->getChildren()) {
                 if (childState.get() == state.get()) {
@@ -181,7 +181,7 @@ bool RSM::SCXMLModel::validateStateRelationships() const {
             }
         }
 
-        // 모든 전환의 타겟 상태가 존재하는지 확인
+        // Check if target states of all transitions exist
         for (const auto &transition : state->getTransitions()) {
             const auto targets = transition->getTargets();
             for (const auto &target : targets) {
@@ -194,7 +194,7 @@ bool RSM::SCXMLModel::validateStateRelationships() const {
             }
         }
 
-        // 초기 상태가 존재하는지 확인
+        // Check if initial state exists
         if (!state->getInitialState().empty()) {
             if (state->getChildren().empty()) {
                 LOG_WARN("State '{}' has initialState but no children", state->getId());
@@ -226,20 +226,20 @@ std::vector<std::string> RSM::SCXMLModel::findMissingStateIds() const {
     std::vector<std::string> missingIds;
     std::unordered_set<std::string> existingIds;
 
-    // 모든 상태 ID 수집
+    // Collect all state IDs
     for (const auto &state : allStates_) {
         existingIds.insert(state->getId());
     }
 
-    // 참조된 상태 ID 확인
+    // Check referenced state IDs
     for (const auto &state : allStates_) {
-        // 초기 상태 확인
+        // Check initial state
         if (!state->getInitialState().empty() && existingIds.find(state->getInitialState()) == existingIds.end()) {
             missingIds.push_back(state->getInitialState());
             LOG_WARN("Missing state ID referenced as initial state: {}", state->getInitialState());
         }
 
-        // 전환 타겟 확인
+        // Check transition targets
         for (const auto &transition : state->getTransitions()) {
             const auto targets = transition->getTargets();
             for (const auto &target : targets) {

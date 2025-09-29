@@ -60,6 +60,9 @@ const std::regex TXMLConverter::CONF_SENDIDEXPR_ATTR{R"def(conf:sendIDExpr="([^"
 
 const std::regex TXMLConverter::CONF_TYPEEXPR_ATTR{R"def(conf:typeExpr="([^"]*)")def", std::regex::optimize};
 
+// W3C SCXML invoke srcexpr attribute support for dynamic source evaluation
+const std::regex TXMLConverter::CONF_SRCEXPR_ATTR{R"def(conf:srcExpr="([^"]*)")def", std::regex::optimize};
+
 // Parameter and communication patterns
 const std::regex TXMLConverter::CONF_NAME_ATTR{R"abc(conf:name="([^"]*)")abc", std::regex::optimize};
 
@@ -218,6 +221,13 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, typeexpr_numeric_pattern, R"(typeexpr="var$1")");
     // Convert remaining conf:typeExpr attributes to standard typeexpr
     result = std::regex_replace(result, CONF_TYPEEXPR_ATTR, R"(typeexpr="$1")");
+
+    // Convert invoke srcExpr attribute
+    // Handle numeric variables: conf:srcExpr="1" -> srcexpr="var1"
+    std::regex srcexpr_numeric_pattern(R"def(conf:srcExpr="([0-9]+)")def");
+    result = std::regex_replace(result, srcexpr_numeric_pattern, R"(srcexpr="var$1")");
+    // Convert remaining conf:srcExpr attributes to standard srcexpr
+    result = std::regex_replace(result, CONF_SRCEXPR_ATTR, R"(srcexpr="$1")");
 
     // Convert parameter and communication attributes
     // Handle numeric name attributes: conf:name="1" -> name="var1"

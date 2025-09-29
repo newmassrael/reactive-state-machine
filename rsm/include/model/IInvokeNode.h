@@ -30,6 +30,10 @@ public:
     // W3C SCXML 1.0: typeexpr attribute support for dynamic type evaluation
     virtual void setTypeExpr(const std::string &typeExpr) = 0;
     virtual const std::string &getTypeExpr() const = 0;
+
+    // W3C SCXML 1.0: srcexpr attribute support for dynamic source evaluation
+    virtual void setSrcExpr(const std::string &srcExpr) = 0;
+    virtual const std::string &getSrcExpr() const = 0;
 };
 
 }  // namespace RSM

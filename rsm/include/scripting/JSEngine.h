@@ -274,6 +274,34 @@ public:
      */
     void unregisterInvokeMapping(const std::string &parentSessionId, const std::string &invokeId);
 
+    // === Session File Path Management (W3C SCXML relative path resolution) ===
+
+    /**
+     * @brief Register file path for session-based relative path resolution
+     *
+     * W3C SCXML: Enables proper relative path resolution for srcexpr attributes
+     * by tracking the source file path of each session.
+     *
+     * @param sessionId Session identifier
+     * @param filePath Absolute path to the SCXML file for this session
+     */
+    void registerSessionFilePath(const std::string &sessionId, const std::string &filePath);
+
+    /**
+     * @brief Get the source file path for a session
+     *
+     * @param sessionId Session to get file path for
+     * @return Absolute file path or empty string if not found
+     */
+    std::string getSessionFilePath(const std::string &sessionId) const;
+
+    /**
+     * @brief Unregister session file path during cleanup
+     *
+     * @param sessionId Session identifier to remove
+     */
+    void unregisterSessionFilePath(const std::string &sessionId);
+
     // === Engine Information ===
 
     /**
@@ -465,6 +493,11 @@ private:
     // W3C SCXML: Maps parent_session_id -> (invoke_id -> child_session_id)
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> invokeMappings_;
     mutable std::mutex invokeMappingsMutex_;
+
+    // === Session File Path Management ===
+    // W3C SCXML: Maps session_id -> absolute_file_path for relative path resolution
+    std::unordered_map<std::string, std::string> sessionFilePaths_;
+    mutable std::mutex sessionFilePathsMutex_;
 
     // === Thread-safe Execution ===
     mutable std::queue<std::unique_ptr<ExecutionRequest>> requestQueue_;

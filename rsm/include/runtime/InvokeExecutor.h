@@ -115,6 +115,14 @@ private:
     std::string startInvokeInternal(const std::shared_ptr<IInvokeNode> &invoke, const std::string &parentSessionId,
                                     std::shared_ptr<IEventDispatcher> eventDispatcher,
                                     const std::string &childSessionId, bool sessionAlreadyExists);
+
+    /**
+     * @brief Load SCXML content from file, resolving relative paths
+     * @param filepath File path (may be relative or have file: prefix)
+     * @param parentSessionId Parent session ID for context
+     * @return SCXML content as string, or empty string on error
+     */
+    std::string loadSCXMLFromFile(const std::string &filepath, const std::string &parentSessionId);
 };
 
 /**

@@ -74,6 +74,10 @@ bool StateMachine::loadSCXML(const std::string &filename) {
             return false;
         }
 
+        // Register file path for this session to enable relative path resolution
+        RSM::JSEngine::instance().registerSessionFilePath(sessionId_, filename);
+        LOG_DEBUG("StateMachine: Registered file path '{}' for session '{}'", filename, sessionId_);
+
         return initializeFromModel();
     } catch (const std::exception &e) {
         LOG_ERROR("Exception loading SCXML: {}", e.what());

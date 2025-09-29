@@ -42,6 +42,10 @@ public:
     void setTypeExpr(const std::string &typeExpr) override;
     const std::string &getTypeExpr() const override;
 
+    // W3C SCXML 1.0: srcexpr attribute support for dynamic source evaluation
+    void setSrcExpr(const std::string &srcExpr) override;
+    const std::string &getSrcExpr() const override;
+
 private:
     std::string id_;
     std::string type_;
@@ -51,6 +55,7 @@ private:
     std::string content_;
     std::string finalize_;
     std::string typeExpr_;
+    std::string srcExpr_;
     bool autoForward_;
     std::vector<std::tuple<std::string, std::string, std::string>> params_;  // name, expr, location
 };

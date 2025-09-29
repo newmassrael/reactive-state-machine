@@ -52,6 +52,8 @@ private:
     static const std::regex CONF_SRC_ATTR;
     static const std::regex CONF_SENDIDEXPR_ATTR;
     static const std::regex CONF_TYPEEXPR_ATTR;
+    // W3C SCXML invoke srcexpr attribute support for dynamic source evaluation
+    static const std::regex CONF_SRCEXPR_ATTR;
 
     // Parameter and communication patterns
     static const std::regex CONF_NAME_ATTR;

@@ -1840,3 +1840,33 @@ TEST_F(TXMLConverterTest, ConvertsInvokeTypeExprAttribute) {
     EXPECT_TRUE(result.find(R"(typeexpr="var1")") != std::string::npos);
     EXPECT_TRUE(result.find("conf:typeExpr") == std::string::npos);
 }
+
+TEST_F(TXMLConverterTest, ConvertsInvokeSrcExprAttribute) {
+    std::string input = R"(<?xml version="1.0"?>
+<scxml initial="s0" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1" conf:quoteExpr="foo"/>
+</datamodel>
+<state id="s0">
+  <onentry>
+    <send event="timeout" delay="5s"/>
+   <assign conf:location="1" conf:quoteExpr="file:test216sub1.scxml"/>
+  </onentry>
+  <invoke conf:srcExpr="1" type="http://www.w3.org/TR/scxml"/>
+  <transition event="done.invoke" conf:targetpass=""/>
+  <transition event="*" conf:targetfail=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(input);
+
+    EXPECT_TRUE(result.find("srcexpr=\"var1\"") != std::string::npos);
+    EXPECT_TRUE(result.find("type=\"http://www.w3.org/TR/scxml\"") != std::string::npos);
+    EXPECT_TRUE(result.find("conf:srcExpr") == std::string::npos);
+    EXPECT_TRUE(result.find("id=\"var1\"") != std::string::npos);
+    EXPECT_TRUE(result.find("expr=\"'foo'\"") != std::string::npos);
+    EXPECT_TRUE(result.find("location=\"var1\"") != std::string::npos);
+    EXPECT_TRUE(result.find("expr=\"'file:test216sub1.scxml'\"") != std::string::npos);
+}

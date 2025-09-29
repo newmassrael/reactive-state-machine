@@ -12,7 +12,7 @@ RSM::StateHierarchy::StateHierarchy() : rootState_(nullptr) {
 
 RSM::StateHierarchy::~StateHierarchy() {
     LOG_DEBUG("Destroying state hierarchy");
-    // 스마트 포인터가 자원 정리를 담당
+    // Smart pointers handle resource cleanup
 }
 
 void RSM::StateHierarchy::setRootState(std::shared_ptr<RSM::IStateNode> rootState) {
@@ -20,7 +20,7 @@ void RSM::StateHierarchy::setRootState(std::shared_ptr<RSM::IStateNode> rootStat
     rootState_ = rootState;
 
     if (rootState_) {
-        // 루트 상태가 설정되면 상태 ID 맵에 추가
+        // Add root state to state ID map when set
         addState(rootState_);
     }
 }
@@ -37,7 +37,7 @@ bool RSM::StateHierarchy::addState(std::shared_ptr<RSM::IStateNode> state, const
 
     LOG_DEBUG("Adding state: {}", state->getId());
 
-    // 부모 ID가 지정된 경우, 해당 부모를 찾고 자식으로 추가
+    // If parent ID is specified, find the parent and add as child
     if (!parentId.empty()) {
         RSM::IStateNode *parent = findStateById(parentId);
         if (!parent) {
@@ -45,16 +45,16 @@ bool RSM::StateHierarchy::addState(std::shared_ptr<RSM::IStateNode> state, const
             return false;
         }
 
-        // 부모-자식 관계 설정
+        // Set parent-child relationship
         state->setParent(parent);
         parent->addChild(state);
     } else if (rootState_ && rootState_.get() != state.get()) {
-        // 부모 ID가 지정되지 않았지만 루트가 아닌 경우, 루트의 자식으로 추가
+        // If no parent ID specified but not root, add as child of root
         state->setParent(rootState_.get());
         rootState_->addChild(state);
     }
 
-    // 상태 목록 및 맵에 추가
+    // Add to state list and map
     allStates_.push_back(state);
     stateIdMap_[state->getId()] = state.get();
 
@@ -85,25 +85,25 @@ bool RSM::StateHierarchy::isDescendantOf(RSM::IStateNode *ancestor, RSM::IStateN
         return false;
     }
 
-    // 자기 자신은 자신의 descendant가 아님
+    // Self is not its own descendant
     if (ancestor == descendant) {
         return false;
     }
 
-    // 부모-자식 관계 확인
+    // Check parent-child relationship
     RSM::IStateNode *parent = descendant->getParent();
 
-    // 부모가 없으면 false 반환
+    // Return false if no parent
     if (!parent) {
         return false;
     }
 
-    // 직계 부모이면 true
+    // True if direct parent
     if (parent == ancestor) {
         return true;
     }
 
-    // 재귀적으로 조상 확인
+    // Recursively check ancestors
     return isDescendantOf(ancestor, parent);
 }
 
@@ -114,12 +114,12 @@ const std::vector<std::shared_ptr<RSM::IStateNode>> &RSM::StateHierarchy::getAll
 bool RSM::StateHierarchy::validateRelationships() const {
     LOG_INFO("Validating state relationships");
 
-    // 모든 상태에 대해 검증
+    // Validate all states
     for (const auto &state : allStates_) {
-        // 부모 상태 검증
+        // Validate parent state
         RSM::IStateNode *parent = state->getParent();
         if (parent) {
-            // 부모가 실제로 이 상태를 자식으로 가지고 있는지 확인
+            // Check if parent actually has this state as a child
             bool foundAsChild = false;
             for (const auto &childState : parent->getChildren()) {
                 if (childState.get() == state.get()) {
@@ -135,7 +135,7 @@ bool RSM::StateHierarchy::validateRelationships() const {
             }
         }
 
-        // 초기 상태가 존재하는지 확인
+        // Check if initial state exists
         if (!state->getInitialState().empty()) {
             bool initialStateExists = false;
             for (const auto &child : state->getChildren()) {
@@ -163,20 +163,20 @@ std::vector<std::string> RSM::StateHierarchy::findMissingStateIds() const {
     std::vector<std::string> missingIds;
     std::unordered_set<std::string> existingIds;
 
-    // 모든 상태 ID 수집
+    // Collect all state IDs
     for (const auto &state : allStates_) {
         existingIds.insert(state->getId());
     }
 
-    // 참조된 상태 ID 확인
+    // Check referenced state IDs
     for (const auto &state : allStates_) {
-        // 초기 상태 확인
+        // Check initial state
         if (!state->getInitialState().empty() && existingIds.find(state->getInitialState()) == existingIds.end()) {
             missingIds.push_back(state->getInitialState());
             LOG_WARN("Missing state ID referenced as initial state: {}", state->getInitialState());
         }
 
-        // 전환 타겟 확인
+        // Check transition targets
         for (const auto &transition : state->getTransitions()) {
             const auto targets = transition->getTargets();
             for (const auto &target : targets) {
@@ -188,7 +188,7 @@ std::vector<std::string> RSM::StateHierarchy::findMissingStateIds() const {
         }
     }
 
-    // 중복 제거
+    // Remove duplicates
     std::sort(missingIds.begin(), missingIds.end());
     missingIds.erase(std::unique(missingIds.begin(), missingIds.end()), missingIds.end());
 
@@ -216,13 +216,13 @@ void RSM::StateHierarchy::printStateHierarchy(RSM::IStateNode *state, int depth)
         return;
     }
 
-    // 들여쓰기 생성
+    // Generate indentation
     std::string indent(depth * 2, ' ');
 
-    // 현재 상태 정보 출력
+    // Output current state information
     LOG_INFO("{}State: {}", indent, state->getId());
 
-    // 상태 타입 출력
+    // Output state type
     switch (state->getType()) {
     case Type::ATOMIC:
         LOG_INFO(" (atomic)");
@@ -244,14 +244,14 @@ void RSM::StateHierarchy::printStateHierarchy(RSM::IStateNode *state, int depth)
         break;
     }
 
-    // 초기 상태 정보 출력
+    // Output initial state information
     if (!state->getInitialState().empty()) {
         LOG_INFO(" [initial: {}]", state->getInitialState());
     }
 
     // Line break handled by previous Logger::info calls
 
-    // 전환 정보 출력
+    // Output transition information
     for (const auto &transition : state->getTransitions()) {
         LOG_INFO("{}  Transition: {} -> ", indent,
                  (transition->getEvent().empty() ? "<no event>" : transition->getEvent()));
@@ -275,7 +275,7 @@ void RSM::StateHierarchy::printStateHierarchy(RSM::IStateNode *state, int depth)
         // Line break handled by previous Logger::info calls
     }
 
-    // 자식 상태 재귀적으로 출력
+    // Recursively output child states
     for (const auto &child : state->getChildren()) {
         printStateHierarchy(child.get(), depth + 1);
     }

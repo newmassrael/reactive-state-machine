@@ -55,7 +55,7 @@ const std::vector<std::shared_ptr<RSM::ITransitionNode>> &RSM::StateNode::getTra
     return transitions_;
 }
 
-// 새로 추가된 데이터 모델 관련 메서드 구현
+// Implementation of newly added data model related methods
 void RSM::StateNode::addDataItem(std::shared_ptr<RSM::IDataModelItem> dataItem) {
     if (dataItem) {
         LOG_DEBUG("Adding data item to {}: {}", id_, dataItem->getId());
@@ -100,7 +100,7 @@ void RSM::StateNode::addEntryAction(const std::string &actionId) {
     LOG_DEBUG("Adding entry action to {}: {}", id_, actionId);
     entryActions_.push_back(actionId);
 
-    // onEntry_ 업데이트
+    // Update onEntry_
     if (onEntry_.empty()) {
         onEntry_ = actionId;
     } else {
@@ -112,7 +112,7 @@ void RSM::StateNode::addExitAction(const std::string &actionId) {
     LOG_DEBUG("Adding exit action to {}: {}", id_, actionId);
     exitActions_.push_back(actionId);
 
-    // onExit_ 업데이트
+    // Update onExit_
     if (onExit_.empty()) {
         onExit_ = actionId;
     } else {

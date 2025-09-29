@@ -272,6 +272,106 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                 return context;
             }
         }
+
+        TestExecutionContext executeTest(const std::string &scxmlContent, const TestMetadata &metadata,
+                                         const std::string &sourceFilePath) override {
+            auto startTime = std::chrono::steady_clock::now();
+
+            TestExecutionContext context;
+            context.scxmlContent = scxmlContent;
+            context.metadata = metadata;
+            context.expectedTarget = "pass";
+
+            // Create EventDispatcher infrastructure for delayed events and #_parent routing
+            auto eventRaiser = std::make_shared<RSM::EventRaiserImpl>();
+            auto scheduler = std::make_shared<RSM::EventSchedulerImpl>([](const RSM::EventDescriptor &event,
+                                                                          std::shared_ptr<RSM::IEventTarget> target,
+                                                                          const std::string &sendId) -> bool {
+                LOG_DEBUG("EventScheduler: Executing event '{}' on target '{}' with sendId '{}'", event.eventName,
+                          target->getDebugInfo(), sendId);
+                auto future = target->send(event);
+                try {
+                    auto sendResult = future.get();
+                    return sendResult.isSuccess;
+                } catch (const std::exception &e) {
+                    LOG_ERROR("EventScheduler: Failed to send event '{}': {}", event.eventName, e.what());
+                    return false;
+                }
+            });
+            auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(eventRaiser, scheduler);
+
+            try {
+                LOG_DEBUG("StateMachineTestExecutor: Starting test execution for test {} with source path: {}",
+                          metadata.id, sourceFilePath);
+
+                // Create StateMachine using Builder pattern with proper dependency injection
+                auto builder = RSM::StateMachineBuilder().withEventDispatcher(
+                    std::make_shared<RSM::EventDispatcherImpl>(scheduler, targetFactory));
+                builder.withEventRaiser(eventRaiser);
+                auto stateMachine = builder.build();
+
+                // Register source file path for relative path resolution before loading SCXML
+                RSM::JSEngine::instance().registerSessionFilePath(stateMachine->getSessionId(), sourceFilePath);
+                LOG_DEBUG("StateMachineTestExecutor: Registered source file path '{}' for session '{}'", sourceFilePath,
+                          stateMachine->getSessionId());
+
+                // Load SCXML content
+                if (!stateMachine->loadSCXMLFromString(scxmlContent)) {
+                    LOG_ERROR("StateMachineTestExecutor: Failed to load SCXML content");
+                    context.finalState = "error";
+                    context.errorMessage = "Failed to load SCXML content";
+                    return context;
+                }
+
+                // Set EventRaiser and start the state machine
+                stateMachine->setEventRaiser(eventRaiser);
+                if (!stateMachine->start()) {
+                    LOG_ERROR("StateMachineTestExecutor: Failed to start StateMachine");
+                    context.finalState = "error";
+                    context.errorMessage = "Failed to start StateMachine";
+                    return context;
+                }
+
+                // Wait for StateMachine to reach final state or timeout
+                auto waitStart = std::chrono::steady_clock::now();
+                std::string currentState;
+
+                while (std::chrono::steady_clock::now() - waitStart < timeout_) {
+                    currentState = stateMachine->getCurrentState();
+                    if (currentState == "pass" || currentState == "fail") {
+                        LOG_DEBUG("StateMachineTestExecutor: Reached final state: {}", currentState);
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+
+                context.finalState = currentState;
+                LOG_DEBUG("StateMachineTestExecutor: Test completed with final state: {}", context.finalState);
+
+                auto endTime = std::chrono::steady_clock::now();
+                context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+                // Cleanup
+                if (scheduler) {
+                    scheduler->shutdown(true);
+                }
+                if (eventRaiser) {
+                    eventRaiser->shutdown();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+                return context;
+
+            } catch (const std::exception &e) {
+                LOG_ERROR("StateMachineTestExecutor: Exception during test execution: {}", e.what());
+                context.finalState = "error";
+                context.errorMessage = "Exception: " + std::string(e.what());
+
+                auto endTime = std::chrono::steady_clock::now();
+                context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+                return context;
+            }
+        }
     };
 
     return std::make_unique<StateMachineTestExecutor>();
@@ -702,7 +802,7 @@ TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
 
         // Execute test
         LOG_DEBUG("W3C Single Test: Executing test {}", report.testId);
-        report.executionContext = executor_->executeTest(scxml, report.metadata);
+        report.executionContext = executor_->executeTest(scxml, report.metadata, txmlPath);
 
         // Validate result
         LOG_DEBUG("W3C Single Test: Validating result for test {}", report.testId);
