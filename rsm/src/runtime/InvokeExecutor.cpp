@@ -168,6 +168,13 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         }
     }
 
+    // W3C SCXML 6.4: Handle idlocation attribute - store invoke ID in parent session
+    if (!invoke->getIdLocation().empty()) {
+        JSEngine::instance().setVariable(parentSessionId, invoke->getIdLocation(), ScriptValue{invokeid});
+        LOG_DEBUG("SCXMLInvokeHandler: Set idlocation '{}' = '{}' in parent session '{}'", invoke->getIdLocation(),
+                  invokeid, parentSessionId);
+    }
+
     // Set special variables in child session
     JSEngine::instance().setVariable(childSessionId, "_invokeid", ScriptValue{invokeid});
     JSEngine::instance().setVariable(childSessionId, "_parent", ScriptValue{parentSessionId});
