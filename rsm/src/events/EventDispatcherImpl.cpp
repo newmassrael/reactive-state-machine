@@ -69,14 +69,14 @@ std::future<SendResult> EventDispatcherImpl::sendEvent(const EventDescriptor &ev
     }
 }
 
-bool EventDispatcherImpl::cancelEvent(const std::string &sendId) {
+bool EventDispatcherImpl::cancelEvent(const std::string &sendId, const std::string &sessionId) {
     if (sendId.empty()) {
         LOG_WARN("Cannot cancel event with empty sendId");
         return false;
     }
 
     LOG_DEBUG("EventDispatcherImpl: Cancelling event with sendId: {}", sendId);
-    return scheduler_->cancelEvent(sendId);
+    return scheduler_->cancelEvent(sendId, sessionId);
 }
 
 std::future<SendResult> EventDispatcherImpl::sendEventDelayed(const EventDescriptor &event,

@@ -39,7 +39,7 @@ public:
     // IEventDispatcher implementation
     std::future<SendResult> sendEvent(const EventDescriptor &event) override;
     std::future<SendResult> sendEventDelayed(const EventDescriptor &event, std::chrono::milliseconds delay) override;
-    bool cancelEvent(const std::string &sendId) override;
+    bool cancelEvent(const std::string &sendId, const std::string &sessionId = "") override;
     bool isEventPending(const std::string &sendId) const override;
     std::string getStatistics() const override;
     void shutdown() override;

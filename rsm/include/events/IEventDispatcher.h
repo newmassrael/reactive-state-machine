@@ -52,9 +52,10 @@ public:
     /**
      * @brief Cancel a previously scheduled event
      * @param sendId Send ID returned from sendEvent or sendEventDelayed
+     * @param sessionId Session ID for cross-session isolation (empty = no session check)
      * @return true if event was successfully cancelled
      */
-    virtual bool cancelEvent(const std::string &sendId) = 0;
+    virtual bool cancelEvent(const std::string &sendId, const std::string &sessionId = "") = 0;
 
     /**
      * @brief Check if an event is still pending
@@ -108,9 +109,10 @@ public:
     /**
      * @brief Cancel a scheduled event
      * @param sendId Send ID of the event to cancel
+     * @param sessionId Session ID for cross-session isolation (empty = no session check)
      * @return true if event was found and cancelled
      */
-    virtual bool cancelEvent(const std::string &sendId) = 0;
+    virtual bool cancelEvent(const std::string &sendId, const std::string &sessionId = "") = 0;
 
     /**
      * @brief Cancel all scheduled events for a specific session

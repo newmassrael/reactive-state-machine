@@ -87,7 +87,7 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     return future;
 }
 
-bool EventSchedulerImpl::cancelEvent(const std::string &sendId) {
+bool EventSchedulerImpl::cancelEvent(const std::string &sendId, const std::string &sessionId) {
     if (sendId.empty()) {
         LOG_WARN("EventSchedulerImpl: Cannot cancel event with empty sendId");
         return false;
@@ -97,6 +97,13 @@ bool EventSchedulerImpl::cancelEvent(const std::string &sendId) {
 
     auto it = sendIdIndex_.find(sendId);
     if (it != sendIdIndex_.end() && !it->second->cancelled) {
+        // W3C SCXML 6.3: Cross-session isolation - events can only be cancelled from the same session
+        if (!sessionId.empty() && it->second->sessionId != sessionId) {
+            LOG_DEBUG("EventSchedulerImpl: Cross-session cancel blocked - event from '{}', cancel from '{}'",
+                      it->second->sessionId, sessionId);
+            return false;
+        }
+
         LOG_DEBUG("EventSchedulerImpl: Cancelling event with sendId: {}", sendId);
         // CRITICAL FIX: Atomic cancellation - mark cancelled then remove from index
         // Priority queue entry will be cleaned up during processReadyEvents()

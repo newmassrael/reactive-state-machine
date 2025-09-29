@@ -899,7 +899,7 @@ bool ActionExecutorImpl::executeCancelAction(const CancelAction &action) {
             LOG_DEBUG("ActionExecutorImpl: Using event dispatcher for cancel action - sendId: '{}', session: '{}'",
                       sendId, sessionId_);
 
-            bool cancelled = eventDispatcher_->cancelEvent(sendId);
+            bool cancelled = eventDispatcher_->cancelEvent(sendId, sessionId_);
             if (cancelled) {
                 LOG_INFO("ActionExecutorImpl: Successfully cancelled event with sendId: {}", sendId);
                 return true;

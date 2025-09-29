@@ -50,7 +50,7 @@ public:
                                            std::shared_ptr<IEventTarget> target, const std::string &sendId = "",
                                            const std::string &sessionId = "") override;
 
-    bool cancelEvent(const std::string &sendId) override;
+    bool cancelEvent(const std::string &sendId, const std::string &sessionId = "") override;
     size_t cancelEventsForSession(const std::string &sessionId) override;
     bool hasEvent(const std::string &sendId) const override;
     size_t getScheduledEventCount() const override;

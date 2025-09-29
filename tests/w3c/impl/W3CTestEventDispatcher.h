@@ -68,7 +68,7 @@ public:
      * @param sendId ID of event to cancel
      * @return true if event was found and cancelled
      */
-    bool cancelEvent(const std::string &sendId) override;
+    bool cancelEvent(const std::string &sendId, const std::string &sessionId = "") override;
 
     /**
      * @brief Send delayed event (W3C SCXML compliance with actual delays)

@@ -166,7 +166,8 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
             sendAction->setType(typeAttr->get_value());
         }
 
-        auto sendIdAttr = actionElement->get_attribute("sendid");
+        // W3C SCXML: send element uses 'id' attribute for sendid (for cancellation reference)
+        auto sendIdAttr = actionElement->get_attribute("id");
         if (sendIdAttr) {
             sendAction->setSendId(sendIdAttr->get_value());
         }

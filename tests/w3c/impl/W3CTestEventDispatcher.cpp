@@ -67,9 +67,9 @@ std::future<SendResult> W3CTestEventDispatcher::sendEvent(const EventDescriptor 
     }
 }
 
-bool W3CTestEventDispatcher::cancelEvent(const std::string &sendId) {
+bool W3CTestEventDispatcher::cancelEvent(const std::string &sendId, const std::string &sessionId) {
     // REFACTOR: Delegate to EventScheduler instead of duplicate logic
-    bool cancelled = scheduler_->cancelEvent(sendId);
+    bool cancelled = scheduler_->cancelEvent(sendId, sessionId);
 
     if (cancelled) {
         LOG_DEBUG("W3CTestEventDispatcher: Successfully cancelled event with sendId: {} (W3C SCXML 6.2 compliance)",
