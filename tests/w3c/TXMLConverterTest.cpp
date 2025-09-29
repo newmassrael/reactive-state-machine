@@ -28,6 +28,120 @@ protected:
 };
 
 // ============================================================================
+// W3C Test 207 Delay Bug Fix: conf:delay numeric to time unit conversion
+// ============================================================================
+
+// Test W3C Test 207: conf:delay numeric value conversion to proper time units
+TEST_F(TXMLConverterTest, ConvertsNumericDelayToCSS2TimeFormat) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml initial="s0" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<state id="s0">
+  <invoke type="scxml">
+    <content>
+      <scxml initial="sub0" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+        <state id="sub0">
+          <onentry>
+           <send event="event1" id="foo" conf:delay="1"/>
+            <send event="event2" conf:delay="1.5"/>
+            <send target="#_parent" event="childToParent"/>
+          </onentry>
+          <transition event="event1" target="subFinal">
+            <send target="#_parent" event="pass"/>
+          </transition>
+          <transition event="*" target="subFinal">
+            <send target="#_parent" event="fail"/>
+          </transition>
+        </state>
+        <final id="subFinal"/>
+      </scxml>
+    </content>
+  </invoke>
+  <state id="s01">
+    <transition event="childToParent" target="s02">
+      <cancel sendid="foo"/>
+    </transition>
+  </state>
+  <state id="s02">
+    <transition event="pass" conf:targetpass=""/>
+    <transition event="fail" conf:targetfail=""/>
+  </state>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // **CRITICAL BUG FIX**: conf:delay="1" should convert to delay="1s" (CSS2 compliant)
+    EXPECT_NE(result.find(R"(delay="1s")"), std::string::npos)
+        << "conf:delay=\"1\" should convert to delay=\"1s\" (CSS2 time specification)";
+
+    // **CRITICAL BUG FIX**: conf:delay="1.5" should convert to delay="1.5s" (CSS2 compliant)
+    EXPECT_NE(result.find(R"(delay="1.5s")"), std::string::npos)
+        << "conf:delay=\"1.5\" should convert to delay=\"1.5s\" (CSS2 time specification)";
+
+    // **REGRESSION PREVENTION**: Verify unitless delay values are NOT generated (SCXML spec violation)
+    EXPECT_EQ(result.find(R"(delay="1")"), std::string::npos)
+        << "Should NOT generate delay=\"1\" (violates SCXML CSS2 time specification)";
+
+    EXPECT_EQ(result.find(R"(delay="1.5")"), std::string::npos)
+        << "Should NOT generate delay=\"1.5\" (violates SCXML CSS2 time specification)";
+
+    // Verify other conversions work correctly
+    EXPECT_NE(result.find(R"(datamodel="ecmascript")"), std::string::npos);
+    EXPECT_NE(result.find(R"(target="pass")"), std::string::npos);
+    EXPECT_NE(result.find(R"(target="fail")"), std::string::npos);
+    EXPECT_NE(result.find(R"(<final id="pass"/>)"), std::string::npos);
+    EXPECT_NE(result.find(R"(<final id="fail"/>)"), std::string::npos);
+    EXPECT_EQ(result.find("conf:"), std::string::npos);
+}
+
+// Test CSS2 time specification compliance for delay conversion
+TEST_F(TXMLConverterTest, DelayConversionCSS2Compliance) {
+    std::string txml = createValidTXML(R"(
+        <onentry>
+            <!-- Integer delay values (should become seconds) -->
+            <send event="event1" conf:delay="2"/>
+            <send event="event2" conf:delay="5"/>
+            <!-- Decimal delay values (should become seconds) -->
+            <send event="event3" conf:delay="0.5"/>
+            <send event="event4" conf:delay="2.75"/>
+            <!-- Already CSS2 compliant values should be preserved -->
+            <send event="event5" conf:delay="1000ms"/>
+            <send event="event6" conf:delay="3s"/>
+        </onentry>
+    )");
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // **CSS2 COMPLIANCE**: Integer seconds conversion
+    EXPECT_NE(result.find(R"(delay="2s")"), std::string::npos)
+        << "conf:delay=\"2\" should convert to CSS2 compliant delay=\"2s\"";
+    EXPECT_NE(result.find(R"(delay="5s")"), std::string::npos)
+        << "conf:delay=\"5\" should convert to CSS2 compliant delay=\"5s\"";
+
+    // **CSS2 COMPLIANCE**: Decimal seconds conversion
+    EXPECT_NE(result.find(R"(delay="0.5s")"), std::string::npos)
+        << "conf:delay=\"0.5\" should convert to CSS2 compliant delay=\"0.5s\"";
+    EXPECT_NE(result.find(R"(delay="2.75s")"), std::string::npos)
+        << "conf:delay=\"2.75\" should convert to CSS2 compliant delay=\"2.75s\"";
+
+    // **CSS2 COMPLIANCE**: Already compliant values preserved
+    EXPECT_NE(result.find(R"(delay="1000ms")"), std::string::npos)
+        << "CSS2 compliant conf:delay=\"1000ms\" should be preserved";
+    EXPECT_NE(result.find(R"(delay="3s")"), std::string::npos)
+        << "CSS2 compliant conf:delay=\"3s\" should be preserved";
+
+    // **REGRESSION PREVENTION**: No unitless delay values
+    EXPECT_EQ(result.find(R"(delay="2">)"), std::string::npos)
+        << "Should NOT generate unitless delay values (CSS2 violation)";
+    EXPECT_EQ(result.find(R"(delay="0.5">)"), std::string::npos)
+        << "Should NOT generate unitless delay values (CSS2 violation)";
+
+    EXPECT_EQ(result.find("conf:"), std::string::npos);
+}
+
+// ============================================================================
 // Basic Namespace and Structure Tests
 // ============================================================================
 

@@ -130,12 +130,6 @@ private:
     std::string parseDataSafely(const std::string &dataStr) const;
 
     /**
-     * @brief Generate unique event ID
-     * @return Unique event identifier
-     */
-    std::string generateEventId() const;
-
-    /**
      * @brief Validate HTTP request content type
      * @param contentType Content type to validate
      * @return true if content type is allowed

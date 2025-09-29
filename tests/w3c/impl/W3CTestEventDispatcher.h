@@ -31,24 +31,8 @@ private:
     // Store the last event parameters for W3C test access (eventName -> params map)
     mutable std::map<std::string, std::map<std::string, std::string>> lastEventParams_;
 
-    // W3C Compliance: Internal scheduler for delayed events
-    struct ScheduledTestEvent {
-        EventDescriptor event;
-        std::chrono::steady_clock::time_point executeAt;
-        std::string sendId;
-        bool cancelled = false;
-
-        // W3C SCXML 6.2: Store evaluated parameters at send time (mandatory compliance)
-        std::map<std::string, std::string> evaluatedParams;
-
-        ScheduledTestEvent(const EventDescriptor &evt, std::chrono::steady_clock::time_point execTime,
-                           const std::string &id, const std::map<std::string, std::string> &evalParams)
-            : event(evt), executeAt(execTime), sendId(id), evaluatedParams(evalParams) {}
-    };
-
-    mutable std::mutex schedulerMutex_;
-    std::map<std::string, std::unique_ptr<ScheduledTestEvent>> scheduledEvents_;
-    std::atomic<uint64_t> sendIdCounter_{0};
+    // REFACTOR: Use shared EventScheduler instead of duplicate implementation
+    std::shared_ptr<IEventScheduler> scheduler_;
 
     /**
      * @brief Execute event immediately for W3C test environment
@@ -57,24 +41,13 @@ private:
      */
     std::future<SendResult> executeEventImmediately(const EventDescriptor &event);
 
-    /**
-     * @brief Process any ready scheduled events
-     * Called periodically to check if delayed events should execute
-     */
-    void processReadyEvents();
-
-    /**
-     * @brief Generate unique sendId for W3C test events
-     * @return Unique send ID string
-     */
-    std::string generateSendId();
-
 public:
     /**
      * @brief Constructor for W3C test event dispatcher
      * @param sessionId Session ID for JavaScript evaluation context
+     * @param scheduler Event scheduler instance (will create one if null)
      */
-    explicit W3CTestEventDispatcher(const std::string &sessionId);
+    explicit W3CTestEventDispatcher(const std::string &sessionId, std::shared_ptr<IEventScheduler> scheduler = nullptr);
 
     /**
      * @brief Virtual destructor for proper inheritance

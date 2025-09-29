@@ -57,17 +57,6 @@ protected:
      */
     std::string trimString(const std::string &str) const;
 
-    /**
-     * @brief Generate unique ID for action instances
-     *
-     * SCXML Compliance: "If the author does not provide an ID, the processor
-     * must generate a new unique ID each time the element is executed"
-     *
-     * @param prefix Optional prefix for the generated ID
-     * @return Unique ID string
-     */
-    static std::string generateUniqueId(const std::string &prefix = "action");
-
 private:
     std::string id_;
 };

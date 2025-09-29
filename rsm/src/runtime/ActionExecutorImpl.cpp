@@ -9,6 +9,7 @@
 #include "actions/SendAction.h"
 #include "common/Logger.h"
 #include "common/TypeRegistry.h"
+#include "common/UniqueIdGenerator.h"
 #include "events/EventDescriptor.h"
 #include "events/EventRaiserService.h"
 
@@ -145,8 +146,8 @@ std::string ActionExecutorImpl::evaluateExpression(const std::string &expression
 
     LOG_DEBUG("Evaluating expression: '{}'", expression);
 
-    // CRITICAL: 세션 준비 상태를 먼저 확인 - 세션이 준비되지 않았으면 빈 문자열 반환
-    // 이는 하위 호환성을 보장하고 테스트에서 예상되는 동작과 일치합니다
+    // CRITICAL: Check session ready state first - return empty string if session not ready
+    // This ensures backward compatibility and matches expected behavior in tests
     if (!isSessionReady()) {
         LOG_DEBUG("Session not ready, returning empty string for expression: '{}'", expression);
         return "";
@@ -833,84 +834,6 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             }
         }
 
-        // SCXML Event System: Use event dispatcher if available for actual event sending
-        // W3C SCXML: Handle #_parent pattern directly (before EventDispatcher)
-        if (!target.empty() && target == "#_parent") {
-            LOG_DEBUG("ActionExecutorImpl: Detected #_parent pattern - routing to parent session");
-
-            try {
-                // Create ParentEventTarget directly
-                auto parentTarget = std::make_shared<ParentEventTarget>(sessionId_, eventRaiser_);
-
-                // Create event descriptor
-                EventDescriptor event;
-                event.eventName = eventName;
-                event.target = target;
-                event.data = eventData;
-                event.delay = delay;
-                event.sendId = sendId;
-                event.sessionId = sessionId_;
-                event.params = evaluatedParams;
-
-                // Send directly to parent target
-                auto resultFuture = parentTarget->send(event);
-
-                LOG_DEBUG("ActionExecutorImpl: Event '{}' sent directly to parent session (fire-and-forget)",
-                          eventName);
-                return true;
-
-            } catch (const std::exception &e) {
-                LOG_ERROR("ActionExecutorImpl: Failed to send to parent session: {}", e.what());
-
-                // SCXML 3.12.1: Generate error.execution event for infrastructure failures
-                if (eventRaiser_) {
-                    eventRaiser_->raiseEvent("error.execution",
-                                             "Failed to send to parent session: " + std::string(e.what()));
-                }
-                return true;  // Fire and forget semantics
-            }
-        }
-
-        // W3C SCXML: Handle #_invokeid pattern directly (before EventDispatcher)
-        if (!target.empty() && target.length() > 2 && target.substr(0, 2) == "#_" && target != "#_internal" &&
-            target != "#_parent") {
-            // Extract invoke ID from #_<invokeid> pattern
-            std::string invokeId = target.substr(2);
-            LOG_DEBUG("ActionExecutorImpl: Detected #_invokeid pattern - invoke ID: '{}'", invokeId);
-
-            try {
-                // Create InvokeEventTarget directly
-                auto invokeTarget = std::make_shared<InvokeEventTarget>(invokeId, sessionId_);
-
-                // Create event descriptor
-                EventDescriptor event;
-                event.eventName = eventName;
-                event.target = target;
-                event.data = eventData;
-                event.delay = delay;
-                event.sendId = sendId;
-                event.sessionId = sessionId_;
-                event.params = evaluatedParams;
-
-                // Send directly to invoke target
-                auto resultFuture = invokeTarget->send(event);
-
-                LOG_DEBUG("ActionExecutorImpl: Event '{}' sent directly to invoke ID '{}' (fire-and-forget)", eventName,
-                          invokeId);
-                return true;
-
-            } catch (const std::exception &e) {
-                LOG_ERROR("ActionExecutorImpl: Failed to send to invoke ID '{}': {}", invokeId, e.what());
-
-                // SCXML 3.12.1: Generate error.execution event for infrastructure failures
-                if (eventRaiser_) {
-                    eventRaiser_->raiseEvent("error.execution",
-                                             "Failed to send to invoke ID " + invokeId + ": " + e.what());
-                }
-                return true;  // Fire and forget semantics
-            }
-        }
-
         if (eventDispatcher_) {
             LOG_DEBUG("ActionExecutorImpl: Using event dispatcher for send action");
 
@@ -921,8 +844,8 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             event.data = eventData;
             event.delay = delay;
             event.sendId = sendId;
-            event.sessionId = sessionId_;    // 🔧 W3C SCXML 6.2: Track session for delayed event cancellation
-            event.params = evaluatedParams;  // ✅ W3C SCXML compliant: params evaluated at send time
+            event.sessionId = sessionId_;    // W3C SCXML 6.2: Track session for delayed event cancellation
+            event.params = evaluatedParams;  // W3C SCXML compliant: params evaluated at send time
 
             // Send via dispatcher (handles both immediate and delayed events)
             auto resultFuture = eventDispatcher_->sendEvent(event);
@@ -953,7 +876,7 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
 }
 
 bool ActionExecutorImpl::executeCancelAction(const CancelAction &action) {
-    LOG_DEBUG("Executing cancel action: {}", action.getId());
+    LOG_DEBUG("Executing cancel action: {} in session: '{}'", action.getId(), sessionId_);
 
     try {
         // Determine sendId to cancel
@@ -973,7 +896,8 @@ bool ActionExecutorImpl::executeCancelAction(const CancelAction &action) {
 
         // SCXML Event System: Use event dispatcher if available
         if (eventDispatcher_) {
-            LOG_DEBUG("ActionExecutorImpl: Using event dispatcher for cancel action");
+            LOG_DEBUG("ActionExecutorImpl: Using event dispatcher for cancel action - sendId: '{}', session: '{}'",
+                      sendId, sessionId_);
 
             bool cancelled = eventDispatcher_->cancelEvent(sendId);
             if (cancelled) {
@@ -1250,17 +1174,8 @@ bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::
 }
 
 std::string ActionExecutorImpl::generateUniqueSendId() const {
-    // SCXML 6.2.4: Generate unique sendid for send actions
-    // Use session ID + timestamp + atomic counter for uniqueness
-    static std::atomic<uint64_t> counter{0};
-
-    auto timestamp =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-            .count();
-
-    auto currentCounter = counter.fetch_add(1);
-
-    return "send_" + sessionId_ + "_" + std::to_string(timestamp) + "_" + std::to_string(currentCounter);
+    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
+    return UniqueIdGenerator::generateSendId();
 }
 
 }  // namespace RSM

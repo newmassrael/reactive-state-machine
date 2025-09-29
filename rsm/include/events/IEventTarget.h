@@ -63,9 +63,11 @@ public:
     /**
      * @brief Create an event target for the given URI
      * @param targetUri Target URI (e.g., "#_internal", "http://example.com")
+     * @param sessionId Session ID for session-specific target creation
      * @return Event target instance, or nullptr if URI not supported
      */
-    virtual std::shared_ptr<IEventTarget> createTarget(const std::string &targetUri) = 0;
+    virtual std::shared_ptr<IEventTarget> createTarget(const std::string &targetUri,
+                                                       const std::string &sessionId = "") = 0;
 
     /**
      * @brief Register a target type with the factory

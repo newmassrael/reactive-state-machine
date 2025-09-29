@@ -1,4 +1,5 @@
 #include "actions/CancelAction.h"
+#include "common/UniqueIdGenerator.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
 
@@ -24,7 +25,7 @@ std::string CancelAction::getActionType() const {
 
 std::shared_ptr<IActionNode> CancelAction::clone() const {
     // SCXML Compliance: Generate new unique ID for cloned action
-    auto cloned = std::make_shared<CancelAction>(sendId_, generateUniqueId("cancel"));
+    auto cloned = std::make_shared<CancelAction>(sendId_, UniqueIdGenerator::generateActionId("cancel"));
     cloned->sendIdExpr_ = sendIdExpr_;
     return cloned;
 }

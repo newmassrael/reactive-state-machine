@@ -220,7 +220,9 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert event raw attributes (remove as they are test-specific)
     result = std::regex_replace(result, CONF_EVENT_RAW_ATTR, R"(expr="_event.raw")");
 
-    // Convert timing and delay attributes
+    // Convert timing and delay attributes (add "s" suffix for numeric values per CSS2 spec)
+    std::regex delay_numeric_pattern(R"hjk(conf:delay="([0-9]+(?:\.[0-9]+)?)")hjk");
+    result = std::regex_replace(result, delay_numeric_pattern, R"(delay="$1s")");
     result = std::regex_replace(result, CONF_DELAY_ATTR, R"(delay="$1")");
 
     // Convert conf:delayFromVar to delayexpr with variable prefix for numeric values

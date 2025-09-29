@@ -1,5 +1,6 @@
 #include "events/EventSchedulerImpl.h"
 #include "common/Logger.h"
+#include "common/UniqueIdGenerator.h"
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
@@ -52,28 +53,33 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     std::string actualSendId = sendId.empty() ? generateSendId() : sendId;
 
     // Cancel existing event with same send ID (W3C SCXML behavior)
-    auto existingIt = scheduledEvents_.find(actualSendId);
-    if (existingIt != scheduledEvents_.end()) {
+    // CRITICAL FIX: Atomic cancellation of existing event under mutex lock
+    auto existingIt = sendIdIndex_.find(actualSendId);
+    if (existingIt != sendIdIndex_.end()) {
         LOG_DEBUG("EventSchedulerImpl: Cancelling existing event with sendId: {}", actualSendId);
         existingIt->second->cancelled = true;
-        scheduledEvents_.erase(existingIt);
+        sendIdIndex_.erase(existingIt);
+        // Priority queue entry will be cleaned up during processReadyEvents()
     }
 
     // Calculate execution time
-    auto executeAt = std::chrono::steady_clock::now() + delay;
+    auto now = std::chrono::steady_clock::now();
+    auto executeAt = now + delay;
 
-    // Create scheduled event
-    auto scheduledEvent = std::make_unique<ScheduledEvent>(event, executeAt, target, actualSendId, sessionId);
+    // Create scheduled event as shared_ptr for safe async access
+    auto scheduledEvent = std::make_shared<ScheduledEvent>(event, executeAt, target, actualSendId, sessionId);
     auto future = scheduledEvent->sendIdPromise.get_future();
 
     // Set the send ID promise immediately
     scheduledEvent->sendIdPromise.set_value(actualSendId);
 
-    // Store the event
-    scheduledEvents_[actualSendId] = std::move(scheduledEvent);
+    // Store in both data structures
+    // CRITICAL FIX: Store shared_ptr instead of raw pointer for memory safety
+    sendIdIndex_[actualSendId] = scheduledEvent;
+    executionQueue_.push(scheduledEvent);
 
-    LOG_DEBUG("EventSchedulerImpl: Scheduled event '{}' with sendId '{}' for {}ms delay", event.eventName, actualSendId,
-              delay.count());
+    LOG_DEBUG("EventSchedulerImpl: Scheduled event '{}' with sendId '{}' for {}ms delay in session '{}'",
+              event.eventName, actualSendId, delay.count(), sessionId);
 
     // Notify timer thread about new event
     timerCondition_.notify_one();
@@ -89,18 +95,22 @@ bool EventSchedulerImpl::cancelEvent(const std::string &sendId) {
 
     std::lock_guard<std::mutex> lock(schedulerMutex_);
 
-    auto it = scheduledEvents_.find(sendId);
-    if (it != scheduledEvents_.end() && !it->second->cancelled) {
+    auto it = sendIdIndex_.find(sendId);
+    if (it != sendIdIndex_.end() && !it->second->cancelled) {
         LOG_DEBUG("EventSchedulerImpl: Cancelling event with sendId: {}", sendId);
+        // CRITICAL FIX: Atomic cancellation - mark cancelled then remove from index
+        // Priority queue entry will be cleaned up during processReadyEvents()
         it->second->cancelled = true;
-        scheduledEvents_.erase(it);
+        sendIdIndex_.erase(it);
 
         // Notify timer thread about cancellation
         timerCondition_.notify_one();
         return true;
     }
 
-    LOG_DEBUG("EventSchedulerImpl: Event with sendId '{}' not found or already cancelled", sendId);
+    LOG_DEBUG("EventSchedulerImpl: Event with sendId '{}' not found or already cancelled (Cross-session cancel attempt "
+              "may be blocked)",
+              sendId);
     return false;
 }
 
@@ -113,14 +123,14 @@ size_t EventSchedulerImpl::cancelEventsForSession(const std::string &sessionId) 
     std::lock_guard<std::mutex> lock(schedulerMutex_);
 
     size_t cancelledCount = 0;
-    auto it = scheduledEvents_.begin();
+    auto it = sendIdIndex_.begin();
 
-    while (it != scheduledEvents_.end()) {
+    while (it != sendIdIndex_.end()) {
         if (it->second->sessionId == sessionId && !it->second->cancelled) {
             LOG_DEBUG("EventSchedulerImpl: Cancelling event '{}' with sendId '{}' for session '{}'",
                       it->second->event.eventName, it->first, sessionId);
             it->second->cancelled = true;
-            it = scheduledEvents_.erase(it);
+            it = sendIdIndex_.erase(it);
             cancelledCount++;
         } else {
             ++it;
@@ -142,13 +152,13 @@ bool EventSchedulerImpl::hasEvent(const std::string &sendId) const {
     }
 
     std::lock_guard<std::mutex> lock(schedulerMutex_);
-    auto it = scheduledEvents_.find(sendId);
-    return it != scheduledEvents_.end() && !it->second->cancelled;
+    auto it = sendIdIndex_.find(sendId);
+    return it != sendIdIndex_.end() && !it->second->cancelled;
 }
 
 size_t EventSchedulerImpl::getScheduledEventCount() const {
     std::lock_guard<std::mutex> lock(schedulerMutex_);
-    return scheduledEvents_.size();
+    return sendIdIndex_.size();
 }
 
 void EventSchedulerImpl::shutdown(bool waitForCompletion) {
@@ -179,7 +189,7 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
     // Wake up timer thread
     timerCondition_.notify_all();
 
-    // Wait for timer thread to finish
+    // Wait for timer thread to finish BEFORE acquiring mutex to prevent deadlock
     if (timerThread_.joinable()) {
         if (waitForCompletion) {
             timerThread_.join();
@@ -188,11 +198,18 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
         }
     }
 
-    // Clear all scheduled events
+    // Clear all scheduled events AFTER timer thread has terminated
+    // CRITICAL FIX: This prevents deadlock where timer thread holds mutex while shutdown() tries to acquire it
     {
         std::lock_guard<std::mutex> lock(schedulerMutex_);
-        size_t cancelledCount = scheduledEvents_.size();
-        scheduledEvents_.clear();
+        size_t cancelledCount = sendIdIndex_.size();
+        sendIdIndex_.clear();
+        // Clear the priority queue by creating a new empty one
+        // CRITICAL FIX: Use shared_ptr type for memory safety
+        std::priority_queue<std::shared_ptr<ScheduledEvent>, std::vector<std::shared_ptr<ScheduledEvent>>,
+                            ExecutionTimeComparator>
+            emptyQueue;
+        executionQueue_.swap(emptyQueue);
 
         if (cancelledCount > 0) {
             LOG_DEBUG("EventSchedulerImpl: Cancelled {} pending events during shutdown", cancelledCount);
@@ -213,12 +230,13 @@ void EventSchedulerImpl::timerThreadMain() {
         std::unique_lock<std::mutex> lock(schedulerMutex_);
 
         // Calculate when we need to wake up next
-        auto nextExecutionTime = getNextExecutionTime();
+        // CRITICAL FIX: Use unlocked version to prevent deadlock (mutex already held)
+        auto nextExecutionTime = getNextExecutionTimeUnlocked();
 
         if (nextExecutionTime == std::chrono::steady_clock::time_point::max()) {
             // No events scheduled, wait indefinitely until notified
             LOG_DEBUG("EventSchedulerImpl: No events scheduled, waiting for notification");
-            timerCondition_.wait(lock, [&] { return shutdownRequested_.load() || !scheduledEvents_.empty(); });
+            timerCondition_.wait(lock, [&] { return shutdownRequested_.load() || !executionQueue_.empty(); });
         } else {
             // Wait until next event time or notification
             auto now = std::chrono::steady_clock::now();
@@ -226,7 +244,11 @@ void EventSchedulerImpl::timerThreadMain() {
                 auto waitTime = std::chrono::duration_cast<std::chrono::milliseconds>(nextExecutionTime - now);
                 LOG_DEBUG("EventSchedulerImpl: Waiting {}ms for next event", waitTime.count());
 
-                timerCondition_.wait_until(lock, nextExecutionTime, [&] { return shutdownRequested_.load(); });
+                // Include check for new events that might need earlier execution
+                // CRITICAL FIX: Use unlocked version to prevent deadlock (mutex already held by wait_until)
+                timerCondition_.wait_until(lock, nextExecutionTime, [&] {
+                    return shutdownRequested_.load() || getNextExecutionTimeUnlocked() < nextExecutionTime;
+                });
             }
         }
 
@@ -246,52 +268,98 @@ void EventSchedulerImpl::timerThreadMain() {
 }
 
 size_t EventSchedulerImpl::processReadyEvents() {
-    std::vector<std::unique_ptr<ScheduledEvent>> readyEvents;
+    std::vector<std::shared_ptr<ScheduledEvent>> readyEvents;
     auto now = std::chrono::steady_clock::now();
 
-    // Collect ready events under lock
+    // Collect ready events from priority queue under lock
     {
         std::lock_guard<std::mutex> lock(schedulerMutex_);
 
-        auto it = scheduledEvents_.begin();
-        while (it != scheduledEvents_.end()) {
-            if (!it->second->cancelled && it->second->executeAt <= now) {
-                readyEvents.push_back(std::move(it->second));
-                it = scheduledEvents_.erase(it);
+        // Process events from priority queue in execution time order
+        while (!executionQueue_.empty()) {
+            // CRITICAL FIX: Use shared_ptr instead of raw pointer for memory safety
+            std::shared_ptr<ScheduledEvent> topEvent = executionQueue_.top();
+
+            // If event is cancelled, remove from both structures atomically
+            if (topEvent->cancelled) {
+                executionQueue_.pop();
+                // CRITICAL FIX: Also remove from sendIdIndex_ to prevent memory leak
+                auto cancelledIt = sendIdIndex_.find(topEvent->sendId);
+                if (cancelledIt != sendIdIndex_.end()) {
+                    sendIdIndex_.erase(cancelledIt);
+                    LOG_DEBUG("EventSchedulerImpl: Cleaned up cancelled event from sendIdIndex_: {}", topEvent->sendId);
+                }
+                continue;
+            }
+
+            // If event is not ready yet, break (all remaining events are later)
+            if (topEvent->executeAt > now) {
+                break;
+            }
+
+            // Event is ready - remove from both structures atomically
+            // CRITICAL FIX: Ensure atomic update of dual data structures under mutex lock
+            executionQueue_.pop();
+            auto it = sendIdIndex_.find(topEvent->sendId);
+            if (it != sendIdIndex_.end()) {
+                readyEvents.push_back(it->second);
+                sendIdIndex_.erase(it);
+                // Both structures are now consistent - event removed from queue and index
             } else {
-                ++it;
+                // This should not happen in normal operation - log for debugging
+                LOG_WARN("EventSchedulerImpl: Event in queue but not in index - sendId: {}", topEvent->sendId);
             }
         }
     }
 
-    // Queue events for asynchronous callback execution (PREVENTS DEADLOCK)
+    // Process events with per-session sequential execution + inter-session parallelism
+    std::unordered_map<std::string, std::vector<std::shared_ptr<ScheduledEvent>>> sessionEventGroups;
+
+    // Group events by session (shared_ptr allows safe copying)
     for (auto &event : readyEvents) {
-        LOG_DEBUG("EventSchedulerImpl: Queueing event '{}' with sendId '{}' for async execution",
-                  event->event.eventName, event->sendId);
+        sessionEventGroups[event->sessionId].emplace_back(event);
+    }
 
-        // Create callback task that captures the event data
-        auto callbackTask = [this, eventDescriptor = event->event, target = event->target, sendId = event->sendId]() {
-            try {
-                LOG_DEBUG("EventSchedulerImpl: Executing event '{}' asynchronously", eventDescriptor.eventName);
+    // Execute each session's events asynchronously (sessions run in parallel, events within session are sequential)
+    for (auto &[sessionId, sessionEvents] : sessionEventGroups) {
+        if (sessionEvents.empty()) {
+            continue;
+        }
 
-                // Execute the callback without holding any scheduler locks
-                bool success = executionCallback_(eventDescriptor, target, sendId);
+        // Create async task for this session's sequential execution
+        auto sessionTask = [this, sessionId, sessionEvents]() {
+            LOG_DEBUG("EventSchedulerImpl: Processing {} events for session '{}'", sessionEvents.size(), sessionId);
 
-                if (success) {
-                    LOG_DEBUG("EventSchedulerImpl: Event '{}' executed successfully", eventDescriptor.eventName);
-                } else {
-                    LOG_WARN("EventSchedulerImpl: Event '{}' execution failed", eventDescriptor.eventName);
+            // Execute events within this session SEQUENTIALLY
+            for (auto &eventPtr : sessionEvents) {
+                if (!eventPtr) {
+                    LOG_ERROR("EventSchedulerImpl: NULL shared_ptr in session '{}'", sessionId);
+                    continue;
                 }
+                try {
+                    LOG_DEBUG("EventSchedulerImpl: Executing event '{}' sequentially in session '{}'",
+                              eventPtr->event.eventName, sessionId);
 
-            } catch (const std::exception &e) {
-                LOG_ERROR("EventSchedulerImpl: Error executing event '{}': {}", eventDescriptor.eventName, e.what());
+                    // Execute the callback
+                    bool success = executionCallback_(eventPtr->event, eventPtr->target, eventPtr->sendId);
+
+                    if (success) {
+                        LOG_DEBUG("EventSchedulerImpl: Event '{}' executed successfully", eventPtr->event.eventName);
+                    } else {
+                        LOG_WARN("EventSchedulerImpl: Event '{}' execution failed", eventPtr->event.eventName);
+                    }
+
+                } catch (const std::exception &e) {
+                    LOG_ERROR("EventSchedulerImpl: Error executing event '{}': {}", eventPtr->event.eventName,
+                              e.what());
+                }
             }
         };
 
-        // Add to callback queue
+        // Add to callback queue for asynchronous execution
         {
             std::lock_guard<std::mutex> callbackLock(callbackQueueMutex_);
-            callbackQueue_.push(std::move(callbackTask));
+            callbackQueue_.push(std::move(sessionTask));
         }
 
         // Notify callback workers
@@ -353,29 +421,32 @@ void EventSchedulerImpl::callbackWorker() {
 }
 
 std::string EventSchedulerImpl::generateSendId() {
-    auto now =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch());
-
-    uint64_t counter = sendIdCounter_.fetch_add(1);
-
-    std::ostringstream oss;
-    oss << "auto_" << now.count() << "_" << std::setfill('0') << std::setw(6) << counter;
-    return oss.str();
+    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
+    return UniqueIdGenerator::generateSendId();
 }
 
 std::chrono::steady_clock::time_point EventSchedulerImpl::getNextExecutionTime() const {
-    if (scheduledEvents_.empty()) {
+    // CRITICAL FIX: External interface with proper mutex protection
+    std::lock_guard<std::mutex> lock(schedulerMutex_);
+    return getNextExecutionTimeUnlocked();
+}
+
+std::chrono::steady_clock::time_point EventSchedulerImpl::getNextExecutionTimeUnlocked() const {
+    // CRITICAL FIX: Internal method assumes mutex is already locked by caller to prevent deadlock
+
+    if (executionQueue_.empty()) {
         return std::chrono::steady_clock::time_point::max();
     }
 
-    auto earliestTime = std::chrono::steady_clock::time_point::max();
-    for (const auto &pair : scheduledEvents_) {
-        if (!pair.second->cancelled && pair.second->executeAt < earliestTime) {
-            earliestTime = pair.second->executeAt;
-        }
-    }
+    // Find first non-cancelled event without modifying the queue
+    // We cannot modify the queue in a const method, so we accept some cancelled events
+    // The actual cleanup happens in processReadyEvents()
+    // CRITICAL FIX: Use shared_ptr for memory safety
+    std::shared_ptr<ScheduledEvent> topEvent = executionQueue_.top();
 
-    return earliestTime;
+    // If the top event is cancelled, we still return its time
+    // This is safe because processReadyEvents() will skip cancelled events
+    return topEvent->executeAt;
 }
 
 }  // namespace RSM

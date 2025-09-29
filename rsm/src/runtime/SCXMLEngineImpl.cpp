@@ -1,6 +1,7 @@
 #define SCXML_ENGINE_EXPORTS
 #include "SCXMLEngineImpl.h"
 #include "common/Logger.h"
+#include "common/UniqueIdGenerator.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "runtime/StateMachineFactory.h"
 #include <fstream>
@@ -250,16 +251,8 @@ void SCXMLEngineImpl::executeOnEntryActions(const std::string &stateId) {
 // === High-Level SCXML State Machine API Implementation ===
 
 std::string SCXMLEngineImpl::generateSessionId() const {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 15);
-
-    std::stringstream ss;
-    ss << "scxml_";
-    for (int i = 0; i < 8; ++i) {
-        ss << std::hex << dis(gen);
-    }
-    return ss.str();
+    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
+    return UniqueIdGenerator::generateSessionId("scxml");
 }
 
 bool SCXMLEngineImpl::loadSCXMLFromString(const std::string &scxmlContent, const std::string &sessionId) {

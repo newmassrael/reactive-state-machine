@@ -1,5 +1,8 @@
 #include "events/HttpEventReceiver.h"
+#include "common/HttpResponseUtils.h"
+#include "common/JsonUtils.h"
 #include "common/Logger.h"
+#include "common/UniqueIdGenerator.h"
 #include "scripting/JSEngine.h"
 #include <httplib.h>
 #include <json/json.h>
@@ -121,7 +124,11 @@ bool HttpEventReceiver::startReceiving() {
     // Handle preflight OPTIONS requests for CORS
     if (settings.enableCors) {
         server_->Options(eventPath, [this](const httplib::Request &req, httplib::Response &res) {
-            setCorsHeaders(res, req);
+            const auto &settings = config_.getSettings();
+            if (settings.enableCors) {
+                std::string origin = req.get_header_value("Origin");
+                HttpResponseUtils::setCorsHeaders(res, origin);
+            }
             res.status = 200;
         });
     }
@@ -244,14 +251,17 @@ void HttpEventReceiver::handleRequest(const httplib::Request &request, httplib::
     try {
         // Set CORS headers if enabled
         if (settings.enableCors) {
-            setCorsHeaders(response, request);
+            const auto &settings = config_.getSettings();
+            if (settings.enableCors) {
+                std::string origin = request.get_header_value("Origin");
+                HttpResponseUtils::setCorsHeaders(response, origin);
+            }
         }
 
         // Validate authentication
         if (!validateAuthentication(request)) {
             LOG_WARN("HttpEventReceiver: Authentication failed for request from {}", request.get_header_value("Host"));
-            response.status = 401;
-            response.set_content(R"({"error": "Authentication required"})", "application/json");
+            HttpResponseUtils::setErrorResponse(response, "Authentication required", 401);
             errorCount_++;
             return;
         }
@@ -274,20 +284,17 @@ void HttpEventReceiver::handleRequest(const httplib::Request &request, httplib::
 
         if (success) {
             LOG_DEBUG("HttpEventReceiver: Successfully processed event '{}'", event.eventName);
-            response.status = 200;
-            response.set_content(settings.successResponse, settings.defaultResponseContentType);
+            HttpResponseUtils::setSuccessResponse(response, settings.successResponse);
             successCount_++;
         } else {
             LOG_ERROR("HttpEventReceiver: Failed to process event '{}'", event.eventName);
-            response.status = 500;
-            response.set_content(settings.errorResponse, settings.defaultResponseContentType);
+            HttpResponseUtils::setErrorResponse(response, settings.errorResponse, 500);
             errorCount_++;
         }
 
     } catch (const std::exception &e) {
         LOG_ERROR("HttpEventReceiver: Exception handling request: {}", e.what());
-        response.status = 500;
-        response.set_content(settings.errorResponse, settings.defaultResponseContentType);
+        HttpResponseUtils::setErrorResponse(response, settings.errorResponse, 500);
         errorCount_++;
     }
 }
@@ -297,7 +304,7 @@ EventDescriptor HttpEventReceiver::convertRequestToEvent(const httplib::Request 
 
     try {
         // Generate unique event ID
-        event.sendId = generateEventId();
+        event.sendId = UniqueIdGenerator::generateEventId();
 
         // Extract event name from URL path or body
         std::string eventName;
@@ -309,10 +316,9 @@ EventDescriptor HttpEventReceiver::convertRequestToEvent(const httplib::Request 
         } else {
             // Try to extract from JSON body
             if (!request.body.empty()) {
-                Json::Value root;
-                Json::Reader reader;
-                if (reader.parse(request.body, root) && root.isMember("event")) {
-                    eventName = root["event"].asString();
+                auto root = JsonUtils::parseJson(request.body);
+                if (root.has_value() && JsonUtils::hasKey(root.value(), "event")) {
+                    eventName = JsonUtils::getString(root.value(), "event");
                 }
             }
         }
@@ -334,9 +340,7 @@ EventDescriptor HttpEventReceiver::convertRequestToEvent(const httplib::Request 
                 dataObj[param.first] = param.second;
             }
 
-            Json::StreamWriterBuilder builder;
-            builder["indentation"] = "";
-            event.data = Json::writeString(builder, dataObj);
+            event.data = JsonUtils::toCompactString(dataObj);
         }
 
         // Set target (for response routing, if needed)
@@ -391,40 +395,6 @@ bool HttpEventReceiver::validateAuthentication(const httplib::Request &request) 
     }
 
     return false;
-}
-
-void HttpEventReceiver::setCorsHeaders(httplib::Response &response, const httplib::Request &request) const {
-    const auto &settings = config_.getSettings();
-
-    if (!settings.enableCors) {
-        return;
-    }
-
-    std::string origin = request.get_header_value("Origin");
-
-    // Check if origin is allowed (if allowedOrigins is configured)
-    if (!settings.allowedOrigins.empty()) {
-        bool originAllowed = false;
-        for (const auto &allowedOrigin : settings.allowedOrigins) {
-            if (origin == allowedOrigin.first) {
-                originAllowed = true;
-                break;
-            }
-        }
-        if (!originAllowed) {
-            return;  // Don't set CORS headers for disallowed origins
-        }
-    }
-
-    // Set CORS headers
-    response.set_header("Access-Control-Allow-Origin", origin.empty() ? "*" : origin);
-    response.set_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    response.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    response.set_header("Access-Control-Max-Age", "86400");  // 24 hours
-}
-
-std::string HttpEventReceiver::generateEventId() const {
-    return "http_event_" + std::to_string(nextEventId_++);
 }
 
 void HttpEventReceiver::startServerThread() {

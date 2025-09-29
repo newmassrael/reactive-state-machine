@@ -42,8 +42,12 @@ void EventRaiserImpl::shutdown() {
 
 void EventRaiserImpl::setEventCallback(EventCallback callback) {
     std::lock_guard<std::mutex> lock(callbackMutex_);
+    bool hadCallback = (eventCallback_ != nullptr);
     eventCallback_ = std::move(callback);
-    LOG_DEBUG("EventRaiserImpl: Event callback {} (instance: {})", (eventCallback_ ? "set" : "cleared"), (void *)this);
+    bool hasCallback = (eventCallback_ != nullptr);
+    LOG_DEBUG(
+        "EventRaiserImpl: Callback status changed - EventRaiser: {}, previous: {}, current: {}, immediateMode: {}",
+        (void *)this, hadCallback ? "set" : "none", hasCallback ? "set" : "none", immediateMode_.load());
 }
 
 void EventRaiserImpl::clearEventCallback() {
@@ -88,7 +92,8 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
                 return false;
             }
         } else {
-            LOG_WARN("EventRaiserImpl: No callback set for immediate event: {}", eventName);
+            LOG_WARN("EventRaiserImpl: No callback set for immediate event: {} - EventRaiser: {}, immediateMode: {}",
+                     eventName, (void *)this, immediateMode_.load());
             return false;
         }
     }

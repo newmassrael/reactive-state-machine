@@ -1,5 +1,6 @@
 #include "scripting/JSEngine.h"
 #include "common/Logger.h"
+#include "common/UniqueIdGenerator.h"
 #include "events/EventRaiserRegistry.h"
 #include "events/EventRaiserService.h"
 #include "events/IEventDispatcher.h"
@@ -234,12 +235,13 @@ std::string JSEngine::getParentSessionId(const std::string &sessionId) const {
 // === Session ID Generation ===
 
 uint64_t JSEngine::generateSessionId() const {
-    static std::atomic<uint64_t> sessionIdCounter{100000};
-    return sessionIdCounter.fetch_add(1);
+    // REFACTOR: Use centralized UniqueIdGenerator for consistency
+    return UniqueIdGenerator::generateNumericSessionId();
 }
 
 std::string JSEngine::generateSessionIdString(const std::string &prefix) const {
-    return prefix + std::to_string(generateSessionId());
+    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
+    return UniqueIdGenerator::generateSessionId(prefix);
 }
 
 // === Session Cleanup Hooks ===

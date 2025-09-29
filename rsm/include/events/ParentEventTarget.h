@@ -7,6 +7,7 @@
 namespace RSM {
 
 class IEventRaiser;
+class IEventScheduler;
 
 /**
  * @brief Event target for routing events to parent sessions (#_parent)
@@ -21,8 +22,10 @@ public:
      * @brief Construct parent event target
      * @param childSessionId The child session ID that wants to send to parent
      * @param eventRaiser Event raiser for delivering events to parent session
+     * @param scheduler Event scheduler for handling delayed events (optional)
      */
-    ParentEventTarget(const std::string &childSessionId, std::shared_ptr<IEventRaiser> eventRaiser);
+    ParentEventTarget(const std::string &childSessionId, std::shared_ptr<IEventRaiser> eventRaiser,
+                      std::shared_ptr<IEventScheduler> scheduler = nullptr);
 
     virtual ~ParentEventTarget() = default;
 
@@ -36,6 +39,7 @@ public:
 private:
     std::string childSessionId_;
     std::shared_ptr<IEventRaiser> eventRaiser_;
+    std::shared_ptr<IEventScheduler> scheduler_;
 
     /**
      * @brief Find parent session ID for the given child session
@@ -43,6 +47,13 @@ private:
      * @return Parent session ID or empty string if not found
      */
     std::string findParentSessionId(const std::string &childSessionId) const;
+
+    /**
+     * @brief Send event immediately to parent session
+     * @param event Event descriptor
+     * @return Future with send result
+     */
+    std::future<SendResult> sendImmediately(const EventDescriptor &event);
 };
 
 }  // namespace RSM

@@ -12,6 +12,7 @@
 #include <queue>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace RSM {
@@ -58,7 +59,7 @@ public:
 
 private:
     /**
-     * @brief Internal structure for scheduled events
+     * @brief Internal structure for scheduled events with priority queue support
      */
     struct ScheduledEvent {
         EventDescriptor event;
@@ -72,6 +73,18 @@ private:
         ScheduledEvent(const EventDescriptor &evt, std::chrono::steady_clock::time_point execTime,
                        std::shared_ptr<IEventTarget> tgt, const std::string &id, const std::string &sessId)
             : event(evt), executeAt(execTime), target(std::move(tgt)), sendId(id), sessionId(sessId) {}
+    };
+
+    /**
+     * @brief Comparator for priority queue (earlier times have higher priority)
+     * CRITICAL FIX: Use shared_ptr instead of raw pointers for memory safety
+     */
+    struct ExecutionTimeComparator {
+        bool operator()(const std::shared_ptr<ScheduledEvent> &a, const std::shared_ptr<ScheduledEvent> &b) const {
+            // For min-heap, we want earlier times to have higher priority
+            // std::priority_queue is max-heap by default, so we reverse the comparison
+            return a->executeAt > b->executeAt;
+        }
     };
 
     /**
@@ -111,6 +124,14 @@ private:
     std::chrono::steady_clock::time_point getNextExecutionTime() const;
 
     /**
+     * @brief Calculate next wake-up time (internal use, assumes mutex already locked)
+     * CRITICAL FIX: Prevent deadlock by avoiding double locking
+     *
+     * @return Time point of the next event to execute, or max time if no events
+     */
+    std::chrono::steady_clock::time_point getNextExecutionTimeUnlocked() const;
+
+    /**
      * @brief Worker thread for asynchronous callback execution (prevents deadlock)
      */
     void callbackWorker();
@@ -124,8 +145,17 @@ private:
     mutable std::mutex schedulerMutex_;
     std::condition_variable timerCondition_;
 
-    // Event storage
-    std::map<std::string, std::unique_ptr<ScheduledEvent>> scheduledEvents_;
+    // Event storage: Priority Queue + HashMap hybrid + Per-Session Queues
+    // CRITICAL FIX: Use shared_ptr in priority queue for memory safety
+    std::priority_queue<std::shared_ptr<ScheduledEvent>, std::vector<std::shared_ptr<ScheduledEvent>>,
+                        ExecutionTimeComparator>
+        executionQueue_;
+    std::unordered_map<std::string, std::shared_ptr<ScheduledEvent>> sendIdIndex_;
+
+    // Per-session sequential execution queues
+    // CRITICAL FIX: Use shared_ptr for memory safety consistency
+    std::unordered_map<std::string, std::queue<std::shared_ptr<ScheduledEvent>>> sessionQueues_;
+    std::unordered_map<std::string, bool> sessionExecuting_;  // Track if session is currently executing
 
     // Timer thread management
     std::thread timerThread_;
@@ -140,8 +170,8 @@ private:
     std::atomic<bool> callbackShutdownRequested_{false};
     std::atomic<bool> running_{false};
 
-    // Send ID generation
-    std::atomic<uint64_t> sendIdCounter_{0};
+    // Send ID generation - REMOVED: Now using UniqueIdGenerator
+    // std::atomic<uint64_t> sendIdCounter_{0}; // DEPRECATED: Consolidated to UniqueIdGenerator
 
     // Event execution
     EventExecutionCallback executionCallback_;

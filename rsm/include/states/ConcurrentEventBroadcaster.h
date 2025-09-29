@@ -149,12 +149,6 @@ private:
     bool validateRegion(const std::shared_ptr<IConcurrentRegion> &region) const;
 
     /**
-     * @brief Create correlation ID for event tracking
-     * @return Unique correlation ID
-     */
-    std::string generateCorrelationId() const;
-
-    /**
      * @brief Log broadcasting operation details
      * @param request Event request
      * @param result Broadcasting result

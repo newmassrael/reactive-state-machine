@@ -22,7 +22,7 @@ EventDispatcherImpl::EventDispatcherImpl(std::shared_ptr<IEventScheduler> schedu
 std::future<SendResult> EventDispatcherImpl::sendEvent(const EventDescriptor &event) {
     try {
         // Create appropriate target for the event
-        auto target = targetFactory_->createTarget(event.target);
+        auto target = targetFactory_->createTarget(event.target, event.sessionId);
         if (!target) {
             std::promise<SendResult> errorPromise;
             errorPromise.set_value(SendResult::error("Failed to create target for: " + event.target,
@@ -32,7 +32,8 @@ std::future<SendResult> EventDispatcherImpl::sendEvent(const EventDescriptor &ev
 
         // Check if this is a delayed event
         if (event.delay.count() > 0) {
-            LOG_DEBUG("Scheduling delayed event '{}' with {}ms delay", event.eventName, event.delay.count());
+            LOG_DEBUG("Scheduling delayed event '{}' with {}ms delay in session '{}' (sendId: '{}')", event.eventName,
+                      event.delay.count(), event.sessionId, event.sendId);
 
             // Schedule the event for delayed execution
             auto sendIdFuture = scheduler_->scheduleEvent(event, event.delay, target, event.sendId, event.sessionId);

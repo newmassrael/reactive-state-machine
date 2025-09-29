@@ -1,14 +1,17 @@
 #include "events/ParentEventTarget.h"
 #include "common/Logger.h"
 #include "events/EventRaiserService.h"
+#include "events/IEventDispatcher.h"
 #include "runtime/IEventRaiser.h"
 #include "scripting/JSEngine.h"
 #include <sstream>
+#include <thread>
 
 namespace RSM {
 
-ParentEventTarget::ParentEventTarget(const std::string &childSessionId, std::shared_ptr<IEventRaiser> eventRaiser)
-    : childSessionId_(childSessionId), eventRaiser_(std::move(eventRaiser)) {
+ParentEventTarget::ParentEventTarget(const std::string &childSessionId, std::shared_ptr<IEventRaiser> eventRaiser,
+                                     std::shared_ptr<IEventScheduler> scheduler)
+    : childSessionId_(childSessionId), eventRaiser_(std::move(eventRaiser)), scheduler_(std::move(scheduler)) {
     if (childSessionId_.empty()) {
         throw std::invalid_argument("ParentEventTarget requires a valid child session ID");
     }
@@ -21,7 +24,45 @@ ParentEventTarget::ParentEventTarget(const std::string &childSessionId, std::sha
 }
 
 std::future<SendResult> ParentEventTarget::send(const EventDescriptor &event) {
-    LOG_DEBUG("ParentEventTarget::send() - ENTRY: event='{}', target='{}', sessionId='{}'", event.eventName,
+    LOG_DEBUG("ParentEventTarget::send() - ENTRY: event='{}', target='{}', sessionId='{}', delay={}ms", event.eventName,
+              event.target, event.sessionId, event.delay.count());
+
+    // Check if this is a delayed event and scheduler is available
+    if (event.delay.count() > 0 && scheduler_) {
+        LOG_DEBUG("ParentEventTarget: Scheduling delayed parent event '{}' for {}ms", event.eventName,
+                  event.delay.count());
+
+        // Create a copy of this target for delayed execution
+        auto sharedThis = std::make_shared<ParentEventTarget>(childSessionId_, eventRaiser_, scheduler_);
+
+        // Schedule the event for delayed execution
+        auto sendIdFuture = scheduler_->scheduleEvent(event, event.delay, sharedThis, event.sendId, event.sessionId);
+
+        // Convert sendId future to SendResult future
+        std::promise<SendResult> resultPromise;
+        auto resultFuture = resultPromise.get_future();
+
+        // Handle the sendId asynchronously
+        std::thread([sendIdFuture = std::move(sendIdFuture), resultPromise = std::move(resultPromise)]() mutable {
+            try {
+                std::string assignedSendId = sendIdFuture.get();
+                resultPromise.set_value(SendResult::success(assignedSendId));
+            } catch (const std::exception &e) {
+                resultPromise.set_value(
+                    SendResult::error("Failed to schedule delayed parent event: " + std::string(e.what()),
+                                      SendResult::ErrorType::INTERNAL_ERROR));
+            }
+        }).detach();
+
+        return resultFuture;
+    } else {
+        // Execute immediately (no delay or no scheduler available)
+        return sendImmediately(event);
+    }
+}
+
+std::future<SendResult> ParentEventTarget::sendImmediately(const EventDescriptor &event) {
+    LOG_DEBUG("ParentEventTarget::sendImmediately() - ENTRY: event='{}', target='{}', sessionId='{}'", event.eventName,
               event.target, event.sessionId);
 
     std::promise<SendResult> resultPromise;
@@ -30,8 +71,9 @@ std::future<SendResult> ParentEventTarget::send(const EventDescriptor &event) {
     try {
         // Use session ID from event descriptor as child session ID
         std::string actualChildSessionId = event.sessionId.empty() ? childSessionId_ : event.sessionId;
-        LOG_DEBUG("ParentEventTarget::send() - Child session: '{}' (from event: '{}', from constructor: '{}')",
-                  actualChildSessionId, event.sessionId, childSessionId_);
+        LOG_DEBUG(
+            "ParentEventTarget::sendImmediately() - Child session: '{}' (from event: '{}', from constructor: '{}')",
+            actualChildSessionId, event.sessionId, childSessionId_);
 
         // Find parent session ID
         std::string parentSessionId = findParentSessionId(actualChildSessionId);
@@ -70,10 +112,10 @@ std::future<SendResult> ParentEventTarget::send(const EventDescriptor &event) {
 
         // Raise event in parent session using parent's EventRaiser
         // W3C SCXML: Events from child to parent are delivered as external events
-        LOG_DEBUG("ParentEventTarget::send() - Calling parent EventRaiser->raiseEvent('{}', '{}')", eventName,
-                  eventData);
+        LOG_DEBUG("ParentEventTarget::sendImmediately() - Calling parent EventRaiser->raiseEvent('{}', '{}')",
+                  eventName, eventData);
         bool raiseResult = parentEventRaiser->raiseEvent(eventName, eventData);
-        LOG_DEBUG("ParentEventTarget::send() - parent EventRaiser->raiseEvent() returned: {}", raiseResult);
+        LOG_DEBUG("ParentEventTarget::sendImmediately() - parent EventRaiser->raiseEvent() returned: {}", raiseResult);
 
         LOG_DEBUG("ParentEventTarget: Successfully routed event '{}' to parent session '{}'", eventName,
                   parentSessionId);

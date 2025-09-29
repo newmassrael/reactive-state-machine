@@ -66,6 +66,9 @@ add_library(rsm_unified
     src/common/Logger.cpp
     src/common/NodeFactory.cpp
     src/common/TypeRegistry.cpp
+    src/common/UniqueIdGenerator.cpp
+    src/common/JsonUtils.cpp
+    src/common/HttpResponseUtils.cpp
 
     # Runtime implementation
     src/runtime/SCXMLEngineImpl.cpp

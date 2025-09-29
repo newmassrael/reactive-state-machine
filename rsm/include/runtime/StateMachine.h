@@ -14,6 +14,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -245,6 +246,7 @@ private:
     };
 
     std::vector<DeferredInvoke> pendingInvokes_;
+    std::mutex pendingInvokesMutex_;  // Thread safety for pendingInvokes_
 
     // Statistics
     mutable Statistics stats_;

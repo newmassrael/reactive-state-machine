@@ -1,6 +1,7 @@
 #include "runtime/InvokeExecutor.h"
 #include "SCXMLTypes.h"
 #include "common/Logger.h"
+#include "common/UniqueIdGenerator.h"
 #include "runtime/EventRaiserImpl.h"
 #include "runtime/InvokeExecutor.h"
 #include "runtime/StateMachine.h"
@@ -167,14 +168,28 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
               childSessionId);
 
     // Set up EventRaiser callback to child StateMachine's processEvent after StateMachine is fully constructed
-    childEventRaiser->setEventCallback([childStateMachine = childStateMachine.get()](
+    LOG_DEBUG(
+        "SCXMLInvokeHandler: Setting EventRaiser callback for session: {}, childStateMachine: {}, EventRaiser: {}",
+        childSessionId, (void *)childStateMachine.get(), (void *)childEventRaiser.get());
+
+    childEventRaiser->setEventCallback([childStateMachine = childStateMachine.get(), childSessionId](
                                            const std::string &eventName, const std::string &eventData) -> bool {
+        LOG_DEBUG("EventRaiser callback executing - session: {}, event: '{}', childStateMachine: {}, isRunning: {}",
+                  childSessionId, eventName, (void *)childStateMachine,
+                  childStateMachine ? (childStateMachine->isRunning() ? "true" : "false") : "null");
+
         if (childStateMachine && childStateMachine->isRunning()) {
             auto result = childStateMachine->processEvent(eventName, eventData);
+            LOG_DEBUG("EventRaiser callback result - session: {}, event: '{}', success: {}", childSessionId, eventName,
+                      result.success);
             return result.success;
         }
+        LOG_WARN("EventRaiser callback failed - session: {}, event: '{}', childStateMachine null or not running",
+                 childSessionId, eventName);
         return false;
     });
+
+    LOG_DEBUG("SCXMLInvokeHandler: EventRaiser callback setup complete for session: {}", childSessionId);
 
     // Load SCXML content into child StateMachine
     if (!childStateMachine->loadSCXMLFromString(scxmlContent)) {
@@ -258,11 +273,8 @@ std::string SCXMLInvokeHandler::getType() const {
 }
 
 std::string SCXMLInvokeHandler::generateInvokeId() const {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> dis(100000, 999999);
-
-    return "invoke_" + std::to_string(dis(gen));
+    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
+    return UniqueIdGenerator::generateInvokeId();
 }
 
 // ============================================================================
@@ -509,11 +521,8 @@ void InvokeExecutor::setEventDispatcher(std::shared_ptr<IEventDispatcher> eventD
 }
 
 std::string InvokeExecutor::generateInvokeId() const {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> dis(100000, 999999);
-
-    return "invoke_" + std::to_string(dis(gen));
+    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
+    return UniqueIdGenerator::generateInvokeId();
 }
 
 void InvokeExecutor::cleanupInvoke(const std::string &invokeid) {

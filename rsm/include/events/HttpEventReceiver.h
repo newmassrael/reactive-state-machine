@@ -128,19 +128,6 @@ private:
     bool validateAuthentication(const httplib::Request &request) const;
 
     /**
-     * @brief Set CORS headers on response
-     * @param response HTTP response
-     * @param request HTTP request (for origin checking)
-     */
-    void setCorsHeaders(httplib::Response &response, const httplib::Request &request) const;
-
-    /**
-     * @brief Generate unique event ID
-     * @return Unique event identifier
-     */
-    std::string generateEventId() const;
-
-    /**
      * @brief Start HTTP server on background thread
      */
     void startServerThread();

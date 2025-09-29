@@ -1,4 +1,5 @@
 #include "actions/SendAction.h"
+#include "common/UniqueIdGenerator.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
 #include <regex>
@@ -25,7 +26,7 @@ std::string SendAction::getActionType() const {
 
 std::shared_ptr<IActionNode> SendAction::clone() const {
     // SCXML Compliance: Generate new unique ID for cloned action
-    auto cloned = std::make_shared<SendAction>(event_, generateUniqueId("send"));
+    auto cloned = std::make_shared<SendAction>(event_, UniqueIdGenerator::generateActionId("send"));
     cloned->eventExpr_ = eventExpr_;
     cloned->target_ = target_;
     cloned->targetExpr_ = targetExpr_;
@@ -135,19 +136,25 @@ std::chrono::milliseconds SendAction::parseDelayString(const std::string &delayS
         return std::chrono::milliseconds{0};
     }
 
-    // Parse delay formats: "5s", "100ms", "2min", "1h"
-    std::regex delayPattern(R"((\d+(?:\.\d+)?)\s*(ms|s|min|h|sec|seconds?|minutes?|hours?)?)");
+    // Parse delay formats: "5s", "100ms", "2min", "1h", ".5s", "0.5s"
+    std::regex delayPattern(R"((\d*\.?\d+)\s*(ms|s|min|h|sec|seconds?|minutes?|hours?)?)");
     std::smatch match;
 
     if (!std::regex_match(delayStr, match, delayPattern)) {
+        LOG_DEBUG("SendAction: Failed to parse delay string: '{}'", delayStr);
         return std::chrono::milliseconds{0};  // Invalid format
     }
 
     double value = std::stod(match[1].str());
     std::string unit = match[2].str();
 
+    LOG_DEBUG("SendAction: Parsed delay - value: {}, unit: '{}'", value, unit);
+
     // Convert to milliseconds
-    if (unit.empty() || unit == "ms") {
+    // W3C SCXML: unit-less values are treated as seconds per specification
+    if (unit.empty()) {
+        return std::chrono::milliseconds{static_cast<long long>(value * 1000)};
+    } else if (unit == "ms") {
         return std::chrono::milliseconds{static_cast<long long>(value)};
     } else if (unit == "s" || unit == "sec" || unit == "seconds" || unit == "second") {
         return std::chrono::milliseconds{static_cast<long long>(value * 1000)};
@@ -157,6 +164,7 @@ std::chrono::milliseconds SendAction::parseDelayString(const std::string &delayS
         return std::chrono::milliseconds{static_cast<long long>(value * 60 * 60 * 1000)};
     }
 
+    LOG_DEBUG("SendAction: Unknown unit '{}', returning 0ms", unit);
     return std::chrono::milliseconds{0};  // Unknown unit
 }
 

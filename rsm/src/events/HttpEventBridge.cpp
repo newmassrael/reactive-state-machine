@@ -1,5 +1,8 @@
 #include "events/HttpEventBridge.h"
+#include "common/HttpResponseUtils.h"
+#include "common/JsonUtils.h"
 #include "common/Logger.h"
+#include "common/UniqueIdGenerator.h"
 #include <iomanip>
 #include <json/json.h>
 #include <sstream>
@@ -32,7 +35,7 @@ EventDescriptor HttpEventBridge::httpToScxmlEvent(const HttpRequest &request) {
     requestsProcessed_++;
 
     EventDescriptor event;
-    event.sendId = generateEventId();
+    event.sendId = UniqueIdGenerator::generateEventId();
     event.target = request.url;
 
     // Extract event name using comprehensive logic
@@ -85,13 +88,10 @@ EventDescriptor HttpEventBridge::httpToScxmlEvent(const HttpRequest &request) {
 
         if (contentType.find("application/json") != std::string::npos) {
             // Parse JSON body
-            Json::Value bodyJson;
-            Json::CharReaderBuilder readerBuilder;
             std::string parseErrors;
-            std::istringstream bodyStream(request.body);
-
-            if (Json::parseFromStream(readerBuilder, bodyStream, &bodyJson, &parseErrors)) {
-                eventData["data"] = bodyJson;
+            auto bodyJson = JsonUtils::parseJson(request.body, &parseErrors);
+            if (bodyJson.has_value()) {
+                eventData["data"] = bodyJson.value();
             } else {
                 LOG_DEBUG("HttpEventBridge: Failed to parse JSON body: {}", parseErrors);
                 eventData["data"] = request.body;
@@ -100,13 +100,9 @@ EventDescriptor HttpEventBridge::httpToScxmlEvent(const HttpRequest &request) {
         } else if (contentType.find("application/x-www-form-urlencoded") != std::string::npos) {
             // Parse form data and convert to JSON
             std::string jsonFormData = formDataToJson(request.body);
-            Json::Value formJson;
-            Json::CharReaderBuilder readerBuilder;
-            std::string parseErrors;
-            std::istringstream formStream(jsonFormData);
-
-            if (Json::parseFromStream(readerBuilder, formStream, &formJson, &parseErrors)) {
-                eventData["data"] = formJson;
+            auto formJson = JsonUtils::parseJson(jsonFormData);
+            if (formJson.has_value()) {
+                eventData["data"] = formJson.value();
             } else {
                 eventData["data"] = request.body;
             }
@@ -126,9 +122,7 @@ EventDescriptor HttpEventBridge::httpToScxmlEvent(const HttpRequest &request) {
     eventData["processor"] = "BasicHTTPEventProcessor";
     eventData["bridgeType"] = getBridgeType();
 
-    Json::StreamWriterBuilder writerBuilder;
-    writerBuilder["indentation"] = "";  // Compact JSON
-    event.data = Json::writeString(writerBuilder, eventData);
+    event.data = JsonUtils::toCompactString(eventData);
 
     LOG_DEBUG("HttpEventBridge: HTTP->SCXML: event='{}', sendId='{}', dataSize={}", event.eventName, event.sendId,
               event.data.length());
@@ -153,13 +147,9 @@ HttpResponse HttpEventBridge::scxmlToHttpResponse(const EventDescriptor &event) 
     // Include event data if present
     if (!event.data.empty()) {
         // Try to parse event data as JSON, fallback to string
-        Json::Value eventData;
-        Json::CharReaderBuilder readerBuilder;
-        std::string parseErrors;
-        std::istringstream dataStream(event.data);
-
-        if (Json::parseFromStream(readerBuilder, dataStream, &eventData, &parseErrors)) {
-            jsonResponse["data"] = eventData;
+        auto eventData = JsonUtils::parseJson(event.data);
+        if (eventData.has_value()) {
+            jsonResponse["data"] = eventData.value();
         } else {
             jsonResponse["data"] = event.data;
         }
@@ -170,11 +160,9 @@ HttpResponse HttpEventBridge::scxmlToHttpResponse(const EventDescriptor &event) 
         jsonResponse["target"] = event.target;
     }
 
-    Json::StreamWriterBuilder writerBuilder;
-    writerBuilder["indentation"] = "";  // Compact JSON
-    response.body = Json::writeString(writerBuilder, jsonResponse);
-    response.headers["Content-Type"] = "application/json";
-    response.headers["Cache-Control"] = "no-cache";
+    response.body = JsonUtils::toCompactString(jsonResponse);
+    HttpResponseUtils::setJsonHeaders(response);
+    HttpResponseUtils::setNoCacheHeaders(response);
 
     LOG_DEBUG("HttpEventBridge: SCXML->HTTP response: status={}, body={}", response.statusCode, response.body);
     return response;
@@ -199,13 +187,9 @@ HttpRequest HttpEventBridge::scxmlToHttpRequest(const EventDescriptor &event, co
     // Include event data if present
     if (!event.data.empty()) {
         // Try to parse event data as JSON, fallback to string
-        Json::Value eventData;
-        Json::CharReaderBuilder readerBuilder;
-        std::string parseErrors;
-        std::istringstream dataStream(event.data);
-
-        if (Json::parseFromStream(readerBuilder, dataStream, &eventData, &parseErrors)) {
-            jsonRequest["data"] = eventData;
+        auto eventData = JsonUtils::parseJson(event.data);
+        if (eventData.has_value()) {
+            jsonRequest["data"] = eventData.value();
         } else {
             jsonRequest["data"] = event.data;
         }
@@ -220,17 +204,14 @@ HttpRequest HttpEventBridge::scxmlToHttpRequest(const EventDescriptor &event, co
     jsonRequest["type"] = "scxml.event";
     jsonRequest["processor"] = "BasicHTTPEventProcessor";
 
-    Json::StreamWriterBuilder writerBuilder;
-    writerBuilder["indentation"] = "";  // Compact JSON
-    request.body = Json::writeString(writerBuilder, jsonRequest);
+    request.body = JsonUtils::toCompactString(jsonRequest);
 
     LOG_DEBUG("HttpEventBridge: SCXML->HTTP request: url={}, event={}, body={}", targetUrl, event.eventName,
               request.body);
     return request;
 }
 
-EventDescriptor HttpEventBridge::httpToScxmlResponse(const HttpResponse &response,
-                                                     const std::string &originalSendId) {
+EventDescriptor HttpEventBridge::httpToScxmlResponse(const HttpResponse &response, const std::string &originalSendId) {
     EventDescriptor event;
     event.eventName = response.statusCode >= 200 && response.statusCode < 300 ? "http.success" : "http.error";
     event.sendId = originalSendId;
@@ -252,13 +233,9 @@ EventDescriptor HttpEventBridge::httpToScxmlResponse(const HttpResponse &respons
 
     // Parse response body if it's JSON, otherwise include as string
     if (!response.body.empty()) {
-        Json::Value bodyData;
-        Json::CharReaderBuilder readerBuilder;
-        std::string parseErrors;
-        std::istringstream bodyStream(response.body);
-
-        if (Json::parseFromStream(readerBuilder, bodyStream, &bodyData, &parseErrors)) {
-            responseData["body"] = bodyData;
+        auto bodyData = JsonUtils::parseJson(response.body);
+        if (bodyData.has_value()) {
+            responseData["body"] = bodyData.value();
         } else {
             responseData["body"] = response.body;
         }
@@ -268,12 +245,10 @@ EventDescriptor HttpEventBridge::httpToScxmlResponse(const HttpResponse &respons
     responseData["type"] = "http.response";
     responseData["processor"] = "BasicHTTPEventProcessor";
 
-    Json::StreamWriterBuilder writerBuilder;
-    writerBuilder["indentation"] = "";  // Compact JSON
-    event.data = Json::writeString(writerBuilder, responseData);
+    event.data = JsonUtils::toCompactString(responseData);
 
-    LOG_DEBUG("HttpEventBridge: HTTP->SCXML response: event={}, sendId={}, status={}", event.eventName,
-              event.sendId, response.statusCode);
+    LOG_DEBUG("HttpEventBridge: HTTP->SCXML response: event={}, sendId={}, status={}", event.eventName, event.sendId,
+              response.statusCode);
     return event;
 }
 
@@ -287,8 +262,8 @@ std::vector<std::string> HttpEventBridge::validate() const {
 
 std::string HttpEventBridge::getDebugInfo() const {
     std::ostringstream info;
-    info << "HttpEventBridge{requests=" << requestsProcessed_.load()
-         << ", responses=" << responsesGenerated_.load() << "}";
+    info << "HttpEventBridge{requests=" << requestsProcessed_.load() << ", responses=" << responsesGenerated_.load()
+         << "}";
     return info.str();
 }
 
@@ -344,14 +319,11 @@ std::string HttpEventBridge::extractEventName(const HttpRequest &request) const 
         auto contentTypeIt = request.headers.find("Content-Type");
         if (contentTypeIt != request.headers.end() &&
             contentTypeIt->second.find("application/json") != std::string::npos) {
-            Json::Value bodyJson;
-            Json::CharReaderBuilder readerBuilder;
-            std::string parseErrors;
-            std::istringstream bodyStream(request.body);
-
-            if (Json::parseFromStream(readerBuilder, bodyStream, &bodyJson, &parseErrors)) {
-                if (bodyJson.isMember(settings.eventBodyField) && bodyJson[settings.eventBodyField].isString()) {
-                    return bodyJson[settings.eventBodyField].asString();
+            auto bodyJson = JsonUtils::parseJson(request.body);
+            if (bodyJson.has_value()) {
+                const Json::Value &body = bodyJson.value();
+                if (body.isMember(settings.eventBodyField) && body[settings.eventBodyField].isString()) {
+                    return body[settings.eventBodyField].asString();
                 }
             }
         }
@@ -369,10 +341,6 @@ std::string HttpEventBridge::parseDataSafely(const std::string &dataStr) const {
     return dataStr;
 }
 
-std::string HttpEventBridge::generateEventId() const {
-    return "bridge_event_" + std::to_string(nextEventId_++);
-}
-
 bool HttpEventBridge::isContentTypeAllowed(const std::string &contentType) const {
     (void)contentType;  // Suppress unused parameter warning
     return true;        // Allow all content types for simplicity
@@ -383,7 +351,7 @@ EventDescriptor HttpEventBridge::createErrorEvent(const std::string &errorType, 
     (void)originalRequest;  // Suppress unused parameter warning
     EventDescriptor errorEvent;
     errorEvent.eventName = "error." + errorType;
-    errorEvent.sendId = generateEventId();
+    errorEvent.sendId = UniqueIdGenerator::generateEventId();
     errorEvent.data = errorMessage;
     return errorEvent;
 }
@@ -410,22 +378,16 @@ std::string HttpEventBridge::formDataToJson(const std::string &formData) const {
             value = urlDecode(value);
 
             // Try to parse value as JSON, fallback to string
-            Json::Value parsedValue;
-            Json::CharReaderBuilder readerBuilder;
-            std::string parseErrors;
-            std::istringstream valueStream(value);
-
-            if (Json::parseFromStream(readerBuilder, valueStream, &parsedValue, &parseErrors)) {
-                jsonObject[key] = parsedValue;
+            auto parsedValue = JsonUtils::parseJson(value);
+            if (parsedValue.has_value()) {
+                jsonObject[key] = parsedValue.value();
             } else {
                 jsonObject[key] = value;
             }
         }
     }
 
-    Json::StreamWriterBuilder writerBuilder;
-    writerBuilder["indentation"] = "";  // Compact JSON
-    return Json::writeString(writerBuilder, jsonObject);
+    return JsonUtils::toCompactString(jsonObject);
 }
 
 std::string HttpEventBridge::urlDecode(const std::string &encoded) const {

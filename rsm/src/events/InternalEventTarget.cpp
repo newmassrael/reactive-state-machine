@@ -13,6 +13,9 @@ InternalEventTarget::InternalEventTarget(std::shared_ptr<IEventRaiser> eventRais
 std::future<SendResult> InternalEventTarget::send(const EventDescriptor &event) {
     LOG_DEBUG("InternalEventTarget::send() - ENTRY: event='{}', target='{}'", event.eventName, event.target);
 
+    LOG_DEBUG("InternalEventTarget: Processing event - sessionId='{}', event='{}', isExternal={}", event.sessionId,
+              event.eventName, isExternal_);
+
     std::promise<SendResult> promise;
     auto future = promise.get_future();
 

@@ -48,6 +48,9 @@ EventRaiserService::EventRaiserService(std::shared_ptr<IEventRaiserRegistry> reg
 }
 
 bool EventRaiserService::registerEventRaiser(const std::string &sessionId, std::shared_ptr<IEventRaiser> eventRaiser) {
+    LOG_DEBUG("EventRaiserService: Registering EventRaiser for sessionId='{}', eventRaiser={}", sessionId,
+              (eventRaiser ? "valid" : "null"));
+
     if (sessionId.empty()) {
         LOG_ERROR("EventRaiserService: Cannot register EventRaiser - session ID is empty");
         return false;
@@ -59,13 +62,19 @@ bool EventRaiserService::registerEventRaiser(const std::string &sessionId, std::
     }
 
     // Check if session exists before registration
-    if (!sessionManager_->hasSession(sessionId)) {
+    bool sessionExists = sessionManager_->hasSession(sessionId);
+    LOG_DEBUG("EventRaiserService: Session '{}' exists: {}", sessionId, sessionExists);
+
+    if (!sessionExists) {
         LOG_DEBUG("EventRaiserService: Session '{}' does not exist yet, deferring EventRaiser registration", sessionId);
         return false;  // Not an error, just deferred
     }
 
     // Check if already registered to avoid duplicates
-    if (registry_->hasEventRaiser(sessionId)) {
+    bool alreadyRegistered = registry_->hasEventRaiser(sessionId);
+    LOG_DEBUG("EventRaiserService: EventRaiser already registered for session '{}': {}", sessionId, alreadyRegistered);
+
+    if (alreadyRegistered) {
         LOG_DEBUG("EventRaiserService: EventRaiser already registered for session: {}", sessionId);
         return true;  // Already registered, success
     }
@@ -73,7 +82,8 @@ bool EventRaiserService::registerEventRaiser(const std::string &sessionId, std::
     // Perform the registration
     bool success = registry_->registerEventRaiser(sessionId, eventRaiser);
     if (success) {
-        LOG_DEBUG("EventRaiserService: Successfully registered EventRaiser for session: {}", sessionId);
+        LOG_DEBUG("EventRaiserService: Successfully registered EventRaiser for session: '{}', ready={}", sessionId,
+                  eventRaiser->isReady());
     } else {
         LOG_ERROR("EventRaiserService: Failed to register EventRaiser for session: {}", sessionId);
     }
@@ -82,12 +92,18 @@ bool EventRaiserService::registerEventRaiser(const std::string &sessionId, std::
 }
 
 std::shared_ptr<IEventRaiser> EventRaiserService::getEventRaiser(const std::string &sessionId) const {
+    LOG_DEBUG("EventRaiserService: Looking for EventRaiser with sessionId='{}'", sessionId);
+
     if (!registry_) {
         LOG_ERROR("EventRaiserService: Cannot get EventRaiser - registry is null");
         return nullptr;
     }
 
-    return registry_->getEventRaiser(sessionId);
+    auto result = registry_->getEventRaiser(sessionId);
+    LOG_DEBUG("EventRaiserService: EventRaiser lookup result - sessionId='{}', found={}, ready={}", sessionId,
+              (result != nullptr), (result ? result->isReady() : false));
+
+    return result;
 }
 
 bool EventRaiserService::unregisterEventRaiser(const std::string &sessionId) {

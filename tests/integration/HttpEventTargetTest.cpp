@@ -115,17 +115,17 @@ TEST_F(HttpEventTargetTest, InvalidUrlHandling) {
  */
 TEST_F(HttpEventTargetTest, FactoryIntegration) {
     // Test HTTP target creation via factory with mock server
-    auto httpTarget = targetFactory_->createTarget(mockServerUrl_ + "/post");
+    auto httpTarget = targetFactory_->createTarget(mockServerUrl_ + "/post", "");
     ASSERT_NE(httpTarget, nullptr);
     EXPECT_EQ(httpTarget->getTargetType(), "http");
 
     // Test HTTPS target creation via factory (validation only)
-    auto httpsTarget = targetFactory_->createTarget("https://example.com/post");
+    auto httpsTarget = targetFactory_->createTarget("https://example.com/post", "");
     ASSERT_NE(httpsTarget, nullptr);
     EXPECT_EQ(httpsTarget->getTargetType(), "https");
 
     // Test unsupported scheme
-    auto ftpTarget = targetFactory_->createTarget("ftp://example.com");
+    auto ftpTarget = targetFactory_->createTarget("ftp://example.com", "");
     EXPECT_EQ(ftpTarget, nullptr);
 
     // Check supported schemes

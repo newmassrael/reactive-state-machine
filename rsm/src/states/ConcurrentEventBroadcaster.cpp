@@ -1,4 +1,5 @@
 #include "states/ConcurrentEventBroadcaster.h"
+#include "common/UniqueIdGenerator.h"
 #include "events/EventDescriptor.h"
 #include <algorithm>
 #include <iomanip>
@@ -60,7 +61,7 @@ EventBroadcastResult ConcurrentEventBroadcaster::broadcastEvent(const EventDescr
     request.priority = config_.defaultPriority;
     request.scope = config_.defaultScope;
     request.timestamp = std::chrono::system_clock::now();
-    request.correlationId = generateCorrelationId();
+    request.correlationId = UniqueIdGenerator::generateCorrelationId();
 
     return broadcastEvent(request);
 }
@@ -74,7 +75,7 @@ ConcurrentEventBroadcaster::broadcastEventToRegions(const EventDescriptor &event
     request.scope = EventBroadcastScope::SELECTED_REGIONS;
     request.targetRegions = targetRegions;
     request.timestamp = std::chrono::system_clock::now();
-    request.correlationId = generateCorrelationId();
+    request.correlationId = UniqueIdGenerator::generateCorrelationId();
 
     return broadcastEvent(request);
 }
@@ -86,7 +87,7 @@ EventBroadcastResult ConcurrentEventBroadcaster::broadcastEventWithPriority(cons
     request.priority = priority;
     request.scope = config_.defaultScope;
     request.timestamp = std::chrono::system_clock::now();
-    request.correlationId = generateCorrelationId();
+    request.correlationId = UniqueIdGenerator::generateCorrelationId();
 
     return broadcastEvent(request);
 }
@@ -394,20 +395,6 @@ bool ConcurrentEventBroadcaster::validateRegion(const std::shared_ptr<IConcurren
 
     // Additional validation logic can be added here
     return true;
-}
-
-std::string ConcurrentEventBroadcaster::generateCorrelationId() const {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> dis(0, 15);
-
-    std::stringstream ss;
-    ss << std::hex;
-    for (int i = 0; i < 8; ++i) {
-        ss << dis(gen);
-    }
-
-    return ss.str();
 }
 
 void ConcurrentEventBroadcaster::logBroadcastOperation(const EventBroadcastRequest &request,
