@@ -195,6 +195,7 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     session.eventDispatcher = eventDispatcher;
     session.childStateMachine = nullptr;  // Will be created later
     session.isActive = true;
+    session.autoForward = invoke->isAutoForward();
 
     // W3C SCXML: Create EventRaiser for #_parent target support
     auto childEventRaiser = std::make_shared<EventRaiserImpl>();
@@ -240,9 +241,18 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         return "";
     }
 
+    // Store the child StateMachine in session BEFORE starting it
+    // This ensures activeSessions_ is populated when child emits events during start()
+    session.childStateMachine = std::move(childStateMachine);
+    activeSessions_.emplace(invokeid, std::move(session));
+
+    // Get reference to the session we just added (session was moved, can't use it anymore)
+    auto &activeSession = activeSessions_[invokeid];
+
     // Start the child StateMachine
-    if (!childStateMachine->start()) {
+    if (!activeSession.childStateMachine->start()) {
         LOG_ERROR("SCXMLInvokeHandler: Failed to start child StateMachine for invoke: {}", invokeid);
+        activeSessions_.erase(invokeid);
         JSEngine::instance().destroySession(childSessionId);
         return "";
     }
@@ -251,8 +261,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     // This handles the case where child SCXML has initial="finalStateId" (e.g., test 215)
     // We check BEFORE event processing to avoid confusion with runtime transitions (e.g., test 192)
     LOG_DEBUG("SCXMLInvokeHandler: Checking if child initial state is final - initialState: '{}', isRunning: {}",
-              childStateMachine->getCurrentState(), childStateMachine->isRunning());
-    if (childStateMachine->isInitialStateFinal()) {
+              activeSession.childStateMachine->getCurrentState(), activeSession.childStateMachine->isRunning());
+    if (activeSession.childStateMachine->isInitialStateFinal()) {
         // Generate done.invoke event immediately
         std::string doneEvent = "done.invoke";
         if (eventDispatcher) {
@@ -276,11 +286,6 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     if (!sessionAlreadyExists) {
         JSEngine::instance().registerInvokeMapping(parentSessionId, invokeid, childSessionId);
     }
-
-    // Store the child StateMachine in session
-    session.childStateMachine = std::move(childStateMachine);
-
-    activeSessions_.emplace(invokeid, std::move(session));
 
     LOG_INFO("SCXMLInvokeHandler: Successfully started SCXML invoke: {} with session: {} and running StateMachine",
              invokeid, childSessionId);
@@ -610,6 +615,24 @@ std::string InvokeExecutor::generateInvokeId() const {
     return UniqueIdGenerator::generateInvokeId();
 }
 
+std::vector<StateMachine *> InvokeExecutor::getAutoForwardSessions(const std::string &parentSessionId) {
+    std::vector<StateMachine *> result;
+
+    // Iterate through all handlers and collect autoForward sessions
+    for (const auto &[invokeid, handler] : invokeHandlers_) {
+        // Check if handler is SCXML type
+        if (handler->getType() == "scxml") {
+            auto scxmlHandler = std::dynamic_pointer_cast<SCXMLInvokeHandler>(handler);
+            if (scxmlHandler) {
+                auto sessions = scxmlHandler->getAutoForwardSessions(parentSessionId);
+                result.insert(result.end(), sessions.begin(), sessions.end());
+            }
+        }
+    }
+
+    return result;
+}
+
 void InvokeExecutor::cleanupInvoke(const std::string &invokeid) {
     // Remove from handler tracking
     invokeHandlers_.erase(invokeid);
@@ -741,6 +764,18 @@ std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, c
              content.length());
 
     return content;
+}
+
+std::vector<StateMachine *> SCXMLInvokeHandler::getAutoForwardSessions(const std::string &parentSessionId) {
+    std::vector<StateMachine *> result;
+    for (auto &[invokeid, session] : activeSessions_) {
+        if (session.isActive && session.parentSessionId == parentSessionId && session.autoForward) {
+            if (session.childStateMachine) {
+                result.push_back(session.childStateMachine.get());
+            }
+        }
+    }
+    return result;
 }
 
 }  // namespace RSM

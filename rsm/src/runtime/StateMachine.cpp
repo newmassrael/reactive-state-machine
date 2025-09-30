@@ -229,6 +229,16 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
         }
     }
 
+    // W3C SCXML 1.0 Section 6.4: Auto-forward external events to child invoke sessions
+    if (invokeExecutor_) {
+        auto autoForwardSessions = invokeExecutor_->getAutoForwardSessions(sessionId_);
+        for (auto *childStateMachine : autoForwardSessions) {
+            if (childStateMachine->isRunning()) {
+                childStateMachine->processEvent(eventName, eventData);
+            }
+        }
+    }
+
     // Find applicable transitions from SCXML model
     if (!model_) {
         LOG_ERROR("StateMachine: No SCXML model available");

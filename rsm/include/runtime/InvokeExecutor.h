@@ -89,6 +89,13 @@ public:
     bool isInvokeActive(const std::string &invokeid) const override;
     std::string getType() const override;
 
+    /**
+     * @brief Get all active child state machines with autoForward enabled
+     * @param parentSessionId Parent session ID
+     * @return Vector of child StateMachine pointers with autoForward=true
+     */
+    std::vector<StateMachine *> getAutoForwardSessions(const std::string &parentSessionId);
+
 private:
     struct InvokeSession {
         std::string invokeid;
@@ -97,6 +104,7 @@ private:
         std::shared_ptr<IEventDispatcher> eventDispatcher;
         std::unique_ptr<StateMachine> childStateMachine;
         bool isActive = true;
+        bool autoForward = false;
     };
 
     std::unordered_map<std::string, InvokeSession> activeSessions_;
@@ -213,6 +221,13 @@ public:
      * @param eventDispatcher Event dispatcher instance
      */
     void setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher);
+
+    /**
+     * @brief Get all active invoke sessions with autoForward enabled
+     * @param parentSessionId Parent session ID
+     * @return Vector of child StateMachine pointers with autoForward=true
+     */
+    std::vector<StateMachine *> getAutoForwardSessions(const std::string &parentSessionId);
 
 private:
     std::shared_ptr<IEventDispatcher> eventDispatcher_;
