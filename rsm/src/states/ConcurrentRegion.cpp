@@ -170,9 +170,46 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
             // SCXML W3C compliant transition processing
             for (const auto &transition : transitions) {
                 if (transition->getEvent() == event.eventName) {
+                    // W3C SCXML: Evaluate guard condition before executing transition
+                    std::string guard = transition->getGuard();
+                    bool conditionResult = true;  // Default to true if no guard condition
+
+                    if (!guard.empty()) {
+                        if (conditionEvaluator_) {
+                            conditionResult = conditionEvaluator_(guard);
+                            LOG_DEBUG(
+                                "ConcurrentRegion: Evaluated guard condition '{}' for transition: {} -> result: {}",
+                                guard, event.eventName, conditionResult ? "true" : "false");
+                        } else {
+                            LOG_WARN("ConcurrentRegion: Guard condition '{}' present but no evaluator set, defaulting "
+                                     "to true",
+                                     guard);
+                        }
+                    }
+
+                    // Only execute transition if condition is true
+                    if (!conditionResult) {
+                        LOG_DEBUG("ConcurrentRegion: Skipping transition due to false guard condition: {}", guard);
+                        continue;  // Try next transition
+                    }
+
                     const auto &targets = transition->getTargets();
                     if (!targets.empty()) {
                         std::string targetState = targets[0];
+
+                        // W3C SCXML: Check if target is outside this region's scope
+                        // Transitions to states outside the region must be handled by parent (StateMachine)
+                        // Use recursive descendant check to handle deeply nested states
+                        bool isTargetInRegion = isDescendantOf(rootState_, targetState);
+
+                        if (!isTargetInRegion) {
+                            LOG_DEBUG("ConcurrentRegion: Transition target '{}' is outside region '{}' - must be "
+                                      "handled by parent",
+                                      targetState, id_);
+                            // Return failure so parent (StateMachine) can handle this transition
+                            return ConcurrentOperationResult::failure(
+                                id_, "Transition to external state - parent must handle");
+                        }
 
                         LOG_DEBUG("Executing transition: {} -> {} on event: {}", currentState_, targetState,
                                   event.eventName);
@@ -400,6 +437,19 @@ void ConcurrentRegion::setExecutionContext(std::shared_ptr<IExecutionContext> ex
               executionContext_ ? "valid" : "null");
 }
 
+void ConcurrentRegion::setInvokeCallback(
+    std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> callback) {
+    invokeCallback_ = callback;
+    LOG_DEBUG("ConcurrentRegion: Invoke callback set for region: {} (W3C SCXML 6.4 compliance)", id_);
+}
+
+void ConcurrentRegion::setConditionEvaluator(std::function<bool(const std::string &)> evaluator) {
+    conditionEvaluator_ = evaluator;
+    LOG_DEBUG(
+        "ConcurrentRegion: Condition evaluator callback set for region: {} (W3C SCXML transition guard compliance)",
+        id_);
+}
+
 // Private methods
 
 bool ConcurrentRegion::validateRootState() const {
@@ -437,6 +487,27 @@ void ConcurrentRegion::updateCurrentState() {
     activeStates_.push_back(currentState_);
 
     LOG_DEBUG("Region {} current state: {}", id_, currentState_);
+}
+
+bool ConcurrentRegion::isDescendantOf(const std::shared_ptr<IStateNode> &root, const std::string &targetId) const {
+    if (!root) {
+        return false;
+    }
+
+    // Check if root itself is the target
+    if (root->getId() == targetId) {
+        return true;
+    }
+
+    // Recursively check all children
+    const auto &children = root->getChildren();
+    for (const auto &child : children) {
+        if (child && isDescendantOf(child, targetId)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool ConcurrentRegion::determineIfInFinalState() const {
@@ -510,6 +581,16 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
     activeStates_.clear();
     activeStates_.push_back(currentState_);
 
+    // W3C SCXML 6.4: Check and defer invoke elements for root state itself
+    const auto &rootInvokes = rootState_->getInvoke();
+    LOG_INFO("ConcurrentRegion: Root state {} has {} invokes, callback is {}", rootState_->getId(), rootInvokes.size(),
+             invokeCallback_ ? "set" : "null");
+    if (!rootInvokes.empty() && invokeCallback_) {
+        LOG_INFO("ConcurrentRegion: Delegating {} invokes for root state: {} to callback", rootInvokes.size(),
+                 currentState_);
+        invokeCallback_(currentState_, rootInvokes);
+    }
+
     // Check if we need to enter child states
     const auto &children = rootState_->getChildren();
     if (!children.empty()) {
@@ -551,6 +632,15 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
                             LOG_DEBUG("Executing child entry action: {}", actionNode->getId());
                             executeActionNode(actionNode, "enterInitialState");
                         }
+                    }
+
+                    // W3C SCXML 6.4: Invoke elements must be processed after state entry
+                    // Delegate to StateHierarchyManager via callback pattern for proper timing
+                    const auto &childInvokes = (*childState)->getInvoke();
+                    if (!childInvokes.empty() && invokeCallback_) {
+                        LOG_INFO("ConcurrentRegion: Delegating {} invokes for child state: {} to callback",
+                                 childInvokes.size(), initialChild);
+                        invokeCallback_(initialChild, childInvokes);
                     }
 
                     // SCXML spec: If child state is compound, recursively enter its initial state

@@ -163,6 +163,27 @@ public:
      */
     void setExecutionContext(std::shared_ptr<IExecutionContext> executionContext);
 
+    /**
+     * @brief Set callback for invoke deferring (W3C SCXML 6.4 compliance)
+     *
+     * This callback allows the region to delegate invoke execution timing
+     * to the StateMachine via StateHierarchyManager, ensuring proper SCXML semantics.
+     *
+     * @param callback Function to call with stateId and invoke nodes for deferring
+     */
+    void setInvokeCallback(
+        std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> callback);
+
+    /**
+     * @brief Set callback for condition evaluation (W3C SCXML transition guard compliance)
+     *
+     * This callback allows the region to delegate condition evaluation
+     * to the StateMachine's JavaScript engine, ensuring proper SCXML semantics.
+     *
+     * @param evaluator Function to call with condition string, returns evaluation result
+     */
+    void setConditionEvaluator(std::function<bool(const std::string &)> evaluator);
+
 private:
     // Core state
     std::string id_;
@@ -178,6 +199,12 @@ private:
 
     // Depends on IStateExitHandler abstraction, not concrete implementation
     std::shared_ptr<IStateExitHandler> exitHandler_;
+
+    // W3C SCXML 6.4: Invoke defer callback for proper timing (dependency inversion)
+    std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> invokeCallback_;
+
+    // W3C SCXML: Condition evaluation callback for transition guard evaluation (dependency inversion)
+    std::function<bool(const std::string &)> conditionEvaluator_;
 
     // Private methods for internal state management
 
@@ -210,6 +237,14 @@ private:
      * @return Operation result for state exit
      */
     ConcurrentOperationResult exitAllStates(std::shared_ptr<IExecutionContext> executionContext);
+
+    /**
+     * @brief Recursively check if target state is a descendant of root state
+     * @param root Root state to search from
+     * @param targetId Target state ID to find
+     * @return true if target is descendant of root (including root itself)
+     */
+    bool isDescendantOf(const std::shared_ptr<IStateNode> &root, const std::string &targetId) const;
 
     /**
      * @brief Execute an action node with consistent logging and error handling

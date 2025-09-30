@@ -77,12 +77,14 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     // Generate unique invoke ID
     std::string invokeid = invoke->getId().empty() ? generateInvokeId() : invoke->getId();
 
-    LOG_DEBUG(
+    LOG_INFO(
         "SCXMLInvokeHandler: Starting invoke - invokeid: {}, childSession: {}, parentSession: {}, sessionExists: {}",
         invokeid, childSessionId, parentSessionId, sessionAlreadyExists);
 
     // Get invoke content (SCXML document)
     std::string scxmlContent = invoke->getContent();
+    LOG_DEBUG("SCXMLInvokeHandler: Invoke content length: {}, has src: {}, has srcexpr: {}", scxmlContent.length(),
+              !invoke->getSrc().empty(), !invoke->getSrcExpr().empty());
 
     // Handle srcexpr evaluation first
     if (scxmlContent.empty() && !invoke->getSrcExpr().empty()) {
@@ -247,11 +249,15 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     LOG_DEBUG("SCXMLInvokeHandler: EventRaiser callback setup complete for session: {}", childSessionId);
 
     // Load SCXML content into child StateMachine
+    LOG_DEBUG(
+        "SCXMLInvokeHandler: Loading SCXML content into child StateMachine - invokeid: {}, content size: {} bytes",
+        invokeid, scxmlContent.length());
     if (!childStateMachinePtr->loadSCXMLFromString(scxmlContent)) {
         LOG_ERROR("SCXMLInvokeHandler: Failed to load SCXML content for invoke: {}", invokeid);
         JSEngine::instance().destroySession(childSessionId);
         return "";
     }
+    LOG_DEBUG("SCXMLInvokeHandler: Successfully loaded SCXML content for invoke: {}", invokeid);
     // Add session to activeSessions_
     activeSessions_.emplace(invokeid, std::move(session));
 
@@ -259,12 +265,14 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     auto &activeSession = activeSessions_[invokeid];
 
     // Start the child StateMachine
+    LOG_DEBUG("SCXMLInvokeHandler: Starting child StateMachine for invoke: {}", invokeid);
     if (!activeSession.smContext->get()->start()) {
         LOG_ERROR("SCXMLInvokeHandler: Failed to start child StateMachine for invoke: {}", invokeid);
         activeSessions_.erase(invokeid);
         JSEngine::instance().destroySession(childSessionId);
         return "";
     }
+    LOG_INFO("SCXMLInvokeHandler: Child StateMachine started successfully for invoke: {}", invokeid);
 
     // W3C SCXML: Check if child SCXML has initial state as final state
     // This handles the case where child SCXML has initial="finalStateId" (e.g., test 215)
@@ -433,6 +441,9 @@ std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &in
         return "";
     }
 
+    LOG_DEBUG("InvokeExecutor: executeInvoke called - session: {}, invokeId: {}, type: {}", sessionId, invoke->getId(),
+              invoke->getType());
+
     std::string invokeType = invoke->getType();
 
     // W3C SCXML 1.0: Handle typeexpr attribute for dynamic type evaluation
@@ -505,9 +516,12 @@ std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &in
     // Execute invoke using appropriate method
     std::string invokeid;
     if (!reservedInvokeId.empty()) {
+        LOG_DEBUG("InvokeExecutor: Starting invoke with session ID - reservedInvokeId: {}, childSessionId: {}",
+                  reservedInvokeId, childSessionId);
         // Pass the pre-allocated child session ID to the handler
         invokeid = handler->startInvokeWithSessionId(invoke, sessionId, eventDispatcher_, childSessionId);
     } else {
+        LOG_DEBUG("InvokeExecutor: Starting invoke without explicit ID - generating session ID");
         // Fallback for invokes without explicit ID
         invokeid = handler->startInvoke(invoke, sessionId, eventDispatcher_);
     }

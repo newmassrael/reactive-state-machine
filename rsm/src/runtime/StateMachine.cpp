@@ -14,6 +14,7 @@
 #include "runtime/HistoryValidator.h"
 #include "runtime/ShallowHistoryFilter.h"
 #include "scripting/JSEngine.h"
+#include "states/ConcurrentRegion.h"
 #include "states/ConcurrentStateNode.h"
 #include <fstream>
 #include <random>
@@ -138,6 +139,7 @@ bool StateMachine::start() {
     }
 
     // W3C SCXML compliance: Execute deferred invokes after initial state entry completes
+    LOG_INFO("StateMachine: Executing pending invokes after initial state entry for session: {}", sessionId_);
     executePendingInvokes();
     updateStatistics();
 
@@ -343,8 +345,33 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             return stateTransitionResult;
         }
 
-        // SCXML W3C specification: If no transition on parallel state, broadcast to all active regions
-        LOG_DEBUG("StateMachine: No transitions on parallel state, broadcasting to all regions");
+        // SCXML W3C specification: Check transitions in active child states of regions
+        // This handles transitions defined on states within parallel regions (e.g., p01, p02)
+        const auto &regions = parallelState->getRegions();
+        for (const auto &region : regions) {
+            if (region && region->isActive()) {
+                // Get region's current state and check for transitions
+                auto concreteRegion = std::dynamic_pointer_cast<ConcurrentRegion>(region);
+                if (concreteRegion) {
+                    std::string regionCurrentState = concreteRegion->getCurrentState();
+                    if (!regionCurrentState.empty()) {
+                        auto regionStateNode = model_->findStateById(regionCurrentState);
+                        if (regionStateNode) {
+                            auto regionTransitionResult =
+                                processStateTransitions(regionStateNode, eventName, eventData);
+                            if (regionTransitionResult.success) {
+                                LOG_DEBUG("SCXML compliant - region child state transition executed: {} -> {}",
+                                          regionTransitionResult.fromState, regionTransitionResult.toState);
+                                return regionTransitionResult;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // SCXML W3C specification: If no transition on parallel state or regions, broadcast to all active regions
+        LOG_DEBUG("StateMachine: No transitions on parallel state or region children, broadcasting to all regions");
 
         // Create EventDescriptor for SCXML-compliant event processing
         EventDescriptor event;
@@ -702,6 +729,22 @@ bool StateMachine::initializeFromModel() {
             executeOnEntryActions(stateId);
         });
         LOG_DEBUG("StateMachine: Onentry callback successfully configured");
+
+        // W3C SCXML 6.4: Set up invoke defer callback for proper timing in parallel states
+        LOG_DEBUG("StateMachine: Setting up invoke defer callback for StateHierarchyManager");
+        hierarchyManager_->setInvokeDeferCallback(
+            [this](const std::string &stateId, const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
+                LOG_INFO("StateMachine: Invoke defer callback triggered for state: {} with {} invokes", stateId,
+                         invokes.size());
+                deferInvokeExecution(stateId, invokes);
+            });
+        LOG_DEBUG("StateMachine: Invoke defer callback successfully configured");
+
+        // W3C SCXML: Set up condition evaluator callback for transition guard evaluation in parallel states
+        LOG_DEBUG("StateMachine: Setting up condition evaluator callback for StateHierarchyManager");
+        hierarchyManager_->setConditionEvaluator(
+            [this](const std::string &condition) -> bool { return evaluateCondition(condition); });
+        LOG_DEBUG("StateMachine: Condition evaluator callback successfully configured");
 
         // Set up completion callbacks for parallel states (SCXML W3C compliance)
         setupParallelStateCallbacks();
@@ -1678,8 +1721,7 @@ std::shared_ptr<IEventDispatcher> StateMachine::getEventDispatcher() const {
 
 void StateMachine::deferInvokeExecution(const std::string &stateId,
                                         const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
-    LOG_DEBUG("StateMachine: DETAILED DEBUG - deferInvokeExecution called for session {}, stateId: {}, invokeCount: {}",
-              sessionId_, stateId, invokes.size());
+    LOG_INFO("StateMachine: Deferring {} invokes for state: {} in session: {}", invokes.size(), stateId, sessionId_);
 
     // Log each invoke being deferred
     for (size_t i = 0; i < invokes.size(); ++i) {
@@ -1707,9 +1749,12 @@ void StateMachine::executePendingInvokes() {
     {
         std::lock_guard<std::mutex> lock(pendingInvokesMutex_);
         if (pendingInvokes_.empty()) {
-            LOG_DEBUG("StateMachine: No pending invokes to execute");
+            LOG_INFO("StateMachine: No pending invokes to execute for session: {}", sessionId_);
             return;
         }
+
+        LOG_INFO("StateMachine: Found {} pending invokes to execute for session: {}", pendingInvokes_.size(),
+                 sessionId_);
 
         LOG_DEBUG("StateMachine: DETAILED DEBUG - Executing {} pending invokes for session {}", pendingInvokes_.size(),
                   sessionId_);
@@ -1735,8 +1780,8 @@ void StateMachine::executePendingInvokes() {
 
     // Execute invokes outside of lock to avoid deadlock
     for (const auto &deferred : invokesToExecute) {
-        LOG_DEBUG("StateMachine: Executing {} deferred invokes for state: {}", deferred.invokes.size(),
-                  deferred.stateId);
+        LOG_INFO("StateMachine: Executing {} deferred invokes for state: {}", deferred.invokes.size(),
+                 deferred.stateId);
 
         if (invokeExecutor_) {
             bool invokeSuccess = invokeExecutor_->executeInvokes(deferred.invokes, sessionId_);

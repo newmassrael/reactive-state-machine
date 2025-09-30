@@ -12,6 +12,7 @@ namespace RSM {
 class SCXMLModel;
 class IStateNode;
 class IExecutionContext;
+class IInvokeNode;
 
 /**
  * @brief 계층적 상태 관리 시스템
@@ -107,6 +108,28 @@ public:
      */
     void setOnEntryCallback(std::function<void(const std::string &)> callback);
 
+    /**
+     * @brief Set callback for invoke deferring (W3C SCXML 6.4 compliance)
+     *
+     * This callback is called when a state with invoke elements is entered,
+     * allowing the StateMachine to defer invoke execution until after state entry completes.
+     * This ensures proper timing with transition actions and W3C SCXML compliance.
+     *
+     * @param callback Function to call with stateId and invoke nodes for deferring
+     */
+    void setInvokeDeferCallback(
+        std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> callback);
+
+    /**
+     * @brief Set condition evaluator callback for transition guard evaluation
+     *
+     * This callback is used by concurrent regions to evaluate guard conditions
+     * on transitions using the StateMachine's JavaScript engine.
+     *
+     * @param evaluator Function to call with condition string, returns evaluation result
+     */
+    void setConditionEvaluator(std::function<bool(const std::string &)> evaluator);
+
 private:
     /**
      * @brief SCXML W3C: Specialized cleanup for parallel states
@@ -138,6 +161,10 @@ private:
 
     // W3C SCXML onentry callback
     std::function<void(const std::string &)> onEntryCallback_;
+
+    // W3C SCXML 6.4: Invoke defer callback for proper timing
+    std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> invokeDeferCallback_;
+    std::function<bool(const std::string &)> conditionEvaluator_;
 
     /**
      * @brief 상태를 활성 구성에 추가

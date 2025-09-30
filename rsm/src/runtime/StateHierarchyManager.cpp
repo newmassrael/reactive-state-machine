@@ -35,6 +35,34 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
 
         LOG_DEBUG("enterState - Entering parallel state with region activation: {}", stateId);
 
+        // W3C SCXML 6.4: Set invoke callback for all regions BEFORE activation
+        // This is critical because enterParallelState() will activate regions,
+        // which will call enterInitialState() where invokes are processed
+        const auto &regions = parallelState->getRegions();
+        assert(!regions.empty() && "SCXML violation: parallel state must have at least one region");
+
+        if (invokeDeferCallback_) {
+            for (const auto &region : regions) {
+                if (region) {
+                    region->setInvokeCallback(invokeDeferCallback_);
+                    LOG_DEBUG("StateHierarchyManager: Set invoke callback for region: {} BEFORE activation",
+                              region->getId());
+                }
+            }
+        }
+
+        // W3C SCXML: Set condition evaluator callback for all regions BEFORE activation
+        // This allows regions to evaluate transition guard conditions using StateMachine's JS engine
+        if (conditionEvaluator_) {
+            for (const auto &region : regions) {
+                if (region) {
+                    region->setConditionEvaluator(conditionEvaluator_);
+                    LOG_DEBUG("StateHierarchyManager: Set condition evaluator for region: {} BEFORE activation",
+                              region->getId());
+                }
+            }
+        }
+
         auto result = parallelState->enterParallelState();
         if (!result.isSuccess) {
             LOG_ERROR("enterState - Failed to enter parallel state '{}': {}", stateId, result.errorMessage);
@@ -51,10 +79,6 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
                 "Skipping region activation - parallel state was exited during entry (e.g., done.state transition)");
             return true;  // Exit early - the transition has already completed
         }
-
-        // SCXML W3C specification: Add ALL child regions to active configuration
-        const auto &regions = parallelState->getRegions();
-        assert(!regions.empty() && "SCXML violation: parallel state must have at least one region");
 
         for (const auto &region : regions) {
             assert(region && "SCXML violation: parallel state cannot have null regions");
@@ -78,6 +102,9 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
 
                 addStateToConfiguration(initialChild);
                 LOG_DEBUG("enterState - Added initial child state to configuration: {}", initialChild);
+
+                // W3C SCXML 6.4: Invoke defer is handled by ConcurrentRegion via callback
+                // No need to defer here - Region already processes invokes in enterInitialState()
             }
         }
 
@@ -471,6 +498,17 @@ bool StateHierarchyManager::isCompoundState(IStateNode *stateNode) const {
 void StateHierarchyManager::setOnEntryCallback(std::function<void(const std::string &)> callback) {
     onEntryCallback_ = callback;
     LOG_DEBUG("OnEntry callback set for StateHierarchyManager");
+}
+
+void StateHierarchyManager::setInvokeDeferCallback(
+    std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> callback) {
+    invokeDeferCallback_ = callback;
+    LOG_DEBUG("StateHierarchyManager: Invoke defer callback set for W3C SCXML 6.4 compliance");
+}
+
+void StateHierarchyManager::setConditionEvaluator(std::function<bool(const std::string &)> evaluator) {
+    conditionEvaluator_ = evaluator;
+    LOG_DEBUG("StateHierarchyManager: Condition evaluator callback set for W3C SCXML transition guard compliance");
 }
 
 }  // namespace RSM

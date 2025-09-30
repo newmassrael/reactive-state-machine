@@ -11,6 +11,7 @@ namespace RSM {
 struct EventDescriptor;
 class IStateNode;
 class IExecutionContext;
+class IInvokeNode;
 
 /**
  * @brief Interface for concurrent regions in parallel states
@@ -107,6 +108,23 @@ public:
      * @return Vector of validation error messages (empty if valid)
      */
     virtual std::vector<std::string> validate() const = 0;
+
+    /**
+     * @brief Set callback for invoke deferring (W3C SCXML 6.4 compliance)
+     *
+     * This callback allows the region to delegate invoke execution timing
+     * to the StateMachine, ensuring proper SCXML semantics via dependency inversion.
+     *
+     * @param callback Function to call with stateId and invoke nodes for deferring
+     */
+    virtual void setInvokeCallback(
+        std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> callback) = 0;
+
+    /**
+     * @brief Set condition evaluator callback for transition guard evaluation
+     * @param evaluator Function to evaluate guard conditions (returns true/false)
+     */
+    virtual void setConditionEvaluator(std::function<bool(const std::string &)> evaluator) = 0;
 };
 
 }  // namespace RSM
