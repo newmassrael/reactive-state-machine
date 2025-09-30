@@ -151,6 +151,14 @@ std::string TXMLConverter::convertTXMLToSCXML(const std::string &txml) {
     }
 }
 
+std::string TXMLConverter::convertTXMLToSCXMLWithoutValidation(const std::string &txml) {
+    if (txml.empty()) {
+        throw std::invalid_argument("TXML content cannot be empty");
+    }
+
+    return applyTransformations(txml);
+}
+
 std::string TXMLConverter::applyTransformations(const std::string &txml) {
     std::string result = txml;
 

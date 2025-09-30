@@ -643,11 +643,11 @@ std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, c
         return "";
     }
 
-    // Security: Only allow .scxml file extension
+    // Security: Only allow .scxml and .txml file extensions
     std::filesystem::path pathCheck(cleanPath);
     std::string ext = pathCheck.extension().string();
-    if (!ext.empty() && ext != ".scxml") {
-        LOG_ERROR("SCXMLInvokeHandler: Invalid file extension - only .scxml allowed: '{}'", cleanPath);
+    if (!ext.empty() && ext != ".scxml" && ext != ".txml") {
+        LOG_ERROR("SCXMLInvokeHandler: Invalid file extension - only .scxml and .txml allowed: '{}'", cleanPath);
         return "";
     }
 
@@ -692,18 +692,33 @@ std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, c
         resolvedPath = cleanPath;
     }
 
-    // Check if SCXML file exists
+    // Check if SCXML or TXML file exists
     std::filesystem::path finalPath = resolvedPath;
     if (!finalPath.has_extension()) {
-        finalPath += ".scxml";
+        // Try .scxml first, then .txml
+        std::filesystem::path scxmlPath = finalPath;
+        scxmlPath += ".scxml";
+        std::filesystem::path txmlPath = finalPath;
+        txmlPath += ".txml";
+
+        if (std::filesystem::exists(scxmlPath)) {
+            finalPath = scxmlPath;
+        } else if (std::filesystem::exists(txmlPath)) {
+            finalPath = txmlPath;
+        } else {
+            LOG_ERROR("SCXMLInvokeHandler: SCXML/TXML file not found: '{}' (tried .scxml and .txml)",
+                      finalPath.string());
+            return "";
+        }
+    } else {
+        // Extension specified, verify file exists
+        if (!std::filesystem::exists(finalPath)) {
+            LOG_ERROR("SCXMLInvokeHandler: File not found: '{}'", finalPath.string());
+            return "";
+        }
     }
 
-    if (!std::filesystem::exists(finalPath)) {
-        LOG_ERROR("SCXMLInvokeHandler: SCXML file not found: '{}'", finalPath.string());
-        return "";
-    }
-
-    LOG_DEBUG("SCXMLInvokeHandler: Found SCXML file at '{}'", finalPath.string());
+    LOG_DEBUG("SCXMLInvokeHandler: Found file at '{}'", finalPath.string());
 
     // Read file content
     std::ifstream file(finalPath);

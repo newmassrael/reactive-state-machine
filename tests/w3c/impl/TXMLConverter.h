@@ -141,6 +141,15 @@ public:
      * @throws std::runtime_error if conversion fails
      */
     std::string convertTXMLToSCXML(const std::string &txml) override;
+
+    /**
+     * @brief Convert TXML to SCXML without W3C validation
+     * @param txml TXML content to convert
+     * @return Converted SCXML content
+     * @throws std::invalid_argument if TXML is malformed
+     * @note Useful for converting sub-files that don't have pass/fail targets
+     */
+    std::string convertTXMLToSCXMLWithoutValidation(const std::string &txml);
 };
 
 }  // namespace RSM::W3C

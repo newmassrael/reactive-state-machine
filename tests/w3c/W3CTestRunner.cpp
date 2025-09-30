@@ -800,6 +800,33 @@ TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
         // Log converted SCXML after conversion
         LOG_INFO("W3C Test {}: Converted SCXML content:\n{}", report.testId, scxml);
 
+        // Convert all sub-TXML files in the test directory for invoke elements
+        std::filesystem::path testDir(testDirectory);
+        for (const auto &entry : std::filesystem::directory_iterator(testDir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".txml") {
+                std::string filename = entry.path().filename().string();
+                // Skip main test file
+                if (filename == "test" + report.testId + ".txml") {
+                    continue;
+                }
+
+                // Convert sub-TXML file to SCXML (without W3C validation for sub-files)
+                std::ifstream subTxmlFile(entry.path());
+                std::string subTxml((std::istreambuf_iterator<char>(subTxmlFile)), std::istreambuf_iterator<char>());
+                std::string subScxml = static_cast<RSM::W3C::TXMLConverter *>(converter_.get())
+                                           ->convertTXMLToSCXMLWithoutValidation(subTxml);
+
+                // Write converted SCXML file
+                std::filesystem::path scxmlPath = entry.path();
+                scxmlPath.replace_extension(".scxml");
+                std::ofstream scxmlFile(scxmlPath);
+                scxmlFile << subScxml;
+
+                LOG_DEBUG("W3C Test {}: Converted sub-file {} to {}", report.testId, filename,
+                          scxmlPath.filename().string());
+            }
+        }
+
         // Execute test
         LOG_DEBUG("W3C Single Test: Executing test {}", report.testId);
         report.executionContext = executor_->executeTest(scxml, report.metadata, txmlPath);
