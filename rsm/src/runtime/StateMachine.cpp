@@ -433,18 +433,12 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             }
 
             // Execute transition actions (SCXML W3C specification)
+            // W3C compliance: Events raised in transition actions must be queued, not processed immediately
             const auto &actionNodes = transitionNode->getActionNodes();
             if (!actionNodes.empty()) {
-                LOG_DEBUG("StateMachine: Executing transition actions in session: '{}'", sessionId_);
-                for (const auto &actionNode : actionNodes) {
-                    if (actionNode && actionNode->execute(*executionContext_)) {
-                        LOG_DEBUG("Successfully executed ActionNode: {} in session: '{}'", actionNode->getActionType(),
-                                  sessionId_);
-                    } else {
-                        LOG_WARN("ActionNode execution failed: {}, but continuing",
-                                 actionNode ? actionNode->getActionType() : "null");
-                    }
-                }
+                LOG_DEBUG("StateMachine: Executing transition actions (events will be queued)");
+                // processEventsAfter=false: Don't process events yet, they will be handled in macrostep loop
+                executeActionNodes(actionNodes, false);
             } else {
                 LOG_DEBUG("StateMachine: No transition actions for this transition");
             }
@@ -466,7 +460,60 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
 
             LOG_INFO("Successfully transitioned from {} to {}", fromState, targetState);
 
-            // W3C SCXML compliance: Execute deferred invokes after transition completes
+            // W3C SCXML compliance: Macrostep loop - process internal events one at a time
+            // After a transition completes, we must:
+            // 1. Check for eventless transitions on all active states
+            // 2. If none, dequeue ONE internal event and process it
+            // 3. Repeat until no eventless transitions and no internal events
+            if (eventRaiser_) {
+                auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+                if (eventRaiserImpl) {
+                    LOG_DEBUG("W3C SCXML: Starting macrostep loop after transition");
+
+                    // W3C SCXML: Safety guard against infinite loops in malformed SCXML
+                    // Typical SCXML should complete in far fewer iterations
+                    const int MAX_MACROSTEP_ITERATIONS = 1000;
+                    int iterations = 0;
+
+                    while (true) {
+                        if (++iterations > MAX_MACROSTEP_ITERATIONS) {
+                            LOG_ERROR(
+                                "W3C SCXML: Macrostep limit exceeded ({} iterations) - possible infinite loop in SCXML",
+                                MAX_MACROSTEP_ITERATIONS);
+                            LOG_ERROR("W3C SCXML: Check for circular eventless transitions in your SCXML document");
+                            break;  // Safety exit
+                        }
+                        // Step 1: Check for eventless transitions on all active states
+                        bool eventlessTransitionExecuted = checkEventlessTransitions();
+
+                        if (eventlessTransitionExecuted) {
+                            LOG_DEBUG("W3C SCXML: Eventless transition executed, continuing macrostep");
+                            continue;  // Loop back to check for more eventless transitions
+                        }
+
+                        // Step 2: No eventless transitions, check for internal events
+                        if (!eventRaiserImpl->hasQueuedEvents()) {
+                            LOG_DEBUG("W3C SCXML: No eventless transitions and no queued events, macrostep complete");
+                            break;  // Macrostep complete
+                        }
+
+                        // Step 3: Process ONE internal event
+                        LOG_DEBUG("W3C SCXML: Processing next internal event in macrostep");
+                        bool eventProcessed = eventRaiserImpl->processNextQueuedEvent();
+
+                        if (!eventProcessed) {
+                            LOG_DEBUG("W3C SCXML: No event processed, macrostep complete");
+                            break;  // No more events
+                        }
+
+                        // Loop continues - check for eventless transitions again
+                    }
+
+                    LOG_DEBUG("W3C SCXML: Macrostep loop complete");
+                }
+            }
+
+            // W3C SCXML compliance: Execute deferred invokes after macrostep completes
             executePendingInvokes();
 
             return TransitionResult(true, fromState, targetState, eventName);
@@ -710,15 +757,12 @@ bool StateMachine::enterState(const std::string &stateId) {
     // SCXML W3C macrostep compliance: Check if reentrant transition occurred during state entry
     // This handles cases where done.state events cause immediate transitions (e.g., parallel state completion)
     std::string actualCurrentState = getCurrentState();
+    LOG_DEBUG("StateMachine: After entering '{}', getCurrentState() returns '{}'", stateId, actualCurrentState);
     if (actualCurrentState != stateId) {
         LOG_DEBUG("SCXML macrostep: State transition occurred during entry (expected: {}, actual: {})", stateId,
                   actualCurrentState);
         LOG_DEBUG("This indicates a valid internal transition (e.g., done.state event) - macrostep continuing");
-
-        // Note: Invokes are executed immediately during state entry        // Clear guard flag - macrostep will
-        // complete with the actual final state
-        isEnteringState_ = false;
-        return true;
+        // Note: Configuration changed during entry, will check eventless transitions on actual configuration below
     }
 
     // W3C SCXML: onentry actions (including invokes) are executed via callback from StateHierarchyManager
@@ -732,41 +776,47 @@ bool StateMachine::enterState(const std::string &stateId) {
     // Clear guard flag before checking automatic transitions
     isEnteringState_ = false;
 
-    // SCXML W3C specification: After entering a state, check for automatic transitions (eventless transitions)
-    if (model_) {
-        auto currentStateNode = model_->findStateById(stateId);
-        if (currentStateNode) {
-            const auto &transitions = currentStateNode->getTransitions();
-            bool hasAutomaticTransitions = false;
+    // W3C SCXML: Check for eventless transitions after state entry
+    checkEventlessTransitions();
 
-            // Check if there are any eventless transitions
-            for (const auto &transition : transitions) {
-                if (transition->getEvent().empty()) {
-                    hasAutomaticTransitions = true;
-                    break;
-                }
-            }
+    return true;
+}
 
-            if (hasAutomaticTransitions) {
-                LOG_DEBUG("State {} has automatic transitions, checking conditions...", stateId);
+bool StateMachine::checkEventlessTransitions() {
+    // SCXML W3C specification: Check for eventless transitions on ALL active states
+    // Per W3C spec: "select transitions enabled by NULL in the current configuration"
+    if (!model_) {
+        return false;
+    }
 
-                // Process automatic transitions (with empty event name)
-                auto transitionResult = processStateTransitions(currentStateNode, "", "");
-                if (transitionResult.success) {
-                    LOG_INFO("Automatic transition executed: {} -> {}", transitionResult.fromState,
-                             transitionResult.toState);
+    auto activeStates = hierarchyManager_->getActiveStates();
+    LOG_DEBUG("SCXML: Checking eventless transitions on {} active state(s) in current configuration",
+              activeStates.size());
 
-                    // Invoke execution consolidated to key lifecycle points
-                } else {
-                    LOG_DEBUG("No automatic transition conditions met for state: {}", stateId);
-                }
-            } else {
-                LOG_DEBUG("State {} has no automatic transitions", stateId);
-            }
+    // Process states from innermost to outermost (same as event processing)
+    for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
+        const std::string &activeStateId = *it;
+        auto stateNode = model_->findStateById(activeStateId);
+
+        if (!stateNode) {
+            LOG_WARN("SCXML: Active state '{}' not found in model", activeStateId);
+            continue;
+        }
+
+        LOG_DEBUG("SCXML: Checking state '{}' for eventless transitions", activeStateId);
+
+        // Process eventless transitions (empty event name)
+        auto transitionResult = processStateTransitions(stateNode, "", "");
+        if (transitionResult.success) {
+            LOG_INFO("SCXML: Eventless transition executed from state '{}': {} -> {}", activeStateId,
+                     transitionResult.fromState, transitionResult.toState);
+            // W3C: First enabled transition executes, then return true
+            return true;
         }
     }
 
-    return true;
+    LOG_DEBUG("SCXML: No eventless transitions found in active configuration");
+    return false;
 }
 
 bool StateMachine::exitState(const std::string &stateId) {
@@ -781,12 +831,17 @@ bool StateMachine::exitState(const std::string &stateId) {
         // Exit actions for child regions are already handled by executeExitActions for parallel
         // Execute parallel state's own onexit actions LAST
         bool exitResult = executeExitActions(stateId);
-        assert(exitResult && "SCXML violation: parallel state exit actions must succeed");
-        (void)exitResult;  // Suppress unused variable warning in release builds
+        if (!exitResult && isRunning_) {
+            // Only log error if machine is still running - during shutdown, raise failures are expected
+            LOG_ERROR("StateMachine: Failed to execute exit actions for parallel state: {}", stateId);
+        }
     } else {
         // Execute IActionNode-based exit actions for non-parallel states
         bool exitResult = executeExitActions(stateId);
-        assert(exitResult && "SCXML violation: state exit actions must succeed");
+        if (!exitResult && isRunning_) {
+            // Only log error if machine is still running - during shutdown, raise failures are expected
+            LOG_ERROR("StateMachine: Failed to execute exit actions for state: {}", stateId);
+        }
         (void)exitResult;  // Suppress unused variable warning in release builds
     }
 
@@ -976,7 +1031,8 @@ bool StateMachine::initializeActionExecutor() {
     }
 }
 
-bool StateMachine::executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions) {
+bool StateMachine::executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions,
+                                      bool processEventsAfter) {
     if (!executionContext_) {
         LOG_WARN("StateMachine: ExecutionContext not initialized, skipping action node execution");
         return true;  // Not a failure, just no actions to execute
@@ -1022,14 +1078,18 @@ bool StateMachine::executeActionNodes(const std::vector<std::shared_ptr<RSM::IAc
         }
     }
 
-    // W3C SCXML compliance: Restore immediate mode and process queued events
+    // W3C SCXML compliance: Restore immediate mode and optionally process queued events
     if (eventRaiser_) {
         auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
         if (eventRaiserImpl) {
             eventRaiserImpl->setImmediateMode(true);
-            // Process any events that were queued during executable content execution
-            eventRaiserImpl->processQueuedEvents();
-            LOG_DEBUG("SCXML compliance: Restored immediate mode and processed queued events");
+            // Process events only if requested (e.g., for entry actions, not exit/transition actions)
+            if (processEventsAfter) {
+                eventRaiserImpl->processQueuedEvents();
+                LOG_DEBUG("SCXML compliance: Restored immediate mode and processed queued events");
+            } else {
+                LOG_DEBUG("SCXML compliance: Restored immediate mode (events will be processed later)");
+            }
         }
     }
 
@@ -1185,8 +1245,9 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
 
         LOG_DEBUG("SCXML W3C compliant - executing exit sequence for parallel state: {}", stateId);
 
-        // SCXML W3C specification: Execute child region exit actions FIRST
-        for (const auto &region : regions) {
+        // SCXML W3C specification: Execute child region exit actions FIRST in REVERSE document order
+        for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
+            const auto &region = *it;
             assert(region && "SCXML violation: parallel state cannot have null regions");
 
             if (region->isActive()) {
@@ -1205,7 +1266,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
                         if (!childExitActions.empty()) {
                             LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for active child state: {}",
                                       childExitActions.size(), child->getId());
-                            if (!executeActionNodes(childExitActions)) {
+                            if (!executeActionNodes(childExitActions, false)) {
                                 LOG_ERROR("Failed to execute exit actions for child state: {}", child->getId());
                                 return false;
                             }
@@ -1219,7 +1280,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
                 if (!regionExitActions.empty()) {
                     LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for region: {}",
                               regionExitActions.size(), region->getId());
-                    if (!executeActionNodes(regionExitActions)) {
+                    if (!executeActionNodes(regionExitActions, false)) {
                         LOG_ERROR("Failed to execute exit actions for region: {}", region->getId());
                         return false;
                     }
@@ -1232,7 +1293,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
         if (!parallelExitActions.empty()) {
             LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for parallel state itself: {}",
                       parallelExitActions.size(), stateId);
-            return executeActionNodes(parallelExitActions);
+            return executeActionNodes(parallelExitActions, false);
         }
 
         return true;
@@ -1242,7 +1303,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
     const auto &exitActions = stateNode->getExitActionNodes();
     if (!exitActions.empty()) {
         LOG_DEBUG("Executing {} exit action nodes for state: {}", exitActions.size(), stateId);
-        return executeActionNodes(exitActions);
+        return executeActionNodes(exitActions, false);
     }
 
     return true;

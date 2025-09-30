@@ -170,6 +170,10 @@ private:
     std::atomic<bool> callbackShutdownRequested_{false};
     std::atomic<bool> running_{false};
 
+    // Thread-local flag to detect if we're running in scheduler's own thread
+    // This prevents deadlock when shutdown is called from callback worker thread
+    static thread_local bool isInSchedulerThread_;
+
     // Send ID generation - REMOVED: Now using UniqueIdGenerator
     // std::atomic<uint64_t> sendIdCounter_{0}; // DEPRECATED: Consolidated to UniqueIdGenerator
 

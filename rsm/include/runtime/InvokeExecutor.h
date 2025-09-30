@@ -12,6 +12,7 @@ namespace RSM {
 
 // Forward declarations
 class StateMachine;
+class StateMachineContext;
 
 /**
  * @brief Interface for invoke handler implementations (Open/Closed Principle)
@@ -102,7 +103,7 @@ private:
         std::string sessionId;
         std::string parentSessionId;
         std::shared_ptr<IEventDispatcher> eventDispatcher;
-        std::unique_ptr<StateMachine> childStateMachine;
+        std::unique_ptr<StateMachineContext> smContext;  // RAII wrapper for automatic cleanup
         bool isActive = true;
         bool autoForward = false;
     };

@@ -182,13 +182,18 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
     // Wake up callback threads
     callbackCondition_.notify_all();
 
+    // CRITICAL FIX: Use thread_local flag to detect if we're in scheduler's own thread
+    // This is more reliable than comparing thread IDs
+    bool calledFromSchedulerThread = isInSchedulerThread_;
+
     // Wait for callback threads to finish
     for (auto &thread : callbackThreads_) {
         if (thread.joinable()) {
-            if (waitForCompletion) {
-                thread.join();
-            } else {
+            // CRITICAL: If called from scheduler thread, must detach to avoid deadlock
+            if (calledFromSchedulerThread || !waitForCompletion) {
                 thread.detach();
+            } else {
+                thread.join();
             }
         }
     }
@@ -198,10 +203,11 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
 
     // Wait for timer thread to finish BEFORE acquiring mutex to prevent deadlock
     if (timerThread_.joinable()) {
-        if (waitForCompletion) {
-            timerThread_.join();
-        } else {
+        // CRITICAL: If called from scheduler thread, must detach to avoid deadlock
+        if (calledFromSchedulerThread || !waitForCompletion) {
             timerThread_.detach();
+        } else {
+            timerThread_.join();
         }
     }
 
@@ -231,6 +237,9 @@ bool EventSchedulerImpl::isRunning() const {
 }
 
 void EventSchedulerImpl::timerThreadMain() {
+    // Mark this thread as a scheduler thread to prevent deadlock on shutdown
+    isInSchedulerThread_ = true;
+
     LOG_DEBUG("EventSchedulerImpl: Timer thread started");
 
     while (!shutdownRequested_) {
@@ -395,6 +404,9 @@ void EventSchedulerImpl::ensureThreadsStarted() {
 }
 
 void EventSchedulerImpl::callbackWorker() {
+    // Mark this thread as a scheduler thread to prevent deadlock on shutdown
+    isInSchedulerThread_ = true;
+
     LOG_DEBUG("EventSchedulerImpl: Callback worker thread started");
 
     while (!callbackShutdownRequested_) {
@@ -455,5 +467,8 @@ std::chrono::steady_clock::time_point EventSchedulerImpl::getNextExecutionTimeUn
     // This is safe because processReadyEvents() will skip cancelled events
     return topEvent->executeAt;
 }
+
+// Thread-local variable definition
+thread_local bool EventSchedulerImpl::isInSchedulerThread_ = false;
 
 }  // namespace RSM

@@ -9,6 +9,7 @@
 #include "runtime/EventRaiserImpl.h"
 #include "runtime/StateMachine.h"
 #include "runtime/StateMachineBuilder.h"
+#include "runtime/StateMachineContext.h"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -95,71 +96,28 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
         TestExecutionContext executeTest(const std::string &scxmlContent, const TestMetadata &metadata) override {
             auto startTime = std::chrono::steady_clock::now();
 
-            TestExecutionContext context;
-            context.scxmlContent = scxmlContent;
-            context.metadata = metadata;
+            TestExecutionContext testContext;
+            testContext.scxmlContent = scxmlContent;
+            testContext.metadata = metadata;
             // W3C tests should pass when correctly implemented, regardless of conformance level
             // conformance indicates whether implementation is required, not expected outcome
-            context.expectedTarget = "pass";
+            testContext.expectedTarget = "pass";
 
-            // Create EventDispatcher infrastructure for delayed events and #_parent routing
-            auto eventRaiser = std::make_shared<RSM::EventRaiserImpl>();
-            auto scheduler = std::make_shared<RSM::EventSchedulerImpl>([](const RSM::EventDescriptor &event,
-                                                                          std::shared_ptr<RSM::IEventTarget> target,
-                                                                          const std::string &sendId) -> bool {
-                // 🔍 CRITICAL DEBUG: Session isolation analysis
-                LOG_WARN("🔍 CRITICAL PATH: EventScheduler callback - event='{}', target='{}', sendId='{}', "
-                         "event.sessionId='{}'",
-                         event.eventName, target->getDebugInfo(), sendId, event.sessionId);
-
-                LOG_DEBUG("EventScheduler: Executing event '{}' on target '{}' with sendId '{}', event.target='{}'",
-                          event.eventName, target->getDebugInfo(), sendId, event.target);
-
-                // Check if target can handle this event
-                if (!target->canHandle(event.target)) {
-                    LOG_WARN("EventScheduler: Target '{}' cannot handle target '{}'", target->getDebugInfo(),
-                             event.target);
-                    return false;
-                }
-
-                // W3C SCXML 6.2: Send event to the target using sendId for tracking
-                LOG_DEBUG("EventScheduler: Calling target->send() for event '{}' on target '{}'", event.eventName,
-                          target->getDebugInfo());
-
-                // 🔍 CRITICAL DEBUG: Check if this is the session isolation problem
-                LOG_WARN("🔍 BEFORE target->send(): event.sessionId='{}', target.type='{}'", event.sessionId,
-                         target->getDebugInfo());
-
-                auto future = target->send(event);
-                LOG_DEBUG("EventScheduler: target->send() completed for event '{}'", event.eventName);
-                bool targetResult = false;
-                try {
-                    auto sendResult = future.get();
-                    targetResult = sendResult.isSuccess;
-
-                    // 🔍 CRITICAL DEBUG: Session isolation verification
-                    LOG_WARN("🔍 AFTER target->send(): success={}, event='{}', sessionId='{}'", sendResult.isSuccess,
-                             event.eventName, event.sessionId);
-                } catch (const std::exception &e) {
-                    LOG_ERROR("EventScheduler: Failed to send event '{}': {}", event.eventName, e.what());
-                    targetResult = false;
-                }
-
-                return targetResult;
-            });
-            auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(eventRaiser, scheduler);
+            // Create shared resources using RAII factory pattern
+            auto resources = TestComponentFactory::createResources();
 
             try {
                 LOG_DEBUG("StateMachineTestExecutor: Starting test execution for test {}", metadata.id);
 
-                // Create StateMachine using Builder pattern with proper dependency injection
-                auto builder = RSM::StateMachineBuilder().withEventDispatcher(
-                    std::make_shared<RSM::EventDispatcherImpl>(scheduler, targetFactory));
+                // Build StateMachine with resource injection, then wrap in RAII context
+                auto stateMachineUnique = RSM::StateMachineBuilder()
+                                              .withEventDispatcher(resources->eventDispatcher)
+                                              .withEventRaiser(resources->eventRaiser)
+                                              .build();
 
-                // Inject EventRaiser into builder for proper dependency injection
-                builder.withEventRaiser(eventRaiser);
-
-                auto stateMachine = builder.build();
+                // Wrap in StateMachineContext for RAII cleanup
+                auto smContext = std::make_unique<RSM::StateMachineContext>(std::move(stateMachineUnique));
+                auto *stateMachine = smContext->get();
 
                 // W3C SCXML compliance: EventRaiser callback should pass eventData to StateMachine
                 // StateMachine will automatically set its own callback, so we don't override it here
@@ -168,21 +126,21 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                 // Load SCXML content
                 if (!stateMachine->loadSCXMLFromString(scxmlContent)) {
                     LOG_ERROR("StateMachineTestExecutor: Failed to load SCXML content");
-                    context.finalState = "error";
-                    context.errorMessage = "Failed to load SCXML content";
-                    return context;
+                    testContext.finalState = "error";
+                    testContext.errorMessage = "Failed to load SCXML content";
+                    return testContext;
                 }
 
                 // W3C SCXML compliance: Ensure EventRaiser callback is properly set after SCXML loading
                 // This guarantees that any initialization during SCXML loading doesn't override our callback
-                stateMachine->setEventRaiser(eventRaiser);
+                stateMachine->setEventRaiser(resources->eventRaiser);
 
                 // Start the state machine
                 if (!stateMachine->start()) {
                     LOG_ERROR("StateMachineTestExecutor: Failed to start StateMachine");
-                    context.finalState = "error";
-                    context.errorMessage = "Failed to start StateMachine";
-                    return context;
+                    testContext.finalState = "error";
+                    testContext.errorMessage = "Failed to start StateMachine";
+                    return testContext;
                 }
 
                 // Wait for StateMachine to reach final state or timeout
@@ -203,73 +161,27 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                 }
 
                 // Get final state
-                context.finalState = currentState;
-                LOG_DEBUG("StateMachineTestExecutor: Test completed with final state: {}", context.finalState);
+                testContext.finalState = currentState;
+                LOG_DEBUG("StateMachineTestExecutor: Test completed with final state: {}", testContext.finalState);
 
                 auto endTime = std::chrono::steady_clock::now();
-                context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+                testContext.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-                // CRITICAL FIX: Explicit cleanup to prevent test interference deadlocks
-                LOG_DEBUG("StateMachineTestExecutor: Starting explicit cleanup to prevent test interference");
-
-                // 1. Stop the StateMachine first
-                if (stateMachine) {
-                    LOG_DEBUG("StateMachineTestExecutor: Stopping StateMachine");
-                    // StateMachine will automatically clean up its resources
-                }
-
-                // 2. Shutdown EventScheduler explicitly with timeout
-                if (scheduler) {
-                    LOG_DEBUG("StateMachineTestExecutor: Shutting down EventScheduler");
-                    scheduler->shutdown(true);  // Wait for completion
-                    LOG_DEBUG("StateMachineTestExecutor: EventScheduler shutdown complete");
-                }
-
-                // 3. Clear EventRaiser to release any remaining references
-                if (eventRaiser) {
-                    LOG_DEBUG("StateMachineTestExecutor: Shutting down EventRaiser");
-                    eventRaiser->shutdown();
-                    LOG_DEBUG("StateMachineTestExecutor: EventRaiser shutdown complete");
-                }
-
-                // 4. Small delay to ensure all threads are fully terminated
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-                LOG_DEBUG("StateMachineTestExecutor: Explicit cleanup completed");
-
-                return context;
+                // RAII cleanup: StateMachineContext destructor handles all cleanup automatically
+                LOG_DEBUG("StateMachineTestExecutor: Automatic cleanup will occur on scope exit");
+                return testContext;
 
             } catch (const std::exception &e) {
                 LOG_ERROR("StateMachineTestExecutor: Exception during test execution: {}", e.what());
-                context.finalState = "error";
-                context.errorMessage = "Exception: " + std::string(e.what());
+                testContext.finalState = "error";
+                testContext.errorMessage = "Exception: " + std::string(e.what());
 
                 auto endTime = std::chrono::steady_clock::now();
-                context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+                testContext.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-                // CRITICAL FIX: Explicit cleanup even on exception to prevent test interference deadlocks
-                LOG_DEBUG("StateMachineTestExecutor: Starting exception cleanup to prevent test interference");
-                try {
-                    // Shutdown EventScheduler if it exists
-                    if (scheduler) {
-                        LOG_DEBUG("StateMachineTestExecutor: Emergency shutdown of EventScheduler");
-                        scheduler->shutdown(true);
-                    }
-
-                    // Shutdown EventRaiser if it exists
-                    if (eventRaiser) {
-                        LOG_DEBUG("StateMachineTestExecutor: Emergency shutdown of EventRaiser");
-                        eventRaiser->shutdown();
-                    }
-
-                    // Small delay for thread termination
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                } catch (...) {
-                    LOG_ERROR("StateMachineTestExecutor: Exception during emergency cleanup - continuing");
-                }
-                LOG_DEBUG("StateMachineTestExecutor: Exception cleanup completed");
-
-                return context;
+                // RAII cleanup: StateMachineContext destructor handles cleanup on exception
+                LOG_DEBUG("StateMachineTestExecutor: Automatic cleanup will occur on scope exit after exception");
+                return testContext;
             }
         }
 
@@ -277,38 +189,27 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                                          const std::string &sourceFilePath) override {
             auto startTime = std::chrono::steady_clock::now();
 
-            TestExecutionContext context;
-            context.scxmlContent = scxmlContent;
-            context.metadata = metadata;
-            context.expectedTarget = "pass";
+            TestExecutionContext testContext;
+            testContext.scxmlContent = scxmlContent;
+            testContext.metadata = metadata;
+            testContext.expectedTarget = "pass";
 
-            // Create EventDispatcher infrastructure for delayed events and #_parent routing
-            auto eventRaiser = std::make_shared<RSM::EventRaiserImpl>();
-            auto scheduler = std::make_shared<RSM::EventSchedulerImpl>([](const RSM::EventDescriptor &event,
-                                                                          std::shared_ptr<RSM::IEventTarget> target,
-                                                                          const std::string &sendId) -> bool {
-                LOG_DEBUG("EventScheduler: Executing event '{}' on target '{}' with sendId '{}'", event.eventName,
-                          target->getDebugInfo(), sendId);
-                auto future = target->send(event);
-                try {
-                    auto sendResult = future.get();
-                    return sendResult.isSuccess;
-                } catch (const std::exception &e) {
-                    LOG_ERROR("EventScheduler: Failed to send event '{}': {}", event.eventName, e.what());
-                    return false;
-                }
-            });
-            auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(eventRaiser, scheduler);
+            // Create shared resources using RAII factory pattern
+            auto resources = TestComponentFactory::createResources();
 
             try {
                 LOG_DEBUG("StateMachineTestExecutor: Starting test execution for test {} with source path: {}",
                           metadata.id, sourceFilePath);
 
-                // Create StateMachine using Builder pattern with proper dependency injection
-                auto builder = RSM::StateMachineBuilder().withEventDispatcher(
-                    std::make_shared<RSM::EventDispatcherImpl>(scheduler, targetFactory));
-                builder.withEventRaiser(eventRaiser);
-                auto stateMachine = builder.build();
+                // Build StateMachine with resource injection, then wrap in RAII context
+                auto stateMachineUnique = RSM::StateMachineBuilder()
+                                              .withEventDispatcher(resources->eventDispatcher)
+                                              .withEventRaiser(resources->eventRaiser)
+                                              .build();
+
+                // Wrap in StateMachineContext for RAII cleanup
+                auto smContext = std::make_unique<RSM::StateMachineContext>(std::move(stateMachineUnique));
+                auto *stateMachine = smContext->get();
 
                 // Register source file path for relative path resolution before loading SCXML
                 RSM::JSEngine::instance().registerSessionFilePath(stateMachine->getSessionId(), sourceFilePath);
@@ -318,18 +219,18 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                 // Load SCXML content
                 if (!stateMachine->loadSCXMLFromString(scxmlContent)) {
                     LOG_ERROR("StateMachineTestExecutor: Failed to load SCXML content");
-                    context.finalState = "error";
-                    context.errorMessage = "Failed to load SCXML content";
-                    return context;
+                    testContext.finalState = "error";
+                    testContext.errorMessage = "Failed to load SCXML content";
+                    return testContext;
                 }
 
                 // Set EventRaiser and start the state machine
-                stateMachine->setEventRaiser(eventRaiser);
+                stateMachine->setEventRaiser(resources->eventRaiser);
                 if (!stateMachine->start()) {
                     LOG_ERROR("StateMachineTestExecutor: Failed to start StateMachine");
-                    context.finalState = "error";
-                    context.errorMessage = "Failed to start StateMachine";
-                    return context;
+                    testContext.finalState = "error";
+                    testContext.errorMessage = "Failed to start StateMachine";
+                    return testContext;
                 }
 
                 // Wait for StateMachine to reach final state or timeout
@@ -345,31 +246,27 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 }
 
-                context.finalState = currentState;
-                LOG_DEBUG("StateMachineTestExecutor: Test completed with final state: {}", context.finalState);
+                testContext.finalState = currentState;
+                LOG_DEBUG("StateMachineTestExecutor: Test completed with final state: {}", testContext.finalState);
 
                 auto endTime = std::chrono::steady_clock::now();
-                context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+                testContext.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-                // Cleanup
-                if (scheduler) {
-                    scheduler->shutdown(true);
-                }
-                if (eventRaiser) {
-                    eventRaiser->shutdown();
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-                return context;
+                // RAII cleanup: StateMachineContext destructor handles all cleanup automatically
+                LOG_DEBUG("StateMachineTestExecutor: Automatic cleanup will occur on scope exit");
+                return testContext;
 
             } catch (const std::exception &e) {
                 LOG_ERROR("StateMachineTestExecutor: Exception during test execution: {}", e.what());
-                context.finalState = "error";
-                context.errorMessage = "Exception: " + std::string(e.what());
+                testContext.finalState = "error";
+                testContext.errorMessage = "Exception: " + std::string(e.what());
 
                 auto endTime = std::chrono::steady_clock::now();
-                context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-                return context;
+                testContext.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+                // RAII cleanup: StateMachineContext destructor handles cleanup on exception
+                LOG_DEBUG("StateMachineTestExecutor: Automatic cleanup will occur on scope exit after exception");
+                return testContext;
             }
         }
     };
@@ -727,6 +624,42 @@ TestComponentFactory::createCompositeReporter(std::unique_ptr<ITestReporter> con
     return std::make_unique<CompositeTestReporter>(std::move(consoleReporter), std::move(xmlReporter));
 }
 
+std::unique_ptr<TestResources> TestComponentFactory::createResources() {
+    // Create EventRaiser
+    auto eventRaiser = std::make_shared<RSM::EventRaiserImpl>();
+
+    // Create EventScheduler with event execution callback
+    auto scheduler = std::make_shared<RSM::EventSchedulerImpl>([](const RSM::EventDescriptor &event,
+                                                                  std::shared_ptr<RSM::IEventTarget> target,
+                                                                  const std::string &sendId) -> bool {
+        // Event execution callback: send event to target and return success status
+        LOG_DEBUG("EventScheduler: Executing event '{}' with sendId '{}' on target '{}'", event.eventName, sendId,
+                  target->getDebugInfo());
+
+        auto future = target->send(event);
+        try {
+            auto sendResult = future.get();
+            if (sendResult.isSuccess) {
+                LOG_DEBUG("EventScheduler: Event '{}' (sendId: '{}') executed successfully", event.eventName, sendId);
+            } else {
+                LOG_WARN("EventScheduler: Event '{}' (sendId: '{}') execution failed", event.eventName, sendId);
+            }
+            return sendResult.isSuccess;
+        } catch (const std::exception &e) {
+            LOG_ERROR("EventScheduler: Failed to send event '{}' (sendId: '{}'): {}", event.eventName, sendId,
+                      e.what());
+            return false;
+        }
+    });
+
+    // Create EventTargetFactory and EventDispatcher
+    auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(eventRaiser, scheduler);
+    auto eventDispatcher = std::make_shared<RSM::EventDispatcherImpl>(scheduler, targetFactory);
+
+    // Create TestResources with const fields initialized via constructor
+    return std::make_unique<TestResources>(std::move(eventRaiser), std::move(scheduler), std::move(eventDispatcher));
+}
+
 // W3CTestRunner implementation
 W3CTestRunner::W3CTestRunner(std::unique_ptr<ITestConverter> converter,
                              std::unique_ptr<ITestMetadataParser> metadataParser,
@@ -985,42 +918,28 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
         context.metadata = report.metadata;
         context.expectedTarget = "pass";
 
-        // Create EventDispatcher infrastructure for delayed events and #_parent routing
-        auto eventRaiser = std::make_shared<RSM::EventRaiserImpl>();
-        auto scheduler = std::make_shared<RSM::EventSchedulerImpl>([](const RSM::EventDescriptor &event,
-                                                                      std::shared_ptr<RSM::IEventTarget> target,
-                                                                      const std::string &sendId) -> bool {
-            LOG_DEBUG("EventScheduler (HTTP): Executing event '{}' on target '{}' with sendId '{}'", event.eventName,
-                      target->getDebugInfo(), sendId);
-
-            auto future = target->send(event);
-            try {
-                auto sendResult = future.get();
-                return sendResult.isSuccess;
-            } catch (const std::exception &e) {
-                LOG_ERROR("EventScheduler (HTTP): Failed to send event '{}': {}", event.eventName, e.what());
-                return false;
-            }
-        });
-        auto targetFactory = std::make_shared<RSM::EventTargetFactoryImpl>(eventRaiser, scheduler);
+        // Create shared resources using RAII factory pattern
+        auto resources = TestComponentFactory::createResources();
 
         try {
             LOG_DEBUG("StateMachineTestExecutor (HTTP): Starting test execution for test {}", report.metadata.id);
 
             // Set up HTTP server eventCallback to use the EventRaiser
-            httpServer->setEventCallback([eventRaiser](const std::string &eventName, const std::string &eventData) {
-                LOG_INFO("W3CHttpTestServer: Receiving echoed event '{}' - raising to SCXML", eventName);
-                eventRaiser->raiseEvent(eventName, eventData);
-            });
+            httpServer->setEventCallback(
+                [eventRaiser = resources->eventRaiser](const std::string &eventName, const std::string &eventData) {
+                    LOG_INFO("W3CHttpTestServer: Receiving echoed event '{}' - raising to SCXML", eventName);
+                    eventRaiser->raiseEvent(eventName, eventData);
+                });
 
-            // Create StateMachine using Builder pattern with proper dependency injection
-            auto builder = RSM::StateMachineBuilder().withEventDispatcher(
-                std::make_shared<RSM::EventDispatcherImpl>(scheduler, targetFactory));
+            // Build StateMachine with resource injection, then wrap in RAII context
+            auto stateMachineUnique = RSM::StateMachineBuilder()
+                                          .withEventDispatcher(resources->eventDispatcher)
+                                          .withEventRaiser(resources->eventRaiser)
+                                          .build();
 
-            // Inject EventRaiser into builder for proper dependency injection
-            builder.withEventRaiser(eventRaiser);
-
-            auto stateMachine = builder.build();
+            // Wrap in StateMachineContext for RAII cleanup
+            auto smContext = std::make_unique<RSM::StateMachineContext>(std::move(stateMachineUnique));
+            auto *stateMachine = smContext->get();
 
             // Load SCXML content
             if (!stateMachine->loadSCXMLFromString(scxml)) {
@@ -1032,7 +951,7 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
             }
 
             // Ensure EventRaiser callback is properly set after SCXML loading
-            stateMachine->setEventRaiser(eventRaiser);
+            stateMachine->setEventRaiser(resources->eventRaiser);
 
             // Start the state machine
             if (!stateMachine->start()) {
@@ -1068,33 +987,8 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
             auto endTime = std::chrono::steady_clock::now();
             context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-            // CRITICAL FIX: Explicit cleanup to prevent test interference deadlocks (HTTP version)
-            LOG_DEBUG("StateMachineTestExecutor (HTTP): Starting explicit cleanup to prevent test interference");
-
-            // 1. Stop the StateMachine first
-            if (stateMachine) {
-                LOG_DEBUG("StateMachineTestExecutor (HTTP): Stopping StateMachine");
-                // StateMachine will automatically clean up its resources
-            }
-
-            // 2. Shutdown EventScheduler explicitly with timeout
-            if (scheduler) {
-                LOG_DEBUG("StateMachineTestExecutor (HTTP): Shutting down EventScheduler");
-                scheduler->shutdown(true);  // Wait for completion
-                LOG_DEBUG("StateMachineTestExecutor (HTTP): EventScheduler shutdown complete");
-            }
-
-            // 3. Clear EventRaiser to release any remaining references
-            if (eventRaiser) {
-                LOG_DEBUG("StateMachineTestExecutor (HTTP): Shutting down EventRaiser");
-                eventRaiser->shutdown();
-                LOG_DEBUG("StateMachineTestExecutor (HTTP): EventRaiser shutdown complete");
-            }
-
-            // 4. Small delay to ensure all threads are fully terminated
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-            LOG_DEBUG("StateMachineTestExecutor (HTTP): Explicit cleanup completed");
+            // RAII cleanup: StateMachineContext destructor handles all cleanup automatically
+            LOG_DEBUG("StateMachineTestExecutor (HTTP): Automatic cleanup will occur on scope exit");
 
             report.executionContext = context;
 
@@ -1106,27 +1000,8 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
             auto endTime = std::chrono::steady_clock::now();
             context.executionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-            // CRITICAL FIX: Explicit cleanup even on exception to prevent test interference deadlocks (HTTP version)
-            LOG_DEBUG("StateMachineTestExecutor (HTTP): Starting exception cleanup to prevent test interference");
-            try {
-                // Shutdown EventScheduler if it exists
-                if (scheduler) {
-                    LOG_DEBUG("StateMachineTestExecutor (HTTP): Emergency shutdown of EventScheduler");
-                    scheduler->shutdown(true);
-                }
-
-                // Shutdown EventRaiser if it exists
-                if (eventRaiser) {
-                    LOG_DEBUG("StateMachineTestExecutor (HTTP): Emergency shutdown of EventRaiser");
-                    eventRaiser->shutdown();
-                }
-
-                // Small delay for thread termination
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            } catch (...) {
-                LOG_ERROR("StateMachineTestExecutor (HTTP): Exception during emergency cleanup - continuing");
-            }
-            LOG_DEBUG("StateMachineTestExecutor (HTTP): Exception cleanup completed");
+            // RAII cleanup: StateMachineContext destructor handles cleanup on exception (HTTP version)
+            LOG_DEBUG("StateMachineTestExecutor (HTTP): Automatic cleanup will occur on scope exit after exception");
 
             report.executionContext = context;
         }

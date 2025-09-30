@@ -32,6 +32,8 @@ public:
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
     void processQueuedEvents() override;
+    bool processNextQueuedEvent() override;
+    bool hasQueuedEvents() const override;
 
     // Test inspection methods
     const std::vector<std::pair<std::string, std::string>> &getRaisedEvents() const;

@@ -277,9 +277,16 @@ private:
     bool enterState(const std::string &stateId);
     bool exitState(const std::string &stateId);
 
+    /**
+     * @brief W3C SCXML compliance: Check for eventless transitions on all active states
+     * @return true if an eventless transition was executed, false otherwise
+     */
+    bool checkEventlessTransitions();
+
     // New IActionNode-based action execution methods
     bool initializeActionExecutor();
-    bool executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions);
+    bool executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions,
+                            bool processEventsAfter = true);
     bool executeEntryActions(const std::string &stateId);
     bool executeExitActions(const std::string &stateId);
     bool ensureJSEnvironment();

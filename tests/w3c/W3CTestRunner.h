@@ -1,12 +1,17 @@
 #pragma once
 
+#include "events/EventDispatcherImpl.h"
+#include "events/EventSchedulerImpl.h"
 #include "interfaces/ITestConverter.h"
 #include "interfaces/ITestExecutor.h"
 #include "interfaces/ITestMetadataParser.h"
 #include "interfaces/ITestReporter.h"
 #include "interfaces/ITestResultValidator.h"
 #include "interfaces/ITestSuite.h"
+#include "runtime/EventRaiserImpl.h"
+#include <chrono>
 #include <memory>
+#include <thread>
 #include <vector>
 
 namespace RSM::W3C {
@@ -20,6 +25,40 @@ class W3CHttpTestServer;
  * Dependency Inversion: Creates concrete implementations through interfaces
  * Single Responsibility: Only responsible for component creation
  */
+/**
+ * @brief RAII wrapper for shared test resources (EventRaiser, EventScheduler, EventDispatcher)
+ *
+ * This struct owns the lifecycle of shared resources that can be reused across multiple
+ * StateMachine instances (e.g., in invoke scenarios). The destructor ensures proper
+ * cleanup order with EventScheduler's deadlock protection.
+ *
+ * Separation of concerns
+ * - TestResources: Owns EventRaiser/EventScheduler/EventDispatcher (can be shared)
+ * - StateMachineContext: Owns only StateMachine (always exclusive)
+ */
+struct TestResources {
+    const std::shared_ptr<RSM::EventRaiserImpl> eventRaiser;
+    const std::shared_ptr<RSM::EventSchedulerImpl> scheduler;
+    const std::shared_ptr<RSM::EventDispatcherImpl> eventDispatcher;
+
+    TestResources(std::shared_ptr<RSM::EventRaiserImpl> er, std::shared_ptr<RSM::EventSchedulerImpl> sch,
+                  std::shared_ptr<RSM::EventDispatcherImpl> ed)
+        : eventRaiser(std::move(er)), scheduler(std::move(sch)), eventDispatcher(std::move(ed)) {}
+
+    ~TestResources() {
+        // Cleanup order: scheduler -> eventRaiser
+        // EventScheduler's thread_local detection prevents deadlock
+        if (scheduler) {
+            scheduler->shutdown(true);
+        }
+        if (eventRaiser) {
+            eventRaiser->shutdown();
+        }
+        // Small delay for graceful thread termination
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+};
+
 class TestComponentFactory {
 public:
     static std::unique_ptr<ITestConverter> createConverter();
@@ -31,6 +70,20 @@ public:
     static std::unique_ptr<ITestReporter> createXMLReporter(const std::string &outputPath);
     static std::unique_ptr<ITestReporter> createCompositeReporter(std::unique_ptr<ITestReporter> consoleReporter,
                                                                   std::unique_ptr<ITestReporter> xmlReporter);
+
+    /**
+     * @brief Create shared test resources with RAII lifecycle management
+     *
+     * Creates EventRaiser, EventScheduler, and EventDispatcher that can be shared
+     * across multiple StateMachine instances. Resources are automatically cleaned up
+     * when the returned unique_ptr goes out of scope.
+     *
+     * Enables resource sharing for W3C invoke scenarios while
+     * maintaining clear ownership semantics through RAII.
+     *
+     * @return Unique pointer to TestResources with automatic cleanup
+     */
+    static std::unique_ptr<TestResources> createResources();
 };
 
 /**

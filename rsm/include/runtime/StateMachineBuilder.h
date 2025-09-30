@@ -9,10 +9,11 @@
 namespace RSM {
 
 /**
- * @brief Builder pattern for StateMachine construction with proper dependency injection
+ * @brief Builder pattern for StateMachine construction with dependency injection
  *
- * This builder ensures all dependencies are properly set before StateMachine initialization,
- * following SOLID principles and eliminating initialization order issues.
+ * Builder creates StateMachine with injected dependencies.
+ * Caller is responsible for wrapping in StateMachineContext and managing
+ * EventRaiser/EventDispatcher lifecycle separately.
  */
 class StateMachineBuilder {
 private:
@@ -54,8 +55,13 @@ public:
     }
 
     /**
-     * @brief Build StateMachine with all configured dependencies
-     * @return Unique pointer to configured StateMachine
+     * @brief Build StateMachine with dependency injection
+     *
+     * Returns StateMachine pointer.
+     * Caller is responsible for wrapping in StateMachineContext and managing
+     * EventRaiser/EventDispatcher lifecycle (e.g., via TestResources).
+     *
+     * @return Unique pointer to StateMachine
      * @throws std::runtime_error if required dependencies are missing
      */
     std::unique_ptr<StateMachine> build() {

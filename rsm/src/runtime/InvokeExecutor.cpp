@@ -7,6 +7,7 @@
 #include "runtime/InvokeExecutor.h"
 #include "runtime/StateMachine.h"
 #include "runtime/StateMachineBuilder.h"
+#include "runtime/StateMachineContext.h"
 #include "scripting/JSEngine.h"
 #include <filesystem>
 #include <fstream>
@@ -193,64 +194,70 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     session.sessionId = childSessionId;
     session.parentSessionId = parentSessionId;
     session.eventDispatcher = eventDispatcher;
-    session.childStateMachine = nullptr;  // Will be created later
+    session.smContext = nullptr;  // Will be created later
     session.isActive = true;
     session.autoForward = invoke->isAutoForward();
 
     // W3C SCXML: Create EventRaiser for #_parent target support
     auto childEventRaiser = std::make_shared<EventRaiserImpl>();
 
-    // Create child StateMachine using StateMachineBuilder for consistent dependency injection
+    // Build StateMachine with dependency injection, then wrap in RAII context
     StateMachineBuilder builder;
-    auto childStateMachine = builder.withSessionId(childSessionId)
-                                 .withEventDispatcher(eventDispatcher)
-                                 .withEventRaiser(childEventRaiser)
-                                 .build();
+    auto stateMachine = builder.withSessionId(childSessionId)
+                            .withEventDispatcher(eventDispatcher)
+                            .withEventRaiser(childEventRaiser)
+                            .build();
+
+    // Wrap in StateMachineContext for RAII cleanup
+    auto smContext = std::make_unique<StateMachineContext>(std::move(stateMachine));
+
+    // Get raw pointer for callback (safe because smContext lifetime is managed by session)
+    auto *childStateMachinePtr = smContext->get();
 
     LOG_DEBUG("SCXMLInvokeHandler: Created child StateMachine with StateMachineBuilder for session: {}",
               childSessionId);
 
-    // Set up EventRaiser callback to child StateMachine's processEvent after StateMachine is fully constructed
+    // Store the StateMachineContext in session AFTER getting the raw pointer
+    session.smContext = std::move(smContext);
+
+    // Set up EventRaiser callback to child StateMachine's processEvent
     LOG_DEBUG(
         "SCXMLInvokeHandler: Setting EventRaiser callback for session: {}, childStateMachine: {}, EventRaiser: {}",
-        childSessionId, (void *)childStateMachine.get(), (void *)childEventRaiser.get());
+        childSessionId, (void *)childStateMachinePtr, (void *)childEventRaiser.get());
 
-    childEventRaiser->setEventCallback([childStateMachine = childStateMachine.get(), childSessionId](
-                                           const std::string &eventName, const std::string &eventData) -> bool {
-        LOG_DEBUG("EventRaiser callback executing - session: {}, event: '{}', childStateMachine: {}, isRunning: {}",
-                  childSessionId, eventName, (void *)childStateMachine,
-                  childStateMachine ? (childStateMachine->isRunning() ? "true" : "false") : "null");
+    childEventRaiser->setEventCallback(
+        [childStateMachinePtr, childSessionId](const std::string &eventName, const std::string &eventData) -> bool {
+            LOG_DEBUG("EventRaiser callback executing - session: {}, event: '{}', childStateMachine: {}, isRunning: {}",
+                      childSessionId, eventName, (void *)childStateMachinePtr,
+                      childStateMachinePtr ? (childStateMachinePtr->isRunning() ? "true" : "false") : "null");
 
-        if (childStateMachine && childStateMachine->isRunning()) {
-            auto result = childStateMachine->processEvent(eventName, eventData);
-            LOG_DEBUG("EventRaiser callback result - session: {}, event: '{}', success: {}", childSessionId, eventName,
-                      result.success);
-            return result.success;
-        }
-        LOG_WARN("EventRaiser callback failed - session: {}, event: '{}', childStateMachine null or not running",
-                 childSessionId, eventName);
-        return false;
-    });
+            if (childStateMachinePtr && childStateMachinePtr->isRunning()) {
+                auto result = childStateMachinePtr->processEvent(eventName, eventData);
+                LOG_DEBUG("EventRaiser callback result - session: {}, event: '{}', success: {}", childSessionId,
+                          eventName, result.success);
+                return result.success;
+            }
+            LOG_WARN("EventRaiser callback failed - session: {}, event: '{}', childStateMachine null or not running",
+                     childSessionId, eventName);
+            return false;
+        });
 
     LOG_DEBUG("SCXMLInvokeHandler: EventRaiser callback setup complete for session: {}", childSessionId);
 
     // Load SCXML content into child StateMachine
-    if (!childStateMachine->loadSCXMLFromString(scxmlContent)) {
+    if (!childStateMachinePtr->loadSCXMLFromString(scxmlContent)) {
         LOG_ERROR("SCXMLInvokeHandler: Failed to load SCXML content for invoke: {}", invokeid);
         JSEngine::instance().destroySession(childSessionId);
         return "";
     }
-
-    // Store the child StateMachine in session BEFORE starting it
-    // This ensures activeSessions_ is populated when child emits events during start()
-    session.childStateMachine = std::move(childStateMachine);
+    // Add session to activeSessions_
     activeSessions_.emplace(invokeid, std::move(session));
 
     // Get reference to the session we just added (session was moved, can't use it anymore)
     auto &activeSession = activeSessions_[invokeid];
 
     // Start the child StateMachine
-    if (!activeSession.childStateMachine->start()) {
+    if (!activeSession.smContext->get()->start()) {
         LOG_ERROR("SCXMLInvokeHandler: Failed to start child StateMachine for invoke: {}", invokeid);
         activeSessions_.erase(invokeid);
         JSEngine::instance().destroySession(childSessionId);
@@ -261,8 +268,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     // This handles the case where child SCXML has initial="finalStateId" (e.g., test 215)
     // We check BEFORE event processing to avoid confusion with runtime transitions (e.g., test 192)
     LOG_DEBUG("SCXMLInvokeHandler: Checking if child initial state is final - initialState: '{}', isRunning: {}",
-              activeSession.childStateMachine->getCurrentState(), activeSession.childStateMachine->isRunning());
-    if (activeSession.childStateMachine->isInitialStateFinal()) {
+              activeSession.smContext->get()->getCurrentState(), activeSession.smContext->get()->isRunning());
+    if (activeSession.smContext->get()->isInitialStateFinal()) {
         // Generate done.invoke event immediately
         std::string doneEvent = "done.invoke";
         if (eventDispatcher) {
@@ -308,13 +315,8 @@ bool SCXMLInvokeHandler::cancelInvoke(const std::string &invokeid) {
 
     LOG_DEBUG("SCXMLInvokeHandler: Cancelling invoke: {} with session: {}", invokeid, session.sessionId);
 
-    // Stop the child StateMachine if it exists
-    if (session.childStateMachine) {
-        session.childStateMachine->stop();
-        LOG_DEBUG("SCXMLInvokeHandler: Stopped child StateMachine for session: {}", session.sessionId);
-    }
-
-    // Cancel any pending events for this session
+    // RAII cleanup: StateMachineContext destructor will handle StateMachine stop and resource cleanup
+    // We only need to cancel pending events explicitly
     if (session.eventDispatcher) {
         size_t cancelledEvents = session.eventDispatcher->cancelEventsForSession(session.sessionId);
         LOG_DEBUG("SCXMLInvokeHandler: Cancelled {} pending events for session: {}", cancelledEvents,
@@ -770,8 +772,8 @@ std::vector<StateMachine *> SCXMLInvokeHandler::getAutoForwardSessions(const std
     std::vector<StateMachine *> result;
     for (auto &[invokeid, session] : activeSessions_) {
         if (session.isActive && session.parentSessionId == parentSessionId && session.autoForward) {
-            if (session.childStateMachine) {
-                result.push_back(session.childStateMachine.get());
+            if (session.smContext) {
+                result.push_back(session.smContext->get());
             }
         }
     }

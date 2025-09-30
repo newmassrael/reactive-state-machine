@@ -190,25 +190,18 @@ void EventRaiserImpl::processQueuedEvents() {
         std::lock_guard<std::mutex> lock(synchronousQueueMutex_);
         LOG_DEBUG("EventRaiserImpl: Synchronous queue size before processing: {}", synchronousQueue_.size());
 
-        // Convert queue to vector for sorting
+        // W3C SCXML compliance: priority_queue already maintains priority order
+        // Extract all events in priority order
         while (!synchronousQueue_.empty()) {
-            eventsToProcess.push_back(synchronousQueue_.front());
+            eventsToProcess.push_back(synchronousQueue_.top());
             synchronousQueue_.pop();
         }
 
-        LOG_DEBUG("EventRaiserImpl: Events moved to local vector for processing: {}", eventsToProcess.size());
+        LOG_DEBUG("EventRaiserImpl: Events extracted in priority order for processing: {}", eventsToProcess.size());
     }
 
-    // W3C SCXML compliance: Sort events by priority (INTERNAL first, then EXTERNAL)
-    // Within same priority, maintain FIFO order using timestamp
-    std::stable_sort(eventsToProcess.begin(), eventsToProcess.end(), [](const QueuedEvent &a, const QueuedEvent &b) {
-        if (a.priority != b.priority) {
-            return a.priority < b.priority;  // INTERNAL (0) before EXTERNAL (1)
-        }
-        return a.timestamp < b.timestamp;  // FIFO within same priority
-    });
-
-    LOG_DEBUG("EventRaiserImpl: Events sorted by W3C SCXML priority (INTERNAL first, then EXTERNAL)");
+    // Events are already in correct priority order from priority_queue
+    LOG_DEBUG("EventRaiserImpl: Events already sorted by W3C SCXML priority (INTERNAL first, then EXTERNAL)");
 
     // [W3C193 DEBUG] Log the event processing order
     for (size_t i = 0; i < eventsToProcess.size(); ++i) {
@@ -222,31 +215,75 @@ void EventRaiserImpl::processQueuedEvents() {
         LOG_DEBUG("EventRaiserImpl: Synchronously processing queued event '{}' with {} priority", event.eventName,
                   (event.priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"));
 
-        // Get callback under lock and process immediately
-        EventCallback callback;
-        {
-            std::lock_guard<std::mutex> lock(callbackMutex_);
-            callback = eventCallback_;
-        }
-
-        LOG_DEBUG("EventRaiserImpl: Callback availability for event '{}': {} (instance: {})", event.eventName,
-                  (callback ? "available" : "null"), (void *)this);
-
-        if (callback) {
-            try {
-                LOG_DEBUG("EventRaiserImpl: About to call callback for event '{}' with data: '{}'", event.eventName,
-                          event.eventData);
-                bool result = callback(event.eventName, event.eventData);
-                LOG_DEBUG("EventRaiserImpl: Synchronous event '{}' processed with result: {}", event.eventName, result);
-            } catch (const std::exception &e) {
-                LOG_ERROR("EventRaiserImpl: Exception in synchronous processing: {}", e.what());
-            }
-        } else {
-            LOG_WARN("EventRaiserImpl: No callback set for synchronous event: {}", event.eventName);
-        }
+        // Use common callback execution method
+        executeEventCallback(event);
     }
 
     LOG_DEBUG("EventRaiserImpl: Finished processing all queued events");
+}
+
+bool EventRaiserImpl::processNextQueuedEvent() {
+    LOG_DEBUG("EventRaiserImpl: Processing ONE queued event (W3C SCXML compliance)");
+
+    // Get the highest priority event from synchronous queue
+    QueuedEvent eventToProcess{"", "", EventPriority::EXTERNAL};
+    bool hasEvent = false;
+
+    {
+        std::lock_guard<std::mutex> lock(synchronousQueueMutex_);
+
+        if (synchronousQueue_.empty()) {
+            LOG_DEBUG("EventRaiserImpl: No queued events to process");
+            return false;
+        }
+
+        // W3C SCXML compliance: priority_queue automatically maintains priority order
+        // Take the highest priority event (INTERNAL before EXTERNAL, FIFO within same priority)
+        eventToProcess = synchronousQueue_.top();
+        synchronousQueue_.pop();
+        hasEvent = true;
+
+        LOG_DEBUG("EventRaiserImpl: Selected event '{}' with priority {} - {} events remain in queue",
+                  eventToProcess.eventName,
+                  (eventToProcess.priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"),
+                  synchronousQueue_.size());
+    }
+
+    if (!hasEvent) {
+        return false;
+    }
+
+    // Process the selected event without holding the queue lock
+    return executeEventCallback(eventToProcess);
+}
+
+bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {
+    // Get callback under lock
+    EventCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        callback = eventCallback_;
+    }
+
+    if (!callback) {
+        LOG_WARN("EventRaiserImpl: No callback set for event: {}", event.eventName);
+        return false;
+    }
+
+    try {
+        LOG_DEBUG("EventRaiserImpl: Processing event '{}' with data '{}'", event.eventName, event.eventData);
+        bool result = callback(event.eventName, event.eventData);
+        LOG_DEBUG("EventRaiserImpl: Event '{}' processed with result: {}", event.eventName, result);
+        return true;
+    } catch (const std::exception &e) {
+        LOG_ERROR("EventRaiserImpl: Exception processing event '{}': {}", event.eventName, e.what());
+        return false;
+    }
+}
+
+bool EventRaiserImpl::hasQueuedEvents() const {
+    std::lock_guard<std::mutex> lock(synchronousQueueMutex_);
+    return !synchronousQueue_.empty();
 }
 
 }  // namespace RSM

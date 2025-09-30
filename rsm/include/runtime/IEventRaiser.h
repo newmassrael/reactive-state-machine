@@ -46,6 +46,18 @@ public:
      * This method processes queued events in order and returns when all are processed
      */
     virtual void processQueuedEvents() = 0;
+
+    /**
+     * @brief W3C SCXML compliance: Process only ONE event from the queue
+     * @return true if an event was processed, false if queue is empty
+     */
+    virtual bool processNextQueuedEvent() = 0;
+
+    /**
+     * @brief Check if there are queued events waiting to be processed
+     * @return true if queue has events, false if empty
+     */
+    virtual bool hasQueuedEvents() const = 0;
 };
 
 }  // namespace RSM

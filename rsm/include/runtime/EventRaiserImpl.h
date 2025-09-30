@@ -45,6 +45,21 @@ public:
     };
 
     /**
+     * @brief Comparator for priority queue - orders by priority (INTERNAL first) then timestamp (FIFO)
+     * Note: std::priority_queue is a max-heap, so we invert the comparison
+     */
+    struct QueuedEventComparator {
+        bool operator()(const QueuedEvent &a, const QueuedEvent &b) const {
+            // Invert comparison for max-heap: we want INTERNAL (0) before EXTERNAL (1)
+            if (a.priority != b.priority) {
+                return a.priority > b.priority;  // Lower priority value = higher actual priority
+            }
+            // For same priority, older timestamp should come first (FIFO)
+            return a.timestamp > b.timestamp;  // Older timestamp = lower in heap
+        }
+    };
+
+    /**
      * @brief Create an EventRaiser with optional callback
      * @param callback Optional event callback function
      */
@@ -78,6 +93,18 @@ public:
     void processQueuedEvents() override;
 
     /**
+     * @brief W3C SCXML compliance: Process only ONE event from the queue
+     * @return true if an event was processed, false if queue is empty
+     */
+    bool processNextQueuedEvent();
+
+    /**
+     * @brief Check if there are queued events waiting to be processed
+     * @return true if queue has events, false if empty
+     */
+    bool hasQueuedEvents() const;
+
+    /**
      * @brief Internal method to raise event with specific priority (for W3C SCXML compliance)
      * @param eventName Name of the event to raise
      * @param eventData Data associated with the event
@@ -97,6 +124,13 @@ private:
      */
     void processEvent(const QueuedEvent &event);
 
+    /**
+     * @brief Execute callback for a queued event (synchronous processing)
+     * @param event Event to process
+     * @return true if callback was executed successfully, false otherwise
+     */
+    bool executeEventCallback(const QueuedEvent &event);
+
     // Event callback
     EventCallback eventCallback_;
     mutable std::mutex callbackMutex_;
@@ -111,8 +145,8 @@ private:
 
     // SCXML compliance mode and synchronous queue
     std::atomic<bool> immediateMode_;
-    std::queue<QueuedEvent> synchronousQueue_;
-    std::mutex synchronousQueueMutex_;
+    std::priority_queue<QueuedEvent, std::vector<QueuedEvent>, QueuedEventComparator> synchronousQueue_;
+    mutable std::mutex synchronousQueueMutex_;
 };
 
 }  // namespace RSM

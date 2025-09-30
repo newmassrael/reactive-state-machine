@@ -8,6 +8,7 @@
 #include "runtime/EventRaiserImpl.h"
 #include "runtime/StateMachine.h"
 #include "runtime/StateMachineBuilder.h"
+#include "runtime/StateMachineContext.h"
 #include "scripting/JSEngine.h"
 
 using namespace RSM;
@@ -18,19 +19,20 @@ protected:
         // JSEngine 리셋으로 테스트 간 격리 보장
         RSM::JSEngine::instance().reset();
 
-        // Use builder pattern to properly set up EventRaiser
-        // StateMachine에서 자동으로 processEvent 콜백을 설정하므로 기본 생성자 사용
+        // Build StateMachine with dependency injection, then wrap in RAII context
         auto eventRaiser = std::make_shared<EventRaiserImpl>();
 
         StateMachineBuilder builder;
-        stateMachine_ = builder.withEventRaiser(eventRaiser).build();
+        auto stateMachine = builder.withEventRaiser(eventRaiser).build();
+
+        // Wrap in StateMachineContext for RAII cleanup
+        smContext_ = std::make_unique<StateMachineContext>(std::move(stateMachine));
+        stateMachine_ = smContext_->get();
     }
 
     void TearDown() override {
-        if (stateMachine_ && stateMachine_->isRunning()) {
-            stateMachine_->stop();
-        }
-        stateMachine_.reset();
+        // RAII cleanup: StateMachineContext destructor handles StateMachine stop and cleanup
+        smContext_.reset();
         // Clean shutdown with minimal delay
         RSM::JSEngine::instance().shutdown();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -46,7 +48,8 @@ protected:
         std::remove(filename.c_str());
     }
 
-    std::unique_ptr<StateMachine> stateMachine_;
+    std::unique_ptr<StateMachineContext> smContext_;
+    StateMachine *stateMachine_;  // Non-owning pointer for easy access
 };
 
 TEST_F(ActionIntegrationTest, ScriptActionInOnEntryOnExit) {

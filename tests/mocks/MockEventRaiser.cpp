@@ -53,5 +53,16 @@ void MockEventRaiser::processQueuedEvents() {
     // Could be extended to simulate queue processing if needed
 }
 
+bool MockEventRaiser::processNextQueuedEvent() {
+    // Mock implementation - no actual queue to process
+    // Return false to indicate no event was processed
+    return false;
+}
+
+bool MockEventRaiser::hasQueuedEvents() const {
+    // Mock implementation - no actual queue
+    return false;
+}
+
 }  // namespace Test
 }  // namespace RSM
