@@ -485,8 +485,17 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             // For automatic transitions, only consider transitions without events
             eventMatches = transitionEvent.empty();
         } else {
-            // For normal event processing, support wildcard (*) and exact matching
-            eventMatches = (transitionEvent == eventName) || (transitionEvent == "*");
+            // W3C SCXML: Support wildcard (*), exact matching, and hierarchical token matching
+            // Hierarchical matching: "done.invoke" matches "done.invoke.foo"
+            if (transitionEvent == "*") {
+                eventMatches = true;
+            } else if (transitionEvent == eventName) {
+                eventMatches = true;
+            } else {
+                // Check hierarchical prefix matching (tokenized by '.')
+                // "done.invoke" should match "done.invoke.foo"
+                eventMatches = eventName.starts_with(transitionEvent + ".");
+            }
         }
 
         if (!eventMatches) {

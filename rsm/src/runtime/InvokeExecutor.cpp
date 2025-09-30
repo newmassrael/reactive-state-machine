@@ -280,8 +280,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     LOG_DEBUG("SCXMLInvokeHandler: Checking if child initial state is final - initialState: '{}', isRunning: {}",
               activeSession.smContext->get()->getCurrentState(), activeSession.smContext->get()->isRunning());
     if (activeSession.smContext->get()->isInitialStateFinal()) {
-        // Generate done.invoke event immediately
-        std::string doneEvent = "done.invoke";
+        // W3C SCXML 6.5: Generate done.invoke.id event with invokeid suffix
+        std::string doneEvent = "done.invoke." + invokeid;
         if (eventDispatcher) {
             EventDescriptor event;
             event.eventName = doneEvent;
