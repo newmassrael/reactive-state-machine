@@ -1,10 +1,9 @@
 #include "W3CHttpTestServer.h"
+#include "common/JsonUtils.h"
 #include "common/Logger.h"
 #include "events/HttpEventBridge.h"
 #include <chrono>
 #include <httplib.h>
-#define JSON_HAS_CPP_11 0  // Disable C++11 features to avoid string_view
-#include <json/json.h>
 #include <sstream>
 #include <thread>
 
@@ -123,30 +122,16 @@ void W3CHttpTestServer::handlePost(const httplib::Request &req, httplib::Respons
             eventCallback_(eventName, eventData);
         }
 
-        // Send W3C compliant HTTP response using simple JSON construction
-        Json::Value response;
-        response = Json::Value(Json::objectValue);
-
-        Json::Value statusVal = Json::Value("success");
-        Json::Value eventVal = Json::Value(eventName);
-        Json::Value sendIdVal = Json::Value(sendId);
-        Json::Value timestampVal = Json::Value(static_cast<Json::Int64>(
+        // Send W3C compliant HTTP response using nlohmann/json
+        json response = json::object();
+        response["status"] = "success";
+        response["event"] = eventName;
+        response["sendId"] = sendId;
+        response["timestamp"] =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
-                .count()));
+                .count();
 
-        // Build response manually to avoid string_view issues
-        response = Json::Value(Json::objectValue);
-        response.append(statusVal);
-
-        // Simple string response to avoid JSON issues
-        std::ostringstream responseStream;
-        responseStream << "{\"status\":\"success\",\"event\":\"" << eventName << "\",\"sendId\":\"" << sendId
-                       << "\",\"timestamp\":"
-                       << std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::system_clock::now().time_since_epoch())
-                              .count()
-                       << "}";
-        std::string responseBody = responseStream.str();
+        std::string responseBody = JsonUtils::toCompactString(response);
 
         res.set_content(responseBody, "application/json");
         res.status = 200;

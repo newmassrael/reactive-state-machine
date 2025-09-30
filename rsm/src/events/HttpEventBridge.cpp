@@ -4,7 +4,7 @@
 #include "common/Logger.h"
 #include "common/UniqueIdGenerator.h"
 #include <iomanip>
-#include <json/json.h>
+
 #include <sstream>
 
 namespace RSM {
@@ -45,11 +45,11 @@ EventDescriptor HttpEventBridge::httpToScxmlEvent(const HttpRequest &request) {
     }
 
     // Create comprehensive event data
-    Json::Value eventData;
+    json eventData;
 
     // Add HTTP metadata if enabled
     if (config_.getSettings().includeHttpMetadata) {
-        eventData["http"] = Json::Value(Json::objectValue);
+        eventData["http"] = json(json::object());
         eventData["http"]["method"] = request.method;
         eventData["http"]["url"] = request.url;
 
@@ -59,7 +59,7 @@ EventDescriptor HttpEventBridge::httpToScxmlEvent(const HttpRequest &request) {
         if (parseUrl(request.url, path, queryParams)) {
             eventData["http"]["path"] = path;
             if (!queryParams.empty()) {
-                Json::Value queryJson(Json::objectValue);
+                json queryJson(json::object());
                 for (const auto &[key, value] : queryParams) {
                     queryJson[key] = value;
                 }
@@ -69,7 +69,7 @@ EventDescriptor HttpEventBridge::httpToScxmlEvent(const HttpRequest &request) {
 
         // Add headers
         if (!request.headers.empty()) {
-            Json::Value headersJson(Json::objectValue);
+            json headersJson(json::object());
             for (const auto &[key, value] : request.headers) {
                 headersJson[key] = value;
             }
@@ -136,7 +136,7 @@ HttpResponse HttpEventBridge::scxmlToHttpResponse(const EventDescriptor &event) 
     response.statusCode = 200;
 
     // Create comprehensive JSON response with event data
-    Json::Value jsonResponse;
+    json jsonResponse;
     jsonResponse["status"] = "success";
     jsonResponse["event"] = event.eventName;
     jsonResponse["sendId"] = event.sendId;
@@ -177,7 +177,7 @@ HttpRequest HttpEventBridge::scxmlToHttpRequest(const EventDescriptor &event, co
     request.headers["User-Agent"] = "SCXML-BasicHTTPEventProcessor/1.0";
 
     // Create comprehensive JSON request body
-    Json::Value jsonRequest;
+    json jsonRequest;
     jsonRequest["event"] = event.eventName;
     jsonRequest["sendId"] = event.sendId;
     jsonRequest["timestamp"] =
@@ -217,7 +217,7 @@ EventDescriptor HttpEventBridge::httpToScxmlResponse(const HttpResponse &respons
     event.sendId = originalSendId;
 
     // Create comprehensive response data
-    Json::Value responseData;
+    json responseData;
     responseData["statusCode"] = response.statusCode;
     responseData["sendId"] = originalSendId;
     responseData["timestamp"] =
@@ -225,7 +225,7 @@ EventDescriptor HttpEventBridge::httpToScxmlResponse(const HttpResponse &respons
             .count();
 
     // Include response headers
-    Json::Value headers(Json::objectValue);
+    json headers(json::object());
     for (const auto &[key, value] : response.headers) {
         headers[key] = value;
     }
@@ -321,9 +321,9 @@ std::string HttpEventBridge::extractEventName(const HttpRequest &request) const 
             contentTypeIt->second.find("application/json") != std::string::npos) {
             auto bodyJson = JsonUtils::parseJson(request.body);
             if (bodyJson.has_value()) {
-                const Json::Value &body = bodyJson.value();
-                if (body.isMember(settings.eventBodyField) && body[settings.eventBodyField].isString()) {
-                    return body[settings.eventBodyField].asString();
+                const json &body = bodyJson.value();
+                if (body.contains(settings.eventBodyField) && body[settings.eventBodyField].is_string()) {
+                    return body[settings.eventBodyField].get<std::string>();
                 }
             }
         }
@@ -357,7 +357,7 @@ EventDescriptor HttpEventBridge::createErrorEvent(const std::string &errorType, 
 }
 
 std::string HttpEventBridge::formDataToJson(const std::string &formData) const {
-    Json::Value jsonObject;
+    json jsonObject;
 
     if (formData.empty()) {
         return "{}";

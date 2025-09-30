@@ -197,6 +197,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     session.smContext = nullptr;  // Will be created later
     session.isActive = true;
     session.autoForward = invoke->isAutoForward();
+    session.finalizeScript =
+        invoke->getFinalize();  // W3C SCXML 6.4: Store finalize handler for execution before processing child events
 
     // W3C SCXML: Create EventRaiser for #_parent target support
     auto childEventRaiser = std::make_shared<EventRaiserImpl>();
@@ -654,6 +656,26 @@ void InvokeExecutor::cleanupInvoke(const std::string &invokeid) {
     LOG_DEBUG("InvokeExecutor: Cleaned up invoke: {}", invokeid);
 }
 
+std::string InvokeExecutor::getFinalizeScriptForChildSession(const std::string &childSessionId) const {
+    // Iterate through all handlers to find the one with matching child session
+    for (const auto &[invokeid, handler] : invokeHandlers_) {
+        // Check if handler is SCXML type
+        if (handler->getType() == "scxml") {
+            auto scxmlHandler = std::dynamic_pointer_cast<SCXMLInvokeHandler>(handler);
+            if (scxmlHandler) {
+                std::string finalizeScript = scxmlHandler->getFinalizeScriptForChildSession(childSessionId);
+                if (!finalizeScript.empty()) {
+                    LOG_DEBUG("InvokeExecutor: Found finalize script for child session: {}", childSessionId);
+                    return finalizeScript;
+                }
+            }
+        }
+    }
+
+    LOG_DEBUG("InvokeExecutor: No finalize script found for child session: {}", childSessionId);
+    return "";
+}
+
 std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, const std::string &parentSessionId) {
     std::string cleanPath = filepath;
 
@@ -778,6 +800,17 @@ std::vector<StateMachine *> SCXMLInvokeHandler::getAutoForwardSessions(const std
         }
     }
     return result;
+}
+
+std::string SCXMLInvokeHandler::getFinalizeScriptForChildSession(const std::string &childSessionId) const {
+    for (const auto &[invokeid, session] : activeSessions_) {
+        if (session.isActive && session.sessionId == childSessionId) {
+            LOG_DEBUG("SCXMLInvokeHandler: Found finalize script for child session: {} (invokeid: {})", childSessionId,
+                      invokeid);
+            return session.finalizeScript;
+        }
+    }
+    return "";
 }
 
 }  // namespace RSM

@@ -99,6 +99,16 @@ public:
     TransitionResult processEvent(const std::string &eventName, const std::string &eventData = "");
 
     /**
+     * @brief Process an event with origin tracking for W3C SCXML finalize support
+     * @param eventName Name of the event to process
+     * @param eventData Optional event data (JSON string)
+     * @param originSessionId Session ID that originated this event (for finalize)
+     * @return Transition result
+     */
+    TransitionResult processEvent(const std::string &eventName, const std::string &eventData,
+                                  const std::string &originSessionId);
+
+    /**
      * @brief Get current state ID
      * @return Current state ID, empty if not started
      */

@@ -2,7 +2,6 @@
 #include "common/JsonUtils.h"
 #include "common/Logger.h"
 #include "events/IEventBridge.h"  // For HttpResponse struct
-#include <json/json.h>
 
 namespace RSM {
 
@@ -36,7 +35,7 @@ HttpResponse HttpResponseUtils::createSuccessResponse(const std::string &data) {
 }
 
 HttpResponse HttpResponseUtils::createErrorResponse(const std::string &errorMessage, int statusCode) {
-    Json::Value errorObj;
+    json errorObj;
     errorObj["error"] = errorMessage;
     errorObj["status"] = "error";
 
@@ -56,7 +55,7 @@ void HttpResponseUtils::setSuccessResponse(httplib::Response &response, const st
 }
 
 void HttpResponseUtils::setErrorResponse(httplib::Response &response, const std::string &errorMessage, int statusCode) {
-    Json::Value errorObj;
+    json errorObj;
     errorObj["error"] = errorMessage;
     errorObj["status"] = "error";
 

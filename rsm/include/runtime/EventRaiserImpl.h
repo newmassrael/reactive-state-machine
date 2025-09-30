@@ -22,6 +22,7 @@ namespace RSM {
 class EventRaiserImpl : public IEventRaiser {
 public:
     using EventCallback = std::function<bool(const std::string &, const std::string &)>;
+    using EventCallbackWithOrigin = std::function<bool(const std::string &, const std::string &, const std::string &)>;
 
     /**
      * @brief W3C SCXML event priority for queue processing
@@ -37,11 +38,14 @@ public:
     struct QueuedEvent {
         std::string eventName;
         std::string eventData;
+        std::string originSessionId;  // W3C SCXML 6.4: Session that originated this event (for finalize)
         std::chrono::steady_clock::time_point timestamp;
         EventPriority priority;
 
-        QueuedEvent(const std::string &name, const std::string &data, EventPriority prio = EventPriority::INTERNAL)
-            : eventName(name), eventData(data), timestamp(std::chrono::steady_clock::now()), priority(prio) {}
+        QueuedEvent(const std::string &name, const std::string &data, EventPriority prio = EventPriority::INTERNAL,
+                    const std::string &origin = "")
+            : eventName(name), eventData(data), originSessionId(origin), timestamp(std::chrono::steady_clock::now()),
+              priority(prio) {}
     };
 
     /**
@@ -88,6 +92,8 @@ public:
 
     // IEventRaiser interface
     bool raiseEvent(const std::string &eventName, const std::string &eventData) override;
+    bool raiseEvent(const std::string &eventName, const std::string &eventData,
+                    const std::string &originSessionId) override;
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
     void processQueuedEvents() override;
@@ -111,7 +117,8 @@ public:
      * @param priority Event priority (INTERNAL or EXTERNAL)
      * @return true if the event was successfully queued, false if the raiser is not ready
      */
-    bool raiseEventWithPriority(const std::string &eventName, const std::string &eventData, EventPriority priority);
+    bool raiseEventWithPriority(const std::string &eventName, const std::string &eventData, EventPriority priority,
+                                const std::string &originSessionId = "");
 
 private:
     /**
@@ -133,6 +140,20 @@ private:
 
     // Event callback
     EventCallback eventCallback_;
+
+    // W3C SCXML 6.4: Thread-local storage for origin session ID during callback execution
+    static thread_local std::string currentOriginSessionId_;
+
+public:
+    /**
+     * @brief Get current origin session ID (for W3C SCXML 6.4 finalize support)
+     * This is set during event callback execution to allow StateMachine to identify event origin
+     * @return Origin session ID if set, empty string otherwise
+     */
+    static std::string getCurrentOriginSessionId() {
+        return currentOriginSessionId_;
+    }
+
     mutable std::mutex callbackMutex_;
 
     // Asynchronous processing infrastructure

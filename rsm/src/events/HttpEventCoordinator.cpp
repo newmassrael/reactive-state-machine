@@ -1,7 +1,6 @@
 #include "events/HttpEventCoordinator.h"
 #include "common/Logger.h"
 #include <algorithm>
-#include <json/json.h>
 
 namespace RSM {
 

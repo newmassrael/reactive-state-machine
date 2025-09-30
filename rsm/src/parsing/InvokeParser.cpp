@@ -116,19 +116,57 @@ void RSM::InvokeParser::parseFinalizeElement(const xmlpp::Element *finalizeEleme
         return;
     }
 
-    // get_child_text() 대신 텍스트 노드를 직접 찾아야 함
+    // W3C SCXML 6.4: Finalize can contain executable content (assign, script, log, etc.)
+    // Serialize all child elements as SCXML for execution by ActionExecutor
     std::string finalizeContent;
     auto children = finalizeElement->get_children();
     for (auto child : children) {
-        // TextNode 타입인지 확인하고 내용 추출
-        if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
+        // Include both element nodes (assign, script, etc.) and text nodes
+        if (auto element = dynamic_cast<const xmlpp::Element *>(child)) {
+            // Serialize element node to SCXML string
+            finalizeContent += "<" + element->get_name();
+
+            // Add attributes
+            auto attributes = element->get_attributes();
+            if (!attributes.empty()) {
+                for (auto attr : attributes) {
+                    finalizeContent += " " + attr->get_name() + "=\"" + attr->get_value() + "\"";
+                }
+            }
+
+            // Check if element has children
+            auto elementChildren = element->get_children();
+            bool hasChildren = false;
+            for (auto ec : elementChildren) {
+                if (dynamic_cast<const xmlpp::Element *>(ec) ||
+                    (dynamic_cast<const xmlpp::TextNode *>(ec) &&
+                     !dynamic_cast<const xmlpp::TextNode *>(ec)->get_content().empty())) {
+                    hasChildren = true;
+                    break;
+                }
+            }
+
+            if (hasChildren) {
+                finalizeContent += ">";
+                // Recursively add children (simplified - only text for now)
+                for (auto ec : elementChildren) {
+                    if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(ec)) {
+                        finalizeContent += textNode->get_content();
+                    }
+                }
+                finalizeContent += "</" + element->get_name() + ">";
+            } else {
+                finalizeContent += "/>";
+            }
+        } else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
+            // Keep text nodes (whitespace, etc.)
             finalizeContent += textNode->get_content();
         }
     }
 
     invokeNode->setFinalize(finalizeContent);
 
-    LOG_DEBUG("Finalize element parsed for invoke: {}", invokeNode->getId());
+    LOG_DEBUG("Finalize element parsed for invoke: {}, content: '{}'", invokeNode->getId(), finalizeContent);
 }
 
 void RSM::InvokeParser::parseParamElements(const xmlpp::Element *invokeElement,

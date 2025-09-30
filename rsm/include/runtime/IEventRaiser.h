@@ -30,6 +30,20 @@ public:
     virtual bool raiseEvent(const std::string &eventName, const std::string &eventData) = 0;
 
     /**
+     * @brief Raise an event with origin tracking for W3C SCXML finalize support
+     *
+     * Events are queued for asynchronous processing with origin session information.
+     * This enables proper finalize handler execution as specified by W3C SCXML 6.4.
+     *
+     * @param eventName Name of the event to raise
+     * @param eventData Data associated with the event
+     * @param originSessionId Session ID that originated this event (for finalize)
+     * @return true if the event was successfully queued, false if the raiser is not ready
+     */
+    virtual bool raiseEvent(const std::string &eventName, const std::string &eventData,
+                            const std::string &originSessionId) = 0;
+
+    /**
      * @brief Check if the event raiser is ready to raise events
      * @return true if ready, false otherwise
      */

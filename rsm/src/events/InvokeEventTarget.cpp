@@ -1,4 +1,5 @@
 #include "events/InvokeEventTarget.h"
+#include "common/JsonUtils.h"
 #include "common/Logger.h"
 #include "events/EventRaiserService.h"
 #include "runtime/IEventRaiser.h"
@@ -56,14 +57,17 @@ std::future<SendResult> InvokeEventTarget::send(const EventDescriptor &event) {
         std::string eventName = event.eventName;
         std::string eventData = event.data;
 
-        // Add parameters to event data if present
+        // W3C SCXML: Format params as JSON object to match ECMAScript data model
+        // This enables _event.data.paramName access (Test 233 compliance)
         if (!event.params.empty()) {
-            std::ostringstream dataStream;
-            dataStream << eventData;
+            json eventDataJson = json::object();
+
+            // Add all params to the JSON object
             for (const auto &param : event.params) {
-                dataStream << " " << param.first << "=" << param.second;
+                eventDataJson[param.first] = param.second;
             }
-            eventData = dataStream.str();
+
+            eventData = JsonUtils::toCompactString(eventDataJson);
         }
 
         // Raise event in child session's external queue (W3C SCXML compliance)

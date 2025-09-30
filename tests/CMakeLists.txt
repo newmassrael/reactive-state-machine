@@ -5,7 +5,7 @@ find_package(GTest QUIET)
 
 if(NOT GTest_FOUND)
     message(STATUS "GTest not found on system, using FetchContent to download")
-    
+
     include(FetchContent)
     FetchContent_Declare(
         googletest
@@ -14,15 +14,15 @@ if(NOT GTest_FOUND)
         GIT_SHALLOW TRUE
         GIT_PROGRESS TRUE
     )
-    
+
     # GoogleTest 옵션 설정 (빌드 시간 단축)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
     set(BUILD_GTEST ON CACHE BOOL "" FORCE)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-    
+
     FetchContent_MakeAvailable(googletest)
-    
+
     # 별칭 생성 (find_package와 동일한 인터페이스 제공)
     add_library(GTest::GTest ALIAS gtest)
     add_library(GTest::Main ALIAS gtest_main)
@@ -39,11 +39,11 @@ endif()
 # ============================================================================
 function(apply_rsm_test_policies target_name)
     # DisableStdOut.h를 모든 테스트 타겟에 강제 포함
-    target_compile_options(${target_name} 
+    target_compile_options(${target_name}
         PRIVATE
             -include ${CMAKE_SOURCE_DIR}/rsm/include/common/DisableStdOut.h
     )
-    
+
     # RSM 테스트 정책 정의
     target_compile_definitions(${target_name}
         PRIVATE
@@ -54,7 +54,7 @@ endfunction()
 # 모든 테스트 타겟 이름 리스트
 set(RSM_TEST_TARGETS
     rsm_scxml_tests
-    js_engine_tests  
+    js_engine_tests
     state_machine_tests
     states_tests
     action_tests
@@ -227,14 +227,14 @@ target_link_libraries(history_tests
 # add_executable(simple_scxml_engine_tests
 #     api/ReadySCXMLEngineTest.cpp
 # )
-# 
+#
 # target_include_directories(simple_scxml_engine_tests
 #     PRIVATE
 #         ${CMAKE_SOURCE_DIR}
 #         ${CMAKE_SOURCE_DIR}/rsm/include
 #         ${CMAKE_SOURCE_DIR}/tests
 # )
-# 
+#
 # target_link_libraries(simple_scxml_engine_tests
 #     PRIVATE
 #         rsm_unified
@@ -248,7 +248,7 @@ target_link_libraries(history_tests
 
 # Use same libxml++ configuration as RSM
 set(LIBXMLXX_INSTALL_DIR ${CMAKE_BINARY_DIR}/libxmlxx_install)
-set(LIBXMLXX_INCLUDE_DIRS 
+set(LIBXMLXX_INCLUDE_DIRS
     ${LIBXMLXX_INSTALL_DIR}/include/libxml++-5.0
     ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0/include
 )
@@ -431,7 +431,6 @@ add_executable(w3c_test_cli
 target_link_libraries(w3c_test_cli
     PRIVATE
         rsm_unified
-        jsoncpp_static
         ${LIBXMLXX_LIBRARIES}
         xml2
         pthread
@@ -461,7 +460,7 @@ add_test(NAME JSEngineTests COMMAND js_engine_tests)
 add_test(NAME CoreParserTests COMMAND core_parser_tests)
 add_test(NAME StateMachineTests COMMAND state_machine_tests)
 
-# Phase 3: 고급 기능 테스트 (특화 기능 검증, ~10-30초)  
+# Phase 3: 고급 기능 테스트 (특화 기능 검증, ~10-30초)
 add_test(NAME ActionTests COMMAND action_tests)
 add_test(NAME HistoryTests COMMAND history_tests)
 add_test(NAME StatesTests COMMAND states_tests)

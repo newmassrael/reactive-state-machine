@@ -97,6 +97,13 @@ public:
      */
     std::vector<StateMachine *> getAutoForwardSessions(const std::string &parentSessionId);
 
+    /**
+     * @brief Get finalize script for an event from an invoked child session
+     * @param childSessionId Child session ID that sent the event
+     * @return Finalize script if found, empty string otherwise
+     */
+    std::string getFinalizeScriptForChildSession(const std::string &childSessionId) const;
+
 private:
     struct InvokeSession {
         std::string invokeid;
@@ -106,6 +113,7 @@ private:
         std::unique_ptr<StateMachineContext> smContext;  // RAII wrapper for automatic cleanup
         bool isActive = true;
         bool autoForward = false;
+        std::string finalizeScript;  // W3C SCXML: finalize handler script to execute before processing child events
     };
 
     std::unordered_map<std::string, InvokeSession> activeSessions_;
@@ -229,6 +237,13 @@ public:
      * @return Vector of child StateMachine pointers with autoForward=true
      */
     std::vector<StateMachine *> getAutoForwardSessions(const std::string &parentSessionId);
+
+    /**
+     * @brief Get finalize script for an event from an invoked child session
+     * @param childSessionId Child session ID that sent the event
+     * @return Finalize script if found, empty string otherwise
+     */
+    std::string getFinalizeScriptForChildSession(const std::string &childSessionId) const;
 
 private:
     std::shared_ptr<IEventDispatcher> eventDispatcher_;

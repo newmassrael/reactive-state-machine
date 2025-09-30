@@ -5,7 +5,6 @@
 #include "common/UniqueIdGenerator.h"
 #include "scripting/JSEngine.h"
 #include <httplib.h>
-#include <json/json.h>
 #include <regex>
 #include <sstream>
 
@@ -335,7 +334,7 @@ EventDescriptor HttpEventReceiver::convertRequestToEvent(const httplib::Request 
             event.data = request.body;
         } else {
             // Create JSON from query parameters
-            Json::Value dataObj;
+            json dataObj = json::object();
             for (const auto &param : request.params) {
                 dataObj[param.first] = param.second;
             }
@@ -347,7 +346,7 @@ EventDescriptor HttpEventReceiver::convertRequestToEvent(const httplib::Request 
         event.target = getReceiveEndpoint();
 
         // Add HTTP-specific metadata
-        Json::Value metadata;
+        json metadata = json::object();
         metadata["method"] = request.method;
         metadata["path"] = request.path;
         metadata["remote_addr"] = request.get_header_value("Host");
@@ -355,7 +354,7 @@ EventDescriptor HttpEventReceiver::convertRequestToEvent(const httplib::Request 
         metadata["content_type"] = request.get_header_value("Content-Type");
 
         // Add all headers
-        Json::Value headers;
+        json headers = json::object();
         for (const auto &header : request.headers) {
             headers[header.first] = header.second;
         }

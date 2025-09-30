@@ -19,6 +19,12 @@ bool MockEventRaiser::raiseEvent(const std::string &eventName, const std::string
     return !eventName.empty();
 }
 
+bool MockEventRaiser::raiseEvent(const std::string &eventName, const std::string &eventData,
+                                 const std::string & /*originSessionId*/) {
+    // W3C SCXML 6.4: Delegate to 2-parameter version (mock doesn't care about origin)
+    return raiseEvent(eventName, eventData);
+}
+
 bool MockEventRaiser::isReady() const {
     return ready_;
 }

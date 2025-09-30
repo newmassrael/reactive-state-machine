@@ -46,8 +46,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/spdlog ${CMAKE_CURRE
 # Add cpp-httplib subdirectory
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cpp-httplib ${CMAKE_CURRENT_BINARY_DIR}/cpp-httplib)
 
-# Add jsoncpp subdirectory
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/jsoncpp ${CMAKE_CURRENT_BINARY_DIR}/jsoncpp)
+# Add nlohmann/json (header-only library)
+# Modern C++ JSON library with full C++20 support
+set(NLOHMANN_JSON_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/nlohmann_json/include)
 
 add_library(rsm_unified
     # Model implementation
@@ -160,7 +161,7 @@ target_include_directories(rsm_unified
         include/actions
         include/events
         include/states
-        ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/jsoncpp/include
+        ${NLOHMANN_JSON_INCLUDE_DIR}
     PRIVATE
         ${LIBXMLPP_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}
@@ -183,7 +184,7 @@ target_link_libraries(rsm_unified
         qjs                          # QuickJS library
         spdlog::spdlog               # spdlog library
         httplib::httplib             # cpp-httplib library
-        jsoncpp_static               # jsoncpp library
+        # nlohmann/json is header-only, no linking required
     PRIVATE
         ${LIBXMLXX_LIBRARIES}
         ${LIBXML2_LIBRARIES}         # libxml2 dependency for libxml++

@@ -4,6 +4,9 @@
 
 namespace RSM {
 
+// W3C SCXML 6.4: Thread-local storage for origin session ID during event callback execution
+thread_local std::string EventRaiserImpl::currentOriginSessionId_;
+
 EventRaiserImpl::EventRaiserImpl(EventCallback callback)
     : eventCallback_(std::move(callback)), shutdownRequested_(false), isRunning_(false), immediateMode_(false) {
     LOG_DEBUG("EventRaiserImpl: Created with callback: {} (instance: {})", (eventCallback_ ? "set" : "none"),
@@ -61,8 +64,14 @@ bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string
     return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL);
 }
 
+bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData,
+                                 const std::string &originSessionId) {
+    // W3C SCXML 6.4: Raise event with origin tracking for finalize support
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId);
+}
+
 bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const std::string &eventData,
-                                             EventPriority priority) {
+                                             EventPriority priority, const std::string &originSessionId) {
     LOG_DEBUG("EventRaiserImpl::raiseEventWithPriority 호출 - 이벤트: '{}', 데이터: '{}', 우선순위: {}, EventRaiser "
               "인스턴스: {}",
               eventName, eventData, (priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), (void *)this);
@@ -86,9 +95,18 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
 
         if (callback) {
             try {
-                return callback(eventName, eventData);
+                // W3C SCXML 6.4: Set thread-local originSessionId before immediate callback execution
+                currentOriginSessionId_ = originSessionId;
+
+                bool result = callback(eventName, eventData);
+
+                // Clear after callback
+                currentOriginSessionId_.clear();
+
+                return result;
             } catch (const std::exception &e) {
                 LOG_ERROR("EventRaiserImpl: Exception in immediate processing: {}", e.what());
+                currentOriginSessionId_.clear();  // Ensure cleanup on exception
                 return false;
             }
         } else {
@@ -101,7 +119,7 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
     // SCXML compliance: Use synchronous queue when immediate mode is disabled
     {
         std::lock_guard<std::mutex> lock(synchronousQueueMutex_);
-        synchronousQueue_.emplace(eventName, eventData, priority);
+        synchronousQueue_.emplace(eventName, eventData, priority, originSessionId);
         LOG_DEBUG("EventRaiserImpl: [W3C193 DEBUG] Event '{}' queued with priority {} - queue size now: {}", eventName,
                   (priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), synchronousQueue_.size());
         LOG_DEBUG("EventRaiserImpl: Event '{}' queued for synchronous processing (SCXML compliance) with {} priority",
@@ -271,8 +289,16 @@ bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {
     }
 
     try {
-        LOG_DEBUG("EventRaiserImpl: Processing event '{}' with data '{}'", event.eventName, event.eventData);
+        LOG_DEBUG("EventRaiserImpl: Processing event '{}' with data '{}' from origin '{}'", event.eventName,
+                  event.eventData, event.originSessionId);
+
+        // W3C SCXML 6.4: Store originSessionId in thread-local for StateMachine to access
+        currentOriginSessionId_ = event.originSessionId;
+
         bool result = callback(event.eventName, event.eventData);
+
+        // Clear after callback
+        currentOriginSessionId_.clear();
         LOG_DEBUG("EventRaiserImpl: Event '{}' processed with result: {}", event.eventName, result);
         return true;
     } catch (const std::exception &e) {

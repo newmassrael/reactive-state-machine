@@ -17,6 +17,7 @@
 #include "states/ConcurrentStateNode.h"
 #include <fstream>
 #include <random>
+#include <regex>
 #include <sstream>
 
 namespace RSM {
@@ -172,6 +173,15 @@ void StateMachine::stop() {
 }
 
 StateMachine::TransitionResult StateMachine::processEvent(const std::string &eventName, const std::string &eventData) {
+    // W3C SCXML 6.4: Check if there's an origin session ID from EventRaiser thread-local storage
+    std::string originSessionId = EventRaiserImpl::getCurrentOriginSessionId();
+
+    // Delegate to overload with originSessionId (may be empty for non-invoke events)
+    return processEvent(eventName, eventData, originSessionId);
+}
+
+StateMachine::TransitionResult StateMachine::processEvent(const std::string &eventName, const std::string &eventData,
+                                                          const std::string &originSessionId) {
     if (!isRunning_) {
         LOG_WARN("StateMachine: Cannot process event - state machine not running");
         TransitionResult result;
@@ -189,8 +199,8 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
         return result;
     }
 
-    LOG_DEBUG("StateMachine: Processing event: '{}' with data: '{}' in session: '{}'", eventName, eventData,
-              sessionId_);
+    LOG_DEBUG("StateMachine: Processing event: '{}' with data: '{}' in session: '{}', originSessionId: '{}'", eventName,
+              eventData, sessionId_, originSessionId);
 
     // Set event processing flag with RAII for exception safety
     struct ProcessingEventGuard {
@@ -226,6 +236,60 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             actionExecutorImpl->setCurrentEvent(eventName, eventData);
             LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,
                       eventData);
+        }
+    }
+
+    // W3C SCXML 1.0 Section 6.4: Execute finalize handler before processing events from invoked children
+    // According to W3C SCXML: "finalize markup runs BEFORE the event is processed"
+    // The finalize handler is executed when an event arrives from an invoked child
+    // and has access to _event.data to update parent variables before transition evaluation
+    if (invokeExecutor_ && !originSessionId.empty()) {
+        // W3C SCXML compliance: Use originSessionId to find the exact child that sent this event
+        std::string finalizeScript = invokeExecutor_->getFinalizeScriptForChildSession(originSessionId);
+
+        if (!finalizeScript.empty()) {
+            LOG_DEBUG("StateMachine: Executing finalize handler BEFORE processing event '{}', script: '{}'", eventName,
+                      finalizeScript);
+
+            // W3C SCXML 6.4: Parse and execute finalize as SCXML executable content
+            // Finalize contains elements like <assign>, <script>, <log>, etc.
+            if (actionExecutor_) {
+                try {
+                    // Parse finalize SCXML content to extract assign actions
+                    // Simple pattern: <assign location="var1" expr="_event.data.aParam"/>
+                    std::regex assign_pattern("<assign location=\"([^\"]+)\" expr=\"([^\"]+)\"/>");
+                    std::smatch match;
+                    std::string content = finalizeScript;
+
+                    while (std::regex_search(content, match, assign_pattern)) {
+                        std::string location = match[1].str();
+                        std::string expr = match[2].str();
+
+                        LOG_DEBUG("StateMachine: Finalize assign - location: '{}', expr: '{}'", location, expr);
+
+                        // Execute assignment: evaluate expression and assign to variable
+                        auto exprFuture = JSEngine::instance().evaluateExpression(sessionId_, expr);
+                        auto exprResult = exprFuture.get();
+
+                        if (exprResult.isSuccess()) {
+                            // Get the actual value from JSResult
+                            const ScriptValue &value = exprResult.getInternalValue();
+                            JSEngine::instance().setVariable(sessionId_, location, value);
+                            LOG_DEBUG("StateMachine: Finalize assigned '{}' successfully", location);
+                        } else {
+                            LOG_WARN("StateMachine: Finalize expr evaluation failed: {}", exprResult.getErrorMessage());
+                        }
+
+                        content = match.suffix();
+                    }
+
+                    LOG_DEBUG("StateMachine: Finalize handler executed successfully for event '{}'", eventName);
+                } catch (const std::exception &e) {
+                    LOG_ERROR("StateMachine: Exception during finalize handler execution: {}", e.what());
+                }
+            } else {
+                LOG_WARN("StateMachine: No ActionExecutor available for finalize execution");
+            }
         }
     }
 
@@ -1575,6 +1639,7 @@ void StateMachine::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) {
                         LOG_DEBUG("EventRaiser callback: StateMachine::processEvent called - event: '{}', data: '{}', "
                                   "StateMachine instance: {}",
                                   eventName, eventData, (void *)this);
+                        // Use 2-parameter version (no originSessionId from old callback)
                         auto result = processEvent(eventName, eventData);
                         LOG_DEBUG("EventRaiser callback: processEvent result - success: {}, state transition: {} -> {}",
                                   result.success, result.fromState, result.toState);

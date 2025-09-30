@@ -1,4 +1,5 @@
 #include "events/InternalEventTarget.h"
+#include "common/JsonUtils.h"
 #include "common/Logger.h"
 #include "runtime/EventRaiserImpl.h"
 #include "runtime/IEventRaiser.h"
@@ -140,29 +141,20 @@ std::string InternalEventTarget::buildEventData(const EventDescriptor &event) co
         return event.data;
     }
 
-    // For complex data with parameters, build structured data
-    std::ostringstream dataBuilder;
-    dataBuilder << "{";
-
-    bool first = true;
+    // For complex data with parameters, build structured JSON object
+    json eventDataJson = json::object();
 
     // Add main data if provided
     if (!event.data.empty()) {
-        dataBuilder << "\"data\": \"" << event.data << "\"";
-        first = false;
+        eventDataJson["data"] = event.data;
     }
 
     // Add parameters
     for (const auto &param : event.params) {
-        if (!first) {
-            dataBuilder << ", ";
-        }
-        dataBuilder << "\"" << param.first << "\": \"" << param.second << "\"";
-        first = false;
+        eventDataJson[param.first] = param.second;
     }
 
-    dataBuilder << "}";
-    return dataBuilder.str();
+    return JsonUtils::toCompactString(eventDataJson);
 }
 
 }  // namespace RSM

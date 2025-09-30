@@ -29,6 +29,8 @@ public:
 
     // IEventRaiser interface
     bool raiseEvent(const std::string &eventName, const std::string &eventData = "") override;
+    bool raiseEvent(const std::string &eventName, const std::string &eventData,
+                    const std::string &originSessionId) override;
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
     void processQueuedEvents() override;
