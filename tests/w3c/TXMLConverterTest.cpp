@@ -1550,8 +1550,8 @@ TEST_F(TXMLConverterTest, W3CTest159ExecutableContentErrorHandling) {
         << "conf:targetpass should convert to target=\"pass\"";
 }
 
-// W3C Test 176: Event data parameter handling and condition conversion
-TEST_F(TXMLConverterTest, W3CTest176EventDataAndParamHandling) {
+// W3C Test 176: Event data parameter handling and idVal condition conversion
+TEST_F(TXMLConverterTest, W3CTest176EventDataAndIdValCondition) {
     std::string txml = R"(<?xml version="1.0"?>
 <scxml initial="s0" version="1.0" conf:datamodel=""  xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
 <datamodel>
@@ -1615,6 +1615,108 @@ TEST_F(TXMLConverterTest, W3CTest176EventDataAndParamHandling) {
         << "conf:pass should convert to final id=\"pass\"";
     EXPECT_NE(result.find(R"(<final id="fail"/>)"), std::string::npos)
         << "conf:fail should convert to final id=\"fail\"";
+
+    // Ensure all conf: references are removed
+    EXPECT_EQ(result.find("conf:"), std::string::npos) << "All conf: references should be removed";
+}
+
+// ============================================================================
+// New Test: W3C Test 240 conf:namelistIdVal and invoke namelist/param
+// ============================================================================
+
+// Test W3C Test 240: conf:namelistIdVal condition and invoke data passing
+TEST_F(TXMLConverterTest, W3CTest240NamelistIdValAndInvokeDataPassing) {
+    std::string txml = R"(<?xml version="1.0"?>
+<!-- Test namelist and param for invoke -->
+<scxml initial="s0" version="1.0" conf:datamodel="" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1" conf:expr="1"/>
+</datamodel>
+
+<state id="s0" initial="s01">
+  <state id="s01">
+    <invoke type="http://www.w3.org/TR/scxml/" conf:namelist="1">
+      <content>
+        <scxml initial="sub01" version="1.0" conf:datamodel="" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+          <datamodel>
+            <data conf:id="1" conf:expr="0"/>
+          </datamodel>
+          <state id="sub01">
+            <transition conf:namelistIdVal="1=1" target="subFinal1">
+              <send target="#_parent" event="success"/>
+            </transition>
+            <transition target="subFinal1">
+              <send target="#_parent" event="failure"/>
+            </transition>
+          </state>
+          <final id="subFinal1"/>
+        </scxml>
+      </content>
+    </invoke>
+    <transition event="success" target="s02"/>
+    <transition event="failure" conf:targetfail=""/>
+  </state>
+
+  <state id="s02">
+    <invoke type="http://www.w3.org/TR/scxml/">
+      <param conf:name="1" conf:expr="1"/>
+      <content>
+        <scxml initial="sub02" version="1.0" conf:datamodel="" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+          <datamodel>
+            <data conf:id="1" conf:expr="0"/>
+          </datamodel>
+          <state id="sub02">
+            <transition conf:idVal="1=1" target="subFinal2">
+              <send target="#_parent" event="success"/>
+            </transition>
+            <transition target="subFinal2">
+              <send target="#_parent" event="failure"/>
+            </transition>
+          </state>
+          <final id="subFinal2"/>
+        </scxml>
+      </content>
+    </invoke>
+    <transition event="success" conf:targetpass=""/>
+    <transition event="failure" conf:targetfail=""/>
+  </state>
+</state>
+
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    TXMLConverter converter;
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // Test datamodel conversions
+    EXPECT_NE(result.find(R"(id="var1")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"var1\"";
+
+    // Test namelist conversion
+    EXPECT_NE(result.find(R"(namelist="var1")"), std::string::npos)
+        << "conf:namelist=\"1\" should convert to namelist=\"var1\"";
+
+    // Test param name conversion
+    EXPECT_NE(result.find(R"(name="var1")"), std::string::npos) << "conf:name=\"1\" should convert to name=\"var1\"";
+
+    // **KEY TEST**: conf:namelistIdVal should convert to proper comparison
+    EXPECT_NE(result.find(R"(cond="var1 == 1")"), std::string::npos)
+        << "conf:namelistIdVal=\"1=1\" should convert to cond=\"var1 == 1\"";
+
+    // Verify conf:idVal also works (used in second invoke)
+    std::string::size_type pos = 0;
+    int count = 0;
+    while ((pos = result.find(R"(cond="var1 == 1")", pos)) != std::string::npos) {
+        count++;
+        pos++;
+    }
+    EXPECT_EQ(count, 2) << "Should find 2 occurrences of cond=\"var1 == 1\" (namelistIdVal + idVal)";
+
+    // Test target conversions
+    EXPECT_NE(result.find(R"(target="pass")"), std::string::npos)
+        << "conf:targetpass should convert to target=\"pass\"";
+    EXPECT_NE(result.find(R"(target="fail")"), std::string::npos)
+        << "conf:targetfail should convert to target=\"fail\"";
 
     // Ensure all conf: references are removed
     EXPECT_EQ(result.find("conf:"), std::string::npos) << "All conf: references should be removed";

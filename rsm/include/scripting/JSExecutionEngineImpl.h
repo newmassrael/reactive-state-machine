@@ -68,6 +68,7 @@ public:
     bool initializeSessionContext(const std::string &sessionId, const std::string &parentSessionId = "") override;
     bool cleanupSessionContext(const std::string &sessionId) override;
     bool hasSessionContext(const std::string &sessionId) const override;
+    bool isVariablePreInitialized(const std::string &sessionId, const std::string &variableName) const override;
 
     bool initialize() override;
     void shutdown() override;
@@ -105,6 +106,8 @@ private:
         std::shared_ptr<Event> currentEvent;
         std::string sessionName;
         std::vector<std::string> ioProcessors;
+        std::unordered_set<std::string>
+            preInitializedVars;  // Variables set before datamodel initialization (e.g., invoke data)
 
         SessionContext() = default;
 

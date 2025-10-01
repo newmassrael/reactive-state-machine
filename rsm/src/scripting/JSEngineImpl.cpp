@@ -223,6 +223,9 @@ JSResult JSEngine::setVariableInternal(const std::string &sessionId, const std::
 
     JS_FreeValue(ctx, global);
 
+    // Track pre-initialized variable for datamodel initialization optimization
+    session->preInitializedVars.insert(name);
+
     SPDLOG_DEBUG("JSEngine::setVariableInternal - Successfully set variable '{}' in session '{}'", name, sessionId);
     return JSResult::createSuccess();
 }
@@ -266,8 +269,8 @@ JSResult JSEngine::getVariableInternal(const std::string &sessionId, const std::
         JS_FreeAtom(ctx, atom2);  // Free the atom to prevent memory leak
         SPDLOG_DEBUG("JSEngine::getVariableInternal - Second JS_HasProperty('{}') returned: {}", name, hasProperty2);
         if (hasProperty2 <= 0) {
-            // Property doesn't exist - this is an error
-            SPDLOG_ERROR("JSEngine::getVariableInternal - Variable '{}' does not exist in global context", name);
+            // Property doesn't exist - this is not an error, caller will handle
+            SPDLOG_DEBUG("JSEngine::getVariableInternal - Variable '{}' does not exist in global context", name);
             JS_FreeValue(ctx, qjsValue);
             JS_FreeValue(ctx, global);
             return JSResult::createError("Variable not found: " + name);

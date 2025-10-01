@@ -130,6 +130,16 @@ private:
     std::string generateInvokeId() const;
 
     /**
+     * @brief Helper to set invoke data variables in child session (DRY for namelist/param processing)
+     * @param childSessionId Target child session ID
+     * @param varName Variable name to set
+     * @param value ScriptValue to set
+     * @param source Source description for logging ("namelist" or "param")
+     */
+    void setInvokeDataVariable(const std::string &childSessionId, const std::string &varName, const ScriptValue &value,
+                               const std::string &source);
+
+    /**
      * @brief Internal method containing shared invoke logic (DRY principle)
      * @param invoke Invoke node configuration
      * @param parentSessionId Parent session ID

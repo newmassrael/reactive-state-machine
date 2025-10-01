@@ -124,6 +124,10 @@ const std::regex TXMLConverter::CONF_EVENTDATA_FIELD_VALUE_ATTR{R"def(conf:event
 const std::regex TXMLConverter::CONF_IDVAL_COMPARISON_ATTR{R"def(conf:idVal="([0-9]+)=([0-9]+)")def",
                                                            std::regex::optimize};
 
+// Test 240 specific patterns - namelist variable comparison
+const std::regex TXMLConverter::CONF_NAMELISTIDVAL_COMPARISON_ATTR{R"def(conf:namelistIdVal="([0-9]+)=([0-9]+)")def",
+                                                                   std::regex::optimize};
+
 // Test 183 specific patterns - send idlocation and variable binding
 const std::regex TXMLConverter::CONF_IDLOCATION_ATTR{R"def(conf:idlocation="([^"]*)")def", std::regex::optimize};
 
@@ -359,7 +363,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // conf:eventDataFieldValue="aParam" -> expr="_event.data.aParam"
     result = std::regex_replace(result, CONF_EVENTDATA_FIELD_VALUE_ATTR, R"(expr="_event.data.$1")");
 
-    // conf:idVal common patterns
+    // W3C test 240: Generic conf:namelistIdVal pattern - converts "namelistIdVal="N=M" to cond="varN == M"
+    result = std::regex_replace(result, CONF_NAMELISTIDVAL_COMPARISON_ATTR, R"(cond="var$1 == $2")");
+
+    // conf:idVal common patterns (specific patterns must come before generic)
     std::regex idval_4_eq_0(R"ghi(conf:idVal="4=0")ghi");
     std::regex idval_1_ne_5(R"ghi(conf:idVal="1!=5")ghi");
     std::regex idval_1_eq_1(R"ghi(conf:idVal="1=1")ghi");
@@ -373,7 +380,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, idval_1_eq_6, R"(cond="var1 == 6")");
     result = std::regex_replace(result, idval_2_eq_2, R"(cond="var2 == 2")");
 
-    // Generic conf:idVal pattern with variable replacement using the new pattern
+    // Generic conf:idVal pattern - converts "idVal="N=M" to cond="varN == M"
     result = std::regex_replace(result, CONF_IDVAL_COMPARISON_ATTR, R"(cond="var$1 == $2")");
 
     // Test 183 specific patterns

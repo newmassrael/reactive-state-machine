@@ -137,41 +137,6 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         }
     }
 
-    // Set up invoke parameters in child session data model
-    const auto &params = invoke->getParams();
-    for (const auto &[name, expr, location] : params) {
-        if (!name.empty()) {
-            if (sessionAlreadyExists) {
-                // For pre-allocated sessions, use original startInvokeWithSessionId behavior
-                // Evaluate parameter expression in parent session context
-                auto future = JSEngine::instance().evaluateExpression(parentSessionId, expr);
-                auto result = future.get();
-
-                if (JSEngine::isSuccess(result)) {
-                    // Use expression as string (original behavior for pre-allocated sessions)
-                    auto value = ScriptValue{expr};
-                    JSEngine::instance().setVariable(childSessionId, name, value);
-                    LOG_DEBUG("SCXMLInvokeHandler: Set invoke parameter '{}' in child session", name);
-                } else {
-                    LOG_WARN("SCXMLInvokeHandler: Failed to evaluate invoke parameter '{}': {}", name, expr);
-                }
-            } else {
-                // For new sessions, use original startInvoke behavior
-                // Evaluate parameter expression in parent session context
-                auto future = JSEngine::instance().evaluateExpression(parentSessionId, expr);
-                auto result = future.get();
-
-                if (JSEngine::isSuccess(result)) {
-                    // Set evaluated result value in child session
-                    JSEngine::instance().setVariable(childSessionId, name, result.getInternalValue());
-                    LOG_DEBUG("SCXMLInvokeHandler: Set param {} = {} in child session", name, expr);
-                } else {
-                    LOG_WARN("SCXMLInvokeHandler: Failed to evaluate param expression: {}", expr);
-                }
-            }
-        }
-    }
-
     // W3C SCXML 6.4: Handle idlocation attribute - store invoke ID in parent session
     if (!invoke->getIdLocation().empty()) {
         JSEngine::instance().setVariable(parentSessionId, invoke->getIdLocation(), ScriptValue{invokeid});
@@ -324,6 +289,42 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         return "";
     }
     LOG_DEBUG("SCXMLInvokeHandler: Successfully loaded SCXML content for invoke: {}", invokeid);
+
+    // W3C SCXML 6.4: Set invoke data AFTER loading but BEFORE starting
+    // This ensures namelist/param values override child's datamodel initial values
+
+    // W3C SCXML 6.4: Handle namelist attribute - pass datamodel variables by name
+    const std::string &namelist = invoke->getNamelist();
+    if (!namelist.empty()) {
+        std::istringstream iss(namelist);
+        std::string varName;
+        while (iss >> varName) {
+            auto future = JSEngine::instance().getVariable(parentSessionId, varName);
+            auto result = future.get();
+
+            if (JSEngine::isSuccess(result)) {
+                setInvokeDataVariable(childSessionId, varName, result.getInternalValue(), "namelist");
+            } else {
+                LOG_WARN("SCXMLInvokeHandler: Failed to get namelist variable '{}' from parent session", varName);
+            }
+        }
+    }
+
+    // W3C SCXML 6.4: Set up invoke parameters in child session data model
+    const auto &params = invoke->getParams();
+    for (const auto &[name, expr, location] : params) {
+        if (!name.empty()) {
+            auto future = JSEngine::instance().evaluateExpression(parentSessionId, expr);
+            auto result = future.get();
+
+            if (JSEngine::isSuccess(result)) {
+                setInvokeDataVariable(childSessionId, name, result.getInternalValue(), "param");
+            } else {
+                LOG_WARN("SCXMLInvokeHandler: Failed to evaluate param expression: {}", expr);
+            }
+        }
+    }
+
     // Add session to activeSessions_
     activeSessions_.emplace(invokeid, std::move(session));
 
@@ -338,6 +339,7 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         JSEngine::instance().destroySession(childSessionId);
         return "";
     }
+
     LOG_INFO("SCXMLInvokeHandler: Child StateMachine started successfully for invoke: {} (session: {})", invokeid,
              childSessionId);
 
@@ -401,6 +403,12 @@ bool SCXMLInvokeHandler::isInvokeActive(const std::string &invokeid) const {
 
 std::string SCXMLInvokeHandler::getType() const {
     return "scxml";
+}
+
+void SCXMLInvokeHandler::setInvokeDataVariable(const std::string &childSessionId, const std::string &varName,
+                                               const ScriptValue &value, const std::string &source) {
+    JSEngine::instance().setVariable(childSessionId, varName, value);
+    LOG_INFO("SCXMLInvokeHandler: Set {} variable '{}' in child session", source, varName);
 }
 
 std::string SCXMLInvokeHandler::generateInvokeId() const {

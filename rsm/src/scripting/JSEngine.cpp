@@ -1174,6 +1174,15 @@ bool JSEngine::isSuccess(const JSResult &result) noexcept {
     return result.success_internal;
 }
 
+bool JSEngine::isVariablePreInitialized(const std::string &sessionId, const std::string &variableName) const {
+    std::lock_guard<std::mutex> lock(sessionsMutex_);
+    auto it = sessions_.find(sessionId);
+    if (it == sessions_.end()) {
+        return false;
+    }
+    return it->second.preInitializedVars.find(variableName) != it->second.preInitializedVars.end();
+}
+
 // === Invoke Session Management Implementation ===
 
 void JSEngine::registerInvokeMapping(const std::string &parentSessionId, const std::string &invokeId,

@@ -253,6 +253,16 @@ bool JSExecutionEngineImpl::hasSessionContext(const std::string &sessionId) cons
     return contexts_.find(sessionId) != contexts_.end();
 }
 
+bool JSExecutionEngineImpl::isVariablePreInitialized(const std::string &sessionId,
+                                                     const std::string &variableName) const {
+    std::lock_guard<std::mutex> lock(contextsMutex_);
+    auto it = contexts_.find(sessionId);
+    if (it == contexts_.end()) {
+        return false;
+    }
+    return it->second.preInitializedVars.find(variableName) != it->second.preInitializedVars.end();
+}
+
 // === ISessionObserver Implementation ===
 
 void JSExecutionEngineImpl::onSessionCreated(const std::string &sessionId, const std::string &parentSessionId) {

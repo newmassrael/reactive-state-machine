@@ -92,6 +92,9 @@ private:
     static const std::regex CONF_EVENTDATA_FIELD_VALUE_ATTR;
     static const std::regex CONF_IDVAL_COMPARISON_ATTR;
 
+    // Test 240 specific patterns - namelist variable comparison
+    static const std::regex CONF_NAMELISTIDVAL_COMPARISON_ATTR;
+
     // Test 183 specific patterns - send idlocation and variable binding
     static const std::regex CONF_IDLOCATION_ATTR;
 

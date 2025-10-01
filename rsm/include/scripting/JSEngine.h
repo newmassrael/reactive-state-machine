@@ -15,6 +15,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Forward declarations for QuickJS
@@ -169,6 +170,14 @@ public:
      * @return Future with variable value or error
      */
     std::future<JSResult> getVariable(const std::string &sessionId, const std::string &name);
+
+    /**
+     * @brief Check if a variable was pre-initialized (set before datamodel initialization)
+     * @param sessionId Session identifier
+     * @param variableName Variable name to check
+     * @return true if variable was pre-initialized (e.g., by invoke data)
+     */
+    bool isVariablePreInitialized(const std::string &sessionId, const std::string &variableName) const;
 
     // === SCXML-specific Features ===
 
@@ -443,6 +452,8 @@ private:
         std::shared_ptr<Event> currentEvent;
         std::string sessionName;
         std::vector<std::string> ioProcessors;
+        std::unordered_set<std::string>
+            preInitializedVars;  // Variables set before datamodel initialization (e.g., invoke data)
         // SOLID: Single Responsibility - session management includes invoke relationships
         std::shared_ptr<class IEventRaiser> eventRaiser;
     };

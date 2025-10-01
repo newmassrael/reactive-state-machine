@@ -23,6 +23,7 @@ public:
     virtual void setContent(const std::string &content) = 0;
     virtual void setFinalize(const std::string &finalize) = 0;
     virtual const std::string &getIdLocation() const = 0;
+    virtual const std::string &getNamelist() const = 0;
     virtual const std::vector<std::tuple<std::string, std::string, std::string>> &getParams() const = 0;
     virtual const std::string &getContent() const = 0;
     virtual const std::string &getFinalize() const = 0;

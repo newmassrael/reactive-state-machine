@@ -975,8 +975,9 @@ bool StateMachine::enterState(const std::string &stateId) {
     // W3C SCXML: onentry actions (including invokes) are executed via callback from StateHierarchyManager
     // This ensures proper execution order per W3C specification
 
-    // Set state variable in JavaScript context
-    RSM::JSEngine::instance().setVariable(sessionId_, "_state", ScriptValue{getCurrentState()});
+    // NOTE: _state is not a W3C SCXML standard system variable (only _event, _sessionid, _name, _ioprocessors, _x
+    // exist) Setting _state here causes issues with invoke lifecycle when child sessions terminate Removed to comply
+    // with W3C SCXML 5.10 specification
 
     LOG_DEBUG("Successfully entered state using hierarchy manager: {} (current: {})", stateId, getCurrentState());
 
@@ -1217,6 +1218,15 @@ bool StateMachine::setupJSEnvironment() {
             std::string content = item->getContent();
 
             LOG_DEBUG("StateMachine: Processing data model item '{}' - expr: '{}', content: '{}'", id, expr, content);
+
+            // W3C SCXML 6.4: Check if variable was pre-initialized (e.g., by invoke namelist/param)
+            // If it was, skip initialization to preserve pre-set value
+            if (RSM::JSEngine::instance().isVariablePreInitialized(sessionId_, id)) {
+                LOG_INFO("StateMachine: Skipping datamodel initialization for '{}' - pre-initialized by invoke data",
+                         id);
+                continue;
+            }
+            LOG_DEBUG("StateMachine: Variable '{}' not pre-initialized, will initialize from datamodel", id);
 
             if (!expr.empty()) {
                 LOG_DEBUG("StateMachine: Evaluating expression '{}' for variable '{}'", expr, id);
