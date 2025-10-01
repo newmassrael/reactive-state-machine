@@ -18,6 +18,13 @@ StateMachineContext::~StateMachineContext() {
             LOG_DEBUG("StateMachineContext: Stopping StateMachine");
             stateMachine_->stop();
         }
+
+        // CRITICAL: Wait for any in-flight events to complete before destroying StateMachine
+        // The EventScheduler may still be processing events in its callback thread
+        // that reference this StateMachine. We must ensure all event processing completes.
+        LOG_DEBUG("StateMachineContext: Waiting for in-flight events to complete");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
         LOG_DEBUG("StateMachineContext: Destroying StateMachine");
         stateMachine_.reset();
     }

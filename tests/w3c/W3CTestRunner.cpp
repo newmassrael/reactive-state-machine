@@ -383,7 +383,31 @@ std::unique_ptr<ITestSuite> TestComponentFactory::createTestSuite(const std::str
                             std::string metadataPath = getMetadataPath(entry.path().string());
 
                             if (std::filesystem::exists(txmlPath)) {
+                                // Main test file exists - add it
                                 testDirs.push_back(entry.path().string());
+                            } else {
+                                // Check for variant test files (test403a.txml, test403b.txml, etc.)
+                                int testId = extractTestId(entry.path().string());
+                                bool hasVariants = false;
+
+                                // Common variant suffixes: a, b, c, d, e
+                                for (char suffix = 'a'; suffix <= 'z'; ++suffix) {
+                                    std::string variantPath =
+                                        entry.path().string() + "/test" + std::to_string(testId) + suffix + ".txml";
+                                    if (std::filesystem::exists(variantPath)) {
+                                        // Add variant as separate test (with suffix in path for identification)
+                                        testDirs.push_back(entry.path().string() + ":" + std::string(1, suffix));
+                                        hasVariants = true;
+                                    } else {
+                                        // Stop checking once we hit a missing variant
+                                        break;
+                                    }
+                                }
+
+                                if (!hasVariants) {
+                                    // No main file and no variants - skip this test
+                                    LOG_DEBUG("W3CTestSuite: No TXML file found for test {}", testId);
+                                }
                             }
                         }
                     }
@@ -399,11 +423,28 @@ std::unique_ptr<ITestSuite> TestComponentFactory::createTestSuite(const std::str
         }
 
         std::string getTXMLPath(const std::string &testDirectory) override {
+            // Check if path contains variant suffix (format: "path/403:a")
+            size_t colonPos = testDirectory.find(':');
+            if (colonPos != std::string::npos) {
+                // Extract base path and variant suffix
+                std::string basePath = testDirectory.substr(0, colonPos);
+                std::string variant = testDirectory.substr(colonPos + 1);
+                int testId = extractTestId(basePath);
+                return basePath + "/test" + std::to_string(testId) + variant + ".txml";
+            }
+
+            // Normal path without variant
             int testId = extractTestId(testDirectory);
             return testDirectory + "/test" + std::to_string(testId) + ".txml";
         }
 
         std::string getMetadataPath(const std::string &testDirectory) override {
+            // Remove variant suffix if present (format: "path/403:a")
+            size_t colonPos = testDirectory.find(':');
+            if (colonPos != std::string::npos) {
+                std::string basePath = testDirectory.substr(0, colonPos);
+                return basePath + "/metadata.txt";
+            }
             return testDirectory + "/metadata.txt";
         }
 
@@ -681,7 +722,50 @@ TestRunSummary W3CTestRunner::runAllTests() {
     for (const auto &testDir : testDirectories) {
         try {
             LOG_DEBUG("W3C Test Execution: Running test {}", testDir);
-            TestReport report = runSingleTest(testDir);
+
+            // Extract test ID from directory name
+            std::filesystem::path path(testDir);
+            std::string dirName = path.filename().string();
+            int testId = 0;
+            try {
+                testId = std::stoi(dirName);
+            } catch (...) {
+                testId = 0;
+            }
+
+            TestReport report;
+
+            // Special handling for HTTP tests that require bidirectional communication
+            if (testId == 201) {
+                LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+
+                // Create and start the generic W3C HTTP test server
+                W3CHttpTestServer httpServer(8080, "/test");
+
+                if (!httpServer.start()) {
+                    LOG_ERROR("W3C Test {}: Failed to start HTTP server on port 8080", testId);
+                    throw std::runtime_error("Failed to start HTTP server for test " + std::to_string(testId));
+                }
+
+                LOG_INFO("W3C Test {}: HTTP server started successfully on localhost:8080/test", testId);
+
+                try {
+                    // Run the test with HTTP server running
+                    report = runSingleTestWithHttpServer(testDir, &httpServer);
+
+                    // Stop the server after test completion
+                    httpServer.stop();
+                    LOG_INFO("W3C Test {}: HTTP server stopped successfully", testId);
+                } catch (const std::exception &e) {
+                    // Ensure server is stopped even if test fails
+                    httpServer.stop();
+                    LOG_ERROR("W3C Test {}: Test execution failed, HTTP server stopped: {}", testId, e.what());
+                    throw;
+                }
+            } else {
+                report = runSingleTest(testDir);
+            }
+
             reports.push_back(report);
             reporter_->reportTestResult(report);
             LOG_DEBUG("W3C Test Execution: Test {} completed successfully", testDir);
@@ -709,7 +793,19 @@ TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
         std::string metadataPath = testSuite_->getMetadataPath(testDirectory);
         LOG_DEBUG("W3C Single Test: Parsing metadata from {}", metadataPath);
         report.metadata = metadataParser_->parseMetadata(metadataPath);
+
+        // Extract variant suffix if present (format: "path/403:a")
+        std::string variantSuffix;
+        size_t colonPos = testDirectory.find(':');
+        if (colonPos != std::string::npos) {
+            variantSuffix = testDirectory.substr(colonPos + 1);
+        }
+
+        // Set testId with variant suffix if present
         report.testId = std::to_string(report.metadata.id);
+        if (!variantSuffix.empty()) {
+            report.testId += variantSuffix;
+        }
 
         // Skip if necessary
         if (validator_->shouldSkipTest(report.metadata)) {
@@ -735,7 +831,13 @@ TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
         LOG_INFO("W3C Test {}: Converted SCXML content:\n{}", report.testId, scxml);
 
         // Convert all sub-TXML files in the test directory for invoke elements
-        std::filesystem::path testDir(testDirectory);
+        // Extract actual directory path (remove variant suffix if present)
+        std::string actualTestDir = testDirectory;
+        size_t colonPos2 = testDirectory.find(':');
+        if (colonPos2 != std::string::npos) {
+            actualTestDir = testDirectory.substr(0, colonPos2);
+        }
+        std::filesystem::path testDir(actualTestDir);
         for (const auto &entry : std::filesystem::directory_iterator(testDir)) {
             if (entry.is_regular_file() && entry.path().extension() == ".txml") {
                 std::string filename = entry.path().filename().string();
@@ -816,10 +918,26 @@ TestReport W3CTestRunner::runSpecificTest(int testId) {
     auto testDirectories = testSuite_->discoverTests();
 
     for (const auto &testDir : testDirectories) {
-        std::filesystem::path path(testDir);
+        // Extract testId from directory path (handle both normal and variant paths)
+        // Variant paths: "path/403:a" -> extract 403
+        // Normal paths: "path/403" -> extract 403
+        std::string pathStr = testDir;
+        size_t colonPos = pathStr.find(':');
+        if (colonPos != std::string::npos) {
+            pathStr = pathStr.substr(0, colonPos);
+        }
+
+        std::filesystem::path path(pathStr);
         std::string dirName = path.filename().string();
 
-        if (std::stoi(dirName) == testId) {
+        int currentTestId = 0;
+        try {
+            currentTestId = std::stoi(dirName);
+        } catch (...) {
+            continue;
+        }
+
+        if (currentTestId == testId) {
             // Special handling for HTTP tests that require bidirectional communication
             if (testId == 201) {
                 LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
@@ -858,6 +976,71 @@ TestReport W3CTestRunner::runSpecificTest(int testId) {
     throw std::runtime_error("Test " + std::to_string(testId) + " not found");
 }
 
+std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
+    std::vector<TestReport> matchingReports;
+    auto testDirectories = testSuite_->discoverTests();
+
+    for (const auto &testDir : testDirectories) {
+        // Extract testId from directory path (handle both normal and variant paths)
+        std::string pathStr = testDir;
+        size_t colonPos = pathStr.find(':');
+        if (colonPos != std::string::npos) {
+            pathStr = pathStr.substr(0, colonPos);
+        }
+
+        std::filesystem::path path(pathStr);
+        std::string dirName = path.filename().string();
+
+        int currentTestId = 0;
+        try {
+            currentTestId = std::stoi(dirName);
+        } catch (...) {
+            continue;
+        }
+
+        if (currentTestId == testId) {
+            try {
+                // Special handling for HTTP tests that require bidirectional communication
+                if (testId == 201) {
+                    LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+
+                    W3CHttpTestServer httpServer(8080, "/test");
+
+                    if (!httpServer.start()) {
+                        LOG_ERROR("W3C Test {}: Failed to start HTTP server on port 8080", testId);
+                        throw std::runtime_error("Failed to start HTTP server for test " + std::to_string(testId));
+                    }
+
+                    LOG_INFO("W3C Test {}: HTTP server started successfully on localhost:8080/test", testId);
+
+                    try {
+                        TestReport result = runSingleTestWithHttpServer(testDir, &httpServer);
+                        httpServer.stop();
+                        LOG_INFO("W3C Test {}: HTTP server stopped successfully", testId);
+                        matchingReports.push_back(result);
+                    } catch (const std::exception &e) {
+                        httpServer.stop();
+                        LOG_ERROR("W3C Test {}: Test execution failed, HTTP server stopped: {}", testId, e.what());
+                        throw;
+                    }
+                } else {
+                    TestReport report = runSingleTest(testDir);
+                    matchingReports.push_back(report);
+                }
+            } catch (const std::exception &e) {
+                LOG_ERROR("W3C Test Execution: Failed to run test in {}: {}", testDir, e.what());
+                // Continue with other variants even if one fails
+            }
+        }
+    }
+
+    if (matchingReports.empty()) {
+        throw std::runtime_error("Test " + std::to_string(testId) + " not found");
+    }
+
+    return matchingReports;
+}
+
 TestRunSummary W3CTestRunner::runFilteredTests(const std::string &conformanceLevel, const std::string &specSection) {
     // Open/Closed Principle: Use existing test suite filtering capability
     auto filteredTests = testSuite_->filterTests(conformanceLevel, specSection);
@@ -893,7 +1076,19 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
         std::string metadataPath = testSuite_->getMetadataPath(testDirectory);
         LOG_DEBUG("W3C Single Test (HTTP): Parsing metadata from {}", metadataPath);
         report.metadata = metadataParser_->parseMetadata(metadataPath);
+
+        // Extract variant suffix if present (format: "path/403:a")
+        std::string variantSuffix;
+        size_t colonPos = testDirectory.find(':');
+        if (colonPos != std::string::npos) {
+            variantSuffix = testDirectory.substr(colonPos + 1);
+        }
+
+        // Set testId with variant suffix if present
         report.testId = std::to_string(report.metadata.id);
+        if (!variantSuffix.empty()) {
+            report.testId += variantSuffix;
+        }
 
         // Skip if necessary
         if (validator_->shouldSkipTest(report.metadata)) {

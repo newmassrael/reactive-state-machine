@@ -1,0 +1,148 @@
+name: W3C SCXML Compliance Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: W3C SCXML Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          g++ \
+          meson \
+          ninja-build \
+          pkg-config \
+          libxml2-dev \
+          libspdlog-dev \
+          libfmt-dev \
+          libboost-dev
+
+    - name: Configure CMake
+      run: |
+        cmake -B build \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_CXX_COMPILER=g++ \
+          -G Ninja
+
+    - name: Build
+      run: cmake --build build --parallel $(nproc)
+
+    - name: Verify Resources
+      run: |
+        if [ ! -d "resources" ]; then
+          echo "Error: resources directory not found"
+          exit 1
+        fi
+        txml_count=$(find resources -name '*.txml' | wc -l)
+        test_dirs=$(find resources -mindepth 1 -maxdepth 1 -type d | wc -l)
+        echo "Resources directory found:"
+        echo "  - Test directories: $test_dirs"
+        echo "  - TXML files: $txml_count"
+
+    - name: Debug Environment
+      run: |
+        echo "=== Current Directory ==="
+        pwd
+        echo "=== Resources Check ==="
+        ls -la ../../resources | head -n 20
+        echo "=== Build Directory ==="
+        ls -la build/tests
+        echo "=== Library Check ==="
+        ldd build/tests/w3c_test_cli | grep libxml
+
+    - name: Run W3C SCXML Test Suite (Debug Mode)
+      run: |
+        cd build/tests
+        # Enable core dumps
+        ulimit -c unlimited
+        # Run with debug logging (default resources path is ../../resources)
+        env SPDLOG_LEVEL=debug ./w3c_test_cli --output w3c_test_results.xml 2>&1 | tail -n 100
+      continue-on-error: true
+
+    - name: Analyze Crash (if occurred)
+      if: always()
+      run: |
+        cd build/tests
+        if [ -f core ]; then
+          echo "=== Core dump found! ==="
+          gdb -batch -ex "bt" -ex "quit" ./w3c_test_cli core 2>&1 || echo "GDB not available"
+        else
+          echo "No core dump found"
+        fi
+
+    - name: Publish Test Report
+      uses: mikepenz/action-junit-report@v4
+      if: always()
+      with:
+        report_paths: 'build/tests/w3c_test_results.xml'
+        detailed_summary: true
+        include_passed: true
+        fail_on_failure: false
+        check_name: 'W3C SCXML Test Results'
+        summary: true
+        annotate_only: false
+
+    - name: Upload Test Results Artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: w3c-test-results
+        path: build/tests/w3c_test_results.xml
+        retention-days: 30
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: build-logs
+        path: |
+          build/CMakeFiles/*.log
+          build/Testing/Temporary/
+        retention-days: 7
+
+    - name: Generate Test Summary
+      if: always()
+      run: |
+        cd build/tests
+        echo "## 📊 W3C SCXML Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ -f w3c_test_results.xml ]; then
+          total=$(grep -oP 'tests="\K[0-9]+' w3c_test_results.xml | head -1)
+          failures=$(grep -oP 'failures="\K[0-9]+' w3c_test_results.xml | head -1)
+          errors=$(grep -oP 'errors="\K[0-9]+' w3c_test_results.xml | head -1)
+          passed=$((total - failures - errors))
+          pass_rate=$(awk "BEGIN {printf \"%.1f\", ($passed / $total) * 100}")
+
+          echo "- **Total Tests:** $total" >> $GITHUB_STEP_SUMMARY
+          echo "- **✅ Passed:** $passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **❌ Failed:** $failures" >> $GITHUB_STEP_SUMMARY
+          echo "- **🚨 Errors:** $errors" >> $GITHUB_STEP_SUMMARY
+          echo "- **📈 Pass Rate:** ${pass_rate}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if (( $(echo "$pass_rate >= 80.0" | bc -l) )); then
+            echo "🏆 **Status:** EXCELLENT - High W3C SCXML compliance!" >> $GITHUB_STEP_SUMMARY
+          elif (( $(echo "$pass_rate >= 60.0" | bc -l) )); then
+            echo "👍 **Status:** GOOD - Reasonable W3C SCXML compliance" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Status:** NEEDS IMPROVEMENT - Review failing tests" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "❌ Test results file not found" >> $GITHUB_STEP_SUMMARY
+        fi

@@ -23,19 +23,27 @@ ExternalProject_Add(libxmlxx_external
         -Dbuild-examples=false
         -Dbuild-tests=false
         -Dbuild-documentation=false
+        -Dmaintainer-mode=false
     BUILD_COMMAND meson compile -C ${LIBXMLXX_BUILD_DIR}
     INSTALL_COMMAND meson install -C ${LIBXMLXX_BUILD_DIR}
-    BUILD_BYPRODUCTS 
+    BUILD_BYPRODUCTS
         ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0${CMAKE_SHARED_LIBRARY_SUFFIX}
         ${LIBXMLXX_INSTALL_DIR}/include/libxml++-5.0/libxml++/libxml++.h
 )
 
 # Set libxml++ variables for linking
-set(LIBXMLXX_INCLUDE_DIRS 
+set(LIBXMLXX_INCLUDE_DIRS
     ${LIBXMLXX_INSTALL_DIR}/include/libxml++-5.0
-    ${LIBXMLXX_INSTALL_DIR}/include/libxml++-5.0/libxml++config
+    ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0/include
 )
 set(LIBXMLXX_LIBRARIES ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+# Create include directories at configure time so CMake doesn't drop them
+file(MAKE_DIRECTORY ${LIBXMLXX_INSTALL_DIR}/include/libxml++-5.0)
+file(MAKE_DIRECTORY ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0/include)
+
+message(STATUS "LIBXMLXX_INCLUDE_DIRS: ${LIBXMLXX_INCLUDE_DIRS}")
+message(STATUS "LIBXMLXX_INSTALL_DIR: ${LIBXMLXX_INSTALL_DIR}")
 
 # Add QuickJS subdirectory
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/quickjs ${CMAKE_CURRENT_BINARY_DIR}/quickjs)
@@ -162,8 +170,10 @@ target_include_directories(rsm_unified
         include/events
         include/states
         ${NLOHMANN_JSON_INCLUDE_DIR}
+        ${LIBXMLXX_INSTALL_DIR}/include/libxml++-5.0
+        ${LIBXMLXX_INSTALL_DIR}/lib/libxml++-5.0/include
+        ${LIBXML2_INCLUDE_DIRS}
     PRIVATE
-        ${LIBXMLPP_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}
 )
 

@@ -89,4 +89,4 @@ docs/xml/
 .serena
 .cache
 # Auto-generated SCXML files from TXML conversion
-resources/*/test*sub*.scxml
+resources/*/*.scxml

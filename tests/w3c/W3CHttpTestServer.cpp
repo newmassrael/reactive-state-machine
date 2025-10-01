@@ -35,13 +35,22 @@ bool W3CHttpTestServer::start() {
         LOG_INFO("W3CHttpTestServer: Starting HTTP server on localhost:{}{}", port_, path_);
 
         running_ = true;
+
+        // Set SO_REUSEADDR to allow immediate port reuse
+        server_->set_socket_options([](socket_t sock) {
+            int yes = 1;
+            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes));
+        });
+
         bool success = server_->listen("localhost", port_);
 
         if (!success && !shutdownRequested_.load()) {
             LOG_ERROR("W3CHttpTestServer: Failed to start server on port {}", port_);
+            running_ = false;  // Set to false immediately on failure
+        } else {
+            running_ = false;  // Normal shutdown
         }
 
-        running_ = false;
         LOG_DEBUG("W3CHttpTestServer: Server thread ended");
     });
 
@@ -60,7 +69,7 @@ bool W3CHttpTestServer::start() {
 }
 
 void W3CHttpTestServer::stop() {
-    if (!running_.load()) {
+    if (!running_.load() && !serverThread_.joinable()) {
         return;
     }
 
@@ -75,6 +84,9 @@ void W3CHttpTestServer::stop() {
     if (serverThread_.joinable()) {
         serverThread_.join();
     }
+
+    // Give OS time to release the port
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     LOG_INFO("W3CHttpTestServer: HTTP server stopped");
 }

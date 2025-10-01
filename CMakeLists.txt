@@ -65,6 +65,11 @@ include(GNUInstallDirs)
 # 위치 독립적 코드 생성 (공유 라이브러리를 위해)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# cpp-httplib zstd 지원 비활성화
+# 이유: 현재 프로젝트는 작은 HTTP 메시지만 사용하므로 압축 불필요
+# cpp-httplib의 CMake zstd 통합 문제 회피
+set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF CACHE BOOL "Disable zstd compression support" FORCE)
+
 # 컴파일 옵션 설정
 if(MSVC)
     add_compile_options(/W4 /WX)  # /WX: treat warnings as errors
@@ -72,9 +77,8 @@ else()
     add_compile_options(-Wall -Wextra -pedantic -Werror)  # -Werror: treat warnings as errors
 endif()
 
-# libxml++5.0 찾기
+# libxml++5.0은 rsm/CMakeLists.txt에서 처리됨
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBXMLPP REQUIRED "libxml++-5.0 >= 5.0.0")
 
 # Boost 라이브러리 찾기
 find_package(Boost 1.65 REQUIRED)

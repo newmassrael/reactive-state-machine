@@ -16,7 +16,8 @@
  */
 int main(int argc, char *argv[]) {
     try {
-        std::string resourcePath = "/home/coin/reactive-state-machine/resources";
+        // Use relative path from build/tests directory: ../../resources
+        std::string resourcePath = "../../resources";
         std::string outputPath = "w3c_test_results.xml";
 
         // Parse command line arguments
@@ -181,31 +182,33 @@ int main(int argc, char *argv[]) {
             std::vector<RSM::W3C::TestReport> reports;
             for (int testId : specificTestIds) {
                 try {
-                    LOG_INFO("W3C CLI: Running test {}", testId);
-                    RSM::W3C::TestReport report = runner.runSpecificTest(testId);
-                    reports.push_back(report);
+                    LOG_INFO("W3C CLI: Running test {} (including variants if any)", testId);
+                    std::vector<RSM::W3C::TestReport> testReports = runner.runAllMatchingTests(testId);
+                    reports.insert(reports.end(), testReports.begin(), testReports.end());
 
-                    // Show result immediately
-                    std::string status;
-                    switch (report.validationResult.finalResult) {
-                    case RSM::W3C::TestResult::PASS:
-                        status = "PASS";
-                        break;
-                    case RSM::W3C::TestResult::FAIL:
-                        status = "FAIL";
-                        break;
-                    case RSM::W3C::TestResult::ERROR:
-                        status = "ERROR";
-                        break;
-                    case RSM::W3C::TestResult::TIMEOUT:
-                        status = "TIMEOUT";
-                        break;
-                    }
+                    // Show results for all variants
+                    for (const auto &report : testReports) {
+                        std::string status;
+                        switch (report.validationResult.finalResult) {
+                        case RSM::W3C::TestResult::PASS:
+                            status = "PASS";
+                            break;
+                        case RSM::W3C::TestResult::FAIL:
+                            status = "FAIL";
+                            break;
+                        case RSM::W3C::TestResult::ERROR:
+                            status = "ERROR";
+                            break;
+                        case RSM::W3C::TestResult::TIMEOUT:
+                            status = "TIMEOUT";
+                            break;
+                        }
 
-                    LOG_INFO("W3C CLI: Test {} ({}): {} ({}ms)", report.testId, report.metadata.specnum, status,
-                             report.executionContext.executionTime.count());
-                    if (report.validationResult.finalResult != RSM::W3C::TestResult::PASS) {
-                        LOG_INFO("W3C CLI: Failure reason: {}", report.validationResult.reason);
+                        LOG_INFO("W3C CLI: Test {} ({}): {} ({}ms)", report.testId, report.metadata.specnum, status,
+                                 report.executionContext.executionTime.count());
+                        if (report.validationResult.finalResult != RSM::W3C::TestResult::PASS) {
+                            LOG_INFO("W3C CLI: Failure reason: {}", report.validationResult.reason);
+                        }
                     }
 
                 } catch (const std::exception &e) {

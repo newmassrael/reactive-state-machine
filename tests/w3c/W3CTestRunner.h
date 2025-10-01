@@ -140,6 +140,13 @@ public:
     TestReport runSpecificTest(int testId);
 
     /**
+     * @brief Run all tests matching the given test ID (includes variants)
+     * @param testId W3C test ID (e.g., 403 will run 403a, 403b, 403c if they exist)
+     * @return Vector of test reports for all matching tests
+     */
+    std::vector<TestReport> runAllMatchingTests(int testId);
+
+    /**
      * @brief Run filtered tests
      * @param conformanceLevel Filter by conformance level
      * @param specSection Filter by spec section
