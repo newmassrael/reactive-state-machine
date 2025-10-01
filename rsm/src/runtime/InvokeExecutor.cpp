@@ -115,6 +115,7 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     }
     // Handle static src attribute
     else if (scxmlContent.empty() && !invoke->getSrc().empty()) {
+        LOG_INFO("SCXMLInvokeHandler: Loading SCXML from src file: {}", invoke->getSrc());
         scxmlContent = loadSCXMLFromFile(invoke->getSrc(), parentSessionId);
         if (scxmlContent.empty()) {
             LOG_ERROR("SCXMLInvokeHandler: Failed to load SCXML from src file: {}", invoke->getSrc());
@@ -229,6 +230,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         [weakParentSM, invokeid, childSessionId, parentSessionId, eventDispatcher]() {
             LOG_INFO("SCXMLInvokeHandler: Child completion callback invoked - invokeid: {}, session: {}", invokeid,
                      childSessionId);
+            LOG_INFO("SCXMLInvokeHandler: Parent check - weakPtr valid: {}, parentSessionId: {}",
+                     !weakParentSM.expired(), parentSessionId);
 
             // W3C SCXML Test 192: Check if parent StateMachine is in final state (thread-safe with weak_ptr)
             // If parent already completed, don't send done.invoke (it would be ignored anyway)
@@ -259,7 +262,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
                 event.params["_parentSessionId"] = parentSessionId;
 
                 auto resultFuture = eventDispatcher->sendEvent(event);
-                LOG_INFO("SCXMLInvokeHandler: {} sent to parent after child completion", doneEvent);
+                LOG_INFO("SCXMLInvokeHandler: {} sent to parent after child completion (target: {}, parentSession: {})",
+                         doneEvent, event.target, parentSessionId);
             } else {
                 LOG_WARN("SCXMLInvokeHandler: Child reached final state but no EventDispatcher available for: {}",
                          doneEvent);
@@ -334,7 +338,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         JSEngine::instance().destroySession(childSessionId);
         return "";
     }
-    LOG_INFO("SCXMLInvokeHandler: Child StateMachine started successfully for invoke: {}", invokeid);
+    LOG_INFO("SCXMLInvokeHandler: Child StateMachine started successfully for invoke: {} (session: {})", invokeid,
+             childSessionId);
 
     // W3C SCXML 6.5: done.invoke generation is now handled by completion callback
     // The callback ensures proper event ordering: child onexit → done.invoke

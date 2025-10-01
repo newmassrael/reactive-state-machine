@@ -113,6 +113,14 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
         // SCXML W3C specification: For compound states, add parent to configuration AND enter initial child
         addStateToConfiguration(stateId);
 
+        // W3C SCXML 6.4: Defer invoke execution for compound states before entering child
+        // Compound states can have invokes that should be started when the state is entered
+        const auto &invokes = stateNode->getInvoke();
+        if (!invokes.empty() && invokeDeferCallback_) {
+            LOG_DEBUG("StateHierarchyManager: Deferring {} invokes for compound state: {}", invokes.size(), stateId);
+            invokeDeferCallback_(stateId, invokes);
+        }
+
         // Only for non-parallel compound states: enter initial child state
         std::string initialChild = findInitialChildState(stateNode);
         if (!initialChild.empty()) {
@@ -125,6 +133,18 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
     } else {
         // SCXML W3C specification: Atomic and final states are always added to active configuration
         addStateToConfiguration(stateId);
+
+        // W3C SCXML 6.4: Defer invoke execution for atomic and final states (non-parallel, non-compound)
+        // Final states can also have invokes per W3C spec
+        Type stateType = stateNode->getType();
+        if (stateType == Type::ATOMIC || stateType == Type::FINAL) {
+            const auto &invokes = stateNode->getInvoke();
+            if (!invokes.empty() && invokeDeferCallback_) {
+                LOG_DEBUG("StateHierarchyManager: Deferring {} invokes for {} state: {}", invokes.size(),
+                          stateType == Type::ATOMIC ? "atomic" : "final", stateId);
+                invokeDeferCallback_(stateId, invokes);
+            }
+        }
     }
 
     LOG_DEBUG("enterState - Successfully entered: {}", stateId);
