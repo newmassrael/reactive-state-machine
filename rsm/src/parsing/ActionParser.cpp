@@ -445,8 +445,8 @@ bool RSM::ActionParser::isSpecialExecutableContent(const xmlpp::Element *element
     std::string nodeName = element->get_name();
 
     // 특수 처리가 필요한 SCXML 실행 가능 콘텐츠
-    return matchNodeName(nodeName, "if") || matchNodeName(nodeName, "elseif") || matchNodeName(nodeName, "else") ||
-           matchNodeName(nodeName, "foreach") || matchNodeName(nodeName, "invoke") ||
+    // Note: else/elseif는 if 블록 내에서만 처리되므로 여기서는 제외
+    return matchNodeName(nodeName, "if") || matchNodeName(nodeName, "foreach") || matchNodeName(nodeName, "invoke") ||
            matchNodeName(nodeName, "finalize");
 }
 

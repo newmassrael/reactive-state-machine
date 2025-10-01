@@ -345,29 +345,63 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             return stateTransitionResult;
         }
 
-        // SCXML W3C specification: Check transitions in active child states of regions
-        // This handles transitions defined on states within parallel regions (e.g., p01, p02)
-        const auto &regions = parallelState->getRegions();
-        for (const auto &region : regions) {
-            if (region && region->isActive()) {
-                // Get region's current state and check for transitions
-                auto concreteRegion = std::dynamic_pointer_cast<ConcurrentRegion>(region);
-                if (concreteRegion) {
-                    std::string regionCurrentState = concreteRegion->getCurrentState();
-                    if (!regionCurrentState.empty()) {
-                        auto regionStateNode = model_->findStateById(regionCurrentState);
-                        if (regionStateNode) {
-                            auto regionTransitionResult =
-                                processStateTransitions(regionStateNode, eventName, eventData);
-                            if (regionTransitionResult.success) {
-                                LOG_DEBUG("SCXML compliant - region child state transition executed: {} -> {}",
-                                          regionTransitionResult.fromState, regionTransitionResult.toState);
-                                return regionTransitionResult;
-                            }
-                        }
-                    }
+        // SCXML W3C specification 3.4: Check transitions on region root states
+        // Region root states (direct children of parallel) can have transitions that exit the parallel state
+        const auto &parallelChildren = parallelState->getChildren();
+        for (const auto &child : parallelChildren) {
+            if (child) {
+                // Check if this child state has a transition for this event
+                auto childTransitionResult = processStateTransitions(child.get(), eventName, eventData);
+                if (childTransitionResult.success) {
+                    LOG_DEBUG(
+                        "SCXML W3C: Region root state '{}' has transition for event '{}' -> exiting parallel state",
+                        child->getId(), eventName);
+                    return childTransitionResult;
                 }
             }
+        }
+
+        // SCXML W3C specification 3.4: Process event in ALL regions independently
+        // Events must be broadcast to all active regions simultaneously
+        const auto &regions = parallelState->getRegions();
+        bool anyRegionTransitioned = false;
+        std::vector<std::string> transitionedRegions;
+
+        // Create EventDescriptor for region processing
+        EventDescriptor regionEvent;
+        regionEvent.eventName = eventName;
+        regionEvent.data = eventData;
+
+        for (const auto &region : regions) {
+            if (region && region->isActive()) {
+                // W3C SCXML 3.4: Each region processes events independently
+                // Use region's own processEvent method which manages its internal state
+                auto regionResult = region->processEvent(regionEvent);
+                if (regionResult.isSuccess) {
+                    anyRegionTransitioned = true;
+                    transitionedRegions.push_back(region->getId());
+                    LOG_DEBUG("SCXML W3C: Region '{}' successfully processed event '{}'", region->getId(), eventName);
+                }
+            }
+        }
+
+        // W3C SCXML 3.4: If any region transitioned, check completion and return success
+        if (anyRegionTransitioned) {
+            LOG_INFO("SCXML W3C: {} regions processed transitions for event '{}'", transitionedRegions.size(),
+                     eventName);
+
+            // W3C SCXML 3.4: Check if all regions completed (reached final states)
+            bool allRegionsComplete = parallelState->areAllRegionsComplete();
+            if (allRegionsComplete) {
+                LOG_DEBUG("SCXML W3C: All parallel regions completed after transitions");
+            }
+
+            TransitionResult result;
+            result.success = true;
+            result.fromState = currentState;
+            result.toState = currentState;  // Parallel state remains active
+            result.eventName = eventName;
+            return result;
         }
 
         // SCXML W3C specification: If no transition on parallel state or regions, broadcast to all active regions
@@ -395,6 +429,13 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             stats_.totalTransitions++;
             LOG_INFO("SCXML compliant parallel region processing succeeded. Transitions: [{}/{}]",
                      successfulTransitions.size(), results.size());
+
+            // W3C SCXML 3.4: Check if all regions completed (reached final states)
+            // This triggers done.state.{id} event generation
+            bool allRegionsComplete = parallelState->areAllRegionsComplete();
+            if (allRegionsComplete) {
+                LOG_DEBUG("SCXML W3C: All parallel regions completed for state: {}", currentState);
+            }
 
             // Invoke execution consolidated to key lifecycle points            // Return success with parallel state as
             // context
@@ -854,21 +895,48 @@ bool StateMachine::enterState(const std::string &stateId) {
     // SCXML W3C specification: hierarchy manager is required for compliant state entry
     assert(hierarchyManager_ && "SCXML violation: hierarchy manager required for state management");
 
-    // SCXML W3C compliant: Provide ExecutionContext to parallel states for action execution
-    if (model_) {
-        auto stateNode = model_->findStateById(stateId);
-        if (stateNode && stateNode->getType() == Type::PARALLEL && executionContext_) {
-            auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
-            if (parallelState) {
-                parallelState->setExecutionContextForRegions(executionContext_);
-                LOG_DEBUG("SCXML compliant: Injected ExecutionContext into parallel state regions: {}", stateId);
-            }
-        }
-    }
-
     bool hierarchyResult = hierarchyManager_->enterState(stateId);
     assert(hierarchyResult && "SCXML violation: state entry must succeed");
     (void)hierarchyResult;  // Suppress unused variable warning in release builds
+
+    // SCXML W3C 3.4: For parallel states, activate regions AFTER parent onentry executed
+    // This ensures correct entry sequence: parallel onentry -> child onentry
+    if (model_) {
+        auto stateNode = model_->findStateById(stateId);
+        if (stateNode && stateNode->getType() == Type::PARALLEL) {
+            auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
+            if (parallelState) {
+                // Set ExecutionContext for region action execution
+                if (executionContext_) {
+                    parallelState->setExecutionContextForRegions(executionContext_);
+                    LOG_DEBUG("SCXML compliant: Injected ExecutionContext into parallel state regions: {}", stateId);
+                }
+
+                // W3C SCXML 3.4: Activate all regions AFTER parallel state entered
+                auto activationResults = parallelState->activateAllRegions();
+                for (const auto &result : activationResults) {
+                    if (!result.isSuccess) {
+                        LOG_ERROR("Failed to activate region '{}': {}", result.regionId, result.errorMessage);
+                    } else {
+                        LOG_DEBUG("SCXML W3C: Activated region '{}' in parallel state '{}'", result.regionId, stateId);
+                    }
+                }
+
+                // Check if all regions immediately reached final state (for done.state event)
+                const auto &regions = parallelState->getRegions();
+                bool allInFinalState =
+                    !regions.empty() && std::all_of(regions.begin(), regions.end(), [](const auto &region) {
+                        return region && region->isInFinalState();
+                    });
+
+                if (allInFinalState) {
+                    LOG_DEBUG("SCXML W3C 3.4: All parallel regions in final state, triggering done.state event for {}",
+                              stateId);
+                    handleParallelStateCompletion(stateId);
+                }
+            }
+        }
+    }
 
     // SCXML W3C macrostep compliance: Check if reentrant transition occurred during state entry
     // This handles cases where done.state events cause immediate transitions (e.g., parallel state completion)
@@ -888,6 +956,57 @@ bool StateMachine::enterState(const std::string &stateId) {
     RSM::JSEngine::instance().setVariable(sessionId_, "_state", ScriptValue{getCurrentState()});
 
     LOG_DEBUG("Successfully entered state using hierarchy manager: {} (current: {})", stateId, getCurrentState());
+
+    // W3C SCXML 6.5: Check for top-level final state and invoke completion callback
+    // IMPORTANT: Only for invoked child StateMachines, not for parallel regions
+    if (model_ && completionCallback_) {
+        auto stateNode = model_->findStateById(actualCurrentState);
+        if (stateNode && stateNode->isFinalState()) {
+            // Check if this is a top-level final state by checking parent chain
+            // Top-level states have no parent or parent is the <scxml> root element
+            // We need to traverse up to ensure we're not in a parallel region
+            auto parent = stateNode->getParent();
+            bool isTopLevel = false;
+
+            if (!parent) {
+                // No parent means root-level final state
+                isTopLevel = true;
+            } else {
+                // Check if parent is <scxml> root or if we're in a direct child of <scxml>
+                // Parallel regions have intermediate parent states, so we need to check the entire chain
+                auto grandparent = parent->getParent();
+                if (!grandparent || parent->getId() == "scxml") {
+                    // Parent is root or state is direct child of root
+                    isTopLevel = true;
+                } else if (grandparent->getId() == "scxml" && parent->getType() != RSM::Type::PARALLEL) {
+                    // Grandparent is root and parent is NOT a parallel state
+                    // This means we're a final state in a compound/atomic state at root level
+                    isTopLevel = true;
+                }
+                // If parent is PARALLEL or we're deeper in the hierarchy, this is NOT top-level
+            }
+
+            if (isTopLevel) {
+                LOG_INFO("StateMachine: Reached top-level final state: {}, executing onexit then completion callback",
+                         actualCurrentState);
+
+                // W3C SCXML: Execute onexit actions BEFORE generating done.invoke
+                // For top-level final states, onexit runs when state machine completes
+                bool exitResult = executeExitActions(actualCurrentState);
+                if (!exitResult) {
+                    LOG_WARN("StateMachine: Failed to execute onexit for final state: {}", actualCurrentState);
+                }
+
+                // IMPORTANT: Callback is invoked AFTER onexit handlers execute
+                // This ensures correct event order: child events → done.invoke
+                try {
+                    completionCallback_();
+                } catch (const std::exception &e) {
+                    LOG_ERROR("StateMachine: Exception in completion callback: {}", e.what());
+                }
+            }
+        }
+    }
 
     // Clear guard flag before checking automatic transitions
     isEnteringState_ = false;
@@ -1669,7 +1788,17 @@ void StateMachine::setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDis
     if (invokeExecutor_) {
         invokeExecutor_->setEventDispatcher(eventDispatcher);
         LOG_DEBUG("StateMachine: EventDispatcher passed to InvokeExecutor for session: {}", sessionId_);
+
+        // W3C SCXML Test 192: Set parent StateMachine for completion callback state checking
+        invokeExecutor_->setParentStateMachine(this);
+        LOG_DEBUG("StateMachine: Parent StateMachine pointer set in InvokeExecutor for session: {}", sessionId_);
     }
+}
+
+// W3C SCXML 6.5: Completion callback management
+void StateMachine::setCompletionCallback(CompletionCallback callback) {
+    completionCallback_ = callback;
+    LOG_DEBUG("StateMachine: Completion callback {} for session: {}", callback ? "set" : "cleared", sessionId_);
 }
 
 // EventRaiser management

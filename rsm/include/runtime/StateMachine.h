@@ -213,6 +213,18 @@ public:
     void setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher);
 
     /**
+     * @brief W3C SCXML 6.5: Set completion callback for top-level final state notification
+     *
+     * This callback is invoked when the StateMachine reaches a top-level final state,
+     * AFTER all onexit handlers have been executed. Used by invoke mechanism to
+     * generate done.invoke events per W3C SCXML specification.
+     *
+     * @param callback Function to call on completion (nullptr to clear)
+     */
+    using CompletionCallback = std::function<void()>;
+    void setCompletionCallback(CompletionCallback callback);
+
+    /**
      * @brief Set EventRaiser for event processing
      * @param eventRaiser EventRaiser instance for event handling
      */
@@ -260,6 +272,9 @@ private:
 
     // EventRaiser for SCXML compliance mode control
     std::shared_ptr<IEventRaiser> eventRaiser_;
+
+    // W3C SCXML 6.5: Completion callback for invoke done.invoke event
+    CompletionCallback completionCallback_;
 
     // Deferred invoke execution for W3C SCXML compliance
     struct DeferredInvoke {

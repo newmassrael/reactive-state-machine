@@ -363,10 +363,11 @@ std::vector<ConcurrentOperationResult> ConcurrentStateNode::activateAllRegions()
     }
 
     // SCXML W3C specification section 3.4: Check for parallel state completion after activation
-    // This is crucial for cases where all regions immediately reach final states
+    // Note: Completion check is deferred to StateMachine after state is fully entered
+    // This ensures done.state events are generated only when parallel state is active
     if (areAllRegionsInFinalState()) {
         LOG_DEBUG("All regions immediately reached final states after activation in {}", id_);
-        areAllRegionsComplete();  // This will handle completion callback if appropriate
+        // Don't trigger completion callback here - StateMachine will check after hierarchyManager->enterState()
     }
 
     return results;

@@ -18,7 +18,33 @@ void ensureLoggerInitialized() {
     if (!Logger::logger_) {
         Logger::logger_ = spdlog::stdout_color_mt("RSM");
         Logger::logger_->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
-        Logger::logger_->set_level(spdlog::level::debug);
+
+        // 환경변수 SPDLOG_LEVEL을 확인하여 로그 레벨 설정
+        const char *env_level = std::getenv("SPDLOG_LEVEL");
+        if (env_level) {
+            std::string level_str(env_level);
+            std::transform(level_str.begin(), level_str.end(), level_str.begin(), ::tolower);
+
+            if (level_str == "trace") {
+                Logger::logger_->set_level(spdlog::level::trace);
+            } else if (level_str == "debug") {
+                Logger::logger_->set_level(spdlog::level::debug);
+            } else if (level_str == "info") {
+                Logger::logger_->set_level(spdlog::level::info);
+            } else if (level_str == "warn" || level_str == "warning") {
+                Logger::logger_->set_level(spdlog::level::warn);
+            } else if (level_str == "err" || level_str == "error") {
+                Logger::logger_->set_level(spdlog::level::err);
+            } else if (level_str == "critical") {
+                Logger::logger_->set_level(spdlog::level::critical);
+            } else if (level_str == "off") {
+                Logger::logger_->set_level(spdlog::level::off);
+            } else {
+                Logger::logger_->set_level(spdlog::level::debug);
+            }
+        } else {
+            Logger::logger_->set_level(spdlog::level::debug);
+        }
     }
 }
 

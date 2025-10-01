@@ -140,7 +140,13 @@ int main(int argc, char *argv[]) {
                     }
 
                 } catch (const std::exception &e) {
-                    LOG_ERROR("W3C CLI: Error running test {}: {}", testId, e.what());
+                    std::string errorMsg = e.what();
+                    // Test not found is normal for sparse test IDs - log as debug instead of error
+                    if (errorMsg.find("not found") != std::string::npos) {
+                        LOG_DEBUG("W3C CLI: Test {} not found (skipped)", testId);
+                    } else {
+                        LOG_ERROR("W3C CLI: Error running test {}: {}", testId, errorMsg);
+                    }
                     // Continue with other tests instead of returning
                 }
             }
@@ -203,7 +209,13 @@ int main(int argc, char *argv[]) {
                     }
 
                 } catch (const std::exception &e) {
-                    LOG_ERROR("W3C CLI: Error running test {}: {}", testId, e.what());
+                    std::string errorMsg = e.what();
+                    // Test not found is normal for sparse test IDs - log as debug instead of error
+                    if (errorMsg.find("not found") != std::string::npos) {
+                        LOG_DEBUG("W3C CLI: Test {} not found (skipped)", testId);
+                    } else {
+                        LOG_ERROR("W3C CLI: Error running test {}: {}", testId, errorMsg);
+                    }
                     // Continue with other tests instead of returning
                 }
             }

@@ -221,6 +221,39 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     LOG_DEBUG("SCXMLInvokeHandler: Created child StateMachine with StateMachineBuilder for session: {}",
               childSessionId);
 
+    // W3C SCXML 6.5: Register completion callback for done.invoke generation
+    // This callback is invoked AFTER the child's final state onexit handlers complete
+    childStateMachinePtr->setCompletionCallback([this, invokeid, childSessionId, eventDispatcher]() {
+        LOG_INFO("SCXMLInvokeHandler: Child completion callback invoked - invokeid: {}, session: {}", invokeid,
+                 childSessionId);
+
+        // W3C SCXML Test 192: Check if parent StateMachine is in final state
+        // If parent already completed, don't send done.invoke (it would be ignored anyway)
+        if (parentStateMachine_ && parentStateMachine_->isInFinalState()) {
+            LOG_DEBUG("SCXMLInvokeHandler: Parent already in final state, skipping done.invoke.{}", invokeid);
+            return;
+        }
+
+        // W3C SCXML 6.5: Generate done.invoke.id event
+        std::string doneEvent = "done.invoke." + invokeid;
+
+        if (eventDispatcher) {
+            EventDescriptor event;
+            event.eventName = doneEvent;
+            event.target = "#_parent";
+            event.data = "";
+            event.delay = std::chrono::milliseconds(0);
+            event.sessionId = childSessionId;  // Use child session ID for ParentEventTarget routing
+
+            auto resultFuture = eventDispatcher->sendEvent(event);
+            LOG_INFO("SCXMLInvokeHandler: {} sent to parent after child completion", doneEvent);
+        } else {
+            LOG_WARN("SCXMLInvokeHandler: Child reached final state but no EventDispatcher available for: {}",
+                     doneEvent);
+        }
+    });
+    LOG_DEBUG("SCXMLInvokeHandler: Registered completion callback for invoke: {}", invokeid);
+
     // Store the StateMachineContext in session AFTER getting the raw pointer
     session.smContext = std::move(smContext);
 
@@ -274,29 +307,9 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     }
     LOG_INFO("SCXMLInvokeHandler: Child StateMachine started successfully for invoke: {}", invokeid);
 
-    // W3C SCXML: Check if child SCXML has initial state as final state
-    // This handles the case where child SCXML has initial="finalStateId" (e.g., test 215)
-    // We check BEFORE event processing to avoid confusion with runtime transitions (e.g., test 192)
-    LOG_DEBUG("SCXMLInvokeHandler: Checking if child initial state is final - initialState: '{}', isRunning: {}",
-              activeSession.smContext->get()->getCurrentState(), activeSession.smContext->get()->isRunning());
-    if (activeSession.smContext->get()->isInitialStateFinal()) {
-        // W3C SCXML 6.5: Generate done.invoke.id event with invokeid suffix
-        std::string doneEvent = "done.invoke." + invokeid;
-        if (eventDispatcher) {
-            EventDescriptor event;
-            event.eventName = doneEvent;
-            event.target = "#_parent";
-            event.data = "";
-            event.delay = std::chrono::milliseconds(0);
-            event.sessionId = childSessionId;  // Use child session ID for ParentEventTarget routing
-
-            auto resultFuture = eventDispatcher->sendEvent(event);
-            LOG_DEBUG("SCXMLInvokeHandler: Child SCXML immediately reached final state, generated: {}", doneEvent);
-        } else {
-            LOG_WARN("SCXMLInvokeHandler: Child reached final state but no EventDispatcher available for: {}",
-                     doneEvent);
-        }
-    }
+    // W3C SCXML 6.5: done.invoke generation is now handled by completion callback
+    // The callback ensures proper event ordering: child onexit → done.invoke
+    // No need for synchronous done.invoke generation here
 
     // Register invoke mapping in JSEngine for #_invokeid target support
     // For pre-allocated sessions (sessionAlreadyExists=true), mapping may already be registered by InvokeExecutor
@@ -370,7 +383,11 @@ std::shared_ptr<IInvokeHandler> InvokeHandlerFactory::createHandler(const std::s
     // Initialize default handlers on first call
     static bool initialized = false;
     if (!initialized) {
-        registerHandler("scxml", []() { return std::make_shared<SCXMLInvokeHandler>(); });
+        // W3C SCXML: Register all standard SCXML invoke type variations
+        auto scxmlHandler = []() { return std::make_shared<SCXMLInvokeHandler>(); };
+        registerHandler("scxml", scxmlHandler);
+        registerHandler("http://www.w3.org/TR/scxml/", scxmlHandler);  // With trailing slash
+        registerHandler("http://www.w3.org/TR/scxml", scxmlHandler);   // Without trailing slash
         initialized = true;
     }
 
@@ -493,6 +510,13 @@ std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &in
     if (!handler) {
         LOG_ERROR("InvokeExecutor: Failed to create handler for invoke type: {}", invokeType);
         return "";
+    }
+
+    // W3C SCXML Test 192: Set parent StateMachine for completion callback state checking
+    auto scxmlHandler = std::dynamic_pointer_cast<SCXMLInvokeHandler>(handler);
+    if (scxmlHandler && parentStateMachine_) {
+        scxmlHandler->setParentStateMachine(parentStateMachine_);
+        LOG_DEBUG("InvokeExecutor: Set parent StateMachine for SCXML handler");
     }
 
     // ARCHITECTURAL FIX: Pre-register invoke mapping BEFORE execution for immediate availability
@@ -628,6 +652,19 @@ void InvokeExecutor::setEventDispatcher(std::shared_ptr<IEventDispatcher> eventD
     LOG_DEBUG("InvokeExecutor: EventDispatcher set: {}", eventDispatcher ? "provided" : "null");
 }
 
+void InvokeExecutor::setParentStateMachine(StateMachine *stateMachine) {
+    parentStateMachine_ = stateMachine;
+    LOG_DEBUG("InvokeExecutor: Parent StateMachine set: {}", (void *)stateMachine);
+
+    // Forward to all handlers that support it (currently only SCXML handler)
+    for (const auto &[invokeid, handler] : invokeHandlers_) {
+        auto scxmlHandler = std::dynamic_pointer_cast<SCXMLInvokeHandler>(handler);
+        if (scxmlHandler) {
+            scxmlHandler->setParentStateMachine(stateMachine);
+        }
+    }
+}
+
 std::string InvokeExecutor::generateInvokeId() const {
     // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
     return UniqueIdGenerator::generateInvokeId();
@@ -688,6 +725,11 @@ std::string InvokeExecutor::getFinalizeScriptForChildSession(const std::string &
 
     LOG_DEBUG("InvokeExecutor: No finalize script found for child session: {}", childSessionId);
     return "";
+}
+
+void SCXMLInvokeHandler::setParentStateMachine(StateMachine *stateMachine) {
+    parentStateMachine_ = stateMachine;
+    LOG_DEBUG("SCXMLInvokeHandler: Parent StateMachine set: {}", (void *)stateMachine);
 }
 
 std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, const std::string &parentSessionId) {

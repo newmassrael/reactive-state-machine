@@ -160,8 +160,8 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 }
 
-                // Get final state
-                testContext.finalState = currentState;
+                // Get final state - always read fresh state after loop exit
+                testContext.finalState = stateMachine->getCurrentState();
                 LOG_DEBUG("StateMachineTestExecutor: Test completed with final state: {}", testContext.finalState);
 
                 auto endTime = std::chrono::steady_clock::now();
@@ -246,7 +246,8 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 }
 
-                testContext.finalState = currentState;
+                // Get final state - always read fresh state after loop exit
+                testContext.finalState = stateMachine->getCurrentState();
                 LOG_DEBUG("StateMachineTestExecutor: Test completed with final state: {}", testContext.finalState);
 
                 auto endTime = std::chrono::steady_clock::now();
@@ -980,8 +981,8 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
 
-            // Get final state
-            context.finalState = currentState;
+            // Get final state - always read fresh state after loop exit
+            context.finalState = stateMachine->getCurrentState();
             LOG_DEBUG("StateMachineTestExecutor (HTTP): Test completed with final state: {}", context.finalState);
 
             auto endTime = std::chrono::steady_clock::now();

@@ -88,14 +88,9 @@ public:
             variant_value = "[object]";
         }
 
-        printf("DEBUG JSResult::getValue(): Requested type=%s, Stored type=%s, Stored value=%s\n", type_name.c_str(),
-               variant_type.c_str(), variant_value.c_str());
-
         // Direct type match - fastest path
         if (std::holds_alternative<T>(value_internal)) {
-            T result = std::get<T>(value_internal);
-            printf("DEBUG JSResult::getValue(): Direct match successful, returning value\n");
-            return result;
+            return std::get<T>(value_internal);
         }
 
         // SCXML W3C compliance: Support automatic numeric type conversion
@@ -104,24 +99,19 @@ public:
             // Request double: convert from int64_t if needed
             if (std::holds_alternative<int64_t>(value_internal)) {
                 int64_t int_val = std::get<int64_t>(value_internal);
-                double result = static_cast<double>(int_val);
-                printf("DEBUG JSResult::getValue(): Converting int64_t(%ld) to double(%f)\n", int_val, result);
-                return result;
+                return static_cast<double>(int_val);
             }
         } else if constexpr (std::is_same_v<T, int64_t>) {
             // Request int64_t: convert from double if it's a whole number
             if (std::holds_alternative<double>(value_internal)) {
                 double d = std::get<double>(value_internal);
                 if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
-                    int64_t result = static_cast<int64_t>(d);
-                    printf("DEBUG JSResult::getValue(): Converting double(%f) to int64_t(%ld)\n", d, result);
-                    return result;
+                    return static_cast<int64_t>(d);
                 }
             }
         }
 
         // No conversion possible - return default value
-        printf("DEBUG JSResult::getValue(): No conversion possible, returning default T{}\n");
         return T{};
     }
 

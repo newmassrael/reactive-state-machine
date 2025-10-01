@@ -104,6 +104,12 @@ public:
      */
     std::string getFinalizeScriptForChildSession(const std::string &childSessionId) const;
 
+    /**
+     * @brief Set parent StateMachine for completion callback state checking
+     * @param stateMachine Pointer to parent StateMachine
+     */
+    void setParentStateMachine(StateMachine *stateMachine);
+
 private:
     struct InvokeSession {
         std::string invokeid;
@@ -117,6 +123,9 @@ private:
     };
 
     std::unordered_map<std::string, InvokeSession> activeSessions_;
+
+    // W3C SCXML Test 192: Parent StateMachine pointer for completion callback state checking
+    StateMachine *parentStateMachine_ = nullptr;
 
     std::string generateInvokeId() const;
 
@@ -193,6 +202,12 @@ public:
     std::string executeInvoke(const std::shared_ptr<IInvokeNode> &invoke, const std::string &sessionId);
 
     /**
+     * @brief Set parent StateMachine for invoke completion callback
+     * @param stateMachine Pointer to parent StateMachine
+     */
+    void setParentStateMachine(StateMachine *stateMachine);
+
+    /**
      * @brief Cancel specific invoke by ID
      * @param invokeid ID of invoke to cancel
      * @return true if successfully cancelled
@@ -247,6 +262,9 @@ public:
 
 private:
     std::shared_ptr<IEventDispatcher> eventDispatcher_;
+
+    // W3C SCXML 6.5: Parent StateMachine pointer for completion callback state checking
+    StateMachine *parentStateMachine_ = nullptr;
 
     // Track invoke sessions by parent session (for cancellation on state exit)
     std::unordered_map<std::string, std::vector<std::string>> sessionInvokes_;

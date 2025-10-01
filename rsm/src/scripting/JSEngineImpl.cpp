@@ -94,22 +94,7 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
                     LOG_ERROR("JSEngine: _event.data가 undefined임");
                     JS_FreeValue(ctx, dataCheck);
                 } else {
-                    LOG_DEBUG("JSEngine: _event.data 존재함");
-
-                    // _event.data.aParam 확인
-                    ::JSValue aParamCheck = JS_Eval(ctx, "_event.data.aParam", 17, "<debug>", JS_EVAL_TYPE_GLOBAL);
-                    if (JS_IsException(aParamCheck)) {
-                        LOG_ERROR("JSEngine: _event.data.aParam 접근 실패");
-                    } else if (JS_IsUndefined(aParamCheck)) {
-                        LOG_ERROR("JSEngine: _event.data.aParam이 undefined임");
-                    } else {
-                        const char *aParamStr = JS_ToCString(ctx, aParamCheck);
-                        LOG_DEBUG("JSEngine: _event.data.aParam = '{}'", aParamStr ? aParamStr : "null");
-                        if (aParamStr) {
-                            JS_FreeCString(ctx, aParamStr);
-                        }
-                    }
-                    JS_FreeValue(ctx, aParamCheck);
+                    LOG_DEBUG("JSEngine: _event.data exists");
                 }
                 JS_FreeValue(ctx, dataCheck);
                 JS_FreeValue(ctx, eventCheck);
@@ -149,8 +134,8 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
         debug_value = "\"" + std::get<std::string>(jsResult) + "\"";
     }
 
-    printf("DEBUG evaluateExpressionInternal(): Expression='%s', ScriptValue type=%s, value=%s\n", expression.c_str(),
-           debug_type.c_str(), debug_value.c_str());
+    LOG_TRACE("JSEngine::evaluateExpressionInternal - Expression='{}', type={}, value={}", expression, debug_type,
+              debug_value);
 
     return JSResult::createSuccess(jsResult);
 }
@@ -375,25 +360,6 @@ JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const s
             if (!JS_IsException(dataValue)) {
                 JS_SetPropertyStr(ctx, eventDataProperty, "data", dataValue);
                 LOG_DEBUG("JSEngine: Successfully parsed and set event data JSON");
-
-                // 루트 원인 분석: _event.data 객체 내용 확인
-                ::JSValue dataObj = JS_GetPropertyStr(ctx, eventDataProperty, "data");
-                if (!JS_IsUndefined(dataObj)) {
-                    ::JSValue aParamValue = JS_GetPropertyStr(ctx, dataObj, "aParam");
-                    if (!JS_IsUndefined(aParamValue)) {
-                        const char *aParamStr = JS_ToCString(ctx, aParamValue);
-                        LOG_DEBUG("JSEngine: _event.data.aParam 설정됨: '{}'", aParamStr ? aParamStr : "null");
-                        if (aParamStr) {
-                            JS_FreeCString(ctx, aParamStr);
-                        }
-                    } else {
-                        LOG_ERROR("JSEngine: _event.data.aParam이 undefined임");
-                    }
-                    JS_FreeValue(ctx, aParamValue);
-                } else {
-                    LOG_ERROR("JSEngine: _event.data가 undefined임");
-                }
-                JS_FreeValue(ctx, dataObj);
             } else {
                 // Log JSON parsing error
                 ::JSValue exception = JS_GetException(ctx);
@@ -474,15 +440,15 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
         double d;
         JS_ToFloat64(ctx, &d, qjsValue);
 
-        printf("DEBUG quickJSToJSValue(): JS_IsNumber=true, extracted double=%f\n", d);
+        LOG_TRACE("JSEngine::quickJSToJSValue - JS_IsNumber=true, extracted double={}", d);
 
         // SCXML W3C compliance: Return as int64_t if it's a whole number within range
         if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
             int64_t int_result = static_cast<int64_t>(d);
-            printf("DEBUG quickJSToJSValue(): Converting to int64_t=%ld\n", int_result);
+            LOG_TRACE("JSEngine::quickJSToJSValue - Converting to int64_t={}", int_result);
             return int_result;
         }
-        printf("DEBUG quickJSToJSValue(): Returning as double=%f\n", d);
+        LOG_TRACE("JSEngine::quickJSToJSValue - Returning as double={}", d);
         return d;
     } else if (JS_IsString(qjsValue)) {
         const char *str = JS_ToCString(ctx, qjsValue);

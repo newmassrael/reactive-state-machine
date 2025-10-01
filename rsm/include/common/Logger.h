@@ -31,6 +31,10 @@ public:
     }
 
     // Legacy interface - keep for runtime string concatenation (with caller location)
+    static void trace(const std::string &message, const std::source_location &loc = std::source_location::current()) {
+        RSM_PRIVATE_CALL(doFormatAndLog)(spdlog::level::trace, message, loc);
+    }
+
     static void debug(const std::string &message, const std::source_location &loc = std::source_location::current()) {
         RSM_PRIVATE_CALL(doFormatAndLog)(spdlog::level::debug, message, loc);
     }
@@ -60,6 +64,7 @@ private:
 }  // namespace RSM
 
 // Macro definitions for proper source_location capture with fmt::format support
+#define LOG_TRACE(...) RSM::Logger::trace(fmt::format(__VA_ARGS__), std::source_location::current())
 #define LOG_DEBUG(...) RSM::Logger::debug(fmt::format(__VA_ARGS__), std::source_location::current())
 #define LOG_INFO(...) RSM::Logger::info(fmt::format(__VA_ARGS__), std::source_location::current())
 #define LOG_WARN(...) RSM::Logger::warn(fmt::format(__VA_ARGS__), std::source_location::current())
