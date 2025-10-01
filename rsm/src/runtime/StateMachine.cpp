@@ -767,6 +767,10 @@ const std::string &StateMachine::getSessionId() const {
     return sessionId_;
 }
 
+std::shared_ptr<SCXMLModel> StateMachine::getModel() const {
+    return model_;
+}
+
 StateMachine::Statistics StateMachine::getStatistics() const {
     return stats_;
 }

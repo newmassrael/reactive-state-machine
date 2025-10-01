@@ -259,6 +259,18 @@ std::vector<std::string> RSM::SCXMLModel::findMissingStateIds() const {
     return missingIds;
 }
 
+std::set<std::string> RSM::SCXMLModel::getDataModelVariableNames() const {
+    std::set<std::string> variableNames;
+
+    for (const auto &dataItem : dataModelItems_) {
+        if (dataItem) {
+            variableNames.insert(dataItem->getId());
+        }
+    }
+
+    return variableNames;
+}
+
 void RSM::SCXMLModel::printModelStructure() const {
     LOG_INFO("Printing model structure");
     LOG_INFO("SCXML Model Structure:\n");

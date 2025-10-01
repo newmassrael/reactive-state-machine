@@ -293,12 +293,30 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     // W3C SCXML 6.4: Set invoke data AFTER loading but BEFORE starting
     // This ensures namelist/param values override child's datamodel initial values
 
+    // W3C SCXML 6.4: Get child's datamodel variable names for validation
+    // "If the name of a param element or the key of a namelist item do not match the name of a data
+    // element in the invoked process, the Processor MUST NOT add the value to the invoked session's data model"
+    std::set<std::string> childDatamodelVars;
+    auto childModel = session.smContext->get()->getModel();
+    if (childModel) {
+        childDatamodelVars = childModel->getDataModelVariableNames();
+        LOG_DEBUG("SCXMLInvokeHandler: Child session {} has {} datamodel variables", childSessionId,
+                  childDatamodelVars.size());
+    }
+
     // W3C SCXML 6.4: Handle namelist attribute - pass datamodel variables by name
     const std::string &namelist = invoke->getNamelist();
     if (!namelist.empty()) {
         std::istringstream iss(namelist);
         std::string varName;
         while (iss >> varName) {
+            // W3C SCXML 6.4: Only set variable if it exists in child's datamodel
+            if (childDatamodelVars.find(varName) == childDatamodelVars.end()) {
+                LOG_DEBUG("SCXMLInvokeHandler: Skipping namelist variable '{}' - not defined in child's datamodel",
+                          varName);
+                continue;
+            }
+
             auto future = JSEngine::instance().getVariable(parentSessionId, varName);
             auto result = future.get();
 
@@ -314,6 +332,12 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     const auto &params = invoke->getParams();
     for (const auto &[name, expr, location] : params) {
         if (!name.empty()) {
+            // W3C SCXML 6.4: Only set variable if it exists in child's datamodel
+            if (childDatamodelVars.find(name) == childDatamodelVars.end()) {
+                LOG_DEBUG("SCXMLInvokeHandler: Skipping param '{}' - not defined in child's datamodel", name);
+                continue;
+            }
+
             auto future = JSEngine::instance().evaluateExpression(parentSessionId, expr);
             auto result = future.get();
 

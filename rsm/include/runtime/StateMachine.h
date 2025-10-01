@@ -165,6 +165,12 @@ public:
     const std::string &getSessionId() const;
 
     /**
+     * @brief Get SCXML model
+     * @return SCXML model pointer
+     */
+    std::shared_ptr<SCXMLModel> getModel() const;
+
+    /**
      * @brief Get state machine statistics
      */
     struct Statistics {
