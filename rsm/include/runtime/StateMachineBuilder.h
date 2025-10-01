@@ -57,21 +57,21 @@ public:
     /**
      * @brief Build StateMachine with dependency injection
      *
-     * Returns StateMachine pointer.
+     * Returns StateMachine shared_ptr for callback safety.
      * Caller is responsible for wrapping in StateMachineContext and managing
      * EventRaiser/EventDispatcher lifecycle (e.g., via TestResources).
      *
-     * @return Unique pointer to StateMachine
+     * @return Shared pointer to StateMachine (for callback safety)
      * @throws std::runtime_error if required dependencies are missing
      */
-    std::unique_ptr<StateMachine> build() {
-        std::unique_ptr<StateMachine> stateMachine;
+    std::shared_ptr<StateMachine> build() {
+        std::shared_ptr<StateMachine> stateMachine;
 
         // Create StateMachine with or without session ID
         if (!sessionId_.empty()) {
-            stateMachine = std::make_unique<StateMachine>(sessionId_);
+            stateMachine = std::make_shared<StateMachine>(sessionId_);
         } else {
-            stateMachine = std::make_unique<StateMachine>();
+            stateMachine = std::make_shared<StateMachine>();
         }
 
         // Inject dependencies after construction

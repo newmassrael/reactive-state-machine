@@ -86,7 +86,7 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
     // W3C SCXML compliance: Use real StateMachine with full invoke support
     class StateMachineTestExecutor : public ITestExecutor {
     private:
-        std::chrono::milliseconds timeout_{2000};
+        std::chrono::milliseconds timeout_{5000};  // Increased from 2000ms to 5000ms for W3C tests with delays
 
     public:
         void setTimeout(std::chrono::milliseconds timeoutMs) override {
@@ -1161,7 +1161,7 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
             // Wait for StateMachine to reach final state or timeout
             auto waitStart = std::chrono::steady_clock::now();
             std::string currentState;
-            const std::chrono::milliseconds timeout{2000};
+            const std::chrono::milliseconds timeout{5000};  // Increased from 2000ms to 5000ms for W3C tests with delays
 
             while (std::chrono::steady_clock::now() - waitStart < timeout) {
                 currentState = stateMachine->getCurrentState();

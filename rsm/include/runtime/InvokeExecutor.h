@@ -106,9 +106,9 @@ public:
 
     /**
      * @brief Set parent StateMachine for completion callback state checking
-     * @param stateMachine Pointer to parent StateMachine
+     * @param stateMachine Shared pointer to parent StateMachine
      */
-    void setParentStateMachine(StateMachine *stateMachine);
+    void setParentStateMachine(std::shared_ptr<StateMachine> stateMachine);
 
 private:
     struct InvokeSession {
@@ -116,7 +116,7 @@ private:
         std::string sessionId;
         std::string parentSessionId;
         std::shared_ptr<IEventDispatcher> eventDispatcher;
-        std::unique_ptr<StateMachineContext> smContext;  // RAII wrapper for automatic cleanup
+        std::unique_ptr<StateMachineContext> smContext;  // RAII wrapper (shared_ptr ownership)
         bool isActive = true;
         bool autoForward = false;
         std::string finalizeScript;  // W3C SCXML: finalize handler script to execute before processing child events
@@ -124,8 +124,8 @@ private:
 
     std::unordered_map<std::string, InvokeSession> activeSessions_;
 
-    // W3C SCXML Test 192: Parent StateMachine pointer for completion callback state checking
-    StateMachine *parentStateMachine_ = nullptr;
+    // W3C SCXML Test 192: Parent StateMachine weak_ptr for completion callback state checking (thread-safe)
+    std::weak_ptr<StateMachine> parentStateMachine_;
 
     std::string generateInvokeId() const;
 
@@ -203,9 +203,9 @@ public:
 
     /**
      * @brief Set parent StateMachine for invoke completion callback
-     * @param stateMachine Pointer to parent StateMachine
+     * @param stateMachine Shared pointer to parent StateMachine
      */
-    void setParentStateMachine(StateMachine *stateMachine);
+    void setParentStateMachine(std::shared_ptr<StateMachine> stateMachine);
 
     /**
      * @brief Cancel specific invoke by ID
@@ -263,8 +263,8 @@ public:
 private:
     std::shared_ptr<IEventDispatcher> eventDispatcher_;
 
-    // W3C SCXML 6.5: Parent StateMachine pointer for completion callback state checking
-    StateMachine *parentStateMachine_ = nullptr;
+    // W3C SCXML 6.5: Parent StateMachine weak_ptr for completion callback state checking (thread-safe)
+    std::weak_ptr<StateMachine> parentStateMachine_;
 
     // Track invoke sessions by parent session (for cancellation on state exit)
     std::unordered_map<std::string, std::vector<std::string>> sessionInvokes_;

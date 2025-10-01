@@ -29,7 +29,7 @@ class TransitionNode;
  * This class provides a complete implementation of SCXML state machine
  * with JavaScript integration for guards, actions, and data model.
  */
-class StateMachine {
+class StateMachine : public std::enable_shared_from_this<StateMachine> {
 public:
     /**
      * @brief State transition result structure

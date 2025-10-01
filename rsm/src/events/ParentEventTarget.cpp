@@ -76,10 +76,23 @@ std::future<SendResult> ParentEventTarget::sendImmediately(const EventDescriptor
             "ParentEventTarget::sendImmediately() - Child session: '{}' (from event: '{}', from constructor: '{}')",
             actualChildSessionId, event.sessionId, childSessionId_);
 
-        // Find parent session ID
-        std::string parentSessionId = findParentSessionId(actualChildSessionId);
+        // Find parent session ID: use _parentSessionId param if provided (for done.invoke), otherwise lookup via
+        // JSEngine
+        std::string parentSessionId;
+        auto it = event.params.find("_parentSessionId");
+        if (it != event.params.end() && !it->second.empty()) {
+            parentSessionId = it->second;
+            LOG_DEBUG("ParentEventTarget: Using parent session from params: '{}'", parentSessionId);
+        } else {
+            parentSessionId = findParentSessionId(actualChildSessionId);
+            LOG_DEBUG("ParentEventTarget: Found parent session via JSEngine: '{}'", parentSessionId);
+        }
+
         if (parentSessionId.empty()) {
-            LOG_ERROR("ParentEventTarget: No parent session found for child: {}", actualChildSessionId);
+            // W3C SCXML: This is normal during cleanup when parent relationship is already removed
+            // Child's onexit handlers may try to send events after invoke is cancelled
+            LOG_DEBUG("ParentEventTarget: No parent session found for child: {} (likely during cleanup)",
+                      actualChildSessionId);
             resultPromise.set_value(SendResult::error("No parent session found for child: " + actualChildSessionId,
                                                       SendResult::ErrorType::TARGET_NOT_FOUND));
             return resultFuture;
@@ -89,7 +102,9 @@ std::future<SendResult> ParentEventTarget::sendImmediately(const EventDescriptor
                   actualChildSessionId, parentSessionId);
 
         // Get parent session's EventRaiser from centralized service
+        LOG_DEBUG("ParentEventTarget: Looking up EventRaiser for parent session: {}", parentSessionId);
         auto parentEventRaiser = EventRaiserService::getInstance().getEventRaiser(parentSessionId);
+        LOG_DEBUG("ParentEventTarget: EventRaiser lookup result: {}", parentEventRaiser ? "FOUND" : "NOT FOUND");
         if (!parentEventRaiser) {
             LOG_ERROR("ParentEventTarget: No EventRaiser found for parent session: {}", parentSessionId);
             resultPromise.set_value(SendResult::error("No EventRaiser found for parent session: " + parentSessionId,

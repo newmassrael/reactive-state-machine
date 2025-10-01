@@ -90,3 +90,5 @@ docs/xml/
 .cache
 # Auto-generated SCXML files from TXML conversion
 resources/*/*.scxml
+
+claudedocs

@@ -10,13 +10,13 @@ namespace RSM {
 /**
  * @brief RAII wrapper for StateMachine with automatic cleanup
  *
- * StateMachineContext owns only StateMachine (exclusive ownership).
+ * StateMachineContext owns StateMachine (shared ownership for callback safety).
  * EventRaiser/EventDispatcher are owned externally (e.g., TestResources) and can be
  * shared across multiple StateMachine instances.
  *
  * Cleanup on destruction:
  * 1. StateMachine::stop() if running
- * 2. StateMachine destruction
+ * 2. StateMachine destruction (when last shared_ptr released)
  *
  * Note: EventRaiser/EventDispatcher are NOT owned by StateMachineContext.
  * They must be managed separately by the caller (e.g., via TestResources RAII wrapper).
@@ -24,10 +24,10 @@ namespace RSM {
 class StateMachineContext {
 public:
     /**
-     * @brief Construct context with StateMachine only
-     * @param stateMachine The state machine instance (exclusive ownership)
+     * @brief Construct context with StateMachine (shared ownership)
+     * @param stateMachine The state machine instance (shared ownership for callback safety)
      */
-    explicit StateMachineContext(std::unique_ptr<StateMachine> stateMachine);
+    explicit StateMachineContext(std::shared_ptr<StateMachine> stateMachine);
 
     /**
      * @brief Destructor - performs automatic cleanup in correct order
@@ -67,6 +67,14 @@ public:
     }
 
     /**
+     * @brief Get shared_ptr to StateMachine for callback safety
+     * @return Shared pointer to StateMachine
+     */
+    std::shared_ptr<StateMachine> getShared() {
+        return stateMachine_;
+    }
+
+    /**
      * @brief Check if context has a valid StateMachine
      * @return true if StateMachine exists
      */
@@ -75,7 +83,7 @@ public:
     }
 
 private:
-    std::unique_ptr<StateMachine> stateMachine_;
+    std::shared_ptr<StateMachine> stateMachine_;  // Shared ownership for callback safety
 };
 
 }  // namespace RSM

@@ -190,6 +190,9 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         LOG_WARN("SCXMLInvokeHandler: No EventDispatcher provided for session: {}", childSessionId);
     }
 
+    // W3C SCXML: Create EventRaiser for #_parent target support
+    auto childEventRaiser = std::make_shared<EventRaiserImpl>();
+
     // Store session information for tracking
     InvokeSession session;
     session.invokeid = invokeid;
@@ -202,9 +205,6 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     session.finalizeScript =
         invoke->getFinalize();  // W3C SCXML 6.4: Store finalize handler for execution before processing child events
 
-    // W3C SCXML: Create EventRaiser for #_parent target support
-    auto childEventRaiser = std::make_shared<EventRaiserImpl>();
-
     // Build StateMachine with dependency injection, then wrap in RAII context
     StateMachineBuilder builder;
     auto stateMachine = builder.withSessionId(childSessionId)
@@ -212,80 +212,109 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
                             .withEventRaiser(childEventRaiser)
                             .build();
 
-    // Wrap in StateMachineContext for RAII cleanup
-    auto smContext = std::make_unique<StateMachineContext>(std::move(stateMachine));
+    // Wrap in StateMachineContext for RAII cleanup (shared ownership)
+    auto smContext = std::make_unique<StateMachineContext>(stateMachine);
 
-    // Get raw pointer for callback (safe because smContext lifetime is managed by session)
-    auto *childStateMachinePtr = smContext->get();
+    // Get weak_ptr for thread-safe callbacks (prevents use-after-free)
+    std::weak_ptr<StateMachine> weakChildSM = smContext->getShared();
 
     LOG_DEBUG("SCXMLInvokeHandler: Created child StateMachine with StateMachineBuilder for session: {}",
               childSessionId);
 
     // W3C SCXML 6.5: Register completion callback for done.invoke generation
     // This callback is invoked AFTER the child's final state onexit handlers complete
-    childStateMachinePtr->setCompletionCallback([this, invokeid, childSessionId, eventDispatcher]() {
-        LOG_INFO("SCXMLInvokeHandler: Child completion callback invoked - invokeid: {}, session: {}", invokeid,
-                 childSessionId);
+    // IMPORTANT: Use weak_ptr to prevent accessing destroyed parent StateMachine (thread-safe)
+    std::weak_ptr<StateMachine> weakParentSM = parentStateMachine_;
+    weakChildSM.lock()->setCompletionCallback(
+        [weakParentSM, invokeid, childSessionId, parentSessionId, eventDispatcher]() {
+            LOG_INFO("SCXMLInvokeHandler: Child completion callback invoked - invokeid: {}, session: {}", invokeid,
+                     childSessionId);
 
-        // W3C SCXML Test 192: Check if parent StateMachine is in final state
-        // If parent already completed, don't send done.invoke (it would be ignored anyway)
-        if (parentStateMachine_ && parentStateMachine_->isInFinalState()) {
-            LOG_DEBUG("SCXMLInvokeHandler: Parent already in final state, skipping done.invoke.{}", invokeid);
-            return;
-        }
+            // W3C SCXML Test 192: Check if parent StateMachine is in final state (thread-safe with weak_ptr)
+            // If parent already completed, don't send done.invoke (it would be ignored anyway)
+            auto parentSM = weakParentSM.lock();
+            if (!parentSM) {
+                LOG_DEBUG("SCXMLInvokeHandler: Parent StateMachine destroyed, skipping done.invoke.{}", invokeid);
+                return;
+            }
 
-        // W3C SCXML 6.5: Generate done.invoke.id event
-        std::string doneEvent = "done.invoke." + invokeid;
+            if (parentSM->isInFinalState()) {
+                LOG_DEBUG("SCXMLInvokeHandler: Parent already in final state, skipping done.invoke.{}", invokeid);
+                return;
+            }
 
-        if (eventDispatcher) {
-            EventDescriptor event;
-            event.eventName = doneEvent;
-            event.target = "#_parent";
-            event.data = "";
-            event.delay = std::chrono::milliseconds(0);
-            event.sessionId = childSessionId;  // Use child session ID for ParentEventTarget routing
+            // W3C SCXML 6.5: Generate done.invoke.id event
+            std::string doneEvent = "done.invoke." + invokeid;
 
-            auto resultFuture = eventDispatcher->sendEvent(event);
-            LOG_INFO("SCXMLInvokeHandler: {} sent to parent after child completion", doneEvent);
-        } else {
-            LOG_WARN("SCXMLInvokeHandler: Child reached final state but no EventDispatcher available for: {}",
-                     doneEvent);
-        }
-    });
+            if (eventDispatcher) {
+                EventDescriptor event;
+                event.eventName = doneEvent;
+                event.target = "#_parent";
+                event.data = "";
+                event.delay = std::chrono::milliseconds(0);
+                event.sessionId = childSessionId;  // Child session for context
+
+                // W3C SCXML: Use parent session ID directly to avoid lookup issues
+                // Store parent session ID in params for ParentEventTarget routing
+                event.params["_parentSessionId"] = parentSessionId;
+
+                auto resultFuture = eventDispatcher->sendEvent(event);
+                LOG_INFO("SCXMLInvokeHandler: {} sent to parent after child completion", doneEvent);
+            } else {
+                LOG_WARN("SCXMLInvokeHandler: Child reached final state but no EventDispatcher available for: {}",
+                         doneEvent);
+            }
+        });
     LOG_DEBUG("SCXMLInvokeHandler: Registered completion callback for invoke: {}", invokeid);
 
-    // Store the StateMachineContext in session AFTER getting the raw pointer
-    session.smContext = std::move(smContext);
-
     // Set up EventRaiser callback to child StateMachine's processEvent
-    LOG_DEBUG(
-        "SCXMLInvokeHandler: Setting EventRaiser callback for session: {}, childStateMachine: {}, EventRaiser: {}",
-        childSessionId, (void *)childStateMachinePtr, (void *)childEventRaiser.get());
+    LOG_DEBUG("SCXMLInvokeHandler: Setting EventRaiser callback for session: {}, EventRaiser: {}", childSessionId,
+              (void *)childEventRaiser.get());
 
-    childEventRaiser->setEventCallback(
-        [childStateMachinePtr, childSessionId](const std::string &eventName, const std::string &eventData) -> bool {
-            LOG_DEBUG("EventRaiser callback executing - session: {}, event: '{}', childStateMachine: {}, isRunning: {}",
-                      childSessionId, eventName, (void *)childStateMachinePtr,
-                      childStateMachinePtr ? (childStateMachinePtr->isRunning() ? "true" : "false") : "null");
-
-            if (childStateMachinePtr && childStateMachinePtr->isRunning()) {
-                auto result = childStateMachinePtr->processEvent(eventName, eventData);
-                LOG_DEBUG("EventRaiser callback result - session: {}, event: '{}', success: {}", childSessionId,
-                          eventName, result.success);
-                return result.success;
-            }
-            LOG_WARN("EventRaiser callback failed - session: {}, event: '{}', childStateMachine null or not running",
-                     childSessionId, eventName);
+    // Reuse weakParentSM from completion callback above
+    childEventRaiser->setEventCallback([weakChildSM, weakParentSM, childSessionId](
+                                           const std::string &eventName, const std::string &eventData) -> bool {
+        // Thread-safe callback: use weak_ptr to prevent use-after-free
+        auto childSM = weakChildSM.lock();
+        if (!childSM) {
+            LOG_DEBUG("EventRaiser callback skipped - child StateMachine destroyed, session: {}, event: '{}'",
+                      childSessionId, eventName);
             return false;
-        });
+        }
+
+        LOG_DEBUG("EventRaiser callback executing - session: {}, event: '{}', isRunning: {}", childSessionId, eventName,
+                  childSM->isRunning() ? "true" : "false");
+
+        // W3C SCXML: Don't process events if parent is in final state (thread-safe with weak_ptr)
+        auto parentSM = weakParentSM.lock();
+        if (parentSM && parentSM->isInFinalState()) {
+            LOG_DEBUG("EventRaiser callback skipped - parent in final state, session: {}, event: '{}'", childSessionId,
+                      eventName);
+            return false;
+        }
+
+        // W3C SCXML: Don't process events if child is in final state
+        if (childSM->isRunning() && !childSM->isInFinalState()) {
+            auto result = childSM->processEvent(eventName, eventData);
+            LOG_DEBUG("EventRaiser callback result - session: {}, event: '{}', success: {}", childSessionId, eventName,
+                      result.success);
+            return result.success;
+        }
+        LOG_DEBUG("EventRaiser callback skipped - session: {}, event: '{}', StateMachine not running or in final state",
+                  childSessionId, eventName);
+        return false;
+    });
 
     LOG_DEBUG("SCXMLInvokeHandler: EventRaiser callback setup complete for session: {}", childSessionId);
+
+    // Assign StateMachineContext to session before loading (keeps StateMachine alive)
+    session.smContext = std::move(smContext);
 
     // Load SCXML content into child StateMachine
     LOG_DEBUG(
         "SCXMLInvokeHandler: Loading SCXML content into child StateMachine - invokeid: {}, content size: {} bytes",
         invokeid, scxmlContent.length());
-    if (!childStateMachinePtr->loadSCXMLFromString(scxmlContent)) {
+    if (!session.smContext->get()->loadSCXMLFromString(scxmlContent)) {
         LOG_ERROR("SCXMLInvokeHandler: Failed to load SCXML content for invoke: {}", invokeid);
         JSEngine::instance().destroySession(childSessionId);
         return "";
@@ -338,18 +367,19 @@ bool SCXMLInvokeHandler::cancelInvoke(const std::string &invokeid) {
 
     LOG_DEBUG("SCXMLInvokeHandler: Cancelling invoke: {} with session: {}", invokeid, session.sessionId);
 
-    // RAII cleanup: StateMachineContext destructor will handle StateMachine stop and resource cleanup
-    // We only need to cancel pending events explicitly
+    // Cancel pending events
     if (session.eventDispatcher) {
         size_t cancelledEvents = session.eventDispatcher->cancelEventsForSession(session.sessionId);
         LOG_DEBUG("SCXMLInvokeHandler: Cancelled {} pending events for session: {}", cancelledEvents,
                   session.sessionId);
     }
 
+    // With weak_ptr callbacks, no synchronization needed - callbacks safely check weak_ptr::lock()
     // Unregister invoke mapping from JSEngine
     JSEngine::instance().unregisterInvokeMapping(session.parentSessionId, invokeid);
 
-    // Destroy the child session (this will also cancel events automatically via JSEngine)
+    // Destroy the child session (RAII cleanup with thread-safe weak_ptr callbacks)
+    // Callbacks use weak_ptr::lock() which returns nullptr if StateMachine is destroyed
     JSEngine::instance().destroySession(session.sessionId);
 
     // Mark as inactive
@@ -512,10 +542,11 @@ std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &in
         return "";
     }
 
-    // W3C SCXML Test 192: Set parent StateMachine for completion callback state checking
+    // W3C SCXML Test 192: Set parent StateMachine for completion callback state checking (thread-safe with shared_ptr)
     auto scxmlHandler = std::dynamic_pointer_cast<SCXMLInvokeHandler>(handler);
-    if (scxmlHandler && parentStateMachine_) {
-        scxmlHandler->setParentStateMachine(parentStateMachine_);
+    auto parentSM = parentStateMachine_.lock();
+    if (scxmlHandler && parentSM) {
+        scxmlHandler->setParentStateMachine(parentSM);
         LOG_DEBUG("InvokeExecutor: Set parent StateMachine for SCXML handler");
     }
 
@@ -652,9 +683,9 @@ void InvokeExecutor::setEventDispatcher(std::shared_ptr<IEventDispatcher> eventD
     LOG_DEBUG("InvokeExecutor: EventDispatcher set: {}", eventDispatcher ? "provided" : "null");
 }
 
-void InvokeExecutor::setParentStateMachine(StateMachine *stateMachine) {
-    parentStateMachine_ = stateMachine;
-    LOG_DEBUG("InvokeExecutor: Parent StateMachine set: {}", (void *)stateMachine);
+void InvokeExecutor::setParentStateMachine(std::shared_ptr<StateMachine> stateMachine) {
+    parentStateMachine_ = stateMachine;  // Store as weak_ptr
+    LOG_DEBUG("InvokeExecutor: Parent StateMachine set: {}", (void *)stateMachine.get());
 
     // Forward to all handlers that support it (currently only SCXML handler)
     for (const auto &[invokeid, handler] : invokeHandlers_) {
@@ -727,9 +758,9 @@ std::string InvokeExecutor::getFinalizeScriptForChildSession(const std::string &
     return "";
 }
 
-void SCXMLInvokeHandler::setParentStateMachine(StateMachine *stateMachine) {
-    parentStateMachine_ = stateMachine;
-    LOG_DEBUG("SCXMLInvokeHandler: Parent StateMachine set: {}", (void *)stateMachine);
+void SCXMLInvokeHandler::setParentStateMachine(std::shared_ptr<StateMachine> stateMachine) {
+    parentStateMachine_ = stateMachine;  // Store as weak_ptr
+    LOG_DEBUG("SCXMLInvokeHandler: Parent StateMachine set: {}", (void *)stateMachine.get());
 }
 
 std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, const std::string &parentSessionId) {

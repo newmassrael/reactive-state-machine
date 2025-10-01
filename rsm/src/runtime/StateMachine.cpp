@@ -55,6 +55,9 @@ StateMachine::StateMachine(const std::string &sessionId) : isRunning_(false), js
 }
 
 StateMachine::~StateMachine() {
+    // Clear callbacks first to prevent execution during destruction
+    completionCallback_ = nullptr;
+
     if (isRunning_) {
         stop();
     }
@@ -139,7 +142,7 @@ bool StateMachine::start() {
     }
 
     // W3C SCXML compliance: Execute deferred invokes after initial state entry completes
-    LOG_INFO("StateMachine: Executing pending invokes after initial state entry for session: {}", sessionId_);
+    LOG_DEBUG("StateMachine: Executing pending invokes after initial state entry for session: {}", sessionId_);
     executePendingInvokes();
     updateStatistics();
 
@@ -544,12 +547,15 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
         }
 
         const auto &targets = transitionNode->getTargets();
-        if (targets.empty()) {
-            LOG_DEBUG("StateMachine: Skipping transition with no targets");
+
+        // W3C SCXML: Internal transitions have no targets but should still execute
+        bool isInternal = transitionNode->isInternal();
+        if (targets.empty() && !isInternal) {
+            LOG_DEBUG("StateMachine: Skipping transition with no targets (not internal)");
             continue;
         }
 
-        std::string targetState = targets[0];
+        std::string targetState = targets.empty() ? "" : targets[0];
         std::string condition = transitionNode->getGuard();
 
         LOG_DEBUG("Checking transition: {} -> {} with condition: '{}' (event: '{}')", stateNode->getId(), targetState,
@@ -560,6 +566,23 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
 
         if (conditionResult) {
             std::string fromState = getCurrentState();  // Save the original state
+
+            // W3C SCXML: Internal transitions execute actions without exiting/entering states
+            if (isInternal) {
+                LOG_DEBUG("StateMachine: Executing internal transition actions (no state change)");
+                const auto &actionNodes = transitionNode->getActionNodes();
+                if (!actionNodes.empty()) {
+                    executeActionNodes(actionNodes, false);
+                }
+
+                TransitionResult result;
+                result.success = true;
+                result.fromState = fromState;
+                result.toState = fromState;  // Same state (internal transition)
+                result.eventName = eventName;
+                return result;
+            }
+
             LOG_DEBUG("Executing SCXML compliant transition from {} to {}", fromState, targetState);
 
             // Exit current state
@@ -784,8 +807,8 @@ bool StateMachine::initializeFromModel() {
         LOG_DEBUG("StateMachine: Setting up invoke defer callback for StateHierarchyManager");
         hierarchyManager_->setInvokeDeferCallback(
             [this](const std::string &stateId, const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
-                LOG_INFO("StateMachine: Invoke defer callback triggered for state: {} with {} invokes", stateId,
-                         invokes.size());
+                LOG_DEBUG("StateMachine: Invoke defer callback triggered for state: {} with {} invokes", stateId,
+                          invokes.size());
                 deferInvokeExecution(stateId, invokes);
             });
         LOG_DEBUG("StateMachine: Invoke defer callback successfully configured");
@@ -999,10 +1022,12 @@ bool StateMachine::enterState(const std::string &stateId) {
 
                 // IMPORTANT: Callback is invoked AFTER onexit handlers execute
                 // This ensures correct event order: child events → done.invoke
-                try {
-                    completionCallback_();
-                } catch (const std::exception &e) {
-                    LOG_ERROR("StateMachine: Exception in completion callback: {}", e.what());
+                if (completionCallback_) {
+                    try {
+                        completionCallback_();
+                    } catch (const std::exception &e) {
+                        LOG_ERROR("StateMachine: Exception in completion callback: {}", e.what());
+                    }
                 }
             }
         }
@@ -1043,8 +1068,8 @@ bool StateMachine::checkEventlessTransitions() {
         // Process eventless transitions (empty event name)
         auto transitionResult = processStateTransitions(stateNode, "", "");
         if (transitionResult.success) {
-            LOG_INFO("SCXML: Eventless transition executed from state '{}': {} -> {}", activeStateId,
-                     transitionResult.fromState, transitionResult.toState);
+            LOG_DEBUG("SCXML: Eventless transition executed from state '{}': {} -> {}", activeStateId,
+                      transitionResult.fromState, transitionResult.toState);
             // W3C: First enabled transition executes, then return true
             return true;
         }
@@ -1080,10 +1105,47 @@ bool StateMachine::exitState(const std::string &stateId) {
         (void)exitResult;  // Suppress unused variable warning in release builds
     }
 
-    // Record history before exiting compound states (SCXML W3C specification section 3.6)
-    if (historyManager_ && hierarchyManager_) {
-        auto stateNode = model_->findStateById(stateId);
-        if (stateNode && (stateNode->getType() == Type::COMPOUND || stateNode->getType() == Type::PARALLEL)) {
+    // Get state node for invoke cancellation and history recording
+    auto stateNodeForCleanup = model_->findStateById(stateId);
+
+    // W3C SCXML specification section 3.13: Cancel invokes BEFORE removing from active states
+    // "Then it MUST cancel any ongoing invocations that were triggered by that state"
+    // This must happen AFTER onexit handlers but BEFORE state removal
+    if (stateNodeForCleanup && invokeExecutor_) {
+        const auto &invokes = stateNodeForCleanup->getInvoke();
+        LOG_DEBUG("StateMachine::exitState - State '{}' has {} invoke(s) to check", stateId, invokes.size());
+
+        for (const auto &invoke : invokes) {
+            const std::string &invokeid = invoke->getId();
+            if (!invokeid.empty()) {
+                bool isActive = invokeExecutor_->isInvokeActive(invokeid);
+                LOG_DEBUG("StateMachine::exitState - Invoke '{}' isActive: {}", invokeid, isActive);
+
+                if (isActive) {
+                    LOG_DEBUG("StateMachine: Cancelling active invoke '{}' due to state exit: {}", invokeid, stateId);
+                    bool cancelled = invokeExecutor_->cancelInvoke(invokeid);
+                    LOG_DEBUG("StateMachine: Cancel result for invoke '{}': {}", invokeid, cancelled);
+                } else {
+                    LOG_DEBUG("StateMachine: NOT cancelling inactive invoke '{}' (may be completing naturally)",
+                              invokeid);
+                }
+            } else {
+                LOG_WARN("StateMachine::exitState - Found invoke with empty ID in state '{}'", stateId);
+            }
+        }
+    } else {
+        if (!stateNodeForCleanup) {
+            LOG_DEBUG("StateMachine::exitState - stateNodeForCleanup is null for state '{}'", stateId);
+        }
+        if (!invokeExecutor_) {
+            LOG_DEBUG("StateMachine::exitState - invokeExecutor_ is null");
+        }
+    }
+
+    // Record history before removing from active states (SCXML W3C specification section 3.6)
+    // History recording needs current active states, so must happen before hierarchyManager_->exitState
+    if (historyManager_ && hierarchyManager_ && stateNodeForCleanup) {
+        if (stateNodeForCleanup->getType() == Type::COMPOUND || stateNodeForCleanup->getType() == Type::PARALLEL) {
             // Get current active states before exiting
             auto activeStates = hierarchyManager_->getActiveStates();
 
@@ -1095,6 +1157,7 @@ bool StateMachine::exitState(const std::string &stateId) {
         }
     }
 
+    // W3C SCXML section 3.13: Finally remove the state from active states list
     // Use hierarchy manager for SCXML-compliant state exit
     assert(hierarchyManager_ && "SCXML violation: hierarchy manager required for state management");
     LOG_DEBUG("StateMachine::exitState - executionContext_ is {}", executionContext_ ? "valid" : "NULL");
@@ -1790,8 +1853,8 @@ void StateMachine::setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDis
         LOG_DEBUG("StateMachine: EventDispatcher passed to InvokeExecutor for session: {}", sessionId_);
 
         // W3C SCXML Test 192: Set parent StateMachine for completion callback state checking
-        invokeExecutor_->setParentStateMachine(this);
-        LOG_DEBUG("StateMachine: Parent StateMachine pointer set in InvokeExecutor for session: {}", sessionId_);
+        // Only set if this StateMachine is managed by shared_ptr (not during construction)
+        // This will be set later in executeInvoke() when actually needed
     }
 }
 
@@ -1859,7 +1922,7 @@ std::shared_ptr<IEventDispatcher> StateMachine::getEventDispatcher() const {
 
 void StateMachine::deferInvokeExecution(const std::string &stateId,
                                         const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
-    LOG_INFO("StateMachine: Deferring {} invokes for state: {} in session: {}", invokes.size(), stateId, sessionId_);
+    LOG_DEBUG("StateMachine: Deferring {} invokes for state: {} in session: {}", invokes.size(), stateId, sessionId_);
 
     // Log each invoke being deferred
     for (size_t i = 0; i < invokes.size(); ++i) {
@@ -1882,17 +1945,32 @@ void StateMachine::deferInvokeExecution(const std::string &stateId,
 }
 
 void StateMachine::executePendingInvokes() {
+    // W3C SCXML Test 192: Set parent StateMachine before executing invokes (requires shared_ptr context)
+    // This is safe here because executePendingInvokes() is only called when StateMachine is already in shared_ptr
+    // context
+    if (invokeExecutor_) {
+        try {
+            invokeExecutor_->setParentStateMachine(shared_from_this());
+            LOG_DEBUG(
+                "StateMachine: Parent StateMachine set in InvokeExecutor before executing invokes for session: {}",
+                sessionId_);
+        } catch (const std::bad_weak_ptr &e) {
+            LOG_WARN("StateMachine: Cannot set parent StateMachine - not managed by shared_ptr yet for session: {}",
+                     sessionId_);
+        }
+    }
+
     // Thread-safe copy of pending invokes
     std::vector<DeferredInvoke> invokesToExecute;
     {
         std::lock_guard<std::mutex> lock(pendingInvokesMutex_);
         if (pendingInvokes_.empty()) {
-            LOG_INFO("StateMachine: No pending invokes to execute for session: {}", sessionId_);
+            LOG_DEBUG("StateMachine: No pending invokes to execute for session: {}", sessionId_);
             return;
         }
 
-        LOG_INFO("StateMachine: Found {} pending invokes to execute for session: {}", pendingInvokes_.size(),
-                 sessionId_);
+        LOG_DEBUG("StateMachine: Found {} pending invokes to execute for session: {}", pendingInvokes_.size(),
+                  sessionId_);
 
         LOG_DEBUG("StateMachine: DETAILED DEBUG - Executing {} pending invokes for session {}", pendingInvokes_.size(),
                   sessionId_);
@@ -1918,8 +1996,8 @@ void StateMachine::executePendingInvokes() {
 
     // Execute invokes outside of lock to avoid deadlock
     for (const auto &deferred : invokesToExecute) {
-        LOG_INFO("StateMachine: Executing {} deferred invokes for state: {}", deferred.invokes.size(),
-                 deferred.stateId);
+        LOG_DEBUG("StateMachine: Executing {} deferred invokes for state: {}", deferred.invokes.size(),
+                  deferred.stateId);
 
         if (invokeExecutor_) {
             bool invokeSuccess = invokeExecutor_->executeInvokes(deferred.invokes, sessionId_);

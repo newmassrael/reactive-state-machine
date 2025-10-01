@@ -16,6 +16,7 @@
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "runtime/StateMachine.h"
+#include "runtime/StateMachineContext.h"
 #include "scripting/JSEngine.h"
 
 namespace RSM {
@@ -491,7 +492,7 @@ TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
     // Wait 100ms, then destroy session_2 (W3C SCXML 6.2: should cancel its delayed events)
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    LOG_INFO("TEST: Destroying session_2 - should cancel its delayed events (W3C SCXML 6.2)");
+    LOG_DEBUG("Destroying session_2 - should cancel its delayed events (W3C SCXML 6.2)");
     jsEngine.destroySession("session_2");
 
     // Session 2's event should now be cancelled
@@ -529,7 +530,7 @@ TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
     EXPECT_FALSE(scheduler_->hasEvent("session2_event"));
     EXPECT_FALSE(scheduler_->hasEvent("session3_event"));
 
-    LOG_INFO("TEST: Session-aware delayed event cancellation validated successfully");
+    LOG_DEBUG("Session-aware delayed event cancellation validated successfully");
 
     // Clean up remaining sessions
     jsEngine.destroySession("session_1");
@@ -549,8 +550,10 @@ TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
  * 2. 자식 세션에서 지연된 이벤트를 전송하고 자체 EventRaiser로 처리되는지 검증
  * 3. 부모 세션의 EventRaiser에 자식 이벤트가 잘못 전송되지 않는지 검증
  */
+// Re-enabled after fixing race conditions with mutex-based synchronization
+// Tests concurrent invoke session isolation with delayed event routing
 TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
-    LOG_INFO("TEST: High-level SCXML invoke session isolation test");
+    LOG_DEBUG("High-level SCXML invoke session isolation test");
 
     // 고수준 SCXML 기반 세션 격리 테스트 (dual invoke로 복원)
     std::atomic<bool> parentReceivedChild1Event{false};
@@ -559,8 +562,9 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
     std::atomic<bool> child2ReceivedOwnEvent{false};
     std::atomic<bool> sessionIsolationViolated{false};
 
-    // 부모 StateMachine 생성 (2개의 자식 invoke 포함)
-    auto parentStateMachine = std::make_unique<StateMachine>();
+    // 부모 StateMachine 생성 (2개의 자식 invoke 포함) - shared_ptr for enable_shared_from_this support
+    auto parentStateMachine = std::make_shared<StateMachine>();
+    auto parentContext = std::make_unique<StateMachineContext>(parentStateMachine);
 
     // 부모 SCXML: 두 개의 자식 세션을 invoke하고 세션 격리 검증
     std::string parentScxml = R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -571,6 +575,7 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
         <data id="isolationViolated" expr="false"/>
     </datamodel>
 
+    <!-- W3C SCXML 3.13: Invoke는 compound state에 정의하되, internal transition만 사용하여 state exit 방지 -->
     <state id="parent_start">
         <onentry>
             <log expr="'Parent: Starting session isolation test with two children'"/>
@@ -591,7 +596,11 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
                             <send target="#_parent" event="child1.isolated.success"/>
                         </transition>
                     </state>
-                    <state id="child1_success"/>
+                    <final id="child1_success">
+                        <onentry>
+                            <log expr="'Child1: Entered final state'"/>
+                        </onentry>
+                    </final>
                 </scxml>
             </content>
         </invoke>
@@ -611,31 +620,48 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
                             <send target="#_parent" event="child2.isolated.success"/>
                         </transition>
                     </state>
-                    <state id="child2_success"/>
+                    <final id="child2_success">
+                        <onentry>
+                            <log expr="'Child2: Entered final state'"/>
+                        </onentry>
+                    </final>
                 </scxml>
             </content>
         </invoke>
 
-        <transition event="child1.ready" target="parent_waiting_child2">
+        <!-- W3C SCXML: Internal transitions는 state를 exit하지 않으므로 invoke가 취소되지 않음 -->
+        <transition event="child1.ready" type="internal">
             <log expr="'Parent: Child1 ready'"/>
         </transition>
-    </state>
 
-    <state id="parent_waiting_child2">
-        <transition event="child2.ready" target="parent_monitoring">
+        <transition event="child2.ready" type="internal">
             <log expr="'Parent: Both children ready'"/>
         </transition>
-    </state>
 
-    <state id="parent_monitoring">
-        <transition event="child1.isolated.success" target="parent_child1_success">
+        <transition event="child1.isolated.success" type="internal">
             <log expr="'Parent: Child1 isolation success'"/>
         </transition>
-    </state>
 
-    <state id="parent_child1_success">
-        <transition event="child2.isolated.success" target="parent_success">
+        <transition event="child2.isolated.success" type="internal">
             <log expr="'Parent: Both children isolation success - test PASSED'"/>
+        </transition>
+
+        <!-- done.invoke events indicate children completed -->
+        <transition event="done.invoke.child1_invoke" type="internal">
+            <log expr="'Parent: Received done.invoke.child1_invoke'"/>
+            <assign location="child1EventReceived" expr="true"/>
+            <log expr="'Parent: child1EventReceived set to ' + child1EventReceived"/>
+        </transition>
+
+        <!-- When child2 completes, check if both are done and transition to success -->
+        <transition event="done.invoke.child2_invoke" cond="child1EventReceived" target="parent_success">
+            <log expr="'Parent: Both children completed, transitioning to success'"/>
+        </transition>
+        
+        <!-- Fallback: child2 completed but child1 not yet -->
+        <transition event="done.invoke.child2_invoke" type="internal">
+            <log expr="'Parent: Child2 completed (waiting for child1)'"/>
+            <assign location="child2EventReceived" expr="true"/>
         </transition>
     </state>
 
@@ -657,6 +683,8 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
         std::make_shared<RSM::Test::MockEventRaiser>([&](const std::string &name, const std::string &data) -> bool {
             (void)data;
 
+            LOG_DEBUG("EventRaiser callback: event '{}' received", name);
+
             if (name == "child1.ready") {
                 parentReceivedChild1Event = true;
             } else if (name == "child2.ready") {
@@ -669,9 +697,14 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
 
             // StateMachine에 이벤트 전달
             if (parentStateMachine->isRunning()) {
+                std::string currentState = parentStateMachine->getCurrentState();
+                LOG_DEBUG("Parent state: {}, processing event: {}", currentState, name);
                 auto result = parentStateMachine->processEvent(name, data);
+                LOG_DEBUG("processEvent({}) returned success={}, fromState={}, toState={}", name, result.success,
+                          result.fromState, result.toState);
                 return result.success;
             }
+            LOG_WARN("Parent StateMachine not running, cannot process event: {}", name);
             return false;
         });
 
@@ -683,10 +716,12 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
     ASSERT_TRUE(parentStateMachine->loadSCXMLFromString(parentScxml)) << "Failed to load parent SCXML";
     ASSERT_TRUE(parentStateMachine->start()) << "Failed to start parent StateMachine";
 
-    LOG_INFO("TEST: Waiting for invoke sessions and delayed events to execute...");
+    LOG_DEBUG("Waiting for invoke sessions and delayed events to execute...");
 
-    // 충분한 시간 대기 (자식 세션 생성 + 지연된 이벤트 실행)
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    // 충분한 시간 대기 (자식 세션 생성 + 지연된 이벤트 실행 + EventScheduler 처리 시간)
+    // child1: 100ms delay, child2: 150ms delay + substantial processing time
+    // Adding extra time to ensure all events are fully processed before cleanup
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
 
     // 고수준 검증: SCXML 데이터모델을 통한 상태 확인
     bool finalStateReached = (parentStateMachine->getCurrentState() == "parent_success" ||
@@ -704,8 +739,8 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
     // StateMachine 정리
     parentStateMachine->stop();
 
-    LOG_INFO("TEST: High-level session isolation test completed - Child1: {}, Child2: {}, Violations: {}",
-             child1ReceivedOwnEvent.load(), child2ReceivedOwnEvent.load(), sessionIsolationViolated.load());
+    LOG_DEBUG("High-level session isolation test completed - Child1: {}, Child2: {}, Violations: {}",
+              child1ReceivedOwnEvent.load(), child2ReceivedOwnEvent.load(), sessionIsolationViolated.load());
 }
 
 }  // namespace RSM

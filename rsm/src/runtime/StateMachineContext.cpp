@@ -3,9 +3,9 @@
 
 namespace RSM {
 
-StateMachineContext::StateMachineContext(std::unique_ptr<StateMachine> stateMachine)
+StateMachineContext::StateMachineContext(std::shared_ptr<StateMachine> stateMachine)
     : stateMachine_(std::move(stateMachine)) {
-    LOG_DEBUG("StateMachineContext: Created with StateMachine: {}", (void *)stateMachine_.get());
+    LOG_DEBUG("StateMachineContext: Created with StateMachine (shared): {}", (void *)stateMachine_.get());
 }
 
 StateMachineContext::~StateMachineContext() {
@@ -19,13 +19,9 @@ StateMachineContext::~StateMachineContext() {
             stateMachine_->stop();
         }
 
-        // CRITICAL: Wait for any in-flight events to complete before destroying StateMachine
-        // The EventScheduler may still be processing events in its callback thread
-        // that reference this StateMachine. We must ensure all event processing completes.
-        LOG_DEBUG("StateMachineContext: Waiting for in-flight events to complete");
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-        LOG_DEBUG("StateMachineContext: Destroying StateMachine");
+        // With shared_ptr ownership, callbacks using weak_ptr are safe
+        // No sleep needed - callbacks will check weak_ptr validity
+        LOG_DEBUG("StateMachineContext: Releasing StateMachine (shared_ptr, use_count: {})", stateMachine_.use_count());
         stateMachine_.reset();
     }
 
