@@ -220,6 +220,26 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
 
     addSystemVariables(model);
 
+    // W3C SCXML 5.8: Parse top-level <script> elements (children of <scxml>)
+    auto scriptElements = ParsingCommon::findChildElements(scxmlNode, "script");
+    if (!scriptElements.empty()) {
+        LOG_DEBUG("Parsing {} root script element(s) (W3C SCXML 5.8)", scriptElements.size());
+        size_t parsedCount = 0;
+
+        for (size_t i = 0; i < scriptElements.size(); ++i) {
+            auto scriptAction = actionParser_->parseActionNode(scriptElements[i]);
+            if (scriptAction) {
+                model->addTopLevelScript(scriptAction);
+                parsedCount++;
+                LOG_DEBUG("Added top-level script #{} for document load time execution (W3C SCXML 5.8)", i + 1);
+            } else {
+                LOG_WARN("Failed to parse top-level script element #{} - skipping (W3C SCXML 5.8)", i + 1);
+            }
+        }
+
+        LOG_DEBUG("Successfully parsed {}/{} top-level script(s) (W3C SCXML 5.8)", parsedCount, scriptElements.size());
+    }
+
     // 상태 파싱 (모든 최상위 state, parallel, final 노드를 찾기)
     LOG_DEBUG("Looking for root state nodes");
 

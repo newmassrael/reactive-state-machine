@@ -3,6 +3,7 @@
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace RSM::W3C {
 
@@ -134,6 +135,9 @@ const std::regex TXMLConverter::CONF_IDLOCATION_ATTR{R"def(conf:idlocation="([^"
 // Test 225 specific patterns - variable equality comparison
 // Pattern matches numeric variable indices separated by space: "1 2" -> var1, var2
 const std::regex TXMLConverter::CONF_VAREQVAR_ATTR{R"def(conf:VarEqVar="([0-9]+) ([0-9]+)")def", std::regex::optimize};
+
+// W3C SCXML 5.8: Top-level script element pattern (test 302)
+const std::regex TXMLConverter::CONF_SCRIPT_ELEMENT{R"(<conf:script\s*/>)", std::regex::optimize};
 
 // General patterns to remove all conf: references
 const std::regex TXMLConverter::CONF_ALL_ATTRIBUTES{R"abc(\s+conf:[^=\s>]+\s*=\s*"[^"]*")abc", std::regex::optimize};
@@ -409,12 +413,30 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     return result;
 }
 
+std::string TXMLConverter::getDefaultScriptContent() {
+    // W3C SCXML 5.8: Test-specific script content mapping
+    // Maps test IDs to their required script content
+    static const std::unordered_map<int, std::string> testScripts = {
+        {302, "var1 = 1"},  // W3C SCXML 5.8: Basic top-level script execution
+        // Future test scripts can be added here as needed
+    };
+
+    // For now, return test 302 content as default
+    // In future, this could be parameterized with test ID
+    return testScripts.at(302);
+}
+
 std::string TXMLConverter::convertConfElements(const std::string &content) {
     std::string result = content;
 
     // First, convert specific conf: elements that have SCXML equivalents
     result = std::regex_replace(result, CONF_PASS_ELEMENT, R"(<final id="pass"/>)");
     result = std::regex_replace(result, CONF_FAIL_ELEMENT, R"(<final id="fail"/>)");
+
+    // W3C SCXML 5.8: Convert conf:script to top-level script element (test 302+)
+    // <conf:script/> -> <script>var1 = 1</script>
+    std::string scriptReplacement = "<script>" + getDefaultScriptContent() + "</script>";
+    result = std::regex_replace(result, CONF_SCRIPT_ELEMENT, scriptReplacement);
 
     // Convert W3C test data array elements to JavaScript arrays
     result = std::regex_replace(result, CONF_ARRAY123_PATTERN, "[1,2,3]");

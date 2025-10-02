@@ -1,5 +1,6 @@
 #pragma once
 
+#include "actions/IActionNode.h"
 #include "model/IDataModelItem.h"
 #include "model/IGuardNode.h"
 #include "model/IStateNode.h"
@@ -184,6 +185,18 @@ public:
      */
     const std::vector<std::shared_ptr<IDataModelItem>> &getSystemVariables() const;
 
+    /**
+     * @brief Add top-level script (W3C SCXML 5.8)
+     * @param script Script action node
+     */
+    void addTopLevelScript(std::shared_ptr<IActionNode> script);
+
+    /**
+     * @brief Get top-level scripts (W3C SCXML 5.8)
+     * @return Top-level scripts vector
+     */
+    const std::vector<std::shared_ptr<IActionNode>> &getTopLevelScripts() const;
+
 private:
     /**
      * @brief Find state node recursively by state ID
@@ -226,6 +239,7 @@ private:
     std::vector<std::shared_ptr<IDataModelItem>> dataModelItems_;
     std::string binding_;
     std::vector<std::shared_ptr<IDataModelItem>> systemVariables_;
+    std::vector<std::shared_ptr<IActionNode>> topLevelScripts_;  // W3C SCXML 5.8
 };
 
 }  // namespace RSM

@@ -101,6 +101,9 @@ private:
     // Test 225 specific patterns - variable equality comparison
     static const std::regex CONF_VAREQVAR_ATTR;
 
+    // W3C SCXML 5.8: Top-level script element pattern (test 302)
+    static const std::regex CONF_SCRIPT_ELEMENT;
+
     // General patterns to remove all remaining conf: references
     static const std::regex CONF_ALL_ATTRIBUTES;
     static const std::regex CONF_ALL_ELEMENTS;
@@ -153,6 +156,14 @@ public:
      * @note Useful for converting sub-files that don't have pass/fail targets
      */
     std::string convertTXMLToSCXMLWithoutValidation(const std::string &txml);
+
+private:
+    /**
+     * @brief Get script content for W3C test (W3C SCXML 5.8)
+     * @return Script content string for the test
+     * @note Maps test-specific script content for conf:script conversion
+     */
+    static std::string getDefaultScriptContent();
 };
 
 }  // namespace RSM::W3C

@@ -359,6 +359,17 @@ const std::vector<std::shared_ptr<RSM::IDataModelItem>> &RSM::SCXMLModel::getSys
     return systemVariables_;
 }
 
+void RSM::SCXMLModel::addTopLevelScript(std::shared_ptr<RSM::IActionNode> script) {
+    if (script) {
+        LOG_DEBUG("Adding top-level script (W3C SCXML 5.8)");
+        topLevelScripts_.push_back(script);
+    }
+}
+
+const std::vector<std::shared_ptr<RSM::IActionNode>> &RSM::SCXMLModel::getTopLevelScripts() const {
+    return topLevelScripts_;
+}
+
 void RSM::SCXMLModel::collectAllStatesRecursively(IStateNode *state,
                                                   std::vector<std::shared_ptr<IStateNode>> &allStates) const {
     if (!state) {

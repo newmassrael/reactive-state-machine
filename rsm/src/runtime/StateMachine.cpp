@@ -1375,10 +1375,43 @@ bool StateMachine::setupJSEnvironment() {
         LOG_DEBUG("StateMachine: No model available for data model initialization");
     }
 
-    // Initialize ActionExecutor and ExecutionContext
+    // Initialize ActionExecutor and ExecutionContext (needed for script execution)
     if (!initializeActionExecutor()) {
         LOG_ERROR("StateMachine: Failed to initialize action executor");
         return false;
+    }
+
+    // W3C SCXML 5.8: Execute top-level scripts AFTER datamodel init, BEFORE start()
+    if (model_) {
+        const auto &topLevelScripts = model_->getTopLevelScripts();
+        if (!topLevelScripts.empty()) {
+            LOG_INFO("StateMachine: Executing {} top-level script(s) at document load time (W3C SCXML 5.8)",
+                     topLevelScripts.size());
+
+            for (size_t i = 0; i < topLevelScripts.size(); ++i) {
+                const auto &script = topLevelScripts[i];
+
+                if (!script) {
+                    LOG_WARN("StateMachine: Null script at index {} - skipping (W3C SCXML 5.8)", i);
+                    continue;
+                }
+
+                if (!executionContext_) {
+                    LOG_ERROR("StateMachine: ExecutionContext is null - cannot execute scripts (W3C SCXML 5.8)");
+                    return false;
+                }
+
+                LOG_DEBUG("StateMachine: Executing top-level script #{} (W3C SCXML 5.8)", i + 1);
+                bool success = script->execute(*executionContext_);
+                if (!success) {
+                    LOG_ERROR("StateMachine: Top-level script #{} execution failed (W3C SCXML 5.8) - document rejected",
+                              i + 1);
+                    return false;  // W3C SCXML 5.8: Script failure rejects document
+                }
+            }
+            LOG_DEBUG("StateMachine: All {} top-level script(s) executed successfully (W3C SCXML 5.8)",
+                      topLevelScripts.size());
+        }
     }
 
     // Pass EventDispatcher to ActionExecutor if it was set before initialization
