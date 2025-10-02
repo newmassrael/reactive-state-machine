@@ -148,6 +148,10 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                 std::string currentState;
 
                 while (std::chrono::steady_clock::now() - waitStart < timeout_) {
+                    // W3C SCXML compliance: Process queued events before checking state
+                    // This ensures events from child invokes (event1, done.invoke) are processed
+                    resources->eventRaiser->processQueuedEvents();
+
                     currentState = stateMachine->getCurrentState();
 
                     // Check if we reached a final state (pass or fail)
@@ -238,6 +242,10 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                 std::string currentState;
 
                 while (std::chrono::steady_clock::now() - waitStart < timeout_) {
+                    // W3C SCXML compliance: Process queued events before checking state
+                    // This ensures events from child invokes (event1, done.invoke) are processed
+                    resources->eventRaiser->processQueuedEvents();
+
                     currentState = stateMachine->getCurrentState();
                     if (currentState == "pass" || currentState == "fail") {
                         LOG_DEBUG("StateMachineTestExecutor: Reached final state: {}", currentState);

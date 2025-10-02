@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -295,6 +296,31 @@ private:
     mutable Statistics stats_;
 
     // Helper methods
+
+    // W3C SCXML 5.3: Data model initialization with binding mode support
+    struct DataItemInfo {
+        std::string stateId;  // Empty for top-level datamodel, state ID for state-level data
+        std::shared_ptr<IDataModelItem> dataItem;
+    };
+
+    /**
+     * @brief Collect all data items from document (top-level + all states)
+     * @return Vector of all data items with their containing state IDs
+     */
+    std::vector<DataItemInfo> collectAllDataItems() const;
+
+    /**
+     * @brief Initialize a single data item (create variable and optionally assign value)
+     * @param item Data item to initialize
+     * @param assignValue Whether to assign the initial value (false for late binding variable creation)
+     */
+    void initializeDataItem(const std::shared_ptr<IDataModelItem> &item, bool assignValue);
+
+    // W3C SCXML 5.3: Track which states have initialized their data (for late binding)
+    // Thread-safety: Not required - enterState() follows W3C SCXML run-to-completion
+    // semantics and is protected by isEnteringState_ guard. All event processing
+    // happens sequentially on the same thread via processQueuedEvents().
+    std::set<std::string> initializedStates_;
 
     bool initializeFromModel();
     void initializeHistoryManager();

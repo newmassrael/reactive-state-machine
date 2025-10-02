@@ -784,6 +784,102 @@ StateMachine::Statistics StateMachine::getStatistics() const {
     return stats_;
 }
 
+// W3C SCXML 5.3: Collect all data items from document for global scope initialization
+std::vector<StateMachine::DataItemInfo> StateMachine::collectAllDataItems() const {
+    std::vector<DataItemInfo> allDataItems;
+
+    if (!model_) {
+        return allDataItems;
+    }
+
+    // Collect top-level datamodel items
+    const auto &topLevelItems = model_->getDataModelItems();
+    for (const auto &item : topLevelItems) {
+        allDataItems.push_back(DataItemInfo{"", item});  // Empty stateId for top-level
+    }
+    LOG_DEBUG("StateMachine: Collected {} top-level data items", topLevelItems.size());
+
+    // Collect state-level data items from all states
+    const auto &allStates = model_->getAllStates();
+    for (const auto &state : allStates) {
+        if (!state) {
+            continue;
+        }
+
+        const auto &stateDataItems = state->getDataItems();
+        if (!stateDataItems.empty()) {
+            for (const auto &item : stateDataItems) {
+                allDataItems.push_back(DataItemInfo{state->getId(), item});
+            }
+            LOG_DEBUG("StateMachine: Collected {} data items from state '{}'", stateDataItems.size(), state->getId());
+        }
+    }
+
+    LOG_INFO("StateMachine: Total data items collected: {} (for global scope initialization)", allDataItems.size());
+    return allDataItems;
+}
+
+// W3C SCXML 5.3: Initialize a single data item with binding mode support
+void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &item, bool assignValue) {
+    if (!item) {
+        return;
+    }
+
+    std::string id = item->getId();
+    std::string expr = item->getExpr();
+    std::string content = item->getContent();
+
+    // W3C SCXML 6.4: Check if variable was pre-initialized (e.g., by invoke namelist/param)
+    if (RSM::JSEngine::instance().isVariablePreInitialized(sessionId_, id)) {
+        LOG_INFO("StateMachine: Skipping initialization for '{}' - pre-initialized by invoke data", id);
+        return;
+    }
+
+    if (!assignValue) {
+        // Late binding: Create variable but don't assign value yet (leave undefined)
+        RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{});
+        LOG_DEBUG("StateMachine: Created unbound variable '{}' for late binding", id);
+        return;
+    }
+
+    // Early binding or late binding value assignment: Evaluate and assign
+    if (!expr.empty()) {
+        auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, expr);
+        auto result = future.get();
+
+        if (RSM::JSEngine::isSuccess(result)) {
+            RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+            LOG_DEBUG("StateMachine: Initialized variable '{}' from expression '{}'", id, expr);
+        } else {
+            LOG_ERROR("StateMachine: Failed to evaluate expression '{}' for variable '{}': {}", expr, id,
+                      result.getErrorMessage());
+            // W3C SCXML 5.3: On evaluation error, raise error.execution event and create unbound variable
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution", "Failed to evaluate data expression for '" + id +
+                                                                "': " + result.getErrorMessage());
+            }
+            // Leave variable unbound (don't create it) so it can be assigned later
+            return;
+        }
+    } else if (!content.empty()) {
+        auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, content);
+        auto result = future.get();
+
+        if (RSM::JSEngine::isSuccess(result)) {
+            RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+            LOG_DEBUG("StateMachine: Initialized variable '{}' from content", id);
+        } else {
+            // Try setting content as string literal
+            RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{content});
+            LOG_DEBUG("StateMachine: Set variable '{}' as string literal from content", id);
+        }
+    } else {
+        // No expression or content: skip initialization (old behavior for backward compatibility)
+        // The variable will be created on first assignment via <assign> action
+        LOG_DEBUG("StateMachine: No expression or content for variable '{}', skipping initialization", id);
+    }
+}
+
 bool StateMachine::initializeFromModel() {
     LOG_DEBUG("StateMachine: Initializing from SCXML model");
 
@@ -930,6 +1026,28 @@ bool StateMachine::enterState(const std::string &stateId) {
 
     // SCXML W3C specification: hierarchy manager is required for compliant state entry
     assert(hierarchyManager_ && "SCXML violation: hierarchy manager required for state management");
+
+    // W3C SCXML 5.3: Late binding - assign values to state's data items when state is entered
+    if (model_) {
+        const std::string &binding = model_->getBinding();
+        bool isLateBinding = (binding == "late");
+
+        if (isLateBinding && initializedStates_.find(stateId) == initializedStates_.end()) {
+            // Late binding: Assign values to this state's data items now (on first entry)
+            auto stateNode = model_->findStateById(stateId);
+            if (stateNode) {
+                const auto &stateDataItems = stateNode->getDataItems();
+                if (!stateDataItems.empty()) {
+                    LOG_DEBUG("StateMachine: Late binding - assigning values to {} data items for state '{}'",
+                              stateDataItems.size(), stateId);
+                    for (const auto &item : stateDataItems) {
+                        initializeDataItem(item, true);  // assignValue=true
+                    }
+                    initializedStates_.insert(stateId);  // Mark state as initialized
+                }
+            }
+        }
+    }
 
     bool hierarchyResult = hierarchyManager_->enterState(stateId);
     assert(hierarchyResult && "SCXML violation: state entry must succeed");
@@ -1220,65 +1338,30 @@ bool StateMachine::setupJSEnvironment() {
     RSM::JSEngine::instance().setStateMachine(this, sessionId_);
     LOG_DEBUG("StateMachine: Registered with JSEngine for In() function support");
 
-    // Initialize data model variables from SCXML model
+    // W3C SCXML 5.3: Initialize data model with binding mode support (early/late binding)
     if (model_) {
-        const auto &dataModelItems = model_->getDataModelItems();
-        LOG_DEBUG("StateMachine: Found {} data model items to initialize", dataModelItems.size());
+        // Collect all data items (top-level + state-level) for global scope
+        const auto allDataItems = collectAllDataItems();
+        LOG_INFO("StateMachine: Initializing {} total data items (global scope with {} binding)", allDataItems.size(),
+                 model_->getBinding());
 
-        for (const auto &item : dataModelItems) {
-            std::string id = item->getId();
-            std::string expr = item->getExpr();
-            std::string content = item->getContent();
+        // Get binding mode: "early" (default) or "late"
+        const std::string &binding = model_->getBinding();
+        bool isEarlyBinding = (binding.empty() || binding == "early");
 
-            LOG_DEBUG("StateMachine: Processing data model item '{}' - expr: '{}', content: '{}'", id, expr, content);
-
-            // W3C SCXML 6.4: Check if variable was pre-initialized (e.g., by invoke namelist/param)
-            // If it was, skip initialization to preserve pre-set value
-            if (RSM::JSEngine::instance().isVariablePreInitialized(sessionId_, id)) {
-                LOG_INFO("StateMachine: Skipping datamodel initialization for '{}' - pre-initialized by invoke data",
-                         id);
-                continue;
+        if (isEarlyBinding) {
+            // Early binding (default): Initialize all variables with values at document load
+            LOG_DEBUG("StateMachine: Using early binding - all variables initialized with values at init");
+            for (const auto &dataInfo : allDataItems) {
+                initializeDataItem(dataInfo.dataItem, true);  // assignValue=true
             }
-            LOG_DEBUG("StateMachine: Variable '{}' not pre-initialized, will initialize from datamodel", id);
-
-            if (!expr.empty()) {
-                LOG_DEBUG("StateMachine: Evaluating expression '{}' for variable '{}'", expr, id);
-                // Execute the expression to get initial value
-                auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, expr);
-                auto result = future.get();
-
-                if (RSM::JSEngine::isSuccess(result)) {
-                    // Direct access to value through friend class access
-                    RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
-                    LOG_DEBUG("StateMachine: Initialized data model variable '{}' from expression '{}' with result", id,
-                              expr);
-                } else {
-                    LOG_ERROR("StateMachine: Failed to evaluate expression '{}' for variable '{}': {}", expr, id,
-                              result.getErrorMessage());
-                    // Default to 0 for numeric expressions
-                    RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{static_cast<long>(0)});
-                    LOG_DEBUG("StateMachine: Set default value for data model variable '{}'", id);
-                }
-            } else if (!content.empty()) {
-                LOG_DEBUG("StateMachine: Evaluating content '{}' for variable '{}'", content, id);
-                // Use content as expression
-                auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, content);
-                auto result = future.get();
-
-                if (RSM::JSEngine::isSuccess(result)) {
-                    RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
-                    LOG_DEBUG("StateMachine: Initialized data model variable '{}' from content '{}' with result", id,
-                              content);
-                } else {
-                    LOG_ERROR("StateMachine: Failed to evaluate content '{}' for variable '{}': {}", content, id,
-                              result.getErrorMessage());
-                    // Try setting content as string literal
-                    RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{content});
-                    LOG_DEBUG("StateMachine: Set data model variable '{}' as string literal from content", id);
-                }
-            } else {
-                LOG_DEBUG("StateMachine: No expression or content for variable '{}', skipping", id);
+        } else {
+            // Late binding: Create all variables but don't assign values yet
+            LOG_DEBUG("StateMachine: Using late binding - creating variables without values (assigned on state entry)");
+            for (const auto &dataInfo : allDataItems) {
+                initializeDataItem(dataInfo.dataItem, false);  // assignValue=false (defer assignment)
             }
+            // Note: Value assignment will happen in enterState() when each state is entered
         }
     } else {
         LOG_DEBUG("StateMachine: No model available for data model initialization");
