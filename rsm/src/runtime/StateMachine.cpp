@@ -2162,30 +2162,86 @@ void StateMachine::handleCompoundStateFinalChild(const std::string &finalStateId
 
     LOG_INFO("W3C SCXML 3.7: Compound state '{}' completed, generating done.state event: {}", parentId, doneEventName);
 
-    // W3C SCXML 5.5: Evaluate donedata and construct event data
-    std::string eventData = evaluateDoneData(finalStateId);
+    // W3C SCXML 5.5 & 5.7: Evaluate donedata and construct event data
+    // If evaluation fails (error.execution raised), do not generate done.state event
+    std::string eventData;
+    if (!evaluateDoneData(finalStateId, eventData)) {
+        LOG_DEBUG("W3C SCXML 5.7: Donedata evaluation failed, skipping done.state event generation");
+        return;
+    }
 
-    // Process the done.state event
-    if (isRunning_) {
-        auto result = processEvent(doneEventName, eventData);
-        if (result.success) {
-            LOG_DEBUG("W3C SCXML: Successfully processed done.state event: {}", doneEventName);
-        } else {
-            LOG_DEBUG("W3C SCXML: No transitions found for done.state event: {} (normal if no waiting transitions)",
-                      doneEventName);
-        }
+    // W3C SCXML: Queue the done.state event (not immediate processing)
+    // This allows error.execution events from donedata evaluation to be processed first
+    if (isRunning_ && eventRaiser_) {
+        eventRaiser_->raiseEvent(doneEventName, eventData);
+        LOG_DEBUG("W3C SCXML: Queued done.state event: {}", doneEventName);
     }
 }
 
-// W3C SCXML 5.5: Evaluate donedata and return JSON event data
-std::string StateMachine::evaluateDoneData(const std::string &finalStateId) {
+// Helper: Escape special characters in JSON strings
+std::string StateMachine::escapeJsonString(const std::string &str) {
+    std::ostringstream escaped;
+    for (char c : str) {
+        switch (c) {
+        case '"':
+            escaped << "\\\"";
+            break;
+        case '\\':
+            escaped << "\\\\";
+            break;
+        case '\n':
+            escaped << "\\n";
+            break;
+        case '\r':
+            escaped << "\\r";
+            break;
+        case '\t':
+            escaped << "\\t";
+            break;
+        case '\b':
+            escaped << "\\b";
+            break;
+        case '\f':
+            escaped << "\\f";
+            break;
+        default:
+            escaped << c;
+            break;
+        }
+    }
+    return escaped.str();
+}
+
+// Helper: Convert ScriptValue to JSON representation
+std::string StateMachine::convertScriptValueToJson(const ScriptValue &value, bool quoteStrings) {
+    if (std::holds_alternative<std::string>(value)) {
+        const std::string &str = std::get<std::string>(value);
+        if (quoteStrings) {
+            return "\"" + escapeJsonString(str) + "\"";
+        }
+        return str;
+    } else if (std::holds_alternative<double>(value)) {
+        return std::to_string(std::get<double>(value));
+    } else if (std::holds_alternative<int64_t>(value)) {
+        return std::to_string(std::get<int64_t>(value));
+    } else if (std::holds_alternative<bool>(value)) {
+        return std::get<bool>(value) ? "true" : "false";
+    }
+    return "null";
+}
+
+// W3C SCXML 5.5 & 5.7: Evaluate donedata and return JSON event data
+// Returns false if evaluation fails (error.execution should be raised)
+bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string &outEventData) {
+    outEventData = "";
+
     if (!model_) {
-        return "";
+        return true;  // No donedata to evaluate
     }
 
     auto finalState = model_->findStateById(finalStateId);
     if (!finalState) {
-        return "";
+        return true;  // No donedata to evaluate
     }
 
     const auto &doneData = finalState->getDoneData();
@@ -2201,22 +2257,19 @@ std::string StateMachine::evaluateDoneData(const std::string &finalStateId) {
         auto result = future.get();
 
         if (RSM::JSEngine::isSuccess(result)) {
-            // Convert result to JSON string
+            // Convert result to JSON string using helper
             const auto &value = result.getInternalValue();
-            if (std::holds_alternative<std::string>(value)) {
-                return std::get<std::string>(value);
-            } else if (std::holds_alternative<double>(value)) {
-                return std::to_string(std::get<double>(value));
-            } else if (std::holds_alternative<int64_t>(value)) {
-                return std::to_string(std::get<int64_t>(value));
-            } else if (std::holds_alternative<bool>(value)) {
-                return std::get<bool>(value) ? "true" : "false";
+            outEventData = convertScriptValueToJson(value, false);
+
+            // For objects/arrays (null case), use original content as fallback
+            if (outEventData == "null" && !std::holds_alternative<ScriptNull>(value)) {
+                outEventData = content;
             }
-            // For objects/arrays, try to stringify
-            return content;  // Fallback to original content
+            return true;
         } else {
             LOG_WARN("W3C SCXML 5.5: Failed to evaluate donedata content: {}", result.getErrorMessage());
-            return content;  // Use literal content as fallback
+            outEventData = content;  // Use literal content as fallback
+            return true;
         }
     }
 
@@ -2239,38 +2292,48 @@ std::string StateMachine::evaluateDoneData(const std::string &finalStateId) {
             const std::string &paramName = param.first;
             const std::string &paramExpr = param.second;
 
+            // W3C SCXML 5.7: Empty location is invalid
+            if (paramExpr.empty()) {
+                LOG_ERROR("W3C SCXML 5.7: Empty param location/expression for param '{}'", paramName);
+
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Empty param location or expression: " + paramName);
+                }
+
+                // W3C SCXML 5.7: Return false to skip done.state event generation
+                return false;
+            }
+
             // Evaluate param expression
             auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, paramExpr);
             auto result = future.get();
 
             if (RSM::JSEngine::isSuccess(result)) {
                 const auto &value = result.getInternalValue();
-                jsonBuilder << "\"" << paramName << "\":";
-
-                if (std::holds_alternative<std::string>(value)) {
-                    jsonBuilder << "\"" << std::get<std::string>(value) << "\"";
-                } else if (std::holds_alternative<double>(value)) {
-                    jsonBuilder << std::get<double>(value);
-                } else if (std::holds_alternative<int64_t>(value)) {
-                    jsonBuilder << std::get<int64_t>(value);
-                } else if (std::holds_alternative<bool>(value)) {
-                    jsonBuilder << (std::get<bool>(value) ? "true" : "false");
-                } else {
-                    jsonBuilder << "null";
-                }
+                // Use helper to convert value to JSON with proper escaping
+                jsonBuilder << "\"" << escapeJsonString(paramName) << "\":" << convertScriptValueToJson(value, true);
             } else {
-                LOG_WARN("W3C SCXML 5.5: Failed to evaluate param '{}' expr '{}': {}", paramName, paramExpr,
-                         result.getErrorMessage());
-                jsonBuilder << "\"" << paramName << "\":null";
+                // W3C SCXML 5.7: Invalid location or expression error must generate error.execution
+                LOG_ERROR("W3C SCXML 5.7: Failed to evaluate param '{}' expr/location '{}': {}", paramName, paramExpr,
+                          result.getErrorMessage());
+
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution",
+                                             "Invalid param location or expression: " + paramName + " = " + paramExpr);
+                }
+
+                // W3C SCXML 5.7: Return false to skip done.state event generation
+                return false;
             }
         }
 
         jsonBuilder << "}";
-        return jsonBuilder.str();
+        outEventData = jsonBuilder.str();
+        return true;
     }
 
     // No donedata
-    return "";
+    return true;
 }
 
 }  // namespace RSM

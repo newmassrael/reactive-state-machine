@@ -366,7 +366,11 @@ private:
 
     // W3C SCXML 3.7 & 5.5: Compound state done.state event generation
     void handleCompoundStateFinalChild(const std::string &finalStateId);
-    std::string evaluateDoneData(const std::string &finalStateId);
+    bool evaluateDoneData(const std::string &finalStateId, std::string &outEventData);
+
+    // Helper methods for donedata evaluation
+    static std::string escapeJsonString(const std::string &str);
+    static std::string convertScriptValueToJson(const ScriptValue &value, bool quoteStrings);
 };
 
 // Template implementation

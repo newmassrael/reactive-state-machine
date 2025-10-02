@@ -9,6 +9,7 @@
 #include "actions/SendAction.h"
 #include "common/Logger.h"
 #include <algorithm>
+#include <regex>
 
 namespace RSM {
 namespace Test {
@@ -23,6 +24,25 @@ bool MockActionExecutor::executeScript(const std::string &script) {
 }
 
 bool MockActionExecutor::assignVariable(const std::string &location, const std::string &expr) {
+    // W3C SCXML 5.4: Validate location before assignment (match ActionExecutorImpl behavior)
+    if (location.empty()) {
+        // Raise error.execution if eventRaiser is set
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", "Assignment location cannot be empty");
+        }
+        return false;
+    }
+
+    // Simple validation: basic identifier pattern (match ActionExecutorImpl::isValidLocation)
+    // Allow simple names and dot notation
+    if (!std::regex_match(location, std::regex("^[a-zA-Z_$][a-zA-Z0-9_$]*(\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$"))) {
+        // Raise error.execution if eventRaiser is set
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", "Invalid assignment location: " + location);
+        }
+        return false;
+    }
+
     assignedVariables_[location] = expr;
     return variableAssignmentResult_;
 }
