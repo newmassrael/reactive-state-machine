@@ -1165,6 +1165,14 @@ bool StateMachine::enterState(const std::string &stateId) {
         }
     }
 
+    // W3C SCXML 3.7 & 5.5: Generate done.state event for compound state completion
+    if (model_) {
+        auto stateNode = model_->findStateById(actualCurrentState);
+        if (stateNode && stateNode->isFinalState()) {
+            handleCompoundStateFinalChild(actualCurrentState);
+        }
+    }
+
     // Clear guard flag before checking automatic transitions
     isEnteringState_ = false;
 
@@ -2124,6 +2132,145 @@ void StateMachine::executePendingInvokes() {
             LOG_ERROR("StateMachine: Cannot execute deferred invokes - InvokeExecutor is null");
         }
     }
+}
+
+// W3C SCXML 3.7 & 5.5: Handle compound state completion when final child is entered
+void StateMachine::handleCompoundStateFinalChild(const std::string &finalStateId) {
+    if (!model_) {
+        return;
+    }
+
+    auto finalState = model_->findStateById(finalStateId);
+    if (!finalState || !finalState->isFinalState()) {
+        return;
+    }
+
+    // Get parent state
+    auto parent = finalState->getParent();
+    if (!parent) {
+        return;  // Top-level final state, no done.state event for compound
+    }
+
+    // Only generate done.state for compound (non-parallel) parent states
+    if (parent->getType() == Type::PARALLEL) {
+        return;  // Parallel states handled separately
+    }
+
+    // W3C SCXML 3.7: Generate done.state.{parentId} event
+    std::string parentId = parent->getId();
+    std::string doneEventName = "done.state." + parentId;
+
+    LOG_INFO("W3C SCXML 3.7: Compound state '{}' completed, generating done.state event: {}", parentId, doneEventName);
+
+    // W3C SCXML 5.5: Evaluate donedata and construct event data
+    std::string eventData = evaluateDoneData(finalStateId);
+
+    // Process the done.state event
+    if (isRunning_) {
+        auto result = processEvent(doneEventName, eventData);
+        if (result.success) {
+            LOG_DEBUG("W3C SCXML: Successfully processed done.state event: {}", doneEventName);
+        } else {
+            LOG_DEBUG("W3C SCXML: No transitions found for done.state event: {} (normal if no waiting transitions)",
+                      doneEventName);
+        }
+    }
+}
+
+// W3C SCXML 5.5: Evaluate donedata and return JSON event data
+std::string StateMachine::evaluateDoneData(const std::string &finalStateId) {
+    if (!model_) {
+        return "";
+    }
+
+    auto finalState = model_->findStateById(finalStateId);
+    if (!finalState) {
+        return "";
+    }
+
+    const auto &doneData = finalState->getDoneData();
+
+    // Check if donedata has content
+    if (!doneData.getContent().empty()) {
+        // W3C SCXML 5.5: <content> sets the entire _event.data value
+        std::string content = doneData.getContent();
+        LOG_DEBUG("W3C SCXML 5.5: Evaluating donedata content: '{}'", content);
+
+        // Evaluate content as expression
+        auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, content);
+        auto result = future.get();
+
+        if (RSM::JSEngine::isSuccess(result)) {
+            // Convert result to JSON string
+            const auto &value = result.getInternalValue();
+            if (std::holds_alternative<std::string>(value)) {
+                return std::get<std::string>(value);
+            } else if (std::holds_alternative<double>(value)) {
+                return std::to_string(std::get<double>(value));
+            } else if (std::holds_alternative<int64_t>(value)) {
+                return std::to_string(std::get<int64_t>(value));
+            } else if (std::holds_alternative<bool>(value)) {
+                return std::get<bool>(value) ? "true" : "false";
+            }
+            // For objects/arrays, try to stringify
+            return content;  // Fallback to original content
+        } else {
+            LOG_WARN("W3C SCXML 5.5: Failed to evaluate donedata content: {}", result.getErrorMessage());
+            return content;  // Use literal content as fallback
+        }
+    }
+
+    // Check if donedata has params
+    const auto &params = doneData.getParams();
+    if (!params.empty()) {
+        // W3C SCXML 5.5: <param> elements create an object with name:value pairs
+        LOG_DEBUG("W3C SCXML 5.5: Evaluating {} donedata params", params.size());
+
+        std::ostringstream jsonBuilder;
+        jsonBuilder << "{";
+
+        bool first = true;
+        for (const auto &param : params) {
+            if (!first) {
+                jsonBuilder << ",";
+            }
+            first = false;
+
+            const std::string &paramName = param.first;
+            const std::string &paramExpr = param.second;
+
+            // Evaluate param expression
+            auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, paramExpr);
+            auto result = future.get();
+
+            if (RSM::JSEngine::isSuccess(result)) {
+                const auto &value = result.getInternalValue();
+                jsonBuilder << "\"" << paramName << "\":";
+
+                if (std::holds_alternative<std::string>(value)) {
+                    jsonBuilder << "\"" << std::get<std::string>(value) << "\"";
+                } else if (std::holds_alternative<double>(value)) {
+                    jsonBuilder << std::get<double>(value);
+                } else if (std::holds_alternative<int64_t>(value)) {
+                    jsonBuilder << std::get<int64_t>(value);
+                } else if (std::holds_alternative<bool>(value)) {
+                    jsonBuilder << (std::get<bool>(value) ? "true" : "false");
+                } else {
+                    jsonBuilder << "null";
+                }
+            } else {
+                LOG_WARN("W3C SCXML 5.5: Failed to evaluate param '{}' expr '{}': {}", paramName, paramExpr,
+                         result.getErrorMessage());
+                jsonBuilder << "\"" << paramName << "\":null";
+            }
+        }
+
+        jsonBuilder << "}";
+        return jsonBuilder.str();
+    }
+
+    // No donedata
+    return "";
 }
 
 }  // namespace RSM

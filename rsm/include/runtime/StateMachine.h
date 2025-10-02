@@ -363,6 +363,10 @@ private:
 
     // Helper method to reduce code duplication between isInFinalState() and isInitialStateFinal()
     bool isStateInFinalState(const std::string &stateId) const;
+
+    // W3C SCXML 3.7 & 5.5: Compound state done.state event generation
+    void handleCompoundStateFinalChild(const std::string &finalStateId);
+    std::string evaluateDoneData(const std::string &finalStateId);
 };
 
 // Template implementation
