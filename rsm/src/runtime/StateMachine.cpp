@@ -244,6 +244,15 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
         }
     }
 
+    // W3C SCXML Test 252: Filter events from cancelled invoke child sessions
+    if (invokeExecutor_ && !originSessionId.empty()) {
+        if (invokeExecutor_->shouldFilterCancelledInvokeEvent(originSessionId)) {
+            LOG_DEBUG("StateMachine: Filtering event '{}' from cancelled invoke child session: {}", eventName,
+                      originSessionId);
+            return TransitionResult(false, getCurrentState(), getCurrentState(), eventName);
+        }
+    }
+
     // W3C SCXML 1.0 Section 6.4: Execute finalize handler before processing events from invoked children
     // According to W3C SCXML: "finalize markup runs BEFORE the event is processed"
     // The finalize handler is executed when an event arrives from an invoked child
@@ -2010,6 +2019,13 @@ void StateMachine::executePendingInvokes() {
 
     // Execute invokes outside of lock to avoid deadlock
     for (const auto &deferred : invokesToExecute) {
+        // W3C SCXML Test 252: Only execute invokes if their state is still active
+        if (!isStateActive(deferred.stateId)) {
+            LOG_DEBUG("StateMachine: Skipping {} deferred invokes for inactive state: {}", deferred.invokes.size(),
+                      deferred.stateId);
+            continue;
+        }
+
         LOG_DEBUG("StateMachine: Executing {} deferred invokes for state: {}", deferred.invokes.size(),
                   deferred.stateId);
 

@@ -405,12 +405,37 @@ bool SCXMLInvokeHandler::cancelInvoke(const std::string &invokeid) {
                   session.sessionId);
     }
 
+    // W3C SCXML Test 252: Track cancelled child session BEFORE destroying to filter onexit events
+    // Use bounded FIFO cache to prevent memory leak
+    size_t cacheSize;
+    {
+        std::lock_guard<std::mutex> lock(cancelledSessionsMutex_);
+
+        // Only add if not already present (prevents duplicate entries in deque)
+        if (cancelledChildSessions_.insert(session.sessionId).second) {
+            // Successfully inserted new entry - add to FIFO order
+            cancelledSessionsOrder_.push_back(session.sessionId);
+
+            // Enforce bounded cache by removing oldest entries
+            if (cancelledSessionsOrder_.size() > MAX_CANCELLED_SESSIONS) {
+                std::string oldest = cancelledSessionsOrder_.front();
+                cancelledSessionsOrder_.pop_front();
+                cancelledChildSessions_.erase(oldest);
+                LOG_DEBUG("SCXMLInvokeHandler: Evicted oldest cancelled session from cache: {}", oldest);
+            }
+        }
+        cacheSize = cancelledSessionsOrder_.size();
+    }
+    LOG_DEBUG("SCXMLInvokeHandler: Added cancelled child session to filter list: {} (cache size: {})",
+              session.sessionId, cacheSize);
+
     // With weak_ptr callbacks, no synchronization needed - callbacks safely check weak_ptr::lock()
     // Unregister invoke mapping from JSEngine
     JSEngine::instance().unregisterInvokeMapping(session.parentSessionId, invokeid);
 
     // Destroy the child session (RAII cleanup with thread-safe weak_ptr callbacks)
     // Callbacks use weak_ptr::lock() which returns nullptr if StateMachine is destroyed
+    // Child's onexit handlers may send events to parent during destruction - these will be filtered
     JSEngine::instance().destroySession(session.sessionId);
 
     // Mark as inactive
@@ -433,6 +458,19 @@ void SCXMLInvokeHandler::setInvokeDataVariable(const std::string &childSessionId
                                                const ScriptValue &value, const std::string &source) {
     JSEngine::instance().setVariable(childSessionId, varName, value);
     LOG_INFO("SCXMLInvokeHandler: Set {} variable '{}' in child session", source, varName);
+}
+
+bool SCXMLInvokeHandler::shouldFilterCancelledInvokeEvent(const std::string &childSessionId) const {
+    // W3C SCXML Test 252: Filter events from cancelled invoke child sessions
+    bool shouldFilter;
+    {
+        std::lock_guard<std::mutex> lock(cancelledSessionsMutex_);
+        shouldFilter = cancelledChildSessions_.find(childSessionId) != cancelledChildSessions_.end();
+    }
+    if (shouldFilter) {
+        LOG_DEBUG("SCXMLInvokeHandler: Filtering event from cancelled child session: {}", childSessionId);
+    }
+    return shouldFilter;
 }
 
 std::string SCXMLInvokeHandler::generateInvokeId() const {
@@ -793,6 +831,19 @@ std::string InvokeExecutor::getFinalizeScriptForChildSession(const std::string &
 
     LOG_DEBUG("InvokeExecutor: No finalize script found for child session: {}", childSessionId);
     return "";
+}
+
+bool InvokeExecutor::shouldFilterCancelledInvokeEvent(const std::string &childSessionId) const {
+    // W3C SCXML Test 252: Check all handlers to see if child session is from cancelled invoke
+    for (const auto &[invokeid, handler] : invokeHandlers_) {
+        if (handler->getType() == "scxml") {
+            auto scxmlHandler = std::dynamic_pointer_cast<SCXMLInvokeHandler>(handler);
+            if (scxmlHandler && scxmlHandler->shouldFilterCancelledInvokeEvent(childSessionId)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void SCXMLInvokeHandler::setParentStateMachine(std::shared_ptr<StateMachine> stateMachine) {

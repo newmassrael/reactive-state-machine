@@ -3,9 +3,11 @@
 #include "events/IEventDispatcher.h"
 #include "model/IInvokeNode.h"
 #include "scripting/JSEngine.h"
+#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace RSM {
@@ -110,6 +112,13 @@ public:
      */
     void setParentStateMachine(std::shared_ptr<StateMachine> stateMachine);
 
+    /**
+     * @brief Check if event should be filtered due to cancelled invoke
+     * @param childSessionId Child session ID that sent the event
+     * @return true if event should be filtered (from cancelled invoke), false otherwise
+     */
+    bool shouldFilterCancelledInvokeEvent(const std::string &childSessionId) const;
+
 private:
     struct InvokeSession {
         std::string invokeid;
@@ -123,6 +132,13 @@ private:
     };
 
     std::unordered_map<std::string, InvokeSession> activeSessions_;
+
+    // W3C SCXML Test 252: Track cancelled invoke child sessions to filter their events
+    // Bounded FIFO cache to prevent memory leak while maintaining safety for queued events
+    static constexpr size_t MAX_CANCELLED_SESSIONS = 10000;
+    std::deque<std::string> cancelledSessionsOrder_;          // FIFO order for eviction
+    std::unordered_set<std::string> cancelledChildSessions_;  // Fast lookup
+    mutable std::mutex cancelledSessionsMutex_;               // Thread safety
 
     // W3C SCXML Test 192: Parent StateMachine weak_ptr for completion callback state checking (thread-safe)
     std::weak_ptr<StateMachine> parentStateMachine_;
@@ -269,6 +285,13 @@ public:
      * @return Finalize script if found, empty string otherwise
      */
     std::string getFinalizeScriptForChildSession(const std::string &childSessionId) const;
+
+    /**
+     * @brief Check if event should be filtered due to cancelled invoke (W3C SCXML Test 252)
+     * @param childSessionId Child session ID that sent the event
+     * @return true if event should be filtered (from cancelled invoke), false otherwise
+     */
+    bool shouldFilterCancelledInvokeEvent(const std::string &childSessionId) const;
 
 private:
     std::shared_ptr<IEventDispatcher> eventDispatcher_;
