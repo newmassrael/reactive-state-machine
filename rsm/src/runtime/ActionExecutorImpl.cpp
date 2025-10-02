@@ -80,11 +80,19 @@ bool ActionExecutorImpl::executeScript(const std::string &script) {
 bool ActionExecutorImpl::assignVariable(const std::string &location, const std::string &expr) {
     if (location.empty()) {
         LOG_ERROR("Cannot assign to empty location");
+        // W3C SCXML 5.4: Raise error.execution for invalid location
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", "Assignment location cannot be empty");
+        }
         return false;
     }
 
     if (!isValidLocation(location)) {
         LOG_ERROR("Invalid variable location: {}", location);
+        // W3C SCXML 5.4: Raise error.execution for invalid location
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", "Invalid assignment location: " + location);
+        }
         return false;
     }
 

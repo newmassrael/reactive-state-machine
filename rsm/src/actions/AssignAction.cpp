@@ -13,11 +13,8 @@ bool AssignAction::execute(IExecutionContext &context) {
         return false;
     }
 
-    if (isEmptyString(location_)) {
-        // Cannot assign to empty location
-        return false;
-    }
-
+    // W3C SCXML 5.4: Delegate location validation to ActionExecutor
+    // which will raise error.execution event for invalid locations
     try {
         return context.getActionExecutor().assignVariable(location_, expr_);
     } catch (const std::exception &) {
