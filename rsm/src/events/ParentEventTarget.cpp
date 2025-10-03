@@ -129,12 +129,17 @@ std::future<SendResult> ParentEventTarget::sendImmediately(const EventDescriptor
             eventData = JsonUtils::toCompactString(eventDataJson);
         }
 
-        // Raise event in parent session using parent's EventRaiser with origin tracking
+        // W3C SCXML 5.10 test 338: Get invoke ID for this child session
+        JSEngine &jsEngine = JSEngine::instance();
+        std::string invokeId = jsEngine.getInvokeIdForChildSession(actualChildSessionId);
+
+        // Raise event in parent session using parent's EventRaiser with origin and invoke tracking
         // W3C SCXML 6.4: Pass child session ID as originSessionId for finalize support
-        LOG_DEBUG(
-            "ParentEventTarget::sendImmediately() - Calling parent EventRaiser->raiseEvent('{}', '{}', origin: '{}')",
-            eventName, eventData, actualChildSessionId);
-        bool raiseResult = parentEventRaiser->raiseEvent(eventName, eventData, actualChildSessionId);
+        // W3C SCXML 5.10: Pass invoke ID for event.invokeid field (test 338)
+        LOG_DEBUG("ParentEventTarget::sendImmediately() - Calling parent EventRaiser->raiseEvent('{}', '{}', origin: "
+                  "'{}', invokeId: '{}')",
+                  eventName, eventData, actualChildSessionId, invokeId);
+        bool raiseResult = parentEventRaiser->raiseEvent(eventName, eventData, actualChildSessionId, invokeId);
         LOG_DEBUG("ParentEventTarget::sendImmediately() - parent EventRaiser->raiseEvent() returned: {}", raiseResult);
 
         LOG_DEBUG("ParentEventTarget: Successfully routed event '{}' to parent session '{}'", eventName,

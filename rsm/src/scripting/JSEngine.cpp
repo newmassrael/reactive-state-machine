@@ -1228,6 +1228,25 @@ void JSEngine::unregisterInvokeMapping(const std::string &parentSessionId, const
     }
 }
 
+std::string JSEngine::getInvokeIdForChildSession(const std::string &childSessionId) const {
+    std::lock_guard<std::mutex> lock(invokeMappingsMutex_);
+
+    // W3C SCXML 5.10 test 338: Reverse lookup childSessionId -> invokeId
+    // Iterate through all parent sessions to find the invokeId that created this child
+    for (const auto &parentEntry : invokeMappings_) {
+        for (const auto &invokeEntry : parentEntry.second) {
+            if (invokeEntry.second == childSessionId) {
+                LOG_DEBUG("JSEngine: Found invokeId '{}' for child session '{}' in parent '{}'", invokeEntry.first,
+                          childSessionId, parentEntry.first);
+                return invokeEntry.first;
+            }
+        }
+    }
+
+    LOG_DEBUG("JSEngine: No invokeId found for child session: {}", childSessionId);
+    return "";
+}
+
 void JSEngine::registerSessionFilePath(const std::string &sessionId, const std::string &filePath) {
     std::lock_guard<std::mutex> lock(sessionFilePathsMutex_);
     sessionFilePaths_[sessionId] = filePath;

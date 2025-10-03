@@ -31,6 +31,12 @@ bool MockEventRaiser::raiseEvent(const std::string &eventName, const std::string
     return raiseEvent(eventName, eventData);
 }
 
+bool MockEventRaiser::raiseEvent(const std::string &eventName, const std::string &eventData,
+                                 const std::string & /*originSessionId*/, const std::string & /*invokeId*/) {
+    // W3C SCXML 5.10 test 338: Delegate to 2-parameter version (mock doesn't care about invokeId)
+    return raiseEvent(eventName, eventData);
+}
+
 bool MockEventRaiser::isReady() const {
     return ready_;
 }

@@ -104,10 +104,13 @@ public:
      * @param eventName Name of the event to process
      * @param eventData Optional event data (JSON string)
      * @param originSessionId Session ID that originated this event (for finalize)
+     * @param sendId Send ID from failed send element (for error events)
+     * @param invokeId Invoke ID from invoked child process (test 338)
      * @return Transition result
      */
     TransitionResult processEvent(const std::string &eventName, const std::string &eventData,
-                                  const std::string &originSessionId, const std::string &sendId = "");
+                                  const std::string &originSessionId, const std::string &sendId = "",
+                                  const std::string &invokeId = "");
 
     /**
      * @brief Get current state ID

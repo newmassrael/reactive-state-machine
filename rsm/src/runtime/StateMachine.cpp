@@ -184,13 +184,16 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     // W3C SCXML 5.10: Check if there's a send ID from EventRaiser thread-local storage (for error events)
     std::string sendId = EventRaiserImpl::getCurrentSendId();
 
+    // W3C SCXML 5.10: Check if there's an invoke ID from EventRaiser thread-local storage (test 338)
+    std::string invokeId = EventRaiserImpl::getCurrentInvokeId();
+
     // Delegate to overload with originSessionId (may be empty for non-invoke events)
-    return processEvent(eventName, eventData, originSessionId, sendId);
+    return processEvent(eventName, eventData, originSessionId, sendId, invokeId);
 }
 
 StateMachine::TransitionResult StateMachine::processEvent(const std::string &eventName, const std::string &eventData,
-                                                          const std::string &originSessionId,
-                                                          const std::string &sendId) {
+                                                          const std::string &originSessionId, const std::string &sendId,
+                                                          const std::string &invokeId) {
     if (!isRunning_) {
         LOG_WARN("StateMachine: Cannot process event - state machine not running");
         TransitionResult result;
@@ -242,11 +245,12 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     if (actionExecutor_) {
         auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
         if (actionExecutorImpl) {
-            // W3C SCXML 5.10: Pass sendId to ActionExecutor for error events
-            if (!sendId.empty()) {
-                actionExecutorImpl->setCurrentEvent(eventName, eventData, sendId);
-                LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}', sendid: '{}'",
-                          eventName, eventData, sendId);
+            // W3C SCXML 5.10: Pass sendId and/or invokeId to ActionExecutor
+            if (!sendId.empty() || !invokeId.empty()) {
+                actionExecutorImpl->setCurrentEvent(eventName, eventData, sendId, invokeId);
+                LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}', sendid: '{}', "
+                          "invokeid: '{}'",
+                          eventName, eventData, sendId, invokeId);
             } else {
                 actionExecutorImpl->setCurrentEvent(eventName, eventData);
                 LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,

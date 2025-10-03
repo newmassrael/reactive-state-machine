@@ -40,12 +40,13 @@ public:
         std::string eventData;
         std::string originSessionId;  // W3C SCXML 6.4: Session that originated this event (for finalize)
         std::string sendId;           // W3C SCXML 5.10: sendid from failed send element (for error events)
+        std::string invokeId;         // W3C SCXML 5.10: invokeid from invoked child process (test 338)
         std::chrono::steady_clock::time_point timestamp;
         EventPriority priority;
 
         QueuedEvent(const std::string &name, const std::string &data, EventPriority prio = EventPriority::INTERNAL,
-                    const std::string &origin = "", const std::string &sid = "")
-            : eventName(name), eventData(data), originSessionId(origin), sendId(sid),
+                    const std::string &origin = "", const std::string &sid = "", const std::string &iid = "")
+            : eventName(name), eventData(data), originSessionId(origin), sendId(sid), invokeId(iid),
               timestamp(std::chrono::steady_clock::now()), priority(prio) {}
     };
 
@@ -97,6 +98,8 @@ public:
                     const std::string &originSessionId) override;
     bool raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &sendId,
                     bool) override;
+    bool raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &originSessionId,
+                    const std::string &invokeId) override;
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
     void processQueuedEvents() override;
@@ -120,10 +123,12 @@ public:
      * @param priority Event priority (INTERNAL or EXTERNAL)
      * @param originSessionId Session ID that originated this event (for finalize)
      * @param sendId Send ID from failed send element (for error events)
+     * @param invokeId Invoke ID from invoked child process (test 338)
      * @return true if the event was successfully queued, false if the raiser is not ready
      */
     bool raiseEventWithPriority(const std::string &eventName, const std::string &eventData, EventPriority priority,
-                                const std::string &originSessionId = "", const std::string &sendId = "");
+                                const std::string &originSessionId = "", const std::string &sendId = "",
+                                const std::string &invokeId = "");
 
 private:
     /**
@@ -152,6 +157,9 @@ private:
     // W3C SCXML 5.10: Thread-local storage for send ID from failed send elements (for error events)
     static thread_local std::string currentSendId_;
 
+    // W3C SCXML 5.10: Thread-local storage for invoke ID from invoked child processes (test 338)
+    static thread_local std::string currentInvokeId_;
+
 public:
     /**
      * @brief Get current origin session ID (for W3C SCXML 6.4 finalize support)
@@ -169,6 +177,15 @@ public:
      */
     static std::string getCurrentSendId() {
         return currentSendId_;
+    }
+
+    /**
+     * @brief Get current invoke ID (for W3C SCXML 5.10 test 338 compliance)
+     * This is set during event callback execution from invoked children to allow StateMachine to set event.invokeid
+     * @return Invoke ID if set, empty string otherwise
+     */
+    static std::string getCurrentInvokeId() {
+        return currentInvokeId_;
     }
 
     mutable std::mutex callbackMutex_;

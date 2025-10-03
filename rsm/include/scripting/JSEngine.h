@@ -283,6 +283,16 @@ public:
      */
     void unregisterInvokeMapping(const std::string &parentSessionId, const std::string &invokeId);
 
+    /**
+     * @brief Get invoke ID for a child session (reverse lookup)
+     *
+     * W3C SCXML 5.10 test 338: Enables setting invokeid field on events from invoked children
+     *
+     * @param childSessionId Child session ID to lookup
+     * @return Invoke ID that created this child session, or empty string if not found
+     */
+    std::string getInvokeIdForChildSession(const std::string &childSessionId) const;
+
     // === Session File Path Management (W3C SCXML relative path resolution) ===
 
     /**

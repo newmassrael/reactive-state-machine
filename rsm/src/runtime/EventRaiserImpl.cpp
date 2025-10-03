@@ -10,6 +10,9 @@ thread_local std::string EventRaiserImpl::currentOriginSessionId_;
 // W3C SCXML 5.10: Thread-local storage for send ID from failed send elements (for error events)
 thread_local std::string EventRaiserImpl::currentSendId_;
 
+// W3C SCXML 5.10: Thread-local storage for invoke ID from invoked child processes (test 338)
+thread_local std::string EventRaiserImpl::currentInvokeId_;
+
 EventRaiserImpl::EventRaiserImpl(EventCallback callback)
     : eventCallback_(std::move(callback)), shutdownRequested_(false), isRunning_(false), immediateMode_(false) {
     LOG_DEBUG("EventRaiserImpl: Created with callback: {} (instance: {})", (eventCallback_ ? "set" : "none"),
@@ -64,24 +67,30 @@ void EventRaiserImpl::clearEventCallback() {
 
 bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData) {
     // Default to INTERNAL priority for backward compatibility (raise actions and #_internal targets)
-    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, "", "");
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, "", "", "");
 }
 
 bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData,
                                  const std::string &originSessionId) {
     // W3C SCXML 6.4: Raise event with origin tracking for finalize support
-    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId, "");
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId, "", "");
 }
 
 bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &sendId,
                                  bool) {
     // W3C SCXML 5.10: Raise error event with sendid from failed send element
-    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, "", sendId);
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, "", sendId, "");
+}
+
+bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData,
+                                 const std::string &originSessionId, const std::string &invokeId) {
+    // W3C SCXML 5.10 test 338: Raise event with both origin and invoke ID tracking
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId, "", invokeId);
 }
 
 bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const std::string &eventData,
                                              EventPriority priority, const std::string &originSessionId,
-                                             const std::string &sendId) {
+                                             const std::string &sendId, const std::string &invokeId) {
     LOG_DEBUG("EventRaiserImpl::raiseEventWithPriority 호출 - 이벤트: '{}', 데이터: '{}', 우선순위: {}, EventRaiser "
               "인스턴스: {}",
               eventName, eventData, (priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), (void *)this);
@@ -111,17 +120,22 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
                 // W3C SCXML 5.10: Set thread-local sendId before immediate callback execution
                 currentSendId_ = sendId;
 
+                // W3C SCXML 5.10: Set thread-local invokeId before immediate callback execution (test 338)
+                currentInvokeId_ = invokeId;
+
                 bool result = callback(eventName, eventData);
 
                 // Clear after callback
                 currentOriginSessionId_.clear();
                 currentSendId_.clear();
+                currentInvokeId_.clear();
 
                 return result;
             } catch (const std::exception &e) {
                 LOG_ERROR("EventRaiserImpl: Exception in immediate processing: {}", e.what());
                 currentOriginSessionId_.clear();  // Ensure cleanup on exception
                 currentSendId_.clear();
+                currentInvokeId_.clear();
                 return false;
             }
         } else {
@@ -134,7 +148,7 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
     // SCXML compliance: Use synchronous queue when immediate mode is disabled
     {
         std::lock_guard<std::mutex> lock(synchronousQueueMutex_);
-        synchronousQueue_.emplace(eventName, eventData, priority, originSessionId, sendId);
+        synchronousQueue_.emplace(eventName, eventData, priority, originSessionId, sendId, invokeId);
         LOG_DEBUG("EventRaiserImpl: [W3C193 DEBUG] Event '{}' queued with priority {} - queue size now: {}", eventName,
                   (priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), synchronousQueue_.size());
         LOG_DEBUG("EventRaiserImpl: Event '{}' queued for synchronous processing (SCXML compliance) with {} priority",
@@ -313,17 +327,22 @@ bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {
         // W3C SCXML 5.10: Store sendId in thread-local for StateMachine to access (error events)
         currentSendId_ = event.sendId;
 
+        // W3C SCXML 5.10: Store invokeId in thread-local for StateMachine to access (test 338)
+        currentInvokeId_ = event.invokeId;
+
         bool result = callback(event.eventName, event.eventData);
 
         // Clear after callback
         currentOriginSessionId_.clear();
         currentSendId_.clear();
+        currentInvokeId_.clear();
         LOG_DEBUG("EventRaiserImpl: Event '{}' processed with result: {}", event.eventName, result);
         return true;
     } catch (const std::exception &e) {
         LOG_ERROR("EventRaiserImpl: Exception processing event '{}': {}", event.eventName, e.what());
         currentOriginSessionId_.clear();
         currentSendId_.clear();
+        currentInvokeId_.clear();
         return false;
     }
 }

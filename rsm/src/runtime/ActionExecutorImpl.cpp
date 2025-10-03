@@ -320,19 +320,23 @@ void ActionExecutorImpl::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaise
 }
 
 void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData) {
-    currentEventName_ = eventName;
-    currentEventData_ = eventData;
-    currentSendId_.clear();  // Clear sendId for non-error events
-
-    // Update _event variable in JavaScript context
-    ensureCurrentEventSet();
+    // Delegate to 4-parameter version with empty sendId and invokeId
+    setCurrentEvent(eventName, eventData, "", "");
 }
 
 void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
                                          const std::string &sendId) {
+    // Delegate to 4-parameter version with empty invokeId
+    setCurrentEvent(eventName, eventData, sendId, "");
+}
+
+void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
+                                         const std::string &sendId, const std::string &invokeId) {
+    // W3C SCXML 5.10: Set all event metadata fields
     currentEventName_ = eventName;
     currentEventData_ = eventData;
-    currentSendId_ = sendId;  // W3C SCXML 5.10: Set sendid for error events
+    currentSendId_ = sendId;      // Set sendid for error events (test 332)
+    currentInvokeId_ = invokeId;  // Set invokeid for events from invoked children (test 338)
 
     // Update _event variable in JavaScript context
     ensureCurrentEventSet();
@@ -342,6 +346,7 @@ void ActionExecutorImpl::clearCurrentEvent() {
     currentEventName_.clear();
     currentEventData_.clear();
     currentSendId_.clear();
+    currentInvokeId_.clear();
 
     // Clear _event variable in JavaScript context by setting null event
     if (isSessionReady()) {
@@ -585,6 +590,11 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
         // W3C SCXML 5.10: Set sendid for error events from failed send actions
         if (!currentSendId_.empty()) {
             event->setSendId(currentSendId_);
+        }
+
+        // W3C SCXML 5.10: Set invokeid for events from invoked child processes (test 338)
+        if (!currentInvokeId_.empty()) {
+            event->setInvokeId(currentInvokeId_);
         }
 
         auto result = JSEngine::instance().setCurrentEvent(sessionId_, event).get();
