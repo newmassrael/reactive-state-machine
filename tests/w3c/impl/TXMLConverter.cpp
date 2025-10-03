@@ -21,8 +21,6 @@ const std::regex TXMLConverter::CONF_PASS_ELEMENT{R"abc(<conf:pass\s*/>)abc", st
 
 const std::regex TXMLConverter::CONF_FAIL_ELEMENT{R"abc(<conf:fail\s*/>)abc", std::regex::optimize};
 
-const std::regex TXMLConverter::CONF_ISBOUND_ATTR{R"xyz(conf:isBound="([^"]*)")xyz", std::regex::optimize};
-
 // Variable and expression patterns
 const std::regex TXMLConverter::CONF_ID_ATTR{R"def(conf:id="([^"]*)")def", std::regex::optimize};
 
@@ -148,6 +146,10 @@ const std::regex TXMLConverter::CONF_NONBOOLEAN_ATTR{R"nb(conf:nonBoolean="([^"]
 const std::regex TXMLConverter::CONF_SYSTEMVARISBOUND_ATTR{R"svb(conf:systemVarIsBound="([^"]*)")svb",
                                                            std::regex::optimize};
 
+// W3C SCXML 5.10: System variable expression pattern (test 321)
+// conf:systemVarExpr="_sessionid" converts to expr="_sessionid"
+const std::regex TXMLConverter::CONF_SYSTEMVAREXPR_ATTR{R"sve(conf:systemVarExpr="([^"]*)")sve", std::regex::optimize};
+
 // General patterns to remove all conf: references
 const std::regex TXMLConverter::CONF_ALL_ATTRIBUTES{R"abc(\s+conf:[^=\s>]+\s*=\s*"[^"]*")abc", std::regex::optimize};
 
@@ -239,6 +241,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // W3C SCXML 5.10: Convert system variable binding check to typeof condition (test 319)
     // conf:systemVarIsBound="_event" -> cond="typeof _event !== 'undefined'"
     result = std::regex_replace(result, CONF_SYSTEMVARISBOUND_ATTR, R"(cond="typeof $1 !== 'undefined'")");
+
+    // W3C SCXML 5.10: Convert system variable expression to expr attribute (test 321)
+    // conf:systemVarExpr="_sessionid" -> expr="_sessionid"
+    result = std::regex_replace(result, CONF_SYSTEMVAREXPR_ATTR, R"(expr="$1")");
 
     // Convert event handling attributes
     result = std::regex_replace(result, CONF_EVENT_ATTR, R"(event="$1")");

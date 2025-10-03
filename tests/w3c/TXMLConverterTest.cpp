@@ -2072,3 +2072,41 @@ TEST_F(TXMLConverterTest, ConvertsSystemVarIsBoundToTypeofCheck) {
     EXPECT_TRUE(result.find("conf:systemVarIsBound") == std::string::npos)
         << "conf:systemVarIsBound attribute should be removed";
 }
+
+// ============================================================================
+// W3C Test 321: conf:systemVarExpr conversion (W3C SCXML 5.10)
+// ============================================================================
+
+// Test W3C SCXML 5.10: _sessionid must be bound at load time
+// conf:systemVarExpr="_sessionid" should convert to expr="_sessionid" (NEW pattern for test 321)
+// Note: conf:isBound="1" already handled by existing logic (line 214-217 in TXMLConverter.cpp)
+TEST_F(TXMLConverterTest, ConvertsSystemVarExprToExpr) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml initial="s0" conf:datamodel="" version="1.0" xmlns="http://www.w3.org/2005/07/scxml" name="machineName" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1" conf:systemVarExpr="_sessionid"/>
+</datamodel>
+<state id="s0">
+  <transition conf:isBound="1" conf:targetpass=""/>
+  <transition conf:true="" conf:targetfail=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // NEW: conf:systemVarExpr="_sessionid" should convert to expr="_sessionid"
+    EXPECT_TRUE(result.find("expr=\"_sessionid\"") != std::string::npos)
+        << "Expected expr=\"_sessionid\" for system variable expression (W3C SCXML 5.10 test 321)";
+
+    // Verify conf:isBound conversion (handled by existing logic)
+    EXPECT_TRUE(result.find("cond=\"typeof var1 !== 'undefined'\"") != std::string::npos)
+        << "Expected cond=\"typeof var1 !== 'undefined'\" - already handled by existing conf:isBound logic";
+
+    EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
+    EXPECT_TRUE(result.find("target=\"fail\"") != std::string::npos);
+    EXPECT_TRUE(result.find("conf:systemVarExpr") == std::string::npos)
+        << "conf:systemVarExpr attribute should be removed";
+    EXPECT_TRUE(result.find("conf:isBound") == std::string::npos) << "conf:isBound attribute should be removed";
+}

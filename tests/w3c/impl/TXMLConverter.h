@@ -27,7 +27,6 @@ private:
     static const std::regex CONF_FAIL_ELEMENT;
 
     // Variable and expression patterns
-    static const std::regex CONF_ISBOUND_ATTR;
     static const std::regex CONF_ID_ATTR;
     static const std::regex CONF_EXPR_ATTR;
     static const std::regex CONF_LOCATION_ATTR;
@@ -109,6 +108,9 @@ private:
 
     // W3C SCXML 5.10: System variable binding check pattern (test 319)
     static const std::regex CONF_SYSTEMVARISBOUND_ATTR;
+
+    // W3C SCXML 5.10: System variable expression pattern (test 321)
+    static const std::regex CONF_SYSTEMVAREXPR_ATTR;
 
     // General patterns to remove all remaining conf: references
     static const std::regex CONF_ALL_ATTRIBUTES;
