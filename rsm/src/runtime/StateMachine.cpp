@@ -974,7 +974,12 @@ bool StateMachine::evaluateCondition(const std::string &condition) {
         auto result = future.get();
 
         if (!RSM::JSEngine::isSuccess(result)) {
-            LOG_ERROR("StateMachine: Failed to evaluate condition '{}': evaluation failed", condition);
+            // W3C SCXML 5.9: Condition evaluation error must raise error.execution
+            LOG_ERROR("W3C SCXML 5.9: Failed to evaluate condition '{}': {}", condition, result.getErrorMessage());
+
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution", "Failed to evaluate condition: " + condition);
+            }
             return false;
         }
 
@@ -985,7 +990,12 @@ bool StateMachine::evaluateCondition(const std::string &condition) {
         return conditionResult;
 
     } catch (const std::exception &e) {
-        LOG_ERROR("Exception evaluating condition '{}': {}", condition, e.what());
+        // W3C SCXML 5.9: Exception during condition evaluation must raise error.execution
+        LOG_ERROR("W3C SCXML 5.9: Exception evaluating condition '{}': {}", condition, e.what());
+
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", "Exception evaluating condition: " + condition);
+        }
         return false;
     }
 }
@@ -2278,8 +2288,32 @@ std::string StateMachine::convertScriptValueToJson(const ScriptValue &value, boo
     return "null";
 }
 
-// W3C SCXML 5.5 & 5.7: Evaluate donedata and return JSON event data
-// Returns false if evaluation fails (error.execution should be raised)
+/**
+ * W3C SCXML 5.5 & 5.7: Evaluate donedata and return JSON event data
+ *
+ * Handles two types of param errors with different behaviors:
+ *
+ * 1. Structural Error (empty location=""):
+ *    - Indicates malformed SCXML document
+ *    - Raises error.execution event
+ *    - Returns false to prevent done.state event generation
+ *    - Used when param has no location/expr attribute
+ *
+ * 2. Runtime Error (invalid expression like "foo"):
+ *    - Indicates runtime evaluation failure
+ *    - Raises error.execution event
+ *    - Ignores the failed param and continues with others
+ *    - Returns true to generate done.state event with partial/empty data
+ *    - Used when param expression evaluation fails
+ *
+ * This distinction ensures:
+ * - Structural errors fail fast (no done.state)
+ * - Runtime errors are recoverable (done.state with available data)
+ *
+ * @param finalStateId The ID of the final state
+ * @param outEventData Output parameter for JSON event data
+ * @return false if structural error (prevents done.state), true otherwise
+ */
 bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string &outEventData) {
     outEventData = "";
 
@@ -2332,15 +2366,11 @@ bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string
 
         bool first = true;
         for (const auto &param : params) {
-            if (!first) {
-                jsonBuilder << ",";
-            }
-            first = false;
-
             const std::string &paramName = param.first;
             const std::string &paramExpr = param.second;
 
-            // W3C SCXML 5.7: Empty location is invalid
+            // W3C SCXML 5.7: Empty location is invalid (structural error)
+            // Must raise error.execution and prevent done.state event generation
             if (paramExpr.empty()) {
                 LOG_ERROR("W3C SCXML 5.7: Empty param location/expression for param '{}'", paramName);
 
@@ -2357,11 +2387,18 @@ bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string
             auto result = future.get();
 
             if (RSM::JSEngine::isSuccess(result)) {
+                // W3C SCXML 5.7: Successfully evaluated param
+                if (!first) {
+                    jsonBuilder << ",";
+                }
+                first = false;
+
                 const auto &value = result.getInternalValue();
                 // Use helper to convert value to JSON with proper escaping
                 jsonBuilder << "\"" << escapeJsonString(paramName) << "\":" << convertScriptValueToJson(value, true);
             } else {
-                // W3C SCXML 5.7: Invalid location or expression error must generate error.execution
+                // W3C SCXML 5.7: Invalid location or expression (runtime error)
+                // Must raise error.execution and ignore this param, but continue with others
                 LOG_ERROR("W3C SCXML 5.7: Failed to evaluate param '{}' expr/location '{}': {}", paramName, paramExpr,
                           result.getErrorMessage());
 
@@ -2369,9 +2406,7 @@ bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string
                     eventRaiser_->raiseEvent("error.execution",
                                              "Invalid param location or expression: " + paramName + " = " + paramExpr);
                 }
-
-                // W3C SCXML 5.7: Return false to skip done.state event generation
-                return false;
+                // Continue to next param without adding this one
             }
         }
 

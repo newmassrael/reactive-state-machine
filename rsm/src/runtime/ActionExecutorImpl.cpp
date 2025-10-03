@@ -745,14 +745,24 @@ bool ActionExecutorImpl::evaluateCondition(const std::string &condition) {
         auto result = JSEngine::instance().evaluateExpression(sessionId_, condition).get();
 
         if (!result.isSuccess()) {
-            LOG_ERROR("Failed to evaluate condition '{}': Condition evaluation failed", condition);
+            // W3C SCXML 5.9: Condition evaluation error must raise error.execution
+            LOG_ERROR("W3C SCXML 5.9: Failed to evaluate condition '{}': {}", condition, result.getErrorMessage());
+
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution", "Failed to evaluate condition: " + condition);
+            }
             return false;
         }
 
         // Use integrated JSEngine result conversion API
         return JSEngine::resultToBool(result);
     } catch (const std::exception &e) {
-        LOG_ERROR("Exception evaluating condition '{}': {}", condition, e.what());
+        // W3C SCXML 5.9: Exception during condition evaluation must raise error.execution
+        LOG_ERROR("W3C SCXML 5.9: Exception evaluating condition '{}': {}", condition, e.what());
+
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", "Exception evaluating condition: " + condition);
+        }
         return false;
     }
 }
