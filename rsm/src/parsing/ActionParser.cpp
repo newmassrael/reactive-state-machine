@@ -166,6 +166,12 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
             sendAction->setType(typeAttr->get_value());
         }
 
+        // W3C SCXML C.1: Parse namelist attribute for event data
+        auto namelistAttr = actionElement->get_attribute("namelist");
+        if (namelistAttr) {
+            sendAction->setNamelist(namelistAttr->get_value());
+        }
+
         // W3C SCXML: send element uses 'id' attribute for sendid (for cancellation reference)
         auto sendIdAttr = actionElement->get_attribute("id");
         if (sendIdAttr) {

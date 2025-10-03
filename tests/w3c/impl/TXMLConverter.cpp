@@ -124,6 +124,15 @@ const std::regex TXMLConverter::CONF_ARRAY456_PATTERN{R"(<conf:array456\s*/>)", 
 const std::regex TXMLConverter::CONF_EVENTDATA_FIELD_VALUE_ATTR{R"def(conf:eventDataFieldValue="([^"]*)")def",
                                                                 std::regex::optimize};
 
+// Test 354 specific patterns - namelist and param data access
+// conf:eventDataNamelistValue="1" converts to expr="_event.data.var1"
+const std::regex TXMLConverter::CONF_EVENTDATA_NAMELIST_VALUE_ATTR{R"ghi(conf:eventDataNamelistValue="([^"]*)")ghi",
+                                                                   std::regex::optimize};
+
+// conf:eventDataParamValue="param1" converts to expr="_event.data.param1"
+const std::regex TXMLConverter::CONF_EVENTDATA_PARAM_VALUE_ATTR{R"jkl(conf:eventDataParamValue="([^"]*)")jkl",
+                                                                std::regex::optimize};
+
 const std::regex TXMLConverter::CONF_IDVAL_COMPARISON_ATTR{R"def(conf:idVal="([0-9]+)=([0-9]+)")def",
                                                            std::regex::optimize};
 
@@ -407,6 +416,14 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Test 176 specific patterns
     // conf:eventDataFieldValue="aParam" -> expr="_event.data.aParam"
     result = std::regex_replace(result, CONF_EVENTDATA_FIELD_VALUE_ATTR, R"(expr="_event.data.$1")");
+
+    // Test 354 specific patterns - namelist and param data access
+    // conf:eventDataNamelistValue="1" -> expr="_event.data.var1" (numeric ID to varN)
+    std::regex eventdata_namelist_numeric(R"mno(conf:eventDataNamelistValue="([0-9]+)")mno");
+    result = std::regex_replace(result, eventdata_namelist_numeric, R"(expr="_event.data.var$1")");
+
+    // conf:eventDataParamValue="param1" -> expr="_event.data.param1" (param name as-is)
+    result = std::regex_replace(result, CONF_EVENTDATA_PARAM_VALUE_ATTR, R"(expr="_event.data.$1")");
 
     // Test 332 specific patterns
     // conf:eventSendid="" -> expr="_event.sendid"

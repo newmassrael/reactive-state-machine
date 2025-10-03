@@ -887,19 +887,57 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             eventData = evaluateExpression(action.getData());
         }
 
-        // 🚨 CRITICAL: Evaluate W3C SCXML params at send time (Test 186 fix)
+        // W3C SCXML C.1: Build event data from namelist and params (Test 354)
+        // Priority: params can override namelist values (W3C spec compliant)
         std::map<std::string, std::string> evaluatedParams;
-        for (const auto &param : action.getParamsWithExpr()) {
-            try {
-                std::string paramValue = evaluateExpression(param.expr);
-                evaluatedParams[param.name] = paramValue;
-                LOG_DEBUG("ActionExecutorImpl: Send param evaluated: {}={} (from expr: {})", param.name, paramValue,
-                          param.expr);
-            } catch (const std::exception &e) {
-                LOG_ERROR("ActionExecutorImpl: Failed to evaluate param '{}' expr '{}': {}", param.name, param.expr,
-                          e.what());
-                // Continue processing other params even if one fails
+
+        // Step 1: Evaluate namelist variables (if present)
+        const std::string &namelist = action.getNamelist();
+        if (!namelist.empty()) {
+            LOG_DEBUG("ActionExecutorImpl: Evaluating namelist: '{}'", namelist);
+
+            // Parse space/tab/newline-separated variable names
+            std::istringstream namelistStream(namelist);
+            std::string varName;
+            size_t varCount = 0;
+
+            while (namelistStream >> varName) {
+                varCount++;
+                try {
+                    std::string varValue = evaluateExpression(varName);
+                    evaluatedParams[varName] = varValue;
+                    LOG_DEBUG("ActionExecutorImpl: Namelist[{}] {}={}", varCount, varName, varValue);
+                } catch (const std::exception &e) {
+                    LOG_ERROR("ActionExecutorImpl: Failed to evaluate namelist var '{}': {}", varName, e.what());
+                    // W3C SCXML: Continue with other variables despite failures
+                }
             }
+
+            LOG_DEBUG("ActionExecutorImpl: Namelist evaluation complete: {} variables processed", varCount);
+        }
+
+        // Step 2: Evaluate param elements (W3C SCXML Test 186, 354)
+        // Note: params can override namelist values (evaluated after namelist)
+        const auto &params = action.getParamsWithExpr();
+        if (!params.empty()) {
+            LOG_DEBUG("ActionExecutorImpl: Evaluating {} param elements", params.size());
+
+            size_t paramCount = 0;
+            for (const auto &param : params) {
+                paramCount++;
+                try {
+                    std::string paramValue = evaluateExpression(param.expr);
+                    evaluatedParams[param.name] = paramValue;  // May override namelist value
+                    LOG_DEBUG("ActionExecutorImpl: Param[{}] {}={} (expr: '{}')", paramCount, param.name, paramValue,
+                              param.expr);
+                } catch (const std::exception &e) {
+                    LOG_ERROR("ActionExecutorImpl: Failed to evaluate param '{}' expr '{}': {}", param.name, param.expr,
+                              e.what());
+                    // W3C SCXML: Continue with other params despite failures
+                }
+            }
+
+            LOG_DEBUG("ActionExecutorImpl: Param evaluation complete: {} params processed", paramCount);
         }
 
         // Parse delay (evaluate delay expression if needed)

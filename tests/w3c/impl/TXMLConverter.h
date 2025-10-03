@@ -92,6 +92,10 @@ private:
 
     // Test 176 specific patterns - event data field access
     static const std::regex CONF_EVENTDATA_FIELD_VALUE_ATTR;
+
+    // Test 354 specific patterns - namelist and param data access
+    static const std::regex CONF_EVENTDATA_NAMELIST_VALUE_ATTR;
+    static const std::regex CONF_EVENTDATA_PARAM_VALUE_ATTR;
     static const std::regex CONF_IDVAL_COMPARISON_ATTR;
 
     // Test 332 specific patterns - event sendid field access

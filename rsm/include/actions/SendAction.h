@@ -159,6 +159,18 @@ public:
     const std::string &getType() const;
 
     /**
+     * @brief Set namelist for W3C SCXML compliant data passing
+     * @param namelist Space-separated list of variable names to include in event data
+     */
+    void setNamelist(const std::string &namelist);
+
+    /**
+     * @brief Get namelist
+     * @return Namelist string
+     */
+    const std::string &getNamelist() const;
+
+    /**
      * @brief Parameter structure for SCXML send params with expr support
      */
     struct SendParam {
@@ -226,6 +238,7 @@ private:
     std::string sendId_;                     // Sender ID for tracking
     std::string idLocation_;                 // Variable name to store sendid (W3C SCXML idlocation)
     std::string type_;                       // Event type (empty by default per W3C SCXML)
+    std::string namelist_;                   // Space-separated list of variables for event data (W3C SCXML C.1)
     std::vector<SendParam> paramsWithExpr_;  // W3C SCXML compliant params with expr
 };
 

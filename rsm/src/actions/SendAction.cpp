@@ -119,6 +119,14 @@ const std::string &SendAction::getType() const {
     return type_;
 }
 
+void SendAction::setNamelist(const std::string &namelist) {
+    namelist_ = namelist;
+}
+
+const std::string &SendAction::getNamelist() const {
+    return namelist_;
+}
+
 void SendAction::addParamWithExpr(const std::string &name, const std::string &expr) {
     paramsWithExpr_.emplace_back(name, expr);
 }
