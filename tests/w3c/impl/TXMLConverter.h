@@ -104,6 +104,9 @@ private:
     // W3C SCXML 5.8: Top-level script element pattern (test 302)
     static const std::regex CONF_SCRIPT_ELEMENT;
 
+    // W3C SCXML 5.9: Non-boolean expression pattern (test 309)
+    static const std::regex CONF_NONBOOLEAN_ATTR;
+
     // General patterns to remove all remaining conf: references
     static const std::regex CONF_ALL_ATTRIBUTES;
     static const std::regex CONF_ALL_ELEMENTS;

@@ -2009,3 +2009,31 @@ TEST_F(TXMLConverterTest, ConvertsVarEqVarAttribute) {
     EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
     EXPECT_TRUE(result.find("conf:VarEqVar") == std::string::npos);
 }
+
+// ============================================================================
+// W3C Test 309: conf:nonBoolean attribute conversion (W3C SCXML 5.9)
+// ============================================================================
+
+// Test W3C SCXML 5.9: Non-boolean expressions must be treated as false
+// conf:nonBoolean="" should convert to cond="return" which causes evaluation error → false
+TEST_F(TXMLConverterTest, ConvertsNonBooleanAttributeToReturnStatement) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml version="1.0" conf:datamodel="" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" initial="s0">
+<state id="s0">
+  <transition conf:nonBoolean="" conf:targetfail=""/>
+  <transition conf:targetpass=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // conf:nonBoolean="" should convert to cond="return"
+    // "return" statement causes JavaScript syntax error → evaluates to false
+    EXPECT_TRUE(result.find("cond=\"return\"") != std::string::npos)
+        << "Expected cond=\"return\" for non-boolean expression (W3C SCXML 5.9)";
+    EXPECT_TRUE(result.find("target=\"fail\"") != std::string::npos);
+    EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
+    EXPECT_TRUE(result.find("conf:nonBoolean") == std::string::npos) << "conf:nonBoolean attribute should be removed";
+}

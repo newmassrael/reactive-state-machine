@@ -139,6 +139,10 @@ const std::regex TXMLConverter::CONF_VAREQVAR_ATTR{R"def(conf:VarEqVar="([0-9]+)
 // W3C SCXML 5.8: Top-level script element pattern (test 302)
 const std::regex TXMLConverter::CONF_SCRIPT_ELEMENT{R"(<conf:script\s*/>)", std::regex::optimize};
 
+// W3C SCXML 5.9: Non-boolean expression pattern (test 309)
+// conf:nonBoolean="" converts to cond="return" which causes JS syntax error → false
+const std::regex TXMLConverter::CONF_NONBOOLEAN_ATTR{R"nb(conf:nonBoolean="([^"]*)")nb", std::regex::optimize};
+
 // General patterns to remove all conf: references
 const std::regex TXMLConverter::CONF_ALL_ATTRIBUTES{R"abc(\s+conf:[^=\s>]+\s*=\s*"[^"]*")abc", std::regex::optimize};
 
@@ -222,6 +226,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert Test 147 specific boolean condition attributes
     result = std::regex_replace(result, CONF_TRUE_ATTR, R"(cond="true")");
     result = std::regex_replace(result, CONF_FALSE_ATTR, R"(cond="false")");
+
+    // W3C SCXML 5.9: Convert non-boolean expression to error-inducing condition (test 309)
+    // conf:nonBoolean="" -> cond="return" (JavaScript syntax error evaluates to false)
+    result = std::regex_replace(result, CONF_NONBOOLEAN_ATTR, R"(cond="return")");
 
     // Convert event handling attributes
     result = std::regex_replace(result, CONF_EVENT_ATTR, R"(event="$1")");
