@@ -123,6 +123,10 @@ const std::regex TXMLConverter::CONF_EVENTDATA_FIELD_VALUE_ATTR{R"def(conf:event
 const std::regex TXMLConverter::CONF_IDVAL_COMPARISON_ATTR{R"def(conf:idVal="([0-9]+)=([0-9]+)")def",
                                                            std::regex::optimize};
 
+// Test 332 specific patterns - event sendid field access
+// conf:eventSendid="" converts to expr="_event.sendid"
+const std::regex TXMLConverter::CONF_EVENTSENDID_ATTR{R"esi(conf:eventSendid="([^"]*)")esi", std::regex::optimize};
+
 // Test 240 specific patterns - namelist variable comparison
 const std::regex TXMLConverter::CONF_NAMELISTIDVAL_COMPARISON_ATTR{R"def(conf:namelistIdVal="([0-9]+)=([0-9]+)")def",
                                                                    std::regex::optimize};
@@ -389,6 +393,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Test 176 specific patterns
     // conf:eventDataFieldValue="aParam" -> expr="_event.data.aParam"
     result = std::regex_replace(result, CONF_EVENTDATA_FIELD_VALUE_ATTR, R"(expr="_event.data.$1")");
+
+    // Test 332 specific patterns
+    // conf:eventSendid="" -> expr="_event.sendid"
+    result = std::regex_replace(result, CONF_EVENTSENDID_ATTR, R"(expr="_event.sendid")");
 
     // W3C test 240: Generic conf:namelistIdVal pattern - converts "namelistIdVal="N=M" to cond="varN == M"
     result = std::regex_replace(result, CONF_NAMELISTIDVAL_COMPARISON_ATTR, R"(cond="var$1 == $2")");

@@ -44,6 +44,25 @@ public:
                             const std::string &originSessionId) = 0;
 
     /**
+     * @brief Raise an error event with sendid for W3C SCXML 5.10 compliance
+     *
+     * When send actions fail, error events must include the sendid of the failed send element.
+     * This enables test 332 compliance where error.execution event must contain sendid.
+     *
+     * @param eventName Name of the event to raise (typically "error.execution")
+     * @param eventData Data associated with the event
+     * @param sendId Send ID from the failed send element
+     * @param unused Discriminator parameter for overload resolution (unused, always pass false)
+     * @return true if the event was successfully queued, false if the raiser is not ready
+     *
+     * @note The bool parameter exists solely for C++ overload resolution to distinguish
+     *       this variant from raiseEvent(name, data, originSessionId). Both take three
+     *       string parameters, requiring a discriminator to avoid ambiguity.
+     */
+    virtual bool raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &sendId,
+                            bool unused) = 0;
+
+    /**
      * @brief Check if the event raiser is ready to raise events
      * @return true if ready, false otherwise
      */

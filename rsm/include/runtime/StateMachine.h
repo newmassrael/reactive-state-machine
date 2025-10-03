@@ -107,7 +107,7 @@ public:
      * @return Transition result
      */
     TransitionResult processEvent(const std::string &eventName, const std::string &eventData,
-                                  const std::string &originSessionId);
+                                  const std::string &originSessionId, const std::string &sendId = "");
 
     /**
      * @brief Get current state ID

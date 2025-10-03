@@ -181,12 +181,16 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     // W3C SCXML 6.4: Check if there's an origin session ID from EventRaiser thread-local storage
     std::string originSessionId = EventRaiserImpl::getCurrentOriginSessionId();
 
+    // W3C SCXML 5.10: Check if there's a send ID from EventRaiser thread-local storage (for error events)
+    std::string sendId = EventRaiserImpl::getCurrentSendId();
+
     // Delegate to overload with originSessionId (may be empty for non-invoke events)
-    return processEvent(eventName, eventData, originSessionId);
+    return processEvent(eventName, eventData, originSessionId, sendId);
 }
 
 StateMachine::TransitionResult StateMachine::processEvent(const std::string &eventName, const std::string &eventData,
-                                                          const std::string &originSessionId) {
+                                                          const std::string &originSessionId,
+                                                          const std::string &sendId) {
     if (!isRunning_) {
         LOG_WARN("StateMachine: Cannot process event - state machine not running");
         TransitionResult result;
@@ -238,9 +242,16 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     if (actionExecutor_) {
         auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
         if (actionExecutorImpl) {
-            actionExecutorImpl->setCurrentEvent(eventName, eventData);
-            LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,
-                      eventData);
+            // W3C SCXML 5.10: Pass sendId to ActionExecutor for error events
+            if (!sendId.empty()) {
+                actionExecutorImpl->setCurrentEvent(eventName, eventData, sendId);
+                LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}', sendid: '{}'",
+                          eventName, eventData, sendId);
+            } else {
+                actionExecutorImpl->setCurrentEvent(eventName, eventData);
+                LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,
+                          eventData);
+            }
         }
     }
 

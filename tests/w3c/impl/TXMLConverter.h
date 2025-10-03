@@ -91,6 +91,9 @@ private:
     static const std::regex CONF_EVENTDATA_FIELD_VALUE_ATTR;
     static const std::regex CONF_IDVAL_COMPARISON_ATTR;
 
+    // Test 332 specific patterns - event sendid field access
+    static const std::regex CONF_EVENTSENDID_ATTR;
+
     // Test 240 specific patterns - namelist variable comparison
     static const std::regex CONF_NAMELISTIDVAL_COMPARISON_ATTR;
 

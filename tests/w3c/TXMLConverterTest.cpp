@@ -2110,3 +2110,42 @@ TEST_F(TXMLConverterTest, ConvertsSystemVarExprToExpr) {
         << "conf:systemVarExpr attribute should be removed";
     EXPECT_TRUE(result.find("conf:isBound") == std::string::npos) << "conf:isBound attribute should be removed";
 }
+
+// ============================================================================
+// W3C Test 332: conf:eventSendid conversion (W3C SCXML 5.10)
+// ============================================================================
+
+// Test W3C SCXML 5.10: error events must include sendid from failed send element
+// conf:eventSendid="" should convert to expr="_event.sendid"
+TEST_F(TXMLConverterTest, ConvertsEventSendidToEventSendidExpr) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml version="1.0" xmlns="http://www.w3.org/2005/07/scxml" initial="s0" conf:datamodel="" name="machineName" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1"/>
+  <data conf:id="2"/>
+</datamodel>
+<state id="s0">
+  <onentry>
+    <send conf:illegalTarget="" event="foo" conf:idlocation="1"/>
+  </onentry>
+  <transition event="error" target="s1">
+    <assign conf:location="2" conf:eventSendid=""/>
+  </transition>
+  <transition event="*" conf:targetfail=""/>
+</state>
+<state id="s1">
+  <transition conf:VarEqVar="1 2" conf:targetpass=""/>
+  <transition conf:targetfail=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // conf:eventSendid="" should convert to expr="_event.sendid"
+    EXPECT_TRUE(result.find("expr=\"_event.sendid\"") != std::string::npos)
+        << "Expected expr=\"_event.sendid\" for event sendid field access (W3C SCXML 5.10 test 332)";
+
+    EXPECT_TRUE(result.find("conf:eventSendid") == std::string::npos) << "conf:eventSendid attribute should be removed";
+}

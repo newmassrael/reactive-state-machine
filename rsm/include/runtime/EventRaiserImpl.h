@@ -39,13 +39,14 @@ public:
         std::string eventName;
         std::string eventData;
         std::string originSessionId;  // W3C SCXML 6.4: Session that originated this event (for finalize)
+        std::string sendId;           // W3C SCXML 5.10: sendid from failed send element (for error events)
         std::chrono::steady_clock::time_point timestamp;
         EventPriority priority;
 
         QueuedEvent(const std::string &name, const std::string &data, EventPriority prio = EventPriority::INTERNAL,
-                    const std::string &origin = "")
-            : eventName(name), eventData(data), originSessionId(origin), timestamp(std::chrono::steady_clock::now()),
-              priority(prio) {}
+                    const std::string &origin = "", const std::string &sid = "")
+            : eventName(name), eventData(data), originSessionId(origin), sendId(sid),
+              timestamp(std::chrono::steady_clock::now()), priority(prio) {}
     };
 
     /**
@@ -94,6 +95,8 @@ public:
     bool raiseEvent(const std::string &eventName, const std::string &eventData) override;
     bool raiseEvent(const std::string &eventName, const std::string &eventData,
                     const std::string &originSessionId) override;
+    bool raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &sendId,
+                    bool) override;
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
     void processQueuedEvents() override;
@@ -115,10 +118,12 @@ public:
      * @param eventName Name of the event to raise
      * @param eventData Data associated with the event
      * @param priority Event priority (INTERNAL or EXTERNAL)
+     * @param originSessionId Session ID that originated this event (for finalize)
+     * @param sendId Send ID from failed send element (for error events)
      * @return true if the event was successfully queued, false if the raiser is not ready
      */
     bool raiseEventWithPriority(const std::string &eventName, const std::string &eventData, EventPriority priority,
-                                const std::string &originSessionId = "");
+                                const std::string &originSessionId = "", const std::string &sendId = "");
 
 private:
     /**
@@ -144,6 +149,9 @@ private:
     // W3C SCXML 6.4: Thread-local storage for origin session ID during callback execution
     static thread_local std::string currentOriginSessionId_;
 
+    // W3C SCXML 5.10: Thread-local storage for send ID from failed send elements (for error events)
+    static thread_local std::string currentSendId_;
+
 public:
     /**
      * @brief Get current origin session ID (for W3C SCXML 6.4 finalize support)
@@ -152,6 +160,15 @@ public:
      */
     static std::string getCurrentOriginSessionId() {
         return currentOriginSessionId_;
+    }
+
+    /**
+     * @brief Get current send ID (for W3C SCXML 5.10 error event compliance)
+     * This is set during error event callback execution to allow StateMachine to set event.sendid
+     * @return Send ID if set, empty string otherwise
+     */
+    static std::string getCurrentSendId() {
+        return currentSendId_;
     }
 
     mutable std::mutex callbackMutex_;

@@ -322,6 +322,17 @@ void ActionExecutorImpl::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaise
 void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData) {
     currentEventName_ = eventName;
     currentEventData_ = eventData;
+    currentSendId_.clear();  // Clear sendId for non-error events
+
+    // Update _event variable in JavaScript context
+    ensureCurrentEventSet();
+}
+
+void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
+                                         const std::string &sendId) {
+    currentEventName_ = eventName;
+    currentEventData_ = eventData;
+    currentSendId_ = sendId;  // W3C SCXML 5.10: Set sendid for error events
 
     // Update _event variable in JavaScript context
     ensureCurrentEventSet();
@@ -330,6 +341,7 @@ void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std
 void ActionExecutorImpl::clearCurrentEvent() {
     currentEventName_.clear();
     currentEventData_.clear();
+    currentSendId_.clear();
 
     // Clear _event variable in JavaScript context by setting null event
     if (isSessionReady()) {
@@ -570,6 +582,11 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
             event->setRawJsonData(currentEventData_);
         }
 
+        // W3C SCXML 5.10: Set sendid for error events from failed send actions
+        if (!currentSendId_.empty()) {
+            event->setSendId(currentSendId_);
+        }
+
         auto result = JSEngine::instance().setCurrentEvent(sessionId_, event).get();
         return result.isSuccess();
 
@@ -737,6 +754,39 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
         // CRITICAL: Complete ALL JSEngine operations first to avoid deadlock
         // Evaluate all expressions before calling EventDispatcher
 
+        // W3C SCXML 5.10 & 6.2.4: Generate and store sendid BEFORE validation
+        //
+        // IMPORTANT DESIGN DECISION: sendid generation moved before event/type validation
+        // Rationale:
+        //   1. W3C SCXML 5.10 requirement: error.execution events from failed sends
+        //      MUST include the sendid field (test 332)
+        //   2. W3C SCXML 6.2.4 requirement: idlocation variable must be set even
+        //      when send fails (test 332: compares idlocation sendid == _event.sendid)
+        //   3. If we generate sendid AFTER validation, failed sends cannot include
+        //      sendid in error events or idlocation variables
+        //
+        // This ordering ensures proper W3C compliance while maintaining the ability
+        // to include sendid in all error scenarios.
+        std::string sendId;
+        if (!action.getSendId().empty()) {
+            sendId = action.getSendId();
+        } else {
+            // Generate unique sendid as required by SCXML specification
+            sendId = generateUniqueSendId();
+        }
+
+        // W3C SCXML 6.2.4: Store sendid in idlocation variable if specified
+        // This happens BEFORE validation so the variable is set even if send fails
+        if (!action.getIdLocation().empty()) {
+            try {
+                assignVariable(action.getIdLocation(), "'" + sendId + "'");
+                LOG_DEBUG("ActionExecutorImpl: Stored sendid '{}' in variable '{}'", sendId, action.getIdLocation());
+            } catch (const std::exception &e) {
+                LOG_ERROR("ActionExecutorImpl: Failed to store sendid in idlocation '{}': {}", action.getIdLocation(),
+                          e.what());
+            }
+        }
+
         // Determine event name
         std::string eventName;
         if (!action.getEvent().empty()) {
@@ -745,18 +795,20 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             eventName = evaluateExpression(action.getEventExpr());
             if (eventName.empty()) {
                 LOG_ERROR("Send action eventexpr evaluated to empty: {}", action.getEventExpr());
-                // W3C SCXML 6.2: Generate error.execution event for invalid send actions
+                // W3C SCXML 5.10: Generate error.execution event with sendid for failed send
                 if (eventRaiser_) {
                     eventRaiser_->raiseEvent("error.execution",
-                                             "Send action eventexpr evaluated to empty: " + action.getEventExpr());
+                                             "Send action eventexpr evaluated to empty: " + action.getEventExpr(),
+                                             sendId, false /* overload discriminator for sendId variant */);
                 }
                 return false;
             }
         } else {
             LOG_ERROR("Send action has no event or eventexpr");
-            // W3C SCXML 6.2: Generate error.execution event for invalid send actions
+            // W3C SCXML 5.10: Generate error.execution event with sendid for failed send
             if (eventRaiser_) {
-                eventRaiser_->raiseEvent("error.execution", "Send action has no event or eventexpr");
+                eventRaiser_->raiseEvent("error.execution", "Send action has no event or eventexpr", sendId,
+                                         false /* overload discriminator for sendId variant */);
             }
             return false;
         }
@@ -778,9 +830,10 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
                 // Only reject explicitly unsupported types like "unsupported_type" (from conf:invalidSendType)
                 if (sendType == "unsupported_type") {
                     LOG_ERROR("ActionExecutorImpl: Unsupported send type: {}", sendType);
-                    // W3C SCXML 6.2: Generate error.execution event for unsupported send types
+                    // W3C SCXML 5.10: Generate error.execution event with sendid for failed send
                     if (eventRaiser_) {
-                        eventRaiser_->raiseEvent("error.execution", "Unsupported send type: " + sendType);
+                        eventRaiser_->raiseEvent("error.execution", "Unsupported send type: " + sendType, sendId,
+                                                 false /* overload discriminator for sendId variant */);
                     }
                     return false;
                 }
@@ -842,27 +895,6 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
 
         // ALL JSEngine operations complete - now safe to call EventDispatcher
 
-        // SCXML 6.2.4: Generate sendid and handle idlocation assignment regardless of dispatcher availability
-        std::string sendId;
-        if (!action.getSendId().empty()) {
-            sendId = action.getSendId();
-        } else {
-            // Generate unique sendid as required by SCXML specification
-            sendId = generateUniqueSendId();
-        }
-
-        // SCXML 6.2.4: Store sendid in idlocation variable if specified
-        // This must happen regardless of whether EventDispatcher is available
-        if (!action.getIdLocation().empty()) {
-            try {
-                assignVariable(action.getIdLocation(), "'" + sendId + "'");
-                LOG_DEBUG("ActionExecutorImpl: Stored sendid '{}' in variable '{}'", sendId, action.getIdLocation());
-            } catch (const std::exception &e) {
-                LOG_ERROR("ActionExecutorImpl: Failed to store sendid in idlocation '{}': {}", action.getIdLocation(),
-                          e.what());
-            }
-        }
-
         if (eventDispatcher_) {
             LOG_DEBUG("ActionExecutorImpl: Using event dispatcher for send action");
 
@@ -889,9 +921,10 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             // SCXML 3.12.1: Generate error.execution event instead of throwing
             LOG_ERROR("ActionExecutorImpl: EventDispatcher not available for send action - generating error event");
 
-            // SCXML Compliance: Generate error event for infrastructure failures
+            // W3C SCXML 5.10: Generate error.execution event with sendid for failed send
             if (eventRaiser_) {
-                eventRaiser_->raiseEvent("error.execution", "EventDispatcher not available for send action");
+                eventRaiser_->raiseEvent("error.execution", "EventDispatcher not available for send action", sendId,
+                                         false /* overload discriminator for sendId variant */);
             }
 
             // SCXML send actions should follow fire-and-forget - infrastructure failures don't affect action success

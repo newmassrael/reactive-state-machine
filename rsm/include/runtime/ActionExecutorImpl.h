@@ -74,6 +74,14 @@ public:
     void setCurrentEvent(const std::string &eventName, const std::string &eventData);
 
     /**
+     * @brief Set current event data with sendid for W3C SCXML 5.10 compliance
+     * @param eventName Current event name
+     * @param eventData Current event data as JSON string
+     * @param sendId Send ID from failed send element (for error events)
+     */
+    void setCurrentEvent(const std::string &eventName, const std::string &eventData, const std::string &sendId);
+
+    /**
      * @brief Clear current event data
      */
     void clearCurrentEvent();
@@ -102,6 +110,7 @@ private:
     std::string sessionId_;
     std::string currentEventName_;
     std::string currentEventData_;
+    std::string currentSendId_;  // W3C SCXML 5.10: sendid from failed send element (for error events)
     std::shared_ptr<IEventDispatcher> eventDispatcher_;
     std::shared_ptr<IEventRaiser> eventRaiser_;
 
