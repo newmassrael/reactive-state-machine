@@ -337,13 +337,32 @@ JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const s
         session->currentEvent.reset();
     }
 
-    // Update internal __eventData object (bypasses read-only _event protection)
-    ::JSValue eventDataProperty = JS_GetPropertyStr(ctx, global, "__eventData");
-    if (!JS_IsObject(eventDataProperty)) {
-        JS_FreeValue(ctx, eventDataProperty);
-        JS_FreeValue(ctx, eventObj);
-        JS_FreeValue(ctx, global);
-        return JSResult::createError("__eventData object not found");
+    // W3C SCXML 5.10: Lazy initialization of _event on first event
+    ::JSValue eventDataProperty;
+    if (!session->eventObjectInitialized) {
+        LOG_DEBUG("JSEngine: First event detected - initializing _event object per W3C SCXML 5.10 for session: {}",
+                  sessionId);
+        // Setup _event object now that first event is being processed
+        setupEventObject(ctx, sessionId);
+        session->eventObjectInitialized = true;
+        // Get the newly created __eventData
+        eventDataProperty = JS_GetPropertyStr(ctx, global, "__eventData");
+        if (!JS_IsObject(eventDataProperty)) {
+            JS_FreeValue(ctx, eventDataProperty);
+            JS_FreeValue(ctx, eventObj);
+            JS_FreeValue(ctx, global);
+            LOG_ERROR("JSEngine: Failed to initialize _event object on first event - sessionId: {}", sessionId);
+            return JSResult::createError("Failed to create __eventData object for session: " + sessionId);
+        }
+        LOG_DEBUG("JSEngine: _event object successfully initialized for session: {}", sessionId);
+    } else {
+        eventDataProperty = JS_GetPropertyStr(ctx, global, "__eventData");
+        if (!JS_IsObject(eventDataProperty)) {
+            JS_FreeValue(ctx, eventDataProperty);
+            JS_FreeValue(ctx, eventObj);
+            JS_FreeValue(ctx, global);
+            return JSResult::createError("__eventData object not found for session: " + sessionId);
+        }
     }
 
     if (event) {

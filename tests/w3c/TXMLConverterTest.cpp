@@ -2037,3 +2037,38 @@ TEST_F(TXMLConverterTest, ConvertsNonBooleanAttributeToReturnStatement) {
     EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
     EXPECT_TRUE(result.find("conf:nonBoolean") == std::string::npos) << "conf:nonBoolean attribute should be removed";
 }
+
+// ============================================================================
+// W3C Test 319: conf:systemVarIsBound attribute conversion (W3C SCXML 5.10)
+// ============================================================================
+
+// Test W3C SCXML 5.10: _event must not be bound before first event is processed
+// conf:systemVarIsBound="_event" should convert to cond="typeof _event !== 'undefined'"
+TEST_F(TXMLConverterTest, ConvertsSystemVarIsBoundToTypeofCheck) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml version="1.0" conf:datamodel="" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" initial="s0">
+<state id="s0">
+  <onentry>
+    <if conf:systemVarIsBound="_event">
+      <raise event="bound"/>
+      <else/>
+      <raise event="unbound"/>
+    </if>
+  </onentry>
+  <transition event="unbound" conf:targetpass=""/>
+  <transition event="bound" conf:targetfail=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // conf:systemVarIsBound="_event" should convert to cond="typeof _event !== 'undefined'"
+    EXPECT_TRUE(result.find("cond=\"typeof _event !== 'undefined'\"") != std::string::npos)
+        << "Expected cond=\"typeof _event !== 'undefined'\" for system variable binding check (W3C SCXML 5.10)";
+    EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
+    EXPECT_TRUE(result.find("target=\"fail\"") != std::string::npos);
+    EXPECT_TRUE(result.find("conf:systemVarIsBound") == std::string::npos)
+        << "conf:systemVarIsBound attribute should be removed";
+}

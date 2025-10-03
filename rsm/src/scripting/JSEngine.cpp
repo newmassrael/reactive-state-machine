@@ -691,7 +691,7 @@ bool JSEngine::setupQuickJSContext(JSContext *ctx, const std::string &sessionId)
 
 // === SCXML-specific Setup ===
 
-void JSEngine::setupSCXMLBuiltins(JSContext *ctx, const std::string &sessionId) {
+void JSEngine::setupSCXMLBuiltins(JSContext *ctx, [[maybe_unused]] const std::string &sessionId) {
     ::JSValue global = JS_GetGlobalObject(ctx);
 
     // Setup In() function for state checking
@@ -707,8 +707,7 @@ void JSEngine::setupSCXMLBuiltins(JSContext *ctx, const std::string &sessionId) 
     // Setup system variables
     setupSystemVariables(ctx);
 
-    // Setup _event object
-    setupEventObject(ctx, sessionId);
+    // W3C SCXML 5.10: _event is bound lazily on first event (see JSEngineImpl::setCurrentEventInternal)
 
     JS_FreeValue(ctx, global);
 }

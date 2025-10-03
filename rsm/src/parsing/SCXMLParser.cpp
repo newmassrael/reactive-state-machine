@@ -527,14 +527,6 @@ void RSM::SCXMLParser::addSystemVariables(std::shared_ptr<SCXMLModel> model) {
     model->addSystemVariable(ioProcessorsItem);
     LOG_DEBUG("Added system variable: _ioprocessors");
 
-    // _event 시스템 변수 추가
-    auto eventItem = nodeFactory_->createDataModelItem("_event", datamodelType);
-    eventItem->setType(datamodelType);
-    if (datamodelType == "ecmascript") {
-        eventItem->setExpr("{ name: '' }");
-    } else if (datamodelType == "xpath") {
-        eventItem->setContent("<event name=\"\"/>");
-    }
-    model->addSystemVariable(eventItem);
-    LOG_DEBUG("Added system variable: _event");
+    // W3C SCXML 5.10: _event is bound lazily on first event, not at initialization
+    LOG_DEBUG("Skipping _event initialization per W3C SCXML 5.10 (bound only after first event)");
 }

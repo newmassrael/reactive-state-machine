@@ -107,6 +107,9 @@ private:
     // W3C SCXML 5.9: Non-boolean expression pattern (test 309)
     static const std::regex CONF_NONBOOLEAN_ATTR;
 
+    // W3C SCXML 5.10: System variable binding check pattern (test 319)
+    static const std::regex CONF_SYSTEMVARISBOUND_ATTR;
+
     // General patterns to remove all remaining conf: references
     static const std::regex CONF_ALL_ATTRIBUTES;
     static const std::regex CONF_ALL_ELEMENTS;

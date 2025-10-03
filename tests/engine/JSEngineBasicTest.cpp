@@ -1,3 +1,4 @@
+#include "W3CEventTestHelper.h"
 #include "common/Logger.h"
 #include "runtime/StateMachine.h"
 #include "scripting/JSEngine.h"
@@ -15,6 +16,9 @@ protected:
         sessionId_ = "js_basic_test_session";
         bool createResult = engine_->createSession(sessionId_, "");
         ASSERT_TRUE(createResult) << "Failed to create JS basic test session";
+
+        // Initialize W3C SCXML 5.10 test helper
+        w3cHelper_.initialize(engine_, sessionId_);
     }
 
     void TearDown() override {
@@ -25,6 +29,7 @@ protected:
 
     RSM::JSEngine *engine_;
     std::string sessionId_;
+    RSM::Tests::W3CEventTestHelper w3cHelper_;
 
     // Helper methods to reduce test code duplication
     template <typename T> T evaluateAndExpect(const std::string &expression, const std::string &errorMsg = "") {
@@ -94,24 +99,22 @@ TEST_F(JSEngineBasicTest, SCXML_BuiltinFunction_InPredicate) {
 
 TEST_F(JSEngineBasicTest, SCXML_SystemVariables_EventAndSession) {
     // Test _sessionid exists and is string
-    auto sessionIdTypeResult = engine_->evaluateExpression(sessionId_, "typeof _sessionid").get();
-    ASSERT_TRUE(sessionIdTypeResult.isSuccess());
-    EXPECT_EQ(sessionIdTypeResult.getValue<std::string>(), "string");
+    expectExpressionType("_sessionid", "string");
 
     // Test _name exists and is string
-    auto nameTypeResult = engine_->evaluateExpression(sessionId_, "typeof _name").get();
-    ASSERT_TRUE(nameTypeResult.isSuccess());
-    EXPECT_EQ(nameTypeResult.getValue<std::string>(), "string");
+    expectExpressionType("_name", "string");
 
     // Test _ioprocessors exists and is object
-    auto ioTypeResult = engine_->evaluateExpression(sessionId_, "typeof _ioprocessors").get();
-    ASSERT_TRUE(ioTypeResult.isSuccess());
-    EXPECT_EQ(ioTypeResult.getValue<std::string>(), "object");
+    expectExpressionType("_ioprocessors", "object");
 
-    // Test _event exists and is object
-    auto eventTypeResult = engine_->evaluateExpression(sessionId_, "typeof _event").get();
-    ASSERT_TRUE(eventTypeResult.isSuccess());
-    EXPECT_EQ(eventTypeResult.getValue<std::string>(), "object");
+    // W3C SCXML 5.10: _event should NOT exist before first event
+    w3cHelper_.assertEventUndefined();
+
+    // Trigger first event to initialize _event
+    w3cHelper_.triggerEvent();
+
+    // Test _event exists and is object after first event
+    w3cHelper_.assertEventObject();
 }
 
 TEST_F(JSEngineBasicTest, SCXML_ErrorHandling_ExecutionErrors) {

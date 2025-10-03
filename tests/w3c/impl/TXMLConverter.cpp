@@ -143,6 +143,11 @@ const std::regex TXMLConverter::CONF_SCRIPT_ELEMENT{R"(<conf:script\s*/>)", std:
 // conf:nonBoolean="" converts to cond="return" which causes JS syntax error → false
 const std::regex TXMLConverter::CONF_NONBOOLEAN_ATTR{R"nb(conf:nonBoolean="([^"]*)")nb", std::regex::optimize};
 
+// W3C SCXML 5.10: System variable binding check pattern (test 319)
+// conf:systemVarIsBound="_event" converts to cond="typeof _event !== 'undefined'"
+const std::regex TXMLConverter::CONF_SYSTEMVARISBOUND_ATTR{R"svb(conf:systemVarIsBound="([^"]*)")svb",
+                                                           std::regex::optimize};
+
 // General patterns to remove all conf: references
 const std::regex TXMLConverter::CONF_ALL_ATTRIBUTES{R"abc(\s+conf:[^=\s>]+\s*=\s*"[^"]*")abc", std::regex::optimize};
 
@@ -230,6 +235,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // W3C SCXML 5.9: Convert non-boolean expression to error-inducing condition (test 309)
     // conf:nonBoolean="" -> cond="return" (JavaScript syntax error evaluates to false)
     result = std::regex_replace(result, CONF_NONBOOLEAN_ATTR, R"(cond="return")");
+
+    // W3C SCXML 5.10: Convert system variable binding check to typeof condition (test 319)
+    // conf:systemVarIsBound="_event" -> cond="typeof _event !== 'undefined'"
+    result = std::regex_replace(result, CONF_SYSTEMVARISBOUND_ATTR, R"(cond="typeof $1 !== 'undefined'")");
 
     // Convert event handling attributes
     result = std::regex_replace(result, CONF_EVENT_ATTR, R"(event="$1")");

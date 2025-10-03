@@ -1,3 +1,4 @@
+#include "W3CEventTestHelper.h"
 #include "scripting/JSEngine.h"
 #include <chrono>
 #include <gtest/gtest.h>
@@ -17,6 +18,9 @@ protected:
         sessionId_ = "test_session";
         bool success = engine_->createSession(sessionId_, "");
         ASSERT_TRUE(success) << "Failed to create session";
+
+        // Initialize W3C SCXML 5.10 test helper
+        w3cHelper_.initialize(engine_, sessionId_);
     }
 
     void TearDown() override {
@@ -28,6 +32,7 @@ protected:
 
     JSEngine *engine_;
     std::string sessionId_;
+    W3CEventTestHelper w3cHelper_;
 };
 
 // Test basic JavaScript execution
@@ -60,18 +65,21 @@ TEST_F(SimpleSCXMLTest, SystemVariablesExist) {
     EXPECT_EQ(ioType, "object");
 }
 
-// Test _event object
+// Test _event object (W3C SCXML 5.10: _event bound only after first event)
 TEST_F(SimpleSCXMLTest, EventObject) {
-    auto eventResult = engine_->evaluateExpression(sessionId_, "typeof _event").get();
-    ASSERT_TRUE(eventResult.isSuccess());
-    auto eventType = eventResult.getValue<std::string>();
-    EXPECT_EQ(eventType, "object");
+    // W3C SCXML 5.10: _event should NOT exist before first event is processed
+    w3cHelper_.assertEventUndefined();
+
+    // Trigger first event to initialize _event object
+    w3cHelper_.triggerEvent();
+
+    // Now _event should exist
+    w3cHelper_.assertEventObject();
 
     // Test _event has required properties
     auto hasNameResult = engine_->evaluateExpression(sessionId_, "_event.hasOwnProperty('name')").get();
-    ASSERT_TRUE(hasNameResult.isSuccess());
-    auto hasName = hasNameResult.getValue<bool>();
-    EXPECT_TRUE(hasName);
+    ASSERT_TRUE(hasNameResult.isSuccess()) << "Failed to check if _event has 'name' property";
+    EXPECT_TRUE(hasNameResult.getValue<bool>()) << "_event should have 'name' property (W3C SCXML requirement)";
 }
 
 // Test In() function

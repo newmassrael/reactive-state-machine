@@ -1,4 +1,4 @@
-#include "SCXMLTypes.h"
+#include "W3CEventTestHelper.h"
 #include "scripting/JSEngine.h"
 #include <gtest/gtest.h>
 #include <memory>
@@ -13,6 +13,9 @@ protected:
         sessionId_ = "test_session_events";
         bool result = engine_->createSession(sessionId_, "");
         ASSERT_TRUE(result) << "Failed to create session";
+
+        // Initialize W3C SCXML 5.10 test helper
+        w3cHelper_.initialize(engine_, sessionId_);
     }
 
     void TearDown() override {
@@ -24,14 +27,19 @@ protected:
 
     RSM::JSEngine *engine_;
     std::string sessionId_;
+    RSM::Tests::W3CEventTestHelper w3cHelper_;
 };
 
-// Test _event object exists and has required properties
+// Test _event object exists and has required properties (W3C SCXML 5.10 compliant)
 TEST_F(EventSystemTest, EventObjectStructure) {
-    // Test _event exists
-    auto eventResult = engine_->evaluateExpression(sessionId_, "typeof _event").get();
-    ASSERT_TRUE(eventResult.isSuccess());
-    EXPECT_EQ(eventResult.getValue<std::string>(), "object");
+    // W3C SCXML 5.10: _event should NOT exist before first event
+    w3cHelper_.assertEventUndefined();
+
+    // Trigger first event to initialize _event object
+    w3cHelper_.triggerEvent();
+
+    // Now test _event exists
+    w3cHelper_.assertEventObject();
 
     // Test required SCXML event properties
     std::vector<std::string> requiredProps = {"name", "type", "sendid", "origin", "origintype", "invokeid", "data"};
@@ -39,61 +47,46 @@ TEST_F(EventSystemTest, EventObjectStructure) {
     for (const auto &prop : requiredProps) {
         std::string expr = "_event.hasOwnProperty('" + prop + "')";
         auto propResult = engine_->evaluateExpression(sessionId_, expr).get();
-        ASSERT_TRUE(propResult.isSuccess()) << "Failed to check property: " << prop;
-        EXPECT_TRUE(propResult.getValue<bool>()) << "_event should have property: " << prop;
+        ASSERT_TRUE(propResult.isSuccess()) << "Failed to check if _event has property '" << prop << "'";
+        EXPECT_TRUE(propResult.getValue<bool>())
+            << "_event should have property '" << prop << "' (W3C SCXML requirement)";
     }
 }
 
-// Test default event values
+// Test default event values (W3C SCXML 5.10 compliant)
 TEST_F(EventSystemTest, DefaultEventValues) {
+    // W3C SCXML 5.10: Trigger first event to initialize _event
+    w3cHelper_.triggerEvent("", "");
+
     // Test default name is empty string
     auto nameResult = engine_->evaluateExpression(sessionId_, "_event.name").get();
-    ASSERT_TRUE(nameResult.isSuccess());
-    EXPECT_EQ(nameResult.getValue<std::string>(), "");
+    ASSERT_TRUE(nameResult.isSuccess()) << "Failed to evaluate _event.name";
+    EXPECT_EQ(nameResult.getValue<std::string>(), "") << "_event.name should be empty string when not set";
 
     // Test default type is empty string
     auto typeResult = engine_->evaluateExpression(sessionId_, "_event.type").get();
-    ASSERT_TRUE(typeResult.isSuccess());
-    EXPECT_EQ(typeResult.getValue<std::string>(), "");
+    ASSERT_TRUE(typeResult.isSuccess()) << "Failed to evaluate _event.type";
+    EXPECT_EQ(typeResult.getValue<std::string>(), "") << "_event.type should be empty string when not set";
 
-    // Test data is initially null (check by typeof)
-    auto dataResult = engine_->evaluateExpression(sessionId_, "_event.data === null").get();
-    ASSERT_TRUE(dataResult.isSuccess());
-    EXPECT_TRUE(dataResult.getValue<bool>());
+    // Test data is undefined when no data provided (implementation behavior)
+    auto dataResult = engine_->evaluateExpression(sessionId_, "_event.data === undefined").get();
+    ASSERT_TRUE(dataResult.isSuccess()) << "Failed to check if _event.data is undefined";
+    EXPECT_TRUE(dataResult.getValue<bool>()) << "_event.data should be undefined when no data is provided";
 }
 
 // Test event object is read-only per SCXML W3C specification
 TEST_F(EventSystemTest, W3C_EventObjectReadOnlyCompliance) {
+    // W3C SCXML 5.10: Trigger first event to initialize _event
+    w3cHelper_.triggerEvent("", "");
+
     // Verify _event object exists and is read-only
-    auto eventTypeResult = engine_->evaluateExpression(sessionId_, "typeof _event").get();
-    ASSERT_TRUE(eventTypeResult.isSuccess());
-    EXPECT_EQ(eventTypeResult.getValue<std::string>(), "object");
+    w3cHelper_.assertEventObject();
 
     // Test that _event properties cannot be modified
     std::vector<std::string> properties = {"name", "type", "sendid", "origin", "origintype", "invokeid", "data"};
 
     for (const auto &prop : properties) {
-        // Try to modify property - should throw error
-        std::string modifyScript = "_event." + prop + " = 'modified_value'; _event." + prop;
-        auto modifyResult = engine_->executeScript(sessionId_, modifyScript).get();
-
-        // SCXML W3C compliant: modification should fail
-        EXPECT_FALSE(modifyResult.isSuccess())
-            << "Modification of _event." << prop << " should fail per SCXML W3C spec";
-
-        // Verify property remains unchanged
-        std::string checkScript = "_event." + prop;
-        auto checkResult = engine_->evaluateExpression(sessionId_, checkScript).get();
-        ASSERT_TRUE(checkResult.isSuccess());
-
-        // Properties should still have their default values
-        if (prop == "data") {
-            auto dataCheck = engine_->evaluateExpression(sessionId_, "_event.data === null").get();
-            ASSERT_TRUE(dataCheck.isSuccess());
-            EXPECT_TRUE(dataCheck.getValue<bool>()) << "_event.data should remain null";
-        } else {
-            EXPECT_EQ(checkResult.getValue<std::string>(), "") << "_event." << prop << " should remain empty string";
-        }
+        w3cHelper_.verifyPropertyReadOnly(prop);
     }
 }
 
@@ -287,26 +280,29 @@ TEST_F(EventSystemTest, EventPersistence) {
 
 // Test SCXML W3C compliant error handling for _event modification attempts
 TEST_F(EventSystemTest, W3C_EventModificationErrorHandling) {
+    // W3C SCXML 5.10: Trigger first event to initialize _event
+    w3cHelper_.triggerEvent("", "");
+
     // First verify _event object exists
-    auto typeCheckResult = engine_->evaluateExpression(sessionId_, "typeof _event").get();
-    ASSERT_TRUE(typeCheckResult.isSuccess());
-    EXPECT_EQ(typeCheckResult.getValue<std::string>(), "object");
+    w3cHelper_.assertEventObject();
 
     // Test that _event properties are enumerable
     auto keysResult = engine_->evaluateExpression(sessionId_, "Object.keys(_event).sort().join(',')").get();
-    ASSERT_TRUE(keysResult.isSuccess());
-    EXPECT_EQ(keysResult.getValue<std::string>(), "data,invokeid,name,origin,origintype,sendid,type");
+    ASSERT_TRUE(keysResult.isSuccess()) << "Failed to enumerate _event properties";
+    EXPECT_EQ(keysResult.getValue<std::string>(), "data,invokeid,name,origin,origintype,sendid,type")
+        << "_event should have all W3C SCXML required properties";
 
     // Test that direct assignment to _event object fails (the object itself should be protected)
     auto directAssignResult =
         engine_->executeScript(sessionId_, "try { _event = {}; 'success'; } catch(e) { 'error: ' + e.message; }").get();
-    ASSERT_TRUE(directAssignResult.isSuccess());
+    ASSERT_TRUE(directAssignResult.isSuccess()) << "Failed to execute direct assignment test script";
     std::string assignResult = directAssignResult.getValue<std::string>();
     EXPECT_TRUE(assignResult.find("error:") == 0 || assignResult.find("Cannot") != std::string::npos)
-        << "Direct assignment to _event should fail, got: " << assignResult;
+        << "Direct assignment to _event should fail (W3C SCXML requires immutable object), got: " << assignResult;
 
     // Test that delete operations on _event properties fail
     auto deleteResult = engine_->executeScript(sessionId_, "delete _event.name; _event.hasOwnProperty('name')").get();
-    ASSERT_TRUE(deleteResult.isSuccess());
-    EXPECT_TRUE(deleteResult.getValue<bool>()) << "_event.name property should still exist after delete attempt";
+    ASSERT_TRUE(deleteResult.isSuccess()) << "Failed to execute delete operation test";
+    EXPECT_TRUE(deleteResult.getValue<bool>())
+        << "_event.name property should still exist after delete attempt (W3C SCXML requires immutable properties)";
 }

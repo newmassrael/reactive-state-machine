@@ -456,6 +456,8 @@ private:
             preInitializedVars;  // Variables set before datamodel initialization (e.g., invoke data)
         // SOLID: Single Responsibility - session management includes invoke relationships
         std::shared_ptr<class IEventRaiser> eventRaiser;
+        // W3C SCXML 5.10: Track _event object initialization for lazy binding
+        bool eventObjectInitialized = false;
     };
 
     struct ExecutionRequest {
