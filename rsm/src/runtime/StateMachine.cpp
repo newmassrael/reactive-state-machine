@@ -903,9 +903,19 @@ bool StateMachine::initializeFromModel() {
 
     // Get initial state
     initialState_ = model_->getInitialState();
+
+    // W3C SCXML 3.2: If no initial attribute, use first state in document order
     if (initialState_.empty()) {
-        LOG_ERROR("StateMachine: No initial state defined in SCXML model");
-        return false;
+        const auto &allStates = model_->getAllStates();
+        if (allStates.empty()) {
+            LOG_ERROR("StateMachine: No states found in SCXML model");
+            return false;
+        }
+
+        // Auto-select first state in document order (W3C SCXML 3.2 compliance)
+        initialState_ = allStates[0]->getId();
+        LOG_DEBUG("StateMachine: No initial attribute found, auto-selected first state in document order: '{}'",
+                  initialState_);
     }
 
     // Extract all states from the model
