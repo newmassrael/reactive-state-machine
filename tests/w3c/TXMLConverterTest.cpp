@@ -2206,3 +2206,72 @@ TEST_F(TXMLConverterTest, ConvertsSendToSenderToSendWithOriginExpr) {
     EXPECT_TRUE(result.find("conf:sendToSender") == std::string::npos)
         << "conf:sendToSender element should be completely removed";
 }
+
+// ============================================================================
+// W3C Test 342: conf:eventField conversion (W3C SCXML 5.10)
+// ============================================================================
+
+// Test W3C SCXML 5.10: SCXML Processor MUST set the name field of _event variable
+// <assign conf:location="2" conf:eventField="name"/> should convert to <assign location="var2" expr="_event.name"/>
+// Test validates conversion for multiple _event fields (name, type) to ensure pattern generality
+TEST_F(TXMLConverterTest, ConvertsEventFieldToEventExpr) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml initial="s0" version="1.0" conf:datamodel="" xmlns="http://www.w3.org/2005/07/scxml" name="machineName" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<datamodel>
+  <data conf:id="1" conf:quoteExpr="foo"/>
+  <data conf:id="2"/>
+  <data conf:id="3"/>
+</datamodel>
+
+<state id="s0">
+  <onentry>
+    <send conf:eventExpr="1"/>
+  </onentry>
+  <transition event="foo" target="s1">
+    <assign conf:location="2" conf:eventField="name"/>
+    <assign conf:location="3" conf:eventField="type"/>
+  </transition>
+  <transition event="*" conf:targetfail=""/>
+</state>
+
+<state id="s1">
+  <transition conf:VarEqVar="1 2" conf:targetpass=""/>
+  <transition conf:targetfail=""/>
+</state>
+
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // W3C SCXML 5.10 test 342: Verify conf:eventField="name" converts to expr="_event.name"
+    std::string expectedAssignName = R"(<assign location="var2" expr="_event.name"/>)";
+    EXPECT_TRUE(result.find(expectedAssignName) != std::string::npos)
+        << "Expected assign with _event.name expression: " << expectedAssignName << "\n(W3C SCXML 5.10 test 342)";
+
+    // Verify pattern generality: conf:eventField="type" converts to expr="_event.type"
+    std::string expectedAssignType = R"(<assign location="var3" expr="_event.type"/>)";
+    EXPECT_TRUE(result.find(expectedAssignType) != std::string::npos)
+        << "Expected assign with _event.type expression: " << expectedAssignType << "\n(validates pattern generality)";
+
+    // Verify assigns are inside the transition
+    size_t transitionPos = result.find("<transition event=\"foo\" target=\"s1\">");
+    size_t assignNamePos = result.find(expectedAssignName);
+    size_t assignTypePos = result.find(expectedAssignType);
+    size_t transitionEndPos = result.find("</transition>", transitionPos);
+
+    EXPECT_TRUE(transitionPos != std::string::npos && assignNamePos != std::string::npos &&
+                assignTypePos != std::string::npos)
+        << "Transition and both assign elements should exist";
+
+    EXPECT_TRUE(assignNamePos > transitionPos && assignNamePos < transitionEndPos)
+        << "Assign name element should be inside the transition (W3C SCXML 5.10 test 342)";
+
+    EXPECT_TRUE(assignTypePos > transitionPos && assignTypePos < transitionEndPos)
+        << "Assign type element should be inside the transition (validates pattern generality)";
+
+    // Verify conf:eventField was completely removed
+    EXPECT_TRUE(result.find("conf:eventField") == std::string::npos)
+        << "conf:eventField attribute should be completely removed";
+}

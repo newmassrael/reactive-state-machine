@@ -104,6 +104,10 @@ const std::regex TXMLConverter::CONF_QUOTE_EXPR_ATTR{R"abc(conf:quoteExpr="([^"]
 
 const std::regex TXMLConverter::CONF_EVENT_EXPR_ATTR{R"def(conf:eventExpr="([^"]*)")def", std::regex::optimize};
 
+// W3C SCXML 5.10: Event field access pattern (test 342)
+// <assign conf:location="X" conf:eventField="Y"/> converts to <assign location="varX" expr="_event.Y"/>
+const std::regex TXMLConverter::CONF_EVENTFIELD_ATTR{R"evf(conf:eventField="([^"]*)")evf", std::regex::optimize};
+
 // Foreach element patterns
 const std::regex TXMLConverter::CONF_ITEM_ATTR{R"xyz(conf:item="([^"]*)")xyz", std::regex::optimize};
 
@@ -358,6 +362,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, eventexpr_numeric_pattern, R"(eventexpr="var$1")");
     // Convert remaining conf:eventExpr attributes to standard eventexpr
     result = std::regex_replace(result, CONF_EVENT_EXPR_ATTR, R"(eventexpr="$1")");
+
+    // W3C SCXML 5.10: Convert event field access to _event expression (test 342)
+    // conf:eventField="name" -> expr="_event.name"
+    result = std::regex_replace(result, CONF_EVENTFIELD_ATTR, R"(expr="_event.$1")");
 
     // Convert foreach element attributes with numeric variable name handling
     // JavaScript 호환성: 숫자 변수명은 var prefix 추가

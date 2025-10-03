@@ -78,6 +78,9 @@ private:
     static const std::regex CONF_QUOTE_EXPR_ATTR;
     static const std::regex CONF_EVENT_EXPR_ATTR;
 
+    // W3C SCXML 5.10: Event field access pattern (test 342)
+    static const std::regex CONF_EVENTFIELD_ATTR;
+
     // Foreach element patterns
     static const std::regex CONF_ITEM_ATTR;
     static const std::regex CONF_INDEX_ATTR;
