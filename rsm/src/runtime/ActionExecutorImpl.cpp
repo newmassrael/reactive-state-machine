@@ -98,6 +98,10 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
 
     if (!isSessionReady()) {
         LOG_ERROR("Session {} not ready for variable assignment", sessionId_);
+        // W3C SCXML 5.9: Raise error.execution for session not ready
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", "Session not ready for assignment");
+        }
         return false;
     }
 
@@ -110,6 +114,11 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
         auto evalResult = JSEngine::instance().evaluateExpression(sessionId_, expr).get();
         if (!evalResult.isSuccess()) {
             handleJSError("expression evaluation for assignment", "Expression evaluation failed");
+            // W3C SCXML 5.9: Raise error.execution for illegal value expression
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution", "Assignment expression evaluation failed - location: " +
+                                                                location + ", expr: " + expr);
+            }
             return false;
         }
 
@@ -122,6 +131,10 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
                 JSEngine::instance().setVariable(sessionId_, jsLocation, evalResult.getInternalValue()).get();
             if (!setResult.isSuccess()) {
                 handleJSError("variable assignment", "Variable assignment failed");
+                // W3C SCXML 5.9: Raise error.execution for assignment failure
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Variable assignment failed: " + location);
+                }
                 return false;
             }
         } else {
@@ -133,6 +146,10 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
             auto scriptResult = JSEngine::instance().executeScript(sessionId_, assignScript.str()).get();
             if (!scriptResult.isSuccess()) {
                 handleJSError("complex variable assignment", "Complex variable assignment failed");
+                // W3C SCXML 5.9: Raise error.execution for complex assignment failure
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Complex assignment failed: " + location);
+                }
                 return false;
             }
         }
@@ -142,6 +159,10 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
 
     } catch (const std::exception &e) {
         handleJSError("variable assignment", e.what());
+        // W3C SCXML 5.9: Raise error.execution for assignment exception
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", std::string("Assignment exception: ") + e.what());
+        }
         return false;
     }
 }
