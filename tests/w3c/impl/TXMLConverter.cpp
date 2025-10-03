@@ -154,6 +154,12 @@ const std::regex TXMLConverter::CONF_SYSTEMVARISBOUND_ATTR{R"svb(conf:systemVarI
 // conf:systemVarExpr="_sessionid" converts to expr="_sessionid"
 const std::regex TXMLConverter::CONF_SYSTEMVAREXPR_ATTR{R"sve(conf:systemVarExpr="([^"]*)")sve", std::regex::optimize};
 
+// W3C SCXML 5.10: Send to sender pattern (test 336)
+// <conf:sendToSender name="bar"/> converts to <send event="bar" targetexpr="_event.origin"
+// typeexpr="_event.origintype"/>
+const std::regex TXMLConverter::CONF_SENDTOSENDER_ELEMENT{R"sts(<conf:sendToSender\s+name="([^"]+)"\s*/>)sts",
+                                                          std::regex::optimize};
+
 // General patterns to remove all conf: references
 const std::regex TXMLConverter::CONF_ALL_ATTRIBUTES{R"abc(\s+conf:[^=\s>]+\s*=\s*"[^"]*")abc", std::regex::optimize};
 
@@ -472,6 +478,11 @@ std::string TXMLConverter::convertConfElements(const std::string &content) {
     // Convert W3C test data array elements to JavaScript arrays
     result = std::regex_replace(result, CONF_ARRAY123_PATTERN, "[1,2,3]");
     result = std::regex_replace(result, CONF_ARRAY456_PATTERN, "[4,5,6]");
+
+    // W3C SCXML 5.10: Convert conf:sendToSender to send with origin expressions (test 336)
+    // <conf:sendToSender name="bar"/> -> <send event="bar" targetexpr="_event.origin" typeexpr="_event.origintype"/>
+    result = std::regex_replace(result, CONF_SENDTOSENDER_ELEMENT,
+                                R"(<send event="$1" targetexpr="_event.origin" typeexpr="_event.origintype"/>)");
 
     // Convert conf:incrementID elements to assign increment operations
     // Pattern: <conf:incrementID id="1"/> -> <assign location="var1" expr="var1 + 1"/>

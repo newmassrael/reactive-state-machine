@@ -2149,3 +2149,60 @@ TEST_F(TXMLConverterTest, ConvertsEventSendidToEventSendidExpr) {
 
     EXPECT_TRUE(result.find("conf:eventSendid") == std::string::npos) << "conf:eventSendid attribute should be removed";
 }
+
+// ============================================================================
+// W3C Test 336: conf:sendToSender conversion (W3C SCXML 5.10)
+// ============================================================================
+
+// Test W3C SCXML 5.10: external events should allow sending response back to originator
+// <conf:sendToSender name="bar"/> should convert to <send event="bar" targetexpr="_event.origin"
+// typeexpr="_event.origintype"/>
+TEST_F(TXMLConverterTest, ConvertsSendToSenderToSendWithOriginExpr) {
+    std::string txml = R"(<?xml version="1.0"?>
+<scxml initial="s0" conf:datamodel="" version="1.0" xmlns="http://www.w3.org/2005/07/scxml" name="machineName" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
+<state id="s0">
+  <onentry>
+    <send event="foo"/>
+  </onentry>
+  <transition event="foo" target="s1">
+    <conf:sendToSender name="bar"/>
+  </transition>
+  <transition event="*" conf:targetfail=""/>
+</state>
+<state id="s1">
+  <onentry>
+    <send event="baz"/>
+  </onentry>
+  <transition event="bar" conf:targetpass=""/>
+  <transition event="*" conf:targetfail=""/>
+</state>
+<conf:pass/>
+<conf:fail/>
+</scxml>)";
+
+    std::string result = converter.convertTXMLToSCXML(txml);
+
+    // W3C SCXML 5.10 test 336: Verify complete send element structure
+    // <conf:sendToSender name="bar"/> should convert to:
+    // <send event="bar" targetexpr="_event.origin" typeexpr="_event.origintype"/>
+
+    // Verify the complete send element with all required attributes
+    std::string expectedSend = R"(<send event="bar" targetexpr="_event.origin" typeexpr="_event.origintype"/>)";
+    EXPECT_TRUE(result.find(expectedSend) != std::string::npos)
+        << "Expected complete send element: " << expectedSend << "\n(W3C SCXML 5.10 test 336)";
+
+    // Verify send element is inside the transition
+    size_t transitionPos = result.find("<transition event=\"foo\" target=\"s1\">");
+    size_t sendPos = result.find(expectedSend);
+    size_t transitionEndPos = result.find("</transition>", transitionPos);
+
+    EXPECT_TRUE(transitionPos != std::string::npos && sendPos != std::string::npos)
+        << "Both transition and send element should exist";
+
+    EXPECT_TRUE(sendPos > transitionPos && sendPos < transitionEndPos)
+        << "Send element should be inside the transition (W3C SCXML 5.10 test 336)";
+
+    // Verify conf:sendToSender was completely removed
+    EXPECT_TRUE(result.find("conf:sendToSender") == std::string::npos)
+        << "conf:sendToSender element should be completely removed";
+}

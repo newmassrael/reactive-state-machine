@@ -115,6 +115,9 @@ private:
     // W3C SCXML 5.10: System variable expression pattern (test 321)
     static const std::regex CONF_SYSTEMVAREXPR_ATTR;
 
+    // W3C SCXML 5.10: Send to sender pattern (test 336)
+    static const std::regex CONF_SENDTOSENDER_ELEMENT;
+
     // General patterns to remove all remaining conf: references
     static const std::regex CONF_ALL_ATTRIBUTES;
     static const std::regex CONF_ALL_ELEMENTS;
