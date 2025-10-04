@@ -37,6 +37,7 @@ int main(int argc, char *argv[]) {
                 printf("  --resources PATH  Path to W3C test resources (default: %s)\n", resourcePath.c_str());
                 printf("  --output FILE     XML output file (default: %s)\n", outputPath.c_str());
                 printf("  ID1 ID2 ...       Run specific test IDs (e.g., 150 151 152)\n");
+                printf("  START~END         Run tests in range START to END (e.g., 100~200)\n");
                 printf("  ~NUMBER           Run all tests up to NUMBER (e.g., ~176 runs tests 150-176)\n");
                 printf("  --help           Show this help message\n");
                 return 0;
@@ -52,12 +53,40 @@ int main(int argc, char *argv[]) {
                     return 1;
                 }
             } else {
-                // Try to parse as test ID if it's a number
-                try {
-                    specificTestIds.push_back(std::stoi(arg));
-                } catch (const std::exception &) {
-                    fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
-                    return 1;
+                // Check if it's a range format: START~END
+                size_t tildePos = arg.find('~');
+                if (tildePos != std::string::npos && tildePos > 0) {
+                    // Parse START~END range
+                    std::string startStr = arg.substr(0, tildePos);
+                    std::string endStr = arg.substr(tildePos + 1);
+                    try {
+                        int startId = std::stoi(startStr);
+                        int endId = std::stoi(endStr);
+
+                        if (startId > endId) {
+                            fprintf(stderr, "Invalid range: start (%d) must be <= end (%d)\n", startId, endId);
+                            return 1;
+                        }
+
+                        // Add all test IDs in the range
+                        for (int testId = startId; testId <= endId; testId++) {
+                            specificTestIds.push_back(testId);
+                        }
+
+                        LOG_INFO("W3C CLI: Range mode enabled - will run tests {}-{} ({} tests)", startId, endId,
+                                 endId - startId + 1);
+                    } catch (const std::exception &) {
+                        fprintf(stderr, "Invalid range format: %s (expected START~END)\n", arg.c_str());
+                        return 1;
+                    }
+                } else {
+                    // Try to parse as test ID if it's a number
+                    try {
+                        specificTestIds.push_back(std::stoi(arg));
+                    } catch (const std::exception &) {
+                        fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
+                        return 1;
+                    }
                 }
             }
         }

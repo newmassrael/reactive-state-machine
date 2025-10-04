@@ -125,6 +125,28 @@ public:
      * @param evaluator Function to evaluate guard conditions (returns true/false)
      */
     virtual void setConditionEvaluator(std::function<bool(const std::string &)> evaluator) = 0;
+
+    /**
+     * @brief Set desired initial child state from parent's initial attribute (W3C SCXML 3.3)
+     *
+     * When a parent compound state specifies deep initial targets, this method
+     * sets the target state for this region, overriding the region's default initial state.
+     *
+     * @param childStateId The desired initial child state ID for this region
+     */
+    virtual void setDesiredInitialChild(const std::string &childStateId) = 0;
+
+    /**
+     * @brief Get current state of the region
+     * @return Current state ID (empty if inactive)
+     */
+    virtual const std::string &getCurrentState() const = 0;
+
+    /**
+     * @brief Directly set current state (for W3C SCXML 3.3 deep initial targets)
+     * @param stateId The state ID to set as current
+     */
+    virtual void setCurrentState(const std::string &stateId) = 0;
 };
 
 }  // namespace RSM

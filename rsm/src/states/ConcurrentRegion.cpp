@@ -206,9 +206,9 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
                             LOG_DEBUG("ConcurrentRegion: Transition target '{}' is outside region '{}' - must be "
                                       "handled by parent",
                                       targetState, id_);
-                            // Return failure so parent (StateMachine) can handle this transition
-                            return ConcurrentOperationResult::failure(
-                                id_, "Transition to external state - parent must handle");
+                            // W3C SCXML 3.4: Return external transition info so parent can execute it
+                            return ConcurrentOperationResult::externalTransition(id_, targetState, event.eventName,
+                                                                                 currentState_);
                         }
 
                         LOG_DEBUG("Executing transition: {} -> {} on event: {}", currentState_, targetState,
@@ -407,6 +407,23 @@ const std::string &ConcurrentRegion::getCurrentState() const {
     return currentState_;
 }
 
+void ConcurrentRegion::setCurrentState(const std::string &stateId) {
+    // W3C SCXML 3.3: Validate that state belongs to this region
+    // This is called during deep initial target synchronization
+    if (!stateId.empty() && rootState_) {
+        // Validate the state is within this region's scope
+        bool isValidState = isDescendantOf(rootState_, stateId);
+        if (!isValidState) {
+            LOG_WARN("ConcurrentRegion: Attempting to set currentState to '{}' which is not within region '{}' scope",
+                     stateId, id_);
+            // Continue anyway - StateHierarchyManager knows best in deep target scenarios
+        }
+    }
+
+    LOG_DEBUG("ConcurrentRegion: Setting currentState for region {} to: {}", id_, stateId);
+    currentState_ = stateId;
+}
+
 bool ConcurrentRegion::isInErrorState() const {
     return status_ == ConcurrentRegionStatus::ERROR;
 }
@@ -448,6 +465,11 @@ void ConcurrentRegion::setConditionEvaluator(std::function<bool(const std::strin
     LOG_DEBUG(
         "ConcurrentRegion: Condition evaluator callback set for region: {} (W3C SCXML transition guard compliance)",
         id_);
+}
+
+void ConcurrentRegion::setDesiredInitialChild(const std::string &childStateId) {
+    desiredInitialChild_ = childStateId;
+    LOG_WARN("TEST364: Region '{}' desiredInitialChild set to '{}'", id_, childStateId);
 }
 
 // Private methods
@@ -594,26 +616,34 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
     // Check if we need to enter child states
     const auto &children = rootState_->getChildren();
     if (!children.empty()) {
-        // SCXML W3C specification: Handle initial transitions
-        // Check if root state has initial transition that targets a specific state
-        const auto &initialTransition = rootState_->getInitialTransition();
+        // W3C SCXML 3.3: Priority order for initial state selection
         std::string initialChild;
 
-        if (initialTransition && !initialTransition->getTargets().empty()) {
-            // SCXML initial transition: <initial><transition target="final_state"/></initial>
+        // Priority 1: Parent state's deep initial target (e.g., s1 initial="s11p112 s11p122")
+        if (!desiredInitialChild_.empty()) {
+            initialChild = desiredInitialChild_;
+            LOG_WARN("TEST364: Region '{}' using desiredInitialChild: '{}'", id_, initialChild);
+        }
+        // Priority 2: Region's <initial> element with transition target
+        else if (const auto &initialTransition = rootState_->getInitialTransition();
+                 initialTransition && !initialTransition->getTargets().empty()) {
             initialChild = initialTransition->getTargets()[0];
             LOG_DEBUG("Found initial transition targeting: {} in region: {}", initialChild, id_);
-        } else {
-            // Fallback: Use getInitialState() or first child
-            initialChild = rootState_->getInitialState();
-            if (initialChild.empty() && !children.empty()) {
-                initialChild = children[0]->getId();
-            }
-            LOG_DEBUG("Using fallback initial state: {} in region: {}", initialChild, id_);
+        }
+        // Priority 3: Region's initial attribute
+        else if (std::string initialFromAttr = rootState_->getInitialState(); !initialFromAttr.empty()) {
+            initialChild = initialFromAttr;
+            LOG_WARN("TEST364: Region '{}' rootState '{}' has initialState='{}'", id_, rootState_->getId(),
+                     initialChild);
+        }
+        // Priority 4: First child in document order (W3C default)
+        else if (!children.empty()) {
+            initialChild = children[0]->getId();
+            LOG_WARN("TEST364: Region '{}' using first child as fallback: '{}'", id_, initialChild);
         }
 
         if (!initialChild.empty()) {
-            LOG_DEBUG("Entering initial child state: {}", initialChild);
+            LOG_WARN("TEST364: Region '{}' entering initial child state: '{}'", id_, initialChild);
             activeStates_.push_back(initialChild);
             currentState_ = initialChild;
 

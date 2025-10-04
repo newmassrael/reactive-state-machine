@@ -199,18 +199,17 @@ bool RSM::SCXMLModel::validateStateRelationships() const {
             if (state->getChildren().empty()) {
                 LOG_WARN("State '{}' has initialState but no children", state->getId());
             } else {
-                bool initialStateExists = false;
-                for (const auto &child : state->getChildren()) {
-                    if (child->getId() == state->getInitialState()) {
-                        initialStateExists = true;
-                        break;
-                    }
-                }
+                // W3C SCXML 3.3: Validate space-separated initial state list
+                std::istringstream iss(state->getInitialState());
+                std::string initialStateId;
 
-                if (!initialStateExists) {
-                    LOG_ERROR("State '{}' references non-existent initial state '{}'", state->getId(),
-                              state->getInitialState());
-                    return false;
+                while (iss >> initialStateId) {
+                    // Search in entire model (not just direct children)
+                    if (!findStateById(initialStateId)) {
+                        LOG_ERROR("State '{}' references non-existent initial state '{}'", state->getId(),
+                                  initialStateId);
+                        return false;
+                    }
                 }
             }
         }

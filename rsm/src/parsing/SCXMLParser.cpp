@@ -441,20 +441,24 @@ bool RSM::SCXMLParser::validateModel(std::shared_ptr<SCXMLModel> model) {
             }
         }
 
-        // 초기 상태 검증
+        // W3C SCXML 3.3: Validate initial state(s) - supports space-separated list for parallel states
         if (!state->getInitialState().empty() && state->getChildren().size() > 0) {
-            bool initialStateFound = false;
-            for (const auto &child : state->getChildren()) {
-                if (child->getId() == state->getInitialState()) {
-                    initialStateFound = true;
-                    break;
+            // Parse space-separated initial state list
+            std::istringstream iss(state->getInitialState());
+            std::string initialStateId;
+            bool allInitialStatesFound = true;
+
+            while (iss >> initialStateId) {
+                // Search in entire model (not just direct children) to support deep initial states
+                if (!model->findStateById(initialStateId)) {
+                    addError("State '" + state->getId() + "' references non-existent initial state '" + initialStateId +
+                             "'");
+                    allInitialStatesFound = false;
                 }
             }
 
-            if (!initialStateFound) {
-                addError("State '" + state->getId() + "' references non-existent initial state '" +
-                         state->getInitialState() + "'");
-                isValid = false;  // 오류를 기록하고 계속 진행
+            if (!allInitialStatesFound) {
+                isValid = false;  // Continue validation but mark as invalid
             }
         }
     }

@@ -357,6 +357,12 @@ private:
     TransitionResult processStateTransitions(IStateNode *stateNode, const std::string &eventName,
                                              const std::string &eventData);
 
+    // W3C SCXML transition domain and exit set computation
+    std::string findLCA(const std::string &sourceStateId, const std::string &targetStateId) const;
+    std::vector<std::string> computeExitSet(const std::string &sourceStateId, const std::string &targetStateId) const;
+    std::vector<std::string> getProperAncestors(const std::string &stateId) const;
+    bool isDescendant(const std::string &stateId, const std::string &ancestorId) const;
+
     // W3C SCXML onentry action execution
     void executeOnEntryActions(const std::string &stateId);
 

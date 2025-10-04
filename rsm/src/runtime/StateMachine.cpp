@@ -404,6 +404,27 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                 // W3C SCXML 3.4: Each region processes events independently
                 // Use region's own processEvent method which manages its internal state
                 auto regionResult = region->processEvent(regionEvent);
+
+                // W3C SCXML 3.4: Check if region found external transition
+                if (!regionResult.externalTransitionTarget.empty()) {
+                    LOG_DEBUG("SCXML W3C: Region '{}' found external transition from '{}' to '{}' - executing",
+                              region->getId(), regionResult.externalTransitionSource,
+                              regionResult.externalTransitionTarget);
+                    // Execute the external transition from source state to target
+                    // Find the source state node by ID for safe pointer access
+                    auto sourceStateNode = model_->findStateById(regionResult.externalTransitionSource);
+                    if (sourceStateNode) {
+                        return processStateTransitions(sourceStateNode, eventName, eventData);
+                    } else {
+                        LOG_ERROR("SCXML W3C: External transition source state '{}' not found",
+                                  regionResult.externalTransitionSource);
+                        TransitionResult failureResult;
+                        failureResult.success = false;
+                        failureResult.errorMessage = "External transition source state not found";
+                        return failureResult;
+                    }
+                }
+
                 if (regionResult.isSuccess) {
                     anyRegionTransitioned = true;
                     transitionedRegions.push_back(region->getId());
@@ -589,7 +610,9 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
         LOG_DEBUG("Condition result: {}", conditionResult ? "true" : "false");
 
         if (conditionResult) {
-            std::string fromState = getCurrentState();  // Save the original state
+            // W3C SCXML: The source state of the transition is the state that contains it
+            // NOT getCurrentState() which may return a parallel state
+            std::string fromState = stateNode->getId();
 
             // W3C SCXML: Internal transitions execute actions without exiting/entering states
             if (isInternal) {
@@ -609,15 +632,23 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
 
             LOG_DEBUG("Executing SCXML compliant transition from {} to {}", fromState, targetState);
 
-            // Exit current state
-            if (!exitState(fromState)) {
-                LOG_ERROR("Failed to exit state: {}", fromState);
-                TransitionResult result;
-                result.success = false;
-                result.fromState = fromState;
-                result.eventName = eventName;
-                result.errorMessage = "Failed to exit state: " + fromState;
-                return result;
+            // W3C SCXML: Compute and exit ALL states in the exit set (not just current state)
+            // For a transition from source to target, we must exit all states from source
+            // up to (but not including) the Lowest Common Ancestor (LCA) with the target
+            std::vector<std::string> exitSet = computeExitSet(fromState, targetState);
+            LOG_DEBUG("W3C SCXML: Exiting {} states for transition {} -> {}", exitSet.size(), fromState, targetState);
+
+            // Exit states in the exit set (already in correct order: deepest first)
+            for (const std::string &stateToExit : exitSet) {
+                if (!exitState(stateToExit)) {
+                    LOG_ERROR("Failed to exit state: {}", stateToExit);
+                    TransitionResult result;
+                    result.success = false;
+                    result.fromState = fromState;
+                    result.eventName = eventName;
+                    result.errorMessage = "Failed to exit state: " + stateToExit;
+                    return result;
+                }
             }
 
             // Execute transition actions (SCXML W3C specification)
@@ -2427,6 +2458,134 @@ bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string
 
     // No donedata
     return true;
+}
+
+// W3C SCXML: Get proper ancestors of a state (all ancestors excluding the state itself)
+std::vector<std::string> StateMachine::getProperAncestors(const std::string &stateId) const {
+    std::vector<std::string> ancestors;
+
+    if (!model_) {
+        return ancestors;
+    }
+
+    auto stateNode = model_->findStateById(stateId);
+    if (!stateNode) {
+        return ancestors;
+    }
+
+    IStateNode *current = stateNode->getParent();
+    while (current != nullptr) {
+        ancestors.push_back(current->getId());
+        current = current->getParent();
+    }
+
+    return ancestors;
+}
+
+// W3C SCXML: Check if stateId is a descendant of ancestorId
+bool StateMachine::isDescendant(const std::string &stateId, const std::string &ancestorId) const {
+    if (!model_ || stateId.empty() || ancestorId.empty()) {
+        return false;
+    }
+
+    if (stateId == ancestorId) {
+        return false;  // A state is not its own descendant
+    }
+
+    auto stateNode = model_->findStateById(stateId);
+    if (!stateNode) {
+        return false;
+    }
+
+    IStateNode *current = stateNode->getParent();
+    while (current != nullptr) {
+        if (current->getId() == ancestorId) {
+            return true;
+        }
+        current = current->getParent();
+    }
+
+    return false;
+}
+
+// W3C SCXML: Find Lowest Common Ancestor of source and target states
+std::string StateMachine::findLCA(const std::string &sourceStateId, const std::string &targetStateId) const {
+    if (!model_) {
+        return "";
+    }
+
+    // Get all ancestors of source (including source itself for comparison)
+    std::vector<std::string> sourceAncestors;
+    auto sourceNode = model_->findStateById(sourceStateId);
+    if (sourceNode) {
+        IStateNode *current = sourceNode;
+        while (current != nullptr) {
+            sourceAncestors.push_back(current->getId());
+            current = current->getParent();
+        }
+    }
+
+    // Walk up from target until we find a common ancestor
+    auto targetNode = model_->findStateById(targetStateId);
+    if (targetNode) {
+        // W3C SCXML: Start from target itself (target can be the LCA)
+        IStateNode *current = targetNode;
+        while (current != nullptr) {
+            std::string currentId = current->getId();
+            // Check if this ancestor is in source's ancestor chain
+            if (std::find(sourceAncestors.begin(), sourceAncestors.end(), currentId) != sourceAncestors.end()) {
+                return currentId;  // Found LCA
+            }
+            current = current->getParent();
+        }
+    }
+
+    // No common ancestor found (shouldn't happen in valid SCXML)
+    return "";
+}
+
+// W3C SCXML: Compute exit set for transition from source to target
+std::vector<std::string> StateMachine::computeExitSet(const std::string &sourceStateId,
+                                                      const std::string &targetStateId) const {
+    std::vector<std::string> exitSet;
+
+    if (!model_ || sourceStateId.empty()) {
+        return exitSet;
+    }
+
+    // If target is empty (targetless transition), exit source only
+    if (targetStateId.empty()) {
+        exitSet.push_back(sourceStateId);
+        return exitSet;
+    }
+
+    // Find LCA (Lowest Common Ancestor)
+    std::string lca = findLCA(sourceStateId, targetStateId);
+
+    // Collect all states from source up to (but not including) LCA
+    // These are the states we need to exit
+    auto sourceNode = model_->findStateById(sourceStateId);
+    if (!sourceNode) {
+        return exitSet;
+    }
+
+    IStateNode *current = sourceNode;
+    while (current != nullptr) {
+        std::string currentId = current->getId();
+
+        // Stop when we reach LCA (don't include LCA in exit set)
+        if (currentId == lca) {
+            break;
+        }
+
+        exitSet.push_back(currentId);
+        current = current->getParent();
+    }
+
+    LOG_DEBUG("W3C SCXML: computeExitSet({} -> {}) = {} states, LCA = '{}'", sourceStateId, targetStateId,
+              exitSet.size(), lca);
+
+    return exitSet;
 }
 
 }  // namespace RSM

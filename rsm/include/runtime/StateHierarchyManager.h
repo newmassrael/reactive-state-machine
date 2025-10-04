@@ -130,6 +130,20 @@ public:
      */
     void setConditionEvaluator(std::function<bool(const std::string &)> evaluator);
 
+    /**
+     * @brief Enter a state along with all its ancestors up to a parent
+     *
+     * W3C SCXML 3.3: When initial attribute specifies deep descendants,
+     * all ancestor states must be entered from top to bottom.
+     * Properly handles parallel states in the ancestor chain.
+     *
+     * @param targetStateId Target state to enter
+     * @param stopAtParent Stop before entering this parent (exclusive)
+     * @return Success status
+     */
+    bool enterStateWithAncestors(const std::string &targetStateId, IStateNode *stopAtParent,
+                                 std::vector<std::string> *deferredOnEntryStates = nullptr);
+
 private:
     /**
      * @brief SCXML W3C: Specialized cleanup for parallel states
@@ -155,6 +169,16 @@ private:
      */
     void collectDescendantStates(const std::string &parentId, std::vector<std::string> &collector);
 
+    /**
+     * @brief W3C SCXML 3.3: Update parallel region currentState for deep initial targets
+     *
+     * When deep initial targets bypass default region initialization, we must synchronize
+     * each region's currentState with the actual active configuration. This function
+     * finds all active parallel states and updates their regions' currentState to match
+     * the deepest active descendant within each region.
+     */
+    void updateParallelRegionCurrentStates();
+
     std::shared_ptr<SCXMLModel> model_;
     std::vector<std::string> activeStates_;      // 활성 상태 리스트 (계층 순서)
     std::unordered_set<std::string> activeSet_;  // 빠른 검색용 세트
@@ -172,6 +196,16 @@ private:
      * @param stateId 추가할 상태 ID
      */
     void addStateToConfiguration(const std::string &stateId);
+
+    /**
+     * @brief 상태를 활성 구성에 추가 (onentry 콜백 없이)
+     *
+     * W3C SCXML: Deferred onentry execution을 위해 사용
+     * 상태를 configuration에만 추가하고 onentry는 호출하지 않음
+     *
+     * @param stateId 추가할 상태 ID
+     */
+    void addStateToConfigurationWithoutOnEntry(const std::string &stateId);
 
     /**
      * @brief 상태를 활성 구성에서 제거

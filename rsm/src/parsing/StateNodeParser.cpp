@@ -142,7 +142,7 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
                 auto initialAttr = stateElement->get_attribute("initial");
                 if (initialAttr) {
                     stateNode->setInitialState(initialAttr->get_value());
-                    LOG_DEBUG("Set initial state from attribute: {}", initialAttr->get_value());
+                    LOG_WARN("TEST364: State '{}' initial attribute='{}'", stateId, initialAttr->get_value());
                 } else if (!stateNode->getChildren().empty()) {
                     // 초기 상태가 지정되지 않은 경우 첫 번째 자식을 사용
                     stateNode->setInitialState(stateNode->getChildren().front()->getId());
@@ -383,10 +383,17 @@ void RSM::StateNodeParser::parseInitialElement(const xmlpp::Element *initialElem
             // IStateNode 인터페이스를 통해 직접 호출
             state->setInitialTransition(transition);
 
-            // initialState_ 설정 (첫 번째 target)
+            // initialState_ 설정 (W3C SCXML 3.3: space-separated targets for parallel regions)
             if (!transition->getTargets().empty()) {
-                state->setInitialState(transition->getTargets()[0]);
-                LOG_DEBUG("Initial state set to: {}", transition->getTargets()[0]);
+                std::string allTargets;
+                for (size_t i = 0; i < transition->getTargets().size(); ++i) {
+                    if (i > 0) {
+                        allTargets += " ";
+                    }
+                    allTargets += transition->getTargets()[i];
+                }
+                state->setInitialState(allTargets);
+                LOG_WARN("TEST364: State '{}' <initial> transition targets='{}'", state->getId(), allTargets);
             }
 
             LOG_DEBUG("Initial transition set for state: {}", state->getId());

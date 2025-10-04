@@ -9,6 +9,7 @@ namespace RSM {
 
 // Forward declarations
 class IConcurrentRegion;
+class IStateNode;
 class Event;
 
 /**
@@ -18,6 +19,13 @@ struct ConcurrentOperationResult {
     bool isSuccess = false;
     std::string errorMessage;
     std::string regionId;
+
+    // W3C SCXML 3.4: External transition discovered by region
+    // When a region finds a transition to a state outside the region,
+    // it returns this information so the parent StateMachine can handle it
+    std::string externalTransitionTarget;  // Empty if no external transition
+    std::string externalTransitionEvent;   // Event that triggered the external transition
+    std::string externalTransitionSource;  // Source state ID (safer than raw pointer)
 
     static ConcurrentOperationResult success(const std::string &regionId) {
         ConcurrentOperationResult result;
@@ -31,6 +39,18 @@ struct ConcurrentOperationResult {
         result.isSuccess = false;
         result.regionId = regionId;
         result.errorMessage = error;
+        return result;
+    }
+
+    static ConcurrentOperationResult externalTransition(const std::string &regionId, const std::string &target,
+                                                        const std::string &event, const std::string &sourceStateId) {
+        ConcurrentOperationResult result;
+        result.isSuccess = false;  // Not success because region couldn't handle it
+        result.regionId = regionId;
+        result.externalTransitionTarget = target;
+        result.externalTransitionEvent = event;
+        result.externalTransitionSource = sourceStateId;
+        result.errorMessage = "External transition - parent must handle";
         return result;
     }
 };

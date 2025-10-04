@@ -137,6 +137,16 @@ public:
     const std::string &getCurrentState() const;
 
     /**
+     * @brief Directly set current state (for W3C SCXML 3.3 deep initial targets)
+     *
+     * Used when deep initial targets bypass normal region initialization.
+     * Updates region's currentState to match the actual active configuration.
+     *
+     * @param stateId The state ID to set as current
+     */
+    void setCurrentState(const std::string &stateId);
+
+    /**
      * @brief Check if region is in error state
      * @return true if region has encountered an error
      */
@@ -184,6 +194,20 @@ public:
      */
     void setConditionEvaluator(std::function<bool(const std::string &)> evaluator);
 
+    /**
+     * @brief Set desired initial child state from parent's initial attribute (W3C SCXML 3.3)
+     *
+     * When a parent compound state specifies deep initial targets (e.g., initial="s11p112 s11p122"),
+     * this method sets the target state for this region, overriding the region's default initial state.
+     *
+     * This implements W3C SCXML Appendix D algorithm:
+     * "if not statesToEnter.some(lambda s: isDescendant(s, child)):
+     *     addDescendantStatesToEnter(child, ...)"
+     *
+     * @param childStateId The desired initial child state ID for this region
+     */
+    void setDesiredInitialChild(const std::string &childStateId);
+
 private:
     // Core state
     std::string id_;
@@ -205,6 +229,11 @@ private:
 
     // W3C SCXML: Condition evaluation callback for transition guard evaluation (dependency inversion)
     std::function<bool(const std::string &)> conditionEvaluator_;
+
+    // W3C SCXML 3.3: Desired initial child from parent state's initial attribute
+    // Used when parent compound state specifies deep initial targets (e.g., initial="s11p112 s11p122")
+    // This overrides the region's own default initial state
+    std::string desiredInitialChild_;
 
     // Private methods for internal state management
 

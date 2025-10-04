@@ -135,20 +135,17 @@ bool RSM::StateHierarchy::validateRelationships() const {
             }
         }
 
-        // Check if initial state exists
+        // W3C SCXML 3.3: Check if initial state(s) exist - supports space-separated list
         if (!state->getInitialState().empty()) {
-            bool initialStateExists = false;
-            for (const auto &child : state->getChildren()) {
-                if (child->getId() == state->getInitialState()) {
-                    initialStateExists = true;
-                    break;
-                }
-            }
+            std::istringstream iss(state->getInitialState());
+            std::string initialStateId;
 
-            if (!initialStateExists && !state->getChildren().empty()) {
-                LOG_ERROR("State '{}' references non-existent initial state '{}'", state->getId(),
-                          state->getInitialState());
-                return false;
+            while (iss >> initialStateId) {
+                // Search in entire state hierarchy (not just direct children)
+                if (!findStateById(initialStateId)) {
+                    LOG_ERROR("State '{}' references non-existent initial state '{}'", state->getId(), initialStateId);
+                    return false;
+                }
             }
         }
     }

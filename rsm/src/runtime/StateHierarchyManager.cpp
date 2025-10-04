@@ -95,13 +95,18 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
             const auto &children = rootState->getChildren();
             if (!children.empty()) {
                 std::string initialChild = rootState->getInitialState();
+                LOG_WARN("TEST364: Parallel state '{}' region '{}' rootState initialState='{}'", stateId, regionStateId,
+                         initialChild);
                 if (initialChild.empty()) {
                     // SCXML W3C: Use first child as default initial state
                     initialChild = children[0]->getId();
+                    LOG_WARN("TEST364: Parallel state '{}' region '{}' using first child fallback: '{}'", stateId,
+                             regionStateId, initialChild);
                 }
 
                 addStateToConfiguration(initialChild);
-                LOG_DEBUG("enterState - Added initial child state to configuration: {}", initialChild);
+                LOG_WARN("TEST364: Parallel state '{}' region '{}' added initial child to configuration: '{}'", stateId,
+                         regionStateId, initialChild);
 
                 // W3C SCXML 6.4: Invoke defer is handled by ConcurrentRegion via callback
                 // No need to defer here - Region already processes invokes in enterInitialState()
@@ -121,12 +126,85 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
             invokeDeferCallback_(stateId, invokes);
         }
 
-        // Only for non-parallel compound states: enter initial child state
-        std::string initialChild = findInitialChildState(stateNode);
-        if (!initialChild.empty()) {
-            LOG_DEBUG("enterState - Compound state: {} entering initial child: {}", stateId, initialChild);
-            // 재귀적으로 자식 상태 진입 (this will add child to active configuration)
-            return enterState(initialChild);
+        // W3C SCXML 3.3: Enter initial child state(s) - supports space-separated list for deep targets
+        std::string initialChildren = findInitialChildState(stateNode);
+        if (!initialChildren.empty()) {
+            // W3C SCXML 3.3: Pre-process deep initial targets to set desired initial children for parallel regions
+            // This implements the algorithm: if descendant already in statesToEnter, skip default entry
+            std::istringstream issPreprocess(initialChildren);
+            std::string targetId;
+            while (issPreprocess >> targetId) {
+                auto targetState = model_->findStateById(targetId);
+                if (!targetState) {
+                    LOG_ERROR("enterState - Initial target state not found: {}", targetId);
+                    continue;
+                }
+
+                // Traverse ancestors to find parallel regions
+                IStateNode *current = targetState->getParent();
+                while (current && current != stateNode) {
+                    // Check if current's parent is a parallel state
+                    if (current->getParent() && current->getParent()->getType() == Type::PARALLEL) {
+                        // current is a region root (direct child of parallel)
+                        auto parallelState = dynamic_cast<ConcurrentStateNode *>(current->getParent());
+                        if (parallelState) {
+                            // Find the region corresponding to current
+                            const auto &regions = parallelState->getRegions();
+                            for (const auto &region : regions) {
+                                if (region && region->getRootState() &&
+                                    region->getRootState()->getId() == current->getId()) {
+                                    // Found the region - set desired initial child
+                                    region->setDesiredInitialChild(targetId);
+                                    LOG_WARN("TEST364: Set region '{}' desiredInitialChild='{}' from parent state '{}' "
+                                             "initial attribute",
+                                             region->getId(), targetId, stateId);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    current = current->getParent();
+                }
+            }
+
+            // Parse space-separated initial state list
+            std::istringstream iss(initialChildren);
+            std::string initialChild;
+            bool allEntered = true;
+            std::vector<std::string> statesForDeferredOnEntry;
+
+            while (iss >> initialChild) {
+                LOG_DEBUG("enterState - Compound state: {} entering initial child: {}", stateId, initialChild);
+
+                // W3C SCXML 3.3: For deep initial targets (not direct children), enter all ancestors
+                auto childState = model_->findStateById(initialChild);
+                if (childState && childState->getParent() != stateNode) {
+                    // Deep target - need to enter intermediate ancestors
+                    LOG_DEBUG("enterState - Deep initial target detected, entering ancestors for: {}", initialChild);
+                    if (!enterStateWithAncestors(initialChild, stateNode, &statesForDeferredOnEntry)) {
+                        LOG_ERROR("enterState - Failed to enter ancestors for: {}", initialChild);
+                        allEntered = false;
+                    }
+                } else {
+                    // Direct child - use normal recursive entry
+                    if (!enterState(initialChild)) {
+                        LOG_ERROR("enterState - Failed to enter initial child: {}", initialChild);
+                        allEntered = false;
+                    }
+                }
+            }
+
+            // W3C SCXML 3.3: Update ALL active parallel states' regions' currentState for deep initial targets
+            updateParallelRegionCurrentStates();
+
+            // W3C SCXML: Execute ALL deferred onentry callbacks after ALL children are entered
+            for (const auto &stateId : statesForDeferredOnEntry) {
+                if (onEntryCallback_) {
+                    onEntryCallback_(stateId);
+                }
+            }
+
+            return allEntered;
         } else {
             LOG_WARN("enterState - No initial child found for compound state: {}", stateId);
         }
@@ -462,6 +540,151 @@ void StateHierarchyManager::addStateToConfiguration(const std::string &stateId) 
     }
     stateOrder += "]";
     LOG_DEBUG("addStateToConfiguration - {}", stateOrder);
+    LOG_WARN("TEST364: Configuration updated - {}", stateOrder);
+}
+
+void StateHierarchyManager::addStateToConfigurationWithoutOnEntry(const std::string &stateId) {
+    if (stateId.empty() || activeSet_.find(stateId) != activeSet_.end()) {
+        return;  // Already active or empty ID
+    }
+
+    activeStates_.push_back(stateId);
+    activeSet_.insert(stateId);
+
+    // Check state type for debugging
+    std::string typeInfo = "unknown";
+    if (model_) {
+        auto stateNode = model_->findStateById(stateId);
+        if (stateNode) {
+            auto stateType = stateNode->getType();
+            typeInfo = std::to_string(static_cast<int>(stateType));
+            if (stateType == Type::PARALLEL) {
+                typeInfo += "(PARALLEL)";
+            } else if (stateType == Type::FINAL) {
+                typeInfo += "(FINAL)";
+            } else if (stateType == Type::COMPOUND) {
+                typeInfo += "(COMPOUND)";
+            } else if (stateType == Type::ATOMIC) {
+                typeInfo += "(ATOMIC)";
+            }
+        }
+    }
+
+    LOG_DEBUG("addStateToConfigurationWithoutOnEntry - Added: {} type={} (total active: {})", stateId, typeInfo,
+              activeStates_.size());
+}
+
+bool StateHierarchyManager::enterStateWithAncestors(const std::string &targetStateId, IStateNode *stopAtParent,
+                                                    std::vector<std::string> *deferredOnEntryStates) {
+    if (targetStateId.empty()) {
+        return false;
+    }
+
+    auto targetState = model_->findStateById(targetStateId);
+    if (!targetState) {
+        LOG_ERROR("enterStateWithAncestors - Target state not found: {}", targetStateId);
+        return false;
+    }
+
+    // W3C SCXML 3.3: Build ancestor chain from target up to (but not including) stopAtParent
+    std::vector<IStateNode *> ancestorsToEnter;
+    IStateNode *current = targetState;
+
+    while (current && current != stopAtParent) {
+        ancestorsToEnter.push_back(current);
+        current = current->getParent();
+    }
+
+    // W3C SCXML: Collect states for deferred onentry execution
+    // This prevents raised events from being processed before all states are entered
+    std::vector<std::string> localStatesForOnEntry;
+    std::vector<std::string> *statesForOnEntry = deferredOnEntryStates ? deferredOnEntryStates : &localStatesForOnEntry;
+
+    // Enter ancestors from top to bottom (parent before child)
+    for (auto it = ancestorsToEnter.rbegin(); it != ancestorsToEnter.rend(); ++it) {
+        IStateNode *stateToEnter = *it;
+        std::string stateId = stateToEnter->getId();
+
+        // Skip if already active
+        if (isStateActive(stateId)) {
+            LOG_DEBUG("enterStateWithAncestors - State already active, skipping: {}", stateId);
+            continue;
+        }
+
+        // W3C SCXML 3.3: Handle parallel states specially - need to activate regions
+        Type stateType = stateToEnter->getType();
+        if (stateType == Type::PARALLEL) {
+            // Add parallel state to configuration without onentry
+            addStateToConfigurationWithoutOnEntry(stateId);
+            LOG_DEBUG("enterStateWithAncestors - Entered parallel ancestor: {}", stateId);
+
+            // W3C SCXML 3.4: Activate parallel state regions
+            // This is essential for event processing to work correctly
+            auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateToEnter);
+            assert(parallelState && "SCXML violation: PARALLEL type state must be ConcurrentStateNode");
+
+            // Set callbacks for regions before activation
+            const auto &regions = parallelState->getRegions();
+            if (invokeDeferCallback_) {
+                for (const auto &region : regions) {
+                    if (region) {
+                        region->setInvokeCallback(invokeDeferCallback_);
+                    }
+                }
+            }
+            if (conditionEvaluator_) {
+                for (const auto &region : regions) {
+                    if (region) {
+                        region->setConditionEvaluator(conditionEvaluator_);
+                    }
+                }
+            }
+
+            // Activate regions (but don't enter initial states - deep targets will handle that)
+            auto result = parallelState->enterParallelState();
+            if (!result.isSuccess) {
+                LOG_ERROR("enterStateWithAncestors - Failed to activate parallel state regions: {}", stateId);
+                return false;
+            }
+
+            // W3C SCXML: Defer onentry execution
+            statesForOnEntry->push_back(stateId);
+        } else {
+            // For non-parallel states, just add to configuration
+            addStateToConfigurationWithoutOnEntry(stateId);
+            LOG_DEBUG("enterStateWithAncestors - Entered ancestor/target: {}", stateId);
+
+            // W3C SCXML: Defer onentry execution
+            statesForOnEntry->push_back(stateId);
+
+            // W3C SCXML 6.4: Defer invoke execution for compound/atomic/final states
+            if (stateType == Type::COMPOUND || stateType == Type::ATOMIC || stateType == Type::FINAL) {
+                const auto &invokes = stateToEnter->getInvoke();
+                if (!invokes.empty() && invokeDeferCallback_) {
+                    LOG_DEBUG("enterStateWithAncestors: Deferring {} invokes for {} state: {}", invokes.size(),
+                              stateType == Type::COMPOUND ? "compound"
+                                                          : (stateType == Type::ATOMIC ? "atomic" : "final"),
+                              stateId);
+                    invokeDeferCallback_(stateId, invokes);
+                }
+            }
+        }
+    }
+
+    // W3C SCXML 3.3: Update ALL active parallel states' regions' currentState for deep initial targets
+    updateParallelRegionCurrentStates();
+
+    // W3C SCXML: Execute onentry actions AFTER all states are entered (only if not deferring to caller)
+    // This ensures raised events are processed only when all states are in configuration
+    if (!deferredOnEntryStates) {
+        for (const auto &stateId : localStatesForOnEntry) {
+            if (onEntryCallback_) {
+                onEntryCallback_(stateId);
+            }
+        }
+    }
+
+    return true;
 }
 
 void StateHierarchyManager::removeStateFromConfiguration(const std::string &stateId) {
@@ -529,6 +752,99 @@ void StateHierarchyManager::setInvokeDeferCallback(
 void StateHierarchyManager::setConditionEvaluator(std::function<bool(const std::string &)> evaluator) {
     conditionEvaluator_ = evaluator;
     LOG_DEBUG("StateHierarchyManager: Condition evaluator callback set for W3C SCXML transition guard compliance");
+}
+
+void StateHierarchyManager::updateParallelRegionCurrentStates() {
+    // W3C SCXML 3.3: Update parallel region currentState for deep initial targets
+    // When deep targets bypass normal region initialization, we must sync region state
+    //
+    // Performance optimization: Single-pass algorithm O(n*depth) instead of O(n²*depth)
+    // We traverse active states once, building a map of region -> deepest state
+
+    if (!model_) {
+        return;
+    }
+
+    // Map: region ID -> deepest active state ID within that region
+    std::unordered_map<std::string, std::string> regionDeepestState;
+
+    // Single pass through active states (reverse order to find deepest first)
+    for (auto it = activeStates_.rbegin(); it != activeStates_.rend(); ++it) {
+        const std::string &stateId = *it;
+        auto stateNode = model_->findStateById(stateId);
+        if (!stateNode) {
+            continue;
+        }
+
+        // Walk up the parent chain to find which region(s) this state belongs to
+        IStateNode *current = stateNode;
+        while (current) {
+            IStateNode *parent = current->getParent();
+            if (!parent) {
+                break;
+            }
+
+            // Check if parent is a parallel state
+            if (parent->getType() == Type::PARALLEL) {
+                auto parallelState = dynamic_cast<ConcurrentStateNode *>(parent);
+                if (parallelState) {
+                    // Find which region 'current' belongs to
+                    const auto &regions = parallelState->getRegions();
+                    for (const auto &region : regions) {
+                        if (region && region->getRootState()) {
+                            IStateNode *regionRoot = region->getRootState().get();
+
+                            // Check if stateNode is the region's root or is descended from it
+                            // Walk up from stateNode to see if we reach regionRoot
+                            bool isInRegion = false;
+                            IStateNode *check = stateNode;
+                            while (check) {
+                                if (check == regionRoot) {
+                                    isInRegion = true;
+                                    break;
+                                }
+                                check = check->getParent();
+                            }
+
+                            if (isInRegion) {
+                                const std::string &regionId = region->getId();
+                                // Only update if not already set (we're iterating deepest-first)
+                                if (regionDeepestState.find(regionId) == regionDeepestState.end()) {
+                                    regionDeepestState[regionId] = stateId;
+                                }
+                                break;  // Found the region, no need to check others
+                            }
+                        }
+                    }
+                }
+            }
+            current = parent;
+        }
+    }
+
+    // Now update all region currentStates based on collected data
+    for (const auto &activeStateId : activeStates_) {
+        auto activeStateNode = model_->findStateById(activeStateId);
+        if (activeStateNode && activeStateNode->getType() == Type::PARALLEL) {
+            auto parallelState = dynamic_cast<ConcurrentStateNode *>(activeStateNode);
+            if (parallelState) {
+                const auto &regions = parallelState->getRegions();
+                for (const auto &region : regions) {
+                    if (region) {
+                        const std::string &regionId = region->getId();
+                        auto it = regionDeepestState.find(regionId);
+                        if (it != regionDeepestState.end()) {
+                            const std::string &deepestState = it->second;
+                            if (deepestState != region->getCurrentState()) {
+                                region->setCurrentState(deepestState);
+                                LOG_DEBUG("Updated region {} currentState to deep target: {}", regionId, deepestState);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 }  // namespace RSM
