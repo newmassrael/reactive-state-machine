@@ -187,13 +187,18 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     // W3C SCXML 5.10: Check if there's an invoke ID from EventRaiser thread-local storage (test 338)
     std::string invokeId = EventRaiserImpl::getCurrentInvokeId();
 
+    // W3C SCXML 5.10: Check if there's an origin type from EventRaiser thread-local storage (test 253, 331, 352, 372)
+    std::string originType = EventRaiserImpl::getCurrentOriginType();
+
     // Delegate to overload with originSessionId (may be empty for non-invoke events)
-    return processEvent(eventName, eventData, originSessionId, sendId, invokeId);
+    return processEvent(eventName, eventData, originSessionId, sendId, invokeId, originType);
 }
 
 StateMachine::TransitionResult StateMachine::processEvent(const std::string &eventName, const std::string &eventData,
                                                           const std::string &originSessionId, const std::string &sendId,
-                                                          const std::string &invokeId) {
+                                                          const std::string &invokeId, const std::string &originType) {
+    // W3C SCXML 5.10: Get event type from EventRaiser thread-local storage (test 331)
+    std::string eventType = EventRaiserImpl::getCurrentEventType();
     if (!isRunning_) {
         LOG_WARN("StateMachine: Cannot process event - state machine not running");
         TransitionResult result;
@@ -217,15 +222,24 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     // Set event processing flag with RAII for exception safety
     struct ProcessingEventGuard {
         bool &flag_;
+        bool wasAlreadySet_;
 
-        explicit ProcessingEventGuard(bool &flag) : flag_(flag) {
-            LOG_DEBUG("ProcessingEventGuard: Setting isProcessingEvent_ = true");
-            flag_ = true;
+        explicit ProcessingEventGuard(bool &flag) : flag_(flag), wasAlreadySet_(flag) {
+            if (!wasAlreadySet_) {
+                LOG_DEBUG("ProcessingEventGuard: Setting isProcessingEvent_ = true");
+                flag_ = true;
+            } else {
+                LOG_DEBUG("ProcessingEventGuard: Already processing event (nested call)");
+            }
         }
 
         ~ProcessingEventGuard() {
-            LOG_DEBUG("ProcessingEventGuard: Setting isProcessingEvent_ = false");
-            flag_ = false;
+            if (!wasAlreadySet_) {
+                LOG_DEBUG("ProcessingEventGuard: Setting isProcessingEvent_ = false");
+                flag_ = false;
+            } else {
+                LOG_DEBUG("ProcessingEventGuard: Leaving isProcessingEvent_ = true (nested call)");
+            }
         }
 
         // Delete copy constructor and assignment
@@ -245,12 +259,12 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     if (actionExecutor_) {
         auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
         if (actionExecutorImpl) {
-            // W3C SCXML 5.10: Pass sendId and/or invokeId to ActionExecutor
-            if (!sendId.empty() || !invokeId.empty()) {
-                actionExecutorImpl->setCurrentEvent(eventName, eventData, sendId, invokeId);
+            // W3C SCXML 5.10: Pass sendId, invokeId, originType, and eventType to ActionExecutor
+            if (!sendId.empty() || !invokeId.empty() || !originType.empty() || !eventType.empty()) {
+                actionExecutorImpl->setCurrentEvent(eventName, eventData, sendId, invokeId, originType, eventType);
                 LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}', sendid: '{}', "
-                          "invokeid: '{}'",
-                          eventName, eventData, sendId, invokeId);
+                          "invokeid: '{}', origintype: '{}', type: '{}'",
+                          eventName, eventData, sendId, invokeId, originType, eventType);
             } else {
                 actionExecutorImpl->setCurrentEvent(eventName, eventData);
                 LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,
@@ -1044,48 +1058,51 @@ bool StateMachine::evaluateCondition(const std::string &condition) {
 bool StateMachine::enterState(const std::string &stateId) {
     LOG_DEBUG("Entering state: {}", stateId);
 
-    // Guard against invalid reentrant calls, but allow legitimate done.state event processing
-    if (isEnteringState_ && !isProcessingEvent_) {
-        LOG_DEBUG(
-            "Invalid reentrant enterState call detected (isEnteringState_={}, isProcessingEvent_={}), ignoring: {}",
-            isEnteringState_, isProcessingEvent_, stateId);
-        return true;  // Return success to avoid breaking the transition chain
-    }
+    // RAII guard against invalid reentrant calls
+    // Automatically handles legitimate reentrant calls during event processing
+    EnterStateGuard guard(isEnteringState_, isProcessingEvent_);
 
-    // Allow reentrant calls during event processing (done.state events are legitimate)
-    if (isEnteringState_ && isProcessingEvent_) {
-        LOG_DEBUG("Legitimate reentrant enterState call during event processing (isEnteringState_={}, "
-                  "isProcessingEvent_={}): {}",
-                  isEnteringState_, isProcessingEvent_, stateId);
+    // Early return for invalid reentrant calls (matches original behavior)
+    if (guard.isInvalidCall()) {
+        LOG_DEBUG("Invalid reentrant enterState call detected, ignoring: {}", stateId);
+        return true;  // Return success to avoid breaking transition chain
     }
-
-    // Set guard flag
-    isEnteringState_ = true;
 
     // Check if this is a history state and handle restoration (SCXML W3C specification section 3.6)
     if (historyManager_ && historyManager_->isHistoryState(stateId)) {
         LOG_INFO("Entering history state: {}", stateId);
 
+        // W3C SCXML 3.10: Restore history configuration and enter target states with ancestors
         auto restorationResult = historyManager_->restoreHistory(stateId);
         if (restorationResult.success && !restorationResult.targetStateIds.empty()) {
             LOG_INFO("History restoration successful, entering {} target states",
                      restorationResult.targetStateIds.size());
 
+            // Release guard before entering target states (allows recursive enterState calls)
+            guard.release();
+
             // Enter all target states from history restoration
+            // Use enterStateWithAncestors to ensure parent states are entered (test 387)
             bool allSucceeded = true;
             for (const auto &targetStateId : restorationResult.targetStateIds) {
-                if (!enterState(targetStateId)) {
-                    LOG_ERROR("Failed to enter restored target state: {}", targetStateId);
-                    allSucceeded = false;
+                if (hierarchyManager_) {
+                    // Enter target state along with all its ancestors
+                    if (!hierarchyManager_->enterStateWithAncestors(targetStateId, nullptr)) {
+                        LOG_ERROR("Failed to enter restored target state with ancestors: {}", targetStateId);
+                        allSucceeded = false;
+                    }
+                } else {
+                    // Fallback: use regular enterState if hierarchyManager not available
+                    if (!enterState(targetStateId)) {
+                        LOG_ERROR("Failed to enter restored target state: {}", targetStateId);
+                        allSucceeded = false;
+                    }
                 }
             }
-            // Clear guard flag before returning
-            isEnteringState_ = false;
             return allSucceeded;
         } else {
             LOG_ERROR("History restoration failed: {}", restorationResult.errorMessage);
-            // Clear guard flag before returning
-            isEnteringState_ = false;
+            // Guard will auto-clear on scope exit
             return false;
         }
     }
@@ -1159,14 +1176,31 @@ bool StateMachine::enterState(const std::string &stateId) {
     }
 
     // SCXML W3C macrostep compliance: Check if reentrant transition occurred during state entry
-    // This handles cases where done.state events cause immediate transitions (e.g., parallel state completion)
+    // This handles cases where onentry actions cause immediate transitions
     std::string actualCurrentState = getCurrentState();
     LOG_DEBUG("StateMachine: After entering '{}', getCurrentState() returns '{}'", stateId, actualCurrentState);
     if (actualCurrentState != stateId) {
         LOG_DEBUG("SCXML macrostep: State transition occurred during entry (expected: {}, actual: {})", stateId,
                   actualCurrentState);
-        LOG_DEBUG("This indicates a valid internal transition (e.g., done.state event) - macrostep continuing");
-        // Note: Configuration changed during entry, will check eventless transitions on actual configuration below
+        LOG_DEBUG("This indicates a valid internal transition (e.g., compound state entering initial child) - must "
+                  "check eventless");
+
+        // W3C SCXML 3.7: Check if actualCurrentState is a final state and generate done.state event
+        // This handles compound states with initial attribute pointing to final child (test 372)
+        if (model_) {
+            auto currentStateNode = model_->findStateById(actualCurrentState);
+            if (currentStateNode && currentStateNode->isFinalState()) {
+                LOG_DEBUG("W3C SCXML 3.7: Current state '{}' is final, generating done.state event before early return",
+                          actualCurrentState);
+                handleCompoundStateFinalChild(actualCurrentState);
+            }
+        }
+
+        // IMPORTANT: Release guard before checking eventless transitions
+        guard.release();
+        // W3C SCXML: Check eventless transitions even on early return (initial child may have eventless transitions)
+        checkEventlessTransitions();
+        return true;
     }
 
     // W3C SCXML: onentry actions (including invokes) are executed via callback from StateHierarchyManager
@@ -1239,8 +1273,8 @@ bool StateMachine::enterState(const std::string &stateId) {
         }
     }
 
-    // Clear guard flag before checking automatic transitions
-    isEnteringState_ = false;
+    // Release guard - state entry complete
+    guard.release();
 
     // W3C SCXML: Check for eventless transitions after state entry
     checkEventlessTransitions();
@@ -1404,9 +1438,14 @@ bool StateMachine::setupJSEnvironment() {
         LOG_DEBUG("StateMachine: Using existing JavaScript session (injected): {}", sessionId_);
     }
 
-    // Set up basic variables
-    RSM::JSEngine::instance().setVariable(sessionId_, "_sessionid", ScriptValue{sessionId_});
-    RSM::JSEngine::instance().setVariable(sessionId_, "_name", ScriptValue{std::string("StateMachine")});
+    // W3C SCXML 5.10: Set up read-only system variables (_sessionid, _name, _ioprocessors)
+    std::string sessionName = model_ && !model_->getName().empty() ? model_->getName() : "StateMachine";
+    std::vector<std::string> ioProcessors = {"scxml"};  // W3C SCXML I/O Processors
+    auto setupResult = RSM::JSEngine::instance().setupSystemVariables(sessionId_, sessionName, ioProcessors).get();
+    if (!setupResult.isSuccess()) {
+        LOG_ERROR("StateMachine: Failed to setup system variables: {}", setupResult.getErrorMessage());
+        return false;
+    }
 
     // Register this StateMachine instance with JSEngine for In() function support
     RSM::JSEngine::instance().setStateMachine(this, sessionId_);

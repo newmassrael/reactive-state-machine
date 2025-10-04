@@ -215,7 +215,22 @@ JSResult JSEngine::setVariableInternal(const std::string &sessionId, const std::
 
     // Set the property
     int result = JS_SetPropertyStr(ctx, global, name.c_str(), qjsValue);
+
     if (result < 0) {
+        // W3C SCXML 5.10: Check if this is a read-only system variable error
+        ::JSValue exc = JS_GetException(ctx);
+        if (!JS_IsNull(exc)) {
+            // Get error message to check if it's a read-only error
+            const char *errStr = JS_ToCString(ctx, exc);
+            std::string errorMsg = errStr ? errStr : "Unknown error";
+            JS_FreeCString(ctx, errStr);
+            JS_FreeValue(ctx, exc);
+
+            SPDLOG_ERROR("JSEngine::setVariableInternal - Failed to set property '{}': {}", name, errorMsg);
+            JS_FreeValue(ctx, global);
+            return JSResult::createError("Failed to set variable " + name + ": " + errorMsg);
+        }
+
         SPDLOG_ERROR("JSEngine::setVariableInternal - Failed to set property '{}' in global object", name);
         JS_FreeValue(ctx, global);
         return JSResult::createError("Failed to set variable: " + name);
@@ -424,20 +439,94 @@ JSResult JSEngine::setupSystemVariablesInternal(const std::string &sessionId, co
     JSContext *ctx = session->jsContext;
     ::JSValue global = JS_GetGlobalObject(ctx);
 
-    // Set _sessionid
-    JS_SetPropertyStr(ctx, global, "_sessionid", JS_NewString(ctx, sessionId.c_str()));
+    // Register _queueErrorEvent function for error.execution raising from read-only property setters
+    ::JSValue queueErrorFunc = JS_NewCFunction(ctx, queueErrorEventWrapper, "_queueErrorEvent", 2);
+    JS_SetPropertyStr(ctx, global, "_queueErrorEvent", queueErrorFunc);
 
-    // Set _name
-    JS_SetPropertyStr(ctx, global, "_name", JS_NewString(ctx, sessionName.c_str()));
+    // W3C SCXML 5.10: System variables must be read-only and raise error.execution on modification attempts
+    // Use JavaScript code to define read-only properties with error handlers (tests 322, 326, 346)
 
-    // Set _ioprocessors
-    ::JSValue ioProcessorsArray = JS_NewArray(ctx);
+    // Prepare _ioprocessors array as JSON string for JavaScript
+    std::string ioProcessorsJson = "[";
     for (size_t i = 0; i < ioProcessors.size(); ++i) {
-        JS_SetPropertyUint32(ctx, ioProcessorsArray, static_cast<uint32_t>(i),
-                             JS_NewString(ctx, ioProcessors[i].c_str()));
+        if (i > 0) {
+            ioProcessorsJson += ",";
+        }
+        ioProcessorsJson += "\"" + ioProcessors[i] + "\"";
     }
-    JS_SetPropertyStr(ctx, global, "_ioprocessors", ioProcessorsArray);
+    ioProcessorsJson += "]";
 
+    std::string setupCode = R"(
+        (function() {
+            var sessionId = ')" +
+                            sessionId + R"(';
+
+            // Internal storage for system variable values
+            var __systemVars = {
+                sessionid: ')" +
+                            sessionId + R"(',
+                name: ')" + sessionName +
+                            R"(',
+                ioprocessors: )" +
+                            ioProcessorsJson + R"(
+            };
+
+            // W3C SCXML 5.10: Define read-only _sessionid with error.execution on write
+            Object.defineProperty(this, '_sessionid', {
+                get: function() { return __systemVars.sessionid; },
+                set: function(value) {
+                    console.log('RSM Error: Attempt to assign to read-only system variable _sessionid');
+                    _queueErrorEvent(sessionId, 'error.execution');
+                    throw new Error('Cannot assign to read-only system variable _sessionid');
+                },
+                enumerable: true,
+                configurable: false
+            });
+
+            // W3C SCXML 5.10: Define read-only _name with error.execution on write
+            Object.defineProperty(this, '_name', {
+                get: function() { return __systemVars.name; },
+                set: function(value) {
+                    console.log('RSM Error: Attempt to assign to read-only system variable _name');
+                    _queueErrorEvent(sessionId, 'error.execution');
+                    throw new Error('Cannot assign to read-only system variable _name');
+                },
+                enumerable: true,
+                configurable: false
+            });
+
+            // W3C SCXML 5.10: Define read-only _ioprocessors with error.execution on write
+            Object.defineProperty(this, '_ioprocessors', {
+                get: function() { return __systemVars.ioprocessors; },
+                set: function(value) {
+                    console.log('RSM Error: Attempt to assign to read-only system variable _ioprocessors');
+                    _queueErrorEvent(sessionId, 'error.execution');
+                    throw new Error('Cannot assign to read-only system variable _ioprocessors');
+                },
+                enumerable: true,
+                configurable: false
+            });
+
+            return true;
+        })();
+    )";
+
+    ::JSValue result =
+        JS_Eval(ctx, setupCode.c_str(), setupCode.length(), "<system_variables_setup>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(result)) {
+        LOG_ERROR("JSEngine: Failed to setup read-only system variables");
+        ::JSValue exception = JS_GetException(ctx);
+        const char *errorStr = JS_ToCString(ctx, exception);
+        if (errorStr) {
+            LOG_ERROR("JSEngine: System variables setup error: {}", errorStr);
+            JS_FreeCString(ctx, errorStr);
+        }
+        JS_FreeValue(ctx, exception);
+        JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, global);
+        return JSResult::createError("Failed to setup read-only system variables");
+    }
+    JS_FreeValue(ctx, result);
     JS_FreeValue(ctx, global);
 
     // Store in session

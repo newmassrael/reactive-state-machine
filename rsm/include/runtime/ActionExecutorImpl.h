@@ -92,6 +92,29 @@ public:
                          const std::string &invokeId);
 
     /**
+     * @brief Set current event data with full metadata for W3C SCXML 5.10 compliance
+     * @param eventName Current event name
+     * @param eventData Current event data as JSON string
+     * @param sendId Send ID from failed send element (for error events)
+     * @param invokeId Invoke ID from invoked child process (for event.invokeid)
+     * @param originType Origin event processor type (for event.origintype)
+     */
+    void setCurrentEvent(const std::string &eventName, const std::string &eventData, const std::string &sendId,
+                         const std::string &invokeId, const std::string &originType);
+
+    /**
+     * @brief Set current event data with complete metadata including event type for W3C SCXML 5.10 compliance
+     * @param eventName Current event name
+     * @param eventData Current event data as JSON string
+     * @param sendId Send ID from failed send element (for error events)
+     * @param invokeId Invoke ID from invoked child process (for event.invokeid)
+     * @param originType Origin event processor type (for event.origintype)
+     * @param eventType Event type ("internal", "platform", or "external")
+     */
+    void setCurrentEvent(const std::string &eventName, const std::string &eventData, const std::string &sendId,
+                         const std::string &invokeId, const std::string &originType, const std::string &eventType);
+
+    /**
      * @brief Clear current event data
      */
     void clearCurrentEvent();
@@ -108,20 +131,14 @@ public:
      */
     void setEventDispatcher(std::shared_ptr<IEventDispatcher> eventDispatcher);
 
-    /**
-     * @brief DEPRECATED: Check if a string is an expression that needs JavaScript evaluation
-     * This method is kept for backward compatibility but is no longer used in the main evaluation path.
-     * @param value String to check
-     * @return true if value contains expressions that need evaluation
-     */
-    bool isExpression(const std::string &value) const;
-
 private:
     std::string sessionId_;
     std::string currentEventName_;
     std::string currentEventData_;
-    std::string currentSendId_;    // W3C SCXML 5.10: sendid from failed send element (for error events)
-    std::string currentInvokeId_;  // W3C SCXML 5.10: invokeid from invoked child process (test 338)
+    std::string currentEventType_;   // W3C SCXML 5.10: event type ("internal", "platform", "external")
+    std::string currentSendId_;      // W3C SCXML 5.10: sendid from failed send element (for error events)
+    std::string currentInvokeId_;    // W3C SCXML 5.10: invokeid from invoked child process (test 338)
+    std::string currentOriginType_;  // W3C SCXML 5.10: origintype from event processor (test 253, 331, 352, 372)
     std::shared_ptr<IEventDispatcher> eventDispatcher_;
     std::shared_ptr<IEventRaiser> eventRaiser_;
 
@@ -159,27 +176,6 @@ private:
      * @return true if JavaScript evaluation succeeded, false if fallback needed
      */
     bool tryJavaScriptEvaluation(const std::string &expression, std::string &result) const;
-
-    /**
-     * @brief DEPRECATED: Fast check for obvious literal values
-     * @param value String to check
-     * @return true if value is obviously a literal (no JS evaluation needed)
-     */
-    bool isObviousLiteral(const std::string &value) const;
-
-    /**
-     * @brief DEPRECATED: Fast check for obvious expressions
-     * @param value String to check
-     * @return true if value is obviously an expression (needs JS evaluation)
-     */
-    bool isObviousExpression(const std::string &value) const;
-
-    /**
-     * @brief DEPRECATED: Validate expression using JSEngine with caching
-     * @param value String to validate
-     * @return true if value is a valid JavaScript expression
-     */
-    bool validateWithJSEngine(const std::string &value) const;
 
     /**
      * @brief Handle JavaScript execution errors

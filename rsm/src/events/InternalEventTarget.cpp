@@ -49,18 +49,24 @@ std::future<SendResult> InternalEventTarget::send(const EventDescriptor &event) 
         auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
         bool queueSuccess = false;
 
+        // W3C SCXML 5.10: Pass origintype from EventDescriptor (test 253, 331, 352, 372)
+        std::string originType = event.type.empty() ? "http://www.w3.org/TR/scxml/#SCXMLEventProcessor" : event.type;
+
         if (eventRaiserImpl) {
-            // Use priority-aware method for W3C SCXML compliance
+            // Use priority-aware method with sendid and origintype for W3C SCXML compliance (test 351)
             auto priority =
                 isExternal_ ? EventRaiserImpl::EventPriority::EXTERNAL : EventRaiserImpl::EventPriority::INTERNAL;
-            LOG_DEBUG("InternalEventTarget::send() - Calling raiseEventWithPriority('{}', '{}', {})", eventName,
-                      eventData, (isExternal_ ? "EXTERNAL" : "INTERNAL"));
-            queueSuccess = eventRaiserImpl->raiseEventWithPriority(eventName, eventData, priority);
+            LOG_DEBUG("InternalEventTarget::send() - Calling raiseEventWithPriority('{}', '{}', {}, sendid='{}', "
+                      "origintype='{}')",
+                      eventName, eventData, (isExternal_ ? "EXTERNAL" : "INTERNAL"), event.sendId, originType);
+            queueSuccess = eventRaiserImpl->raiseEventWithPriority(eventName, eventData, priority, "", event.sendId, "",
+                                                                   originType);
         } else {
-            // Fallback to standard method for compatibility
-            LOG_DEBUG("InternalEventTarget::send() - Calling eventRaiser_->raiseEvent('{}', '{}')", eventName,
-                      eventData);
-            queueSuccess = eventRaiser_->raiseEvent(eventName, eventData);
+            // Fallback: Use new 5-parameter raiseEvent with origintype
+            LOG_DEBUG("InternalEventTarget::send() - Calling eventRaiser_->raiseEvent('{}', '{}', sendid='{}', "
+                      "origintype='{}')",
+                      eventName, eventData, event.sendId, originType);
+            queueSuccess = eventRaiser_->raiseEvent(eventName, eventData, event.sendId, false);
         }
 
         LOG_DEBUG("InternalEventTarget::send() - raiseEvent result: {}", queueSuccess);

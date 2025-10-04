@@ -110,7 +110,7 @@ public:
      */
     TransitionResult processEvent(const std::string &eventName, const std::string &eventData,
                                   const std::string &originSessionId, const std::string &sendId = "",
-                                  const std::string &invokeId = "");
+                                  const std::string &invokeId = "", const std::string &originType = "");
 
     /**
      * @brief Get current state ID
@@ -247,6 +247,64 @@ public:
     std::shared_ptr<IEventDispatcher> getEventDispatcher() const;
 
 private:
+    /**
+     * @brief RAII guard for preventing invalid reentrant state entry calls
+     *
+     * Automatically manages isEnteringState_ flag with exception safety.
+     * Throws std::runtime_error if reentrant call detected.
+     */
+    class EnterStateGuard {
+    public:
+        EnterStateGuard(bool &enteringFlag, bool &processingEventFlag)
+            : enteringFlag_(enteringFlag), processingEventFlag_(processingEventFlag), shouldManage_(true),
+              isInvalid_(false) {
+            // Invalid reentrant call if already entering and not processing event
+            if (enteringFlag_ && !processingEventFlag_) {
+                // Don't manage flag, mark as invalid, but don't throw
+                // This matches original behavior: return true silently
+                shouldManage_ = false;
+                isInvalid_ = true;
+                return;
+            }
+
+            // Legitimate reentrant call during event processing - allow but don't re-set flag
+            if (enteringFlag_ && processingEventFlag_) {
+                shouldManage_ = false;  // Don't manage flag, it's already true
+            } else {
+                enteringFlag_ = true;  // First entry, set flag
+            }
+        }
+
+        ~EnterStateGuard() {
+            if (shouldManage_) {
+                enteringFlag_ = false;
+            }
+        }
+
+        bool isInvalidCall() const {
+            return isInvalid_;
+        }
+
+        // Manually release the guard before destructor
+        // Used before checkEventlessTransitions() to allow legitimate recursive calls
+        void release() {
+            if (shouldManage_) {
+                enteringFlag_ = false;
+                shouldManage_ = false;
+            }
+        }
+
+        // Prevent copying
+        EnterStateGuard(const EnterStateGuard &) = delete;
+        EnterStateGuard &operator=(const EnterStateGuard &) = delete;
+
+    private:
+        bool &enteringFlag_;
+        bool &processingEventFlag_;
+        bool shouldManage_;
+        bool isInvalid_;
+    };
+
     // Core state - now delegated to StateHierarchyManager
     // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
     // Removed: std::vector<std::string> activeStates_ (use hierarchyManager_->getActiveStates())

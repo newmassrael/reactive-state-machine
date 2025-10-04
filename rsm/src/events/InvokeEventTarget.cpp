@@ -70,9 +70,13 @@ std::future<SendResult> InvokeEventTarget::send(const EventDescriptor &event) {
             eventData = JsonUtils::toCompactString(eventDataJson);
         }
 
-        // Raise event in child session's external queue (W3C SCXML compliance)
-        LOG_DEBUG("InvokeEventTarget::send() - Calling eventRaiser->raiseEvent('{}', '{}')", eventName, eventData);
-        bool raiseResult = eventRaiser->raiseEvent(eventName, eventData);
+        // W3C SCXML 5.10: Raise event with origin tracking and origintype (test 253)
+        // Origin is parent session, origintype is SCXML processor
+        std::string originType = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
+        LOG_DEBUG("InvokeEventTarget::send() - Calling eventRaiser->raiseEvent('{}', '{}', origin: '{}', invokeId: "
+                  "'{}', originType: '{}')",
+                  eventName, eventData, parentSessionId_, invokeId_, originType);
+        bool raiseResult = eventRaiser->raiseEvent(eventName, eventData, parentSessionId_, invokeId_, originType);
         LOG_DEBUG("InvokeEventTarget::send() - eventRaiser->raiseEvent() returned: {}", raiseResult);
 
         if (!raiseResult) {

@@ -108,6 +108,14 @@ const std::regex TXMLConverter::CONF_EVENT_EXPR_ATTR{R"def(conf:eventExpr="([^"]
 // <assign conf:location="X" conf:eventField="Y"/> converts to <assign location="varX" expr="_event.Y"/>
 const std::regex TXMLConverter::CONF_EVENTFIELD_ATTR{R"evf(conf:eventField="([^"]*)")evf", std::regex::optimize};
 
+// W3C SCXML 5.10: Event name access pattern (test 318)
+// <assign conf:location="X" conf:eventName=""/> converts to <assign location="varX" expr="_event.name"/>
+const std::regex TXMLConverter::CONF_EVENTNAME_ATTR{R"evn(conf:eventName="([^"]*)")evn", std::regex::optimize};
+
+// W3C SCXML 5.10: Event type access pattern (test 331)
+// <assign conf:location="X" conf:eventType=""/> converts to <assign location="varX" expr="_event.type"/>
+const std::regex TXMLConverter::CONF_EVENTTYPE_ATTR{R"evt(conf:eventType="([^"]*)")evt", std::regex::optimize};
+
 // Foreach element patterns
 const std::regex TXMLConverter::CONF_ITEM_ATTR{R"xyz(conf:item="([^"]*)")xyz", std::regex::optimize};
 
@@ -166,6 +174,26 @@ const std::regex TXMLConverter::CONF_SYSTEMVARISBOUND_ATTR{R"svb(conf:systemVarI
 // W3C SCXML 5.10: System variable expression pattern (test 321)
 // conf:systemVarExpr="_sessionid" converts to expr="_sessionid"
 const std::regex TXMLConverter::CONF_SYSTEMVAREXPR_ATTR{R"sve(conf:systemVarExpr="([^"]*)")sve", std::regex::optimize};
+
+// W3C SCXML 5.10: System variable location pattern (test 329)
+// conf:systemVarLocation="_sessionid" converts to location="_sessionid"
+const std::regex TXMLConverter::CONF_SYSTEMVARLOCATION_ATTR{R"svl(conf:systemVarLocation="([^"]*)")svl",
+                                                            std::regex::optimize};
+
+// W3C SCXML 5.10: Invalid session ID pattern (test 329)
+// conf:invalidSessionID="" converts to expr="'invalid_session_id'"
+const std::regex TXMLConverter::CONF_INVALIDSESSIONID_ATTR{R"isi(conf:invalidSessionID="([^"]*)")isi",
+                                                           std::regex::optimize};
+
+// W3C SCXML 5.10: System variable value comparison pattern (test 329)
+// conf:idSystemVarVal="1=_sessionid" converts to cond="var1 == _sessionid"
+const std::regex TXMLConverter::CONF_IDSYSTEMVARVAL_ATTR{R"isv(conf:idSystemVarVal="([0-9]+)=(_[^"]*)")isv",
+                                                         std::regex::optimize};
+
+// W3C SCXML 5.10: ID quote value comparison pattern (test 318)
+// conf:idQuoteVal="1=foo" converts to cond="var1 == 'foo'"
+const std::regex TXMLConverter::CONF_IDQUOTEVAL_ATTR{R"iqv(conf:idQuoteVal="([0-9]+)=([^"]*)")iqv",
+                                                     std::regex::optimize};
 
 // W3C SCXML 5.10: Send to sender pattern (test 336)
 // <conf:sendToSender name="bar"/> converts to <send event="bar" targetexpr="_event.origin"
@@ -268,6 +296,22 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // W3C SCXML 5.10: Convert system variable expression to expr attribute (test 321)
     // conf:systemVarExpr="_sessionid" -> expr="_sessionid"
     result = std::regex_replace(result, CONF_SYSTEMVAREXPR_ATTR, R"(expr="$1")");
+
+    // W3C SCXML 5.10: Convert system variable location to location attribute (test 329)
+    // conf:systemVarLocation="_sessionid" -> location="_sessionid"
+    result = std::regex_replace(result, CONF_SYSTEMVARLOCATION_ATTR, R"(location="$1")");
+
+    // W3C SCXML 5.10: Convert invalid session ID to invalid expr (test 329)
+    // conf:invalidSessionID="" -> expr="'invalid_session_id'"
+    result = std::regex_replace(result, CONF_INVALIDSESSIONID_ATTR, R"(expr="'invalid_session_id'")");
+
+    // W3C SCXML 5.10: Convert system variable value comparison (test 329)
+    // conf:idSystemVarVal="1=_sessionid" -> cond="var1 == _sessionid"
+    result = std::regex_replace(result, CONF_IDSYSTEMVARVAL_ATTR, R"(cond="var$1 == $2")");
+
+    // W3C SCXML 5.10: Convert ID quote value comparison (test 318)
+    // conf:idQuoteVal="1=foo" -> cond="var1 == 'foo'"
+    result = std::regex_replace(result, CONF_IDQUOTEVAL_ATTR, R"(cond="var$1 == '$2'")");
 
     // Convert event handling attributes
     result = std::regex_replace(result, CONF_EVENT_ATTR, R"(event="$1")");
@@ -375,6 +419,14 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // W3C SCXML 5.10: Convert event field access to _event expression (test 342)
     // conf:eventField="name" -> expr="_event.name"
     result = std::regex_replace(result, CONF_EVENTFIELD_ATTR, R"(expr="_event.$1")");
+
+    // W3C SCXML 5.10: Convert event name access to _event.name expression (test 318)
+    // conf:eventName="" -> expr="_event.name"
+    result = std::regex_replace(result, CONF_EVENTNAME_ATTR, R"(expr="_event.name")");
+
+    // W3C SCXML 5.10: Convert event type access to _event.type expression (test 331)
+    // conf:eventType="" -> expr="_event.type"
+    result = std::regex_replace(result, CONF_EVENTTYPE_ATTR, R"(expr="_event.type")");
 
     // Convert foreach element attributes with numeric variable name handling
     // JavaScript 호환성: 숫자 변수명은 var prefix 추가

@@ -13,6 +13,12 @@ thread_local std::string EventRaiserImpl::currentSendId_;
 // W3C SCXML 5.10: Thread-local storage for invoke ID from invoked child processes (test 338)
 thread_local std::string EventRaiserImpl::currentInvokeId_;
 
+// W3C SCXML 5.10: Thread-local storage for origin type from event processor (test 253, 331, 352, 372)
+thread_local std::string EventRaiserImpl::currentOriginType_;
+
+// W3C SCXML 5.10: Thread-local storage for event type ("internal", "platform", "external") (test 331)
+thread_local std::string EventRaiserImpl::currentEventType_;
+
 EventRaiserImpl::EventRaiserImpl(EventCallback callback)
     : eventCallback_(std::move(callback)), shutdownRequested_(false), isRunning_(false), immediateMode_(false) {
     LOG_DEBUG("EventRaiserImpl: Created with callback: {} (instance: {})", (eventCallback_ ? "set" : "none"),
@@ -85,12 +91,21 @@ bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string
 bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData,
                                  const std::string &originSessionId, const std::string &invokeId) {
     // W3C SCXML 5.10 test 338: Raise event with both origin and invoke ID tracking
-    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId, "", invokeId);
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId, "", invokeId, "");
+}
+
+bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData,
+                                 const std::string &originSessionId, const std::string &invokeId,
+                                 const std::string &originType) {
+    // W3C SCXML 5.10: Raise event with full metadata (origin, invoke ID, and origintype)
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId, "", invokeId,
+                                  originType);
 }
 
 bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const std::string &eventData,
                                              EventPriority priority, const std::string &originSessionId,
-                                             const std::string &sendId, const std::string &invokeId) {
+                                             const std::string &sendId, const std::string &invokeId,
+                                             const std::string &originType) {
     LOG_DEBUG("EventRaiserImpl::raiseEventWithPriority 호출 - 이벤트: '{}', 데이터: '{}', 우선순위: {}, EventRaiser "
               "인스턴스: {}",
               eventName, eventData, (priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), (void *)this);
@@ -123,12 +138,17 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
                 // W3C SCXML 5.10: Set thread-local invokeId before immediate callback execution (test 338)
                 currentInvokeId_ = invokeId;
 
+                // W3C SCXML 5.10: Set thread-local originType before immediate callback execution (test 253, 331, 352,
+                // 372)
+                currentOriginType_ = originType;
+
                 bool result = callback(eventName, eventData);
 
                 // Clear after callback
                 currentOriginSessionId_.clear();
                 currentSendId_.clear();
                 currentInvokeId_.clear();
+                currentOriginType_.clear();
 
                 return result;
             } catch (const std::exception &e) {
@@ -136,6 +156,7 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
                 currentOriginSessionId_.clear();  // Ensure cleanup on exception
                 currentSendId_.clear();
                 currentInvokeId_.clear();
+                currentOriginType_.clear();
                 return false;
             }
         } else {
@@ -148,7 +169,7 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
     // SCXML compliance: Use synchronous queue when immediate mode is disabled
     {
         std::lock_guard<std::mutex> lock(synchronousQueueMutex_);
-        synchronousQueue_.emplace(eventName, eventData, priority, originSessionId, sendId, invokeId);
+        synchronousQueue_.emplace(eventName, eventData, priority, originSessionId, sendId, invokeId, originType);
         LOG_DEBUG("EventRaiserImpl: [W3C193 DEBUG] Event '{}' queued with priority {} - queue size now: {}", eventName,
                   (priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), synchronousQueue_.size());
         LOG_DEBUG("EventRaiserImpl: Event '{}' queued for synchronous processing (SCXML compliance) with {} priority",
@@ -209,8 +230,20 @@ void EventRaiserImpl::processEvent(const QueuedEvent &event) {
     try {
         LOG_DEBUG("EventRaiserImpl: Processing event '{}' with data: {}", event.eventName, event.eventData);
 
+        // W3C SCXML 6.4 & 5.10: Set thread-local metadata before callback execution
+        currentOriginSessionId_ = event.originSessionId;
+        currentSendId_ = event.sendId;
+        currentInvokeId_ = event.invokeId;
+        currentOriginType_ = event.originType;
+
         // Execute the callback (this is where the actual event processing happens)
         bool result = callback(event.eventName, event.eventData);
+
+        // Clear thread-local metadata after callback
+        currentOriginSessionId_.clear();
+        currentSendId_.clear();
+        currentInvokeId_.clear();
+        currentOriginType_.clear();
 
         // SCXML "fire and forget": Log result but don't propagate failures
         // Event processing failures don't affect the async queue operation
@@ -218,6 +251,11 @@ void EventRaiserImpl::processEvent(const QueuedEvent &event) {
 
     } catch (const std::exception &e) {
         LOG_ERROR("EventRaiserImpl: Exception while processing event '{}': {}", event.eventName, e.what());
+        // Ensure cleanup on exception
+        currentOriginSessionId_.clear();
+        currentSendId_.clear();
+        currentInvokeId_.clear();
+        currentOriginType_.clear();
     }
 }
 
@@ -330,12 +368,27 @@ bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {
         // W3C SCXML 5.10: Store invokeId in thread-local for StateMachine to access (test 338)
         currentInvokeId_ = event.invokeId;
 
+        // W3C SCXML 5.10: Store originType in thread-local for StateMachine to access (test 253, 331, 352, 372)
+        currentOriginType_ = event.originType;
+
+        // W3C SCXML 5.10: Store event type in thread-local for StateMachine to access (test 331)
+        // Event type is "platform" for error/done events, otherwise based on priority
+        if (event.eventName.find("error.") == 0 || event.eventName.find("done.") == 0) {
+            currentEventType_ = "platform";
+        } else if (event.priority == EventPriority::INTERNAL) {
+            currentEventType_ = "internal";
+        } else {
+            currentEventType_ = "external";
+        }
+
         bool result = callback(event.eventName, event.eventData);
 
         // Clear after callback
         currentOriginSessionId_.clear();
         currentSendId_.clear();
         currentInvokeId_.clear();
+        currentOriginType_.clear();
+        currentEventType_.clear();
         LOG_DEBUG("EventRaiserImpl: Event '{}' processed with result: {}", event.eventName, result);
         return true;
     } catch (const std::exception &e) {
@@ -343,6 +396,8 @@ bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {
         currentOriginSessionId_.clear();
         currentSendId_.clear();
         currentInvokeId_.clear();
+        currentOriginType_.clear();
+        currentEventType_.clear();
         return false;
     }
 }

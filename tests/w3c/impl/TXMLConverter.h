@@ -81,6 +81,14 @@ private:
     // W3C SCXML 5.10: Event field access pattern (test 342)
     static const std::regex CONF_EVENTFIELD_ATTR;
 
+    // W3C SCXML 5.10: Event name access pattern (test 318)
+    // <assign conf:location="X" conf:eventName=""/> converts to <assign location="varX" expr="_event.name"/>
+    static const std::regex CONF_EVENTNAME_ATTR;
+
+    // W3C SCXML 5.10: Event type access pattern (test 331)
+    // <assign conf:location="X" conf:eventType=""/> converts to <assign location="varX" expr="_event.type"/>
+    static const std::regex CONF_EVENTTYPE_ATTR;
+
     // Foreach element patterns
     static const std::regex CONF_ITEM_ATTR;
     static const std::regex CONF_INDEX_ATTR;
@@ -121,6 +129,18 @@ private:
 
     // W3C SCXML 5.10: System variable expression pattern (test 321)
     static const std::regex CONF_SYSTEMVAREXPR_ATTR;
+
+    // W3C SCXML 5.10: System variable location pattern (test 329)
+    static const std::regex CONF_SYSTEMVARLOCATION_ATTR;
+
+    // W3C SCXML 5.10: Invalid session ID pattern (test 329)
+    static const std::regex CONF_INVALIDSESSIONID_ATTR;
+
+    // W3C SCXML 5.10: System variable value comparison pattern (test 329)
+    static const std::regex CONF_IDSYSTEMVARVAL_ATTR;
+
+    // W3C SCXML 5.10: ID quote value comparison pattern (test 318)
+    static const std::regex CONF_IDQUOTEVAL_ATTR;
 
     // W3C SCXML 5.10: Send to sender pattern (test 336)
     static const std::regex CONF_SENDTOSENDER_ELEMENT;

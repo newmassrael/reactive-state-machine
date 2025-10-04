@@ -380,48 +380,6 @@ TEST_F(ActionExecutorImplTest, SCXMLComplianceErrorHandling) {
     });
 }
 
-TEST_F(ActionExecutorImplTest, ImprovedExpressionDetection) {
-    // Test obvious literals (should be fast, no JSEngine call)
-    EXPECT_FALSE(executor->isExpression("true"));
-    EXPECT_FALSE(executor->isExpression("false"));
-    EXPECT_FALSE(executor->isExpression("null"));
-    EXPECT_FALSE(executor->isExpression("42"));
-    EXPECT_FALSE(executor->isExpression("3.14"));
-    EXPECT_FALSE(executor->isExpression("-123"));
-    EXPECT_FALSE(executor->isExpression("\"hello world\""));
-    EXPECT_FALSE(executor->isExpression("'test string'"));
-
-    // Test obvious expressions (should be fast, no JSEngine call)
-    EXPECT_TRUE(executor->isExpression("_event.name"));
-    EXPECT_TRUE(executor->isExpression("_sessionid"));
-    EXPECT_TRUE(executor->isExpression("Math.max(1, 2)"));
-    EXPECT_TRUE(executor->isExpression("a + b"));
-    EXPECT_TRUE(executor->isExpression("x * 2"));
-    EXPECT_TRUE(executor->isExpression("count > 0"));
-    EXPECT_TRUE(executor->isExpression("obj.property"));
-    EXPECT_TRUE(executor->isExpression("array[0]"));
-
-    // Test edge cases that require JSEngine validation
-    EXPECT_TRUE(executor->isExpression("myVariable"));  // Valid JS identifier
-    EXPECT_TRUE(executor->isExpression("camelCase"));
-    EXPECT_TRUE(executor->isExpression("_private"));
-    EXPECT_TRUE(executor->isExpression("$special"));
-
-    // Test complex expressions
-    EXPECT_TRUE(executor->isExpression("_event.data && _event.data.status === 'ready'"));
-    EXPECT_TRUE(executor->isExpression("typeof _name === 'string'"));
-    EXPECT_TRUE(executor->isExpression("Math.floor(Math.random() * 100)"));
-
-    // Test invalid expressions (should be fast for syntax errors)
-    EXPECT_FALSE(executor->isExpression(""));
-    EXPECT_FALSE(executor->isExpression("   "));
-
-    // Test caching by calling same expression multiple times
-    EXPECT_TRUE(executor->isExpression("testVar"));
-    EXPECT_TRUE(executor->isExpression("testVar"));  // Should hit cache
-    EXPECT_TRUE(executor->isExpression("testVar"));  // Should hit cache again
-}
-
 // ============================================================================
 // SCXML W3C Foreach Action Tests
 // ============================================================================

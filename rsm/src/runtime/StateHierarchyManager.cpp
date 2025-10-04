@@ -504,6 +504,14 @@ void StateHierarchyManager::addStateToConfiguration(const std::string &stateId) 
         LOG_DEBUG("addStateToConfiguration - Calling onentry callback for state: {}", stateId);
         onEntryCallback_(stateId);
         LOG_DEBUG("addStateToConfiguration - Onentry callback completed for state: {}", stateId);
+
+        // W3C SCXML: Check if state is still in configuration after onentry
+        // Onentry actions can trigger eventless transitions that exit the state
+        if (activeSet_.find(stateId) == activeSet_.end()) {
+            LOG_DEBUG("addStateToConfiguration - State {} was removed during onentry callback (transition occurred)",
+                      stateId);
+            return;  // State already removed, don't log or continue
+        }
     } else {
         LOG_WARN("addStateToConfiguration - No onentry callback set for state: {}", stateId);
     }
@@ -666,6 +674,42 @@ bool StateHierarchyManager::enterStateWithAncestors(const std::string &targetSta
                                                           : (stateType == Type::ATOMIC ? "atomic" : "final"),
                               stateId);
                     invokeDeferCallback_(stateId, invokes);
+                }
+            }
+
+            // W3C SCXML 3.3: If target state is compound, recursively enter its initial child
+            // This implements the W3C algorithm: compound states MUST enter their initial children
+            if (stateType == Type::COMPOUND && stateToEnter == targetState) {
+                std::string initialChild = findInitialChildState(stateToEnter);
+                if (!initialChild.empty()) {
+                    LOG_DEBUG("W3C SCXML 3.3: Target {} is compound, recursively entering initial child: {}", stateId,
+                              initialChild);
+                    // Recursive call - automatically handles nested compound states
+                    if (!enterStateWithAncestors(initialChild, stateToEnter, statesForOnEntry)) {
+                        LOG_ERROR("enterStateWithAncestors - Failed to enter initial child {} of compound target {}",
+                                  initialChild, stateId);
+                        return false;
+                    }
+                }
+            }
+            // W3C SCXML 3.4: If target state is parallel, enter ALL children
+            // Parallel states require all child regions to be active simultaneously
+            else if (stateType == Type::PARALLEL && stateToEnter == targetState) {
+                const auto &children = stateToEnter->getChildren();
+                LOG_DEBUG("W3C SCXML 3.4: Target {} is parallel, entering all {} children", stateId, children.size());
+
+                for (const auto &child : children) {
+                    if (child) {
+                        const std::string &childId = child->getId();
+                        LOG_DEBUG("W3C SCXML 3.4: Parallel state {} entering child: {}", stateId, childId);
+
+                        // Recursive call - each child may itself be compound or parallel
+                        if (!enterStateWithAncestors(childId, stateToEnter, statesForOnEntry)) {
+                            LOG_ERROR("enterStateWithAncestors - Failed to enter parallel child {} of target {}",
+                                      childId, stateId);
+                            return false;
+                        }
+                    }
                 }
             }
         }

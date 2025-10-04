@@ -109,6 +109,23 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
         // Transform numeric variable names to JavaScript-compatible identifiers
         std::string jsLocation = transformVariableName(location);
 
+        // W3C SCXML 5.10: Special handling for system variable assignment
+        // When assigning a system variable to another variable, use direct script assignment
+        // to preserve object references (important for _event object comparison in test 329)
+        if (expr == "_sessionid" || expr == "_event" || expr == "_name" || expr == "_ioprocessors" || expr == "_x") {
+            std::string assignScript = jsLocation + " = " + expr + ";";
+            auto scriptResult = JSEngine::instance().executeScript(sessionId_, assignScript).get();
+            if (!scriptResult.isSuccess()) {
+                handleJSError("system variable assignment", "System variable assignment failed");
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "System variable assignment failed: " + expr);
+                }
+                return false;
+            }
+            LOG_DEBUG("Variable assigned (system variable reference): {} = {} (JS: {})", location, expr, jsLocation);
+            return true;
+        }
+
         // Assign actions should not trigger _event updates
         // Use direct JSEngine evaluation without ActionExecutor context
         auto evalResult = JSEngine::instance().evaluateExpression(sessionId_, expr).get();
@@ -332,11 +349,33 @@ void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std
 
 void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
                                          const std::string &sendId, const std::string &invokeId) {
+    // Delegate to 5-parameter version with empty originType
+    setCurrentEvent(eventName, eventData, sendId, invokeId, "");
+}
+
+void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
+                                         const std::string &sendId, const std::string &invokeId,
+                                         const std::string &originType) {
+    // Delegate to 6-parameter version with auto-detected event type
+    std::string eventType;
+    if (eventName.find("error.") == 0 || eventName.find("done.") == 0) {
+        eventType = "platform";
+    } else {
+        eventType = "internal";  // Default to internal, will be overridden if needed
+    }
+    setCurrentEvent(eventName, eventData, sendId, invokeId, originType, eventType);
+}
+
+void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
+                                         const std::string &sendId, const std::string &invokeId,
+                                         const std::string &originType, const std::string &eventType) {
     // W3C SCXML 5.10: Set all event metadata fields
     currentEventName_ = eventName;
     currentEventData_ = eventData;
-    currentSendId_ = sendId;      // Set sendid for error events (test 332)
-    currentInvokeId_ = invokeId;  // Set invokeid for events from invoked children (test 338)
+    currentSendId_ = sendId;          // Set sendid for error events (test 332)
+    currentInvokeId_ = invokeId;      // Set invokeid for events from invoked children (test 338)
+    currentOriginType_ = originType;  // Set origintype for event processor identification (test 253, 331, 352, 372)
+    currentEventType_ = eventType;    // Set event type ("internal", "platform", "external") for test 331
 
     // Update _event variable in JavaScript context
     ensureCurrentEventSet();
@@ -347,6 +386,8 @@ void ActionExecutorImpl::clearCurrentEvent() {
     currentEventData_.clear();
     currentSendId_.clear();
     currentInvokeId_.clear();
+    currentOriginType_.clear();
+    currentEventType_.clear();
 
     // Clear _event variable in JavaScript context by setting null event
     if (isSessionReady()) {
@@ -434,131 +475,6 @@ std::string ActionExecutorImpl::transformVariableName(const std::string &name) c
     return name;
 }
 
-bool ActionExecutorImpl::isExpression(const std::string &value) const {
-    if (value.empty()) {
-        return false;
-    }
-
-    // 1단계: 명백한 리터럴들을 빠르게 판별
-    if (isObviousLiteral(value)) {
-        return false;
-    }
-
-    // 2단계: 명백한 표현식들을 빠르게 판별
-    if (isObviousExpression(value)) {
-        return true;
-    }
-
-    // 3단계: 애매한 경우만 JSEngine으로 정확히 검증
-    return validateWithJSEngine(value);
-}
-
-bool ActionExecutorImpl::isObviousLiteral(const std::string &value) const {
-    // 명백한 리터럴 값들 (빠른 판별)
-    if (value == "true" || value == "false" || value == "null" || value == "undefined") {
-        return true;
-    }
-
-    // 숫자 (정수 또는 소수)
-    std::regex numberPattern(R"(^-?[0-9]+(\.[0-9]+)?$)");
-    if (std::regex_match(value, numberPattern)) {
-        return true;
-    }
-
-    // 따옴표로 둘러싸인 순수한 문자열 리터럴 (연산자나 함수 호출이 없는 경우만)
-    if (value.length() >= 2) {
-        bool isQuoted =
-            (value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\'');
-        if (isQuoted) {
-            // 내부에 연산자나 특수 문자가 있는지 확인
-            std::string content = value.substr(1, value.length() - 2);
-            // 연산자나 함수 호출 패턴이 있으면 표현식
-            if (content.find('+') != std::string::npos || content.find('-') != std::string::npos ||
-                content.find('*') != std::string::npos || content.find('/') != std::string::npos ||
-                content.find('(') != std::string::npos || content.find(')') != std::string::npos ||
-                content.find('[') != std::string::npos || content.find(']') != std::string::npos ||
-                content.find('.') != std::string::npos) {
-                return false;  // 표현식일 가능성이 높음
-            }
-            return true;  // 순수한 문자열 리터럴
-        }
-    }
-
-    return false;
-}
-
-bool ActionExecutorImpl::isObviousExpression(const std::string &value) const {
-    // SCXML 시스템 변수들
-    if (value.find("_event") != std::string::npos || value.find("_sessionid") != std::string::npos ||
-        value.find("_name") != std::string::npos || value.find("_ioprocessors") != std::string::npos) {
-        return true;
-    }
-
-    // 함수 호출 패턴
-    if (value.find('(') != std::string::npos && value.find(')') != std::string::npos) {
-        return true;
-    }
-
-    // 명백한 연산자들
-    if (value.find(" + ") != std::string::npos || value.find(" - ") != std::string::npos ||
-        value.find(" * ") != std::string::npos || value.find(" / ") != std::string::npos ||
-        value.find(" % ") != std::string::npos || value.find(" && ") != std::string::npos ||
-        value.find(" || ") != std::string::npos || value.find(" == ") != std::string::npos ||
-        value.find(" != ") != std::string::npos || value.find(" === ") != std::string::npos ||
-        value.find(" !== ") != std::string::npos || value.find(" < ") != std::string::npos ||
-        value.find(" > ") != std::string::npos || value.find(" <= ") != std::string::npos ||
-        value.find(" >= ") != std::string::npos) {
-        return true;
-    }
-
-    // 객체/배열 접근 패턴
-    if (value.find('.') != std::string::npos ||
-        (value.find('[') != std::string::npos && value.find(']') != std::string::npos)) {
-        // 단순 숫자가 아닌 경우에만
-        std::regex simpleNumberPattern(R"(^[0-9]+\.[0-9]+$)");
-        if (!std::regex_match(value, simpleNumberPattern)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool ActionExecutorImpl::validateWithJSEngine(const std::string &value) const {
-    // 단일 lock으로 체크 후 바로 삽입 (race condition 방지)
-    std::lock_guard<std::mutex> lock(expressionCacheMutex_);
-
-    // 캐시에서 먼저 확인
-    auto it = expressionCache_.find(value);
-    if (it != expressionCache_.end()) {
-        return it->second;
-    }
-
-    // 캐시에 없으면 JSEngine으로 검증 (lock 잡은 상태에서)
-    bool isValidExpression = false;
-    try {
-        auto jsEngine = &JSEngine::instance();
-        if (jsEngine && jsEngine->hasSession(sessionId_)) {
-            // lock을 잡은 상태에서 JSEngine 호출 - 같은 표현식의 중복 검증 방지
-            auto result = jsEngine->validateExpression(sessionId_, value).get();
-            isValidExpression = result.isSuccess();
-        }
-    } catch (const std::exception &e) {
-        LOG_DEBUG("ActionExecutor: Expression validation failed for '{}': {}", value, e.what());
-        isValidExpression = false;
-    }
-
-    // 결과를 캐시에 저장
-    expressionCache_[value] = isValidExpression;
-
-    // 캐시 크기 제한 (메모리 관리)
-    if (expressionCache_.size() > 1000) {
-        expressionCache_.clear();
-    }
-
-    return isValidExpression;
-}
-
 void ActionExecutorImpl::handleJSError(const std::string &operation, const std::string &errorMessage) const {
     LOG_ERROR("JavaScript {} failed in session {}: {}", operation, sessionId_, errorMessage);
 }
@@ -580,7 +496,12 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
         }
 
         // Create Event object and use setCurrentEvent API
-        auto event = std::make_shared<Event>(currentEventName_, "internal");
+        // W3C SCXML 5.10: Use the event type set by setCurrentEvent()
+        // This is separate from originType - eventType is "internal", "platform", or "external"
+        // while originType is the processor URI
+        std::string eventType = currentEventType_.empty() ? "internal" : currentEventType_;
+
+        auto event = std::make_shared<Event>(currentEventName_, eventType);
 
         if (!currentEventData_.empty()) {
             // Set raw JSON data for the new architecture
@@ -595,6 +516,11 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
         // W3C SCXML 5.10: Set invokeid for events from invoked child processes (test 338)
         if (!currentInvokeId_.empty()) {
             event->setInvokeId(currentInvokeId_);
+        }
+
+        // W3C SCXML 5.10: Set origintype for event processor identification (test 253, 331, 352, 372)
+        if (!currentOriginType_.empty()) {
+            event->setOriginType(currentOriginType_);
         }
 
         auto result = JSEngine::instance().setCurrentEvent(sessionId_, event).get();
@@ -965,6 +891,8 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             event.sendId = sendId;
             event.sessionId = sessionId_;    // W3C SCXML 6.2: Track session for delayed event cancellation
             event.params = evaluatedParams;  // W3C SCXML compliant: params evaluated at send time
+            // W3C SCXML 5.10: Set event type for origintype field (test 253, 331, 352, 372)
+            event.type = sendType.empty() ? "http://www.w3.org/TR/scxml/#SCXMLEventProcessor" : sendType;
 
             // Send via dispatcher (handles both immediate and delayed events)
             auto resultFuture = eventDispatcher_->sendEvent(event);

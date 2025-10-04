@@ -144,6 +144,13 @@ public:
     bool enterStateWithAncestors(const std::string &targetStateId, IStateNode *stopAtParent,
                                  std::vector<std::string> *deferredOnEntryStates = nullptr);
 
+    /**
+     * @brief Remove a state from active configuration
+     *
+     * @param stateId State ID to remove
+     */
+    void removeStateFromConfiguration(const std::string &stateId);
+
 private:
     /**
      * @brief SCXML W3C: Specialized cleanup for parallel states
@@ -206,13 +213,6 @@ private:
      * @param stateId 추가할 상태 ID
      */
     void addStateToConfigurationWithoutOnEntry(const std::string &stateId);
-
-    /**
-     * @brief 상태를 활성 구성에서 제거
-     *
-     * @param stateId 제거할 상태 ID
-     */
-    void removeStateFromConfiguration(const std::string &stateId);
 
     /**
      * @brief 복합 상태의 초기 자식 상태 찾기

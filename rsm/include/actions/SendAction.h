@@ -181,22 +181,11 @@ public:
     };
 
     /**
-     * @brief Add a parameter to this send action (legacy interface)
-     * @param name Parameter name
-     * @param value Parameter value
-     */
-
-    /**
      * @brief Add a parameter with expression for dynamic evaluation (W3C SCXML compliant)
      * @param name Parameter name
      * @param expr Parameter expression to evaluate at send time
      */
     void addParamWithExpr(const std::string &name, const std::string &expr);
-
-    /**
-     * @brief Get all parameters for this send action (legacy interface)
-     * @return Map of parameter name-value pairs
-     */
 
     /**
      * @brief Get parameters with expressions for W3C SCXML compliance

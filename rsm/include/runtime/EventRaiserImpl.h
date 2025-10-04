@@ -41,12 +41,14 @@ public:
         std::string originSessionId;  // W3C SCXML 6.4: Session that originated this event (for finalize)
         std::string sendId;           // W3C SCXML 5.10: sendid from failed send element (for error events)
         std::string invokeId;         // W3C SCXML 5.10: invokeid from invoked child process (test 338)
+        std::string originType;       // W3C SCXML 5.10: origintype from event processor type (test 253, 331, 352, 372)
         std::chrono::steady_clock::time_point timestamp;
         EventPriority priority;
 
         QueuedEvent(const std::string &name, const std::string &data, EventPriority prio = EventPriority::INTERNAL,
-                    const std::string &origin = "", const std::string &sid = "", const std::string &iid = "")
-            : eventName(name), eventData(data), originSessionId(origin), sendId(sid), invokeId(iid),
+                    const std::string &origin = "", const std::string &sid = "", const std::string &iid = "",
+                    const std::string &otype = "")
+            : eventName(name), eventData(data), originSessionId(origin), sendId(sid), invokeId(iid), originType(otype),
               timestamp(std::chrono::steady_clock::now()), priority(prio) {}
     };
 
@@ -100,6 +102,8 @@ public:
                     bool) override;
     bool raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &originSessionId,
                     const std::string &invokeId) override;
+    bool raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &originSessionId,
+                    const std::string &invokeId, const std::string &originType) override;
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
     void processQueuedEvents() override;
@@ -128,7 +132,7 @@ public:
      */
     bool raiseEventWithPriority(const std::string &eventName, const std::string &eventData, EventPriority priority,
                                 const std::string &originSessionId = "", const std::string &sendId = "",
-                                const std::string &invokeId = "");
+                                const std::string &invokeId = "", const std::string &originType = "");
 
 private:
     /**
@@ -160,6 +164,12 @@ private:
     // W3C SCXML 5.10: Thread-local storage for invoke ID from invoked child processes (test 338)
     static thread_local std::string currentInvokeId_;
 
+    // W3C SCXML 5.10: Thread-local storage for origin type from event processor (test 253, 331, 352, 372)
+    static thread_local std::string currentOriginType_;
+
+    // W3C SCXML 5.10: Thread-local storage for event type ("internal", "platform", "external") (test 331)
+    static thread_local std::string currentEventType_;
+
 public:
     /**
      * @brief Get current origin session ID (for W3C SCXML 6.4 finalize support)
@@ -186,6 +196,24 @@ public:
      */
     static std::string getCurrentInvokeId() {
         return currentInvokeId_;
+    }
+
+    /**
+     * @brief Get current origin type (for W3C SCXML 5.10 origintype field compliance)
+     * This is set during event callback execution to allow StateMachine to set event.origintype
+     * @return Origin type if set, empty string otherwise
+     */
+    static std::string getCurrentOriginType() {
+        return currentOriginType_;
+    }
+
+    /**
+     * @brief Get current event type (for W3C SCXML 5.10 event type field compliance)
+     * This is set during event callback execution to allow StateMachine to set event.type correctly
+     * @return Event type ("internal", "platform", "external") if set, empty string otherwise
+     */
+    static std::string getCurrentEventType() {
+        return currentEventType_;
     }
 
     mutable std::mutex callbackMutex_;

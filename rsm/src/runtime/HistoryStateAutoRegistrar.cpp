@@ -1,10 +1,12 @@
 #include "runtime/HistoryStateAutoRegistrar.h"
 #include "common/Logger.h"
 #include "model/IStateNode.h"
+#include "model/ITransitionNode.h"
 #include "model/SCXMLModel.h"
 #include "runtime/HistoryManager.h"
 #include "types.h"
 #include <algorithm>
+#include <cassert>
 
 namespace RSM {
 
@@ -132,11 +134,30 @@ HistoryStateAutoRegistrar::extractHistoryStatesFromModel(const std::shared_ptr<S
             // Get history type from state node
             info.historyType = stateNode->getHistoryType();
 
-            // Get default state (from initial state or first child)
-            info.defaultStateId = stateNode->getInitialState();
-            if (info.defaultStateId.empty() && stateNode->getParent()) {
-                // If no default specified, use parent's initial state
-                info.defaultStateId = stateNode->getParent()->getInitialState();
+            // W3C SCXML 3.6: Get default state from history state's transition
+            // History states specify their default via <transition target="..."/>
+            // Note: initial attribute is NOT valid for history states per W3C spec
+
+            // Look for eventless transition in history state
+            const auto &transitions = stateNode->getTransitions();
+            if (!transitions.empty()) {
+                // W3C SCXML: First eventless transition's target is the default
+                for (const auto &trans : transitions) {
+                    if (trans->getEvent().empty() && !trans->getTargets().empty()) {
+                        info.defaultStateId = trans->getTargets()[0];
+                        LOG_DEBUG("HistoryStateAutoRegistrar: Found default '{}' from transition in history '{}'",
+                                  info.defaultStateId, info.historyStateId);
+                        break;
+                    }
+                }
+            }
+
+            // W3C SCXML 3.6: History states without default transition will trigger error.platform at runtime
+            // This is allowed by the spec - default is optional, error handling is runtime responsibility
+            if (info.defaultStateId.empty()) {
+                LOG_WARN("HistoryStateAutoRegistrar: History state '{}' has no default transition - will generate "
+                         "error.platform if history is empty",
+                         info.historyStateId);
             }
 
             historyStates.push_back(info);

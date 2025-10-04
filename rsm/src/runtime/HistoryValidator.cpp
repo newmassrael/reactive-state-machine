@@ -65,20 +65,32 @@ bool HistoryValidator::validateRegistrationWithDefault(const std::string &histor
             return false;
         }
 
-        // Check if default state is a child of parent state
+        // W3C SCXML 3.6: Check if default state is valid for history type
         auto parentState = stateProvider_(parentStateId);
         if (parentState) {
-            bool isChild = false;
-            for (const auto &child : parentState->getChildren()) {
-                if (child && child->getId() == defaultStateId) {
-                    isChild = true;
-                    break;
+            bool isValid = false;
+
+            if (type == HistoryType::SHALLOW) {
+                // Shallow history: default must be direct child
+                for (const auto &child : parentState->getChildren()) {
+                    if (child && child->getId() == defaultStateId) {
+                        isValid = true;
+                        break;
+                    }
                 }
-            }
-            if (!isChild) {
-                LOG_ERROR("Default state must be a child of parent state: {} not child of {}", defaultStateId,
-                          parentStateId);
-                return false;
+                if (!isValid) {
+                    LOG_ERROR("Shallow history default must be direct child: {} not child of {}", defaultStateId,
+                              parentStateId);
+                    return false;
+                }
+            } else if (type == HistoryType::DEEP) {
+                // Deep history: default can be any descendant
+                isValid = isDescendantOf(defaultStateId, parentStateId);
+                if (!isValid) {
+                    LOG_ERROR("Deep history default must be descendant: {} not descendant of {}", defaultStateId,
+                              parentStateId);
+                    return false;
+                }
             }
         }
     }
@@ -163,6 +175,41 @@ bool HistoryValidator::isValidCompoundState(const std::string &stateId) const {
     LOG_DEBUG("State {} is {}a compound state", stateId, (isCompound ? "" : "not "));
 
     return isCompound;
+}
+
+bool HistoryValidator::isDescendantOf(const std::string &stateId, const std::string &ancestorId) const {
+    // Performance optimization: Check cache first
+    std::string cacheKey = stateId + ":" + ancestorId;
+    auto cacheIt = descendantCache_.find(cacheKey);
+    if (cacheIt != descendantCache_.end()) {
+        return cacheIt->second;
+    }
+
+    if (!stateProvider_) {
+        LOG_ERROR("HistoryValidator: No state provider available");
+        descendantCache_[cacheKey] = false;
+        return false;
+    }
+
+    auto state = stateProvider_(stateId);
+    if (!state) {
+        LOG_WARN("State not found: {}", stateId);
+        descendantCache_[cacheKey] = false;
+        return false;
+    }
+
+    // Traverse up the parent chain looking for the ancestor
+    auto currentParent = state->getParent();
+    while (currentParent) {
+        if (currentParent->getId() == ancestorId) {
+            descendantCache_[cacheKey] = true;
+            return true;  // Found ancestor
+        }
+        currentParent = currentParent->getParent();
+    }
+
+    descendantCache_[cacheKey] = false;
+    return false;  // Ancestor not found in parent chain
 }
 
 std::string HistoryValidator::generateParentTypeKey(const std::string &parentStateId, HistoryType type) const {

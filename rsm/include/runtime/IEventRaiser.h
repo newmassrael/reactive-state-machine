@@ -78,9 +78,22 @@ public:
                             const std::string &originSessionId, const std::string &invokeId) = 0;
 
     /**
-     * @brief Check if the event raiser is ready to raise events
-     * @return true if ready, false otherwise
+     * @brief Raise an event with origin, invoke, and origintype for W3C SCXML 5.10 compliance
+     *
+     * Events are queued with origin, invoke ID, and origintype information for full W3C compliance.
+     * This enables proper event metadata (test 253, 331, 352, 372: origintype field).
+     *
+     * @param eventName Name of the event to raise
+     * @param eventData Data associated with the event
+     * @param originSessionId Session ID that originated this event (for finalize)
+     * @param invokeId Invoke ID that created the child session (for event.invokeid)
+     * @param originType Origin event processor type (for event.origintype)
+     * @return true if the event was successfully queued, false if the raiser is not ready
      */
+    virtual bool raiseEvent(const std::string &eventName, const std::string &eventData,
+                            const std::string &originSessionId, const std::string &invokeId,
+                            const std::string &originType) = 0;
+
     virtual bool isReady() const = 0;
 
     /**

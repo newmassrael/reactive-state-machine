@@ -136,10 +136,13 @@ std::future<SendResult> ParentEventTarget::sendImmediately(const EventDescriptor
         // Raise event in parent session using parent's EventRaiser with origin and invoke tracking
         // W3C SCXML 6.4: Pass child session ID as originSessionId for finalize support
         // W3C SCXML 5.10: Pass invoke ID for event.invokeid field (test 338)
+        // W3C SCXML 5.10: Pass origintype as SCXML processor type (test 253, 331, 352, 372)
+        std::string originType = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
         LOG_DEBUG("ParentEventTarget::sendImmediately() - Calling parent EventRaiser->raiseEvent('{}', '{}', origin: "
-                  "'{}', invokeId: '{}')",
-                  eventName, eventData, actualChildSessionId, invokeId);
-        bool raiseResult = parentEventRaiser->raiseEvent(eventName, eventData, actualChildSessionId, invokeId);
+                  "'{}', invokeId: '{}', originType: '{}')",
+                  eventName, eventData, actualChildSessionId, invokeId, originType);
+        bool raiseResult =
+            parentEventRaiser->raiseEvent(eventName, eventData, actualChildSessionId, invokeId, originType);
         LOG_DEBUG("ParentEventTarget::sendImmediately() - parent EventRaiser->raiseEvent() returned: {}", raiseResult);
 
         LOG_DEBUG("ParentEventTarget: Successfully routed event '{}' to parent session '{}'", eventName,

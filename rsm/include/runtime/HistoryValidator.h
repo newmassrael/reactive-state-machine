@@ -3,6 +3,7 @@
 #include "runtime/HistoryManager.h"
 #include <functional>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace RSM {
@@ -80,6 +81,18 @@ private:
     std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider_;
     mutable std::unordered_set<std::string> registeredHistoryStates_;
     mutable std::unordered_set<std::string> registeredParentTypes_;
+
+    // Performance optimization: Cache descendant validation results
+    // Key: "stateId:ancestorId", Value: true if stateId is descendant of ancestorId
+    mutable std::unordered_map<std::string, bool> descendantCache_;
+
+    /**
+     * @brief Check if a state is a descendant of an ancestor state
+     * @param stateId State ID to check
+     * @param ancestorId Potential ancestor state ID
+     * @return true if stateId is a descendant of ancestorId
+     */
+    bool isDescendantOf(const std::string &stateId, const std::string &ancestorId) const;
 
     /**
      * @brief Check if a state exists and is a compound state
