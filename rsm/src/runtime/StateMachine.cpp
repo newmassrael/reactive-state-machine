@@ -1630,14 +1630,16 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
         auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
         assert(parallelState && "SCXML violation: PARALLEL type state must be ConcurrentStateNode");
 
-        // SCXML W3C specification section 3.4: Execute parallel state's own onentry actions FIRST
-        const auto &parallelEntryActions = parallelState->getEntryActionNodes();
-        if (!parallelEntryActions.empty()) {
-            LOG_DEBUG("SCXML W3C compliant - executing {} entry actions for parallel state itself: {}",
-                      parallelEntryActions.size(), stateId);
-            if (!executeActionNodes(parallelEntryActions)) {
-                LOG_ERROR("Failed to execute parallel state entry actions for: {}", stateId);
-                return false;
+        // W3C SCXML 3.8: Execute parallel state's own onentry action blocks FIRST
+        const auto &parallelEntryBlocks = parallelState->getEntryActionBlocks();
+        if (!parallelEntryBlocks.empty()) {
+            LOG_DEBUG("W3C SCXML 3.8: executing {} entry action blocks for parallel state itself: {}",
+                      parallelEntryBlocks.size(), stateId);
+            for (size_t i = 0; i < parallelEntryBlocks.size(); ++i) {
+                if (!executeActionNodes(parallelEntryBlocks[i])) {
+                    LOG_WARN("W3C SCXML 3.8: Parallel entry block {}/{} failed, continuing", i + 1,
+                             parallelEntryBlocks.size());
+                }
             }
         }
 
@@ -1661,13 +1663,16 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
             auto rootState = region->getRootState();
             assert(rootState && "SCXML violation: region must have root state");
 
-            // Execute entry actions for the region's root state
-            const auto &regionEntryActions = rootState->getEntryActionNodes();
-            if (!regionEntryActions.empty()) {
-                LOG_DEBUG("Executing {} entry actions for region: {}", regionEntryActions.size(), region->getId());
-                if (!executeActionNodes(regionEntryActions)) {
-                    LOG_ERROR("Failed to execute entry actions for region: {}", region->getId());
-                    return false;
+            // W3C SCXML 3.8: Execute entry action blocks for the region's root state
+            const auto &regionEntryBlocks = rootState->getEntryActionBlocks();
+            if (!regionEntryBlocks.empty()) {
+                LOG_DEBUG("W3C SCXML 3.8: executing {} entry action blocks for region: {}", regionEntryBlocks.size(),
+                          region->getId());
+                for (size_t i = 0; i < regionEntryBlocks.size(); ++i) {
+                    if (!executeActionNodes(regionEntryBlocks[i])) {
+                        LOG_WARN("W3C SCXML 3.8: Region entry block {}/{} failed, continuing", i + 1,
+                                 regionEntryBlocks.size());
+                    }
                 }
             }
 
@@ -1684,16 +1689,18 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
 
                     LOG_DEBUG("Entering initial child state for INACTIVE region {}: {}", region->getId(), initialChild);
 
-                    // Execute entry actions for the initial child state
+                    // W3C SCXML 3.8: Execute entry action blocks for the initial child state
                     auto childState = model_->findStateById(initialChild);
                     if (childState) {
-                        const auto &childEntryActions = childState->getEntryActionNodes();
-                        if (!childEntryActions.empty()) {
-                            LOG_DEBUG("Executing {} entry actions for initial child state: {}",
-                                      childEntryActions.size(), initialChild);
-                            if (!executeActionNodes(childEntryActions)) {
-                                LOG_ERROR("Failed to execute entry actions for initial child state: {}", initialChild);
-                                return false;
+                        const auto &childEntryBlocks = childState->getEntryActionBlocks();
+                        if (!childEntryBlocks.empty()) {
+                            LOG_DEBUG("W3C SCXML 3.8: executing {} entry action blocks for initial child state: {}",
+                                      childEntryBlocks.size(), initialChild);
+                            for (size_t i = 0; i < childEntryBlocks.size(); ++i) {
+                                if (!executeActionNodes(childEntryBlocks[i])) {
+                                    LOG_WARN("W3C SCXML 3.8: Child entry block {}/{} failed, continuing", i + 1,
+                                             childEntryBlocks.size());
+                                }
                             }
                         }
                     }
@@ -1724,11 +1731,26 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
         return true;
     }
 
-    // Execute IActionNode-based entry actions for non-parallel states
-    const auto &entryActions = stateNode->getEntryActionNodes();
-    if (!entryActions.empty()) {
-        LOG_DEBUG("Executing {} entry action nodes for state: {}", entryActions.size(), stateId);
-        return executeActionNodes(entryActions);
+    // W3C SCXML 3.8: Execute block-based entry actions for non-parallel states
+    const auto &entryBlocks = stateNode->getEntryActionBlocks();
+    if (!entryBlocks.empty()) {
+        LOG_DEBUG("W3C SCXML 3.8: Executing {} entry action blocks for state: {}", entryBlocks.size(), stateId);
+
+        for (size_t i = 0; i < entryBlocks.size(); ++i) {
+            LOG_DEBUG("W3C SCXML 3.8: Executing entry action block {}/{} for state: {}", i + 1, entryBlocks.size(),
+                      stateId);
+
+            // W3C SCXML 3.8: Each onentry handler is a separate block
+            // If one block fails, continue with remaining blocks
+            if (!executeActionNodes(entryBlocks[i])) {
+                LOG_WARN("W3C SCXML 3.8: Entry action block {}/{} failed, continuing with remaining blocks", i + 1,
+                         entryBlocks.size());
+                // Don't break - continue with next block per W3C spec
+            }
+        }
+
+        // W3C SCXML: State entry succeeds even if some action blocks fail
+        return true;
     }
 
     return true;
@@ -1765,7 +1787,7 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
                 auto rootState = region->getRootState();
                 assert(rootState && "SCXML violation: region must have root state");
 
-                // Execute exit actions for currently active child states in this region
+                // W3C SCXML 3.9: Execute exit action blocks for currently active child states in this region
                 const auto activeStates = region->getActiveStates();
                 const auto &children = rootState->getChildren();
                 for (const auto &child : children) {
@@ -1773,48 +1795,72 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
                     bool isChildActive =
                         std::find(activeStates.begin(), activeStates.end(), child->getId()) != activeStates.end();
                     if (child && isChildActive) {
-                        const auto &childExitActions = child->getExitActionNodes();
-                        if (!childExitActions.empty()) {
-                            LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for active child state: {}",
-                                      childExitActions.size(), child->getId());
-                            if (!executeActionNodes(childExitActions, false)) {
-                                LOG_ERROR("Failed to execute exit actions for child state: {}", child->getId());
-                                return false;
+                        const auto &childExitBlocks = child->getExitActionBlocks();
+                        if (!childExitBlocks.empty()) {
+                            LOG_DEBUG("W3C SCXML 3.9: executing {} exit action blocks for active child state: {}",
+                                      childExitBlocks.size(), child->getId());
+                            for (size_t i = 0; i < childExitBlocks.size(); ++i) {
+                                if (!executeActionNodes(childExitBlocks[i], false)) {
+                                    LOG_WARN("W3C SCXML 3.9: Child exit block {}/{} failed, continuing", i + 1,
+                                             childExitBlocks.size());
+                                }
                             }
                         }
                         break;
                     }
                 }
 
-                // Execute exit actions for the region's root state
-                const auto &regionExitActions = rootState->getExitActionNodes();
-                if (!regionExitActions.empty()) {
-                    LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for region: {}",
-                              regionExitActions.size(), region->getId());
-                    if (!executeActionNodes(regionExitActions, false)) {
-                        LOG_ERROR("Failed to execute exit actions for region: {}", region->getId());
-                        return false;
+                // W3C SCXML 3.9: Execute exit action blocks for the region's root state
+                const auto &regionExitBlocks = rootState->getExitActionBlocks();
+                if (!regionExitBlocks.empty()) {
+                    LOG_DEBUG("W3C SCXML 3.9: executing {} exit action blocks for region: {}", regionExitBlocks.size(),
+                              region->getId());
+                    for (size_t i = 0; i < regionExitBlocks.size(); ++i) {
+                        if (!executeActionNodes(regionExitBlocks[i], false)) {
+                            LOG_WARN("W3C SCXML 3.9: Region exit block {}/{} failed, continuing", i + 1,
+                                     regionExitBlocks.size());
+                        }
                     }
                 }
             }
         }
 
-        // SCXML W3C specification: Execute parallel state's own onexit actions LAST
-        const auto &parallelExitActions = parallelState->getExitActionNodes();
-        if (!parallelExitActions.empty()) {
-            LOG_DEBUG("SCXML W3C compliant - executing {} exit actions for parallel state itself: {}",
-                      parallelExitActions.size(), stateId);
-            return executeActionNodes(parallelExitActions, false);
+        // W3C SCXML 3.9: Execute parallel state's own onexit action blocks LAST
+        const auto &parallelExitBlocks = parallelState->getExitActionBlocks();
+        if (!parallelExitBlocks.empty()) {
+            LOG_DEBUG("W3C SCXML 3.9: executing {} exit action blocks for parallel state itself: {}",
+                      parallelExitBlocks.size(), stateId);
+            for (size_t i = 0; i < parallelExitBlocks.size(); ++i) {
+                if (!executeActionNodes(parallelExitBlocks[i], false)) {
+                    LOG_WARN("W3C SCXML 3.9: Parallel exit block {}/{} failed, continuing", i + 1,
+                             parallelExitBlocks.size());
+                }
+            }
         }
 
         return true;
     }
 
-    // Execute IActionNode-based exit actions for non-parallel states
-    const auto &exitActions = stateNode->getExitActionNodes();
-    if (!exitActions.empty()) {
-        LOG_DEBUG("Executing {} exit action nodes for state: {}", exitActions.size(), stateId);
-        return executeActionNodes(exitActions, false);
+    // W3C SCXML 3.9: Execute block-based exit actions for non-parallel states
+    const auto &exitBlocks = stateNode->getExitActionBlocks();
+    if (!exitBlocks.empty()) {
+        LOG_DEBUG("W3C SCXML 3.9: Executing {} exit action blocks for state: {}", exitBlocks.size(), stateId);
+
+        for (size_t i = 0; i < exitBlocks.size(); ++i) {
+            LOG_DEBUG("W3C SCXML 3.9: Executing exit action block {}/{} for state: {}", i + 1, exitBlocks.size(),
+                      stateId);
+
+            // W3C SCXML 3.9: Each onexit handler is a separate block
+            // If one block fails, continue with remaining blocks
+            if (!executeActionNodes(exitBlocks[i], false)) {
+                LOG_WARN("W3C SCXML 3.9: Exit action block {}/{} failed, continuing with remaining blocks", i + 1,
+                         exitBlocks.size());
+                // Don't break - continue with next block per W3C spec
+            }
+        }
+
+        // W3C SCXML: State exit succeeds even if some action blocks fail
+        return true;
     }
 
     return true;
@@ -1974,14 +2020,14 @@ void StateMachine::executeOnEntryActions(const std::string &stateId) {
         return;
     }
 
-    // Get entry actions from the state
-    const auto &entryActions = stateNode->getEntryActionNodes();
-    if (entryActions.empty()) {
+    // W3C SCXML 3.8: Get entry action blocks from the state
+    const auto &entryBlocks = stateNode->getEntryActionBlocks();
+    if (entryBlocks.empty()) {
         LOG_DEBUG("No onentry actions to execute for state: {}", stateId);
         return;
     }
 
-    LOG_DEBUG("Executing {} onentry actions for state: {}", entryActions.size(), stateId);
+    LOG_DEBUG("W3C SCXML 3.8: Executing {} onentry action blocks for state: {}", entryBlocks.size(), stateId);
 
     // W3C SCXML compliance: Set immediate mode to false during executable content execution
     // This ensures events raised during execution are queued and processed after completion
@@ -1993,36 +2039,47 @@ void StateMachine::executeOnEntryActions(const std::string &stateId) {
         }
     }
 
-    // W3C SCXML: Execute onentry handlers in document order
-    for (const auto &action : entryActions) {
-        if (!action) {
-            LOG_WARN("Null onentry action found in state: {}", stateId);
-            continue;
-        }
+    // W3C SCXML 3.8: Execute each onentry handler as a separate block
+    for (size_t blockIndex = 0; blockIndex < entryBlocks.size(); ++blockIndex) {
+        const auto &actionBlock = entryBlocks[blockIndex];
 
-        LOG_DEBUG("StateMachine: Executing onentry action: {} in state: {}", action->getActionType(), stateId);
+        LOG_DEBUG("W3C SCXML 3.8: Executing onentry block {}/{} with {} actions for state: {}", blockIndex + 1,
+                  entryBlocks.size(), actionBlock.size(), stateId);
 
-        // Create execution context for the action
-        if (actionExecutor_) {
-            auto sharedActionExecutor =
-                std::shared_ptr<IActionExecutor>(actionExecutor_.get(), [](IActionExecutor *) {});
-            ExecutionContextImpl context(sharedActionExecutor, sessionId_);
-
-            // Execute the action
-            if (!action->execute(context)) {
-                LOG_ERROR("StateMachine: Failed to execute onentry action: {} in state: {} - W3C compliance: stopping "
-                          "remaining actions",
-                          action->getActionType(), stateId);
-                // W3C SCXML specification: If error occurs in executable content,
-                // processor MUST NOT process remaining elements in the block
-                break;
-            } else {
-                LOG_DEBUG("StateMachine: Successfully executed onentry action: {} in state: {}",
-                          action->getActionType(), stateId);
+        // Execute all actions in this block
+        for (const auto &action : actionBlock) {
+            if (!action) {
+                LOG_WARN("Null onentry action found in state: {}", stateId);
+                continue;
             }
-        } else {
-            LOG_ERROR("Cannot execute onentry action: ActionExecutor is null");
+
+            LOG_DEBUG("StateMachine: Executing onentry action: {} in state: {}", action->getActionType(), stateId);
+
+            // Create execution context for the action
+            if (actionExecutor_) {
+                auto sharedActionExecutor =
+                    std::shared_ptr<IActionExecutor>(actionExecutor_.get(), [](IActionExecutor *) {});
+                ExecutionContextImpl context(sharedActionExecutor, sessionId_);
+
+                // Execute the action
+                if (!action->execute(context)) {
+                    LOG_WARN("StateMachine: Failed to execute onentry action: {} in block {}/{} - W3C SCXML 3.8: "
+                             "stopping remaining actions in THIS block only",
+                             action->getActionType(), blockIndex + 1, entryBlocks.size());
+                    // W3C SCXML 3.8: If error occurs, stop processing remaining actions IN THIS BLOCK
+                    // but CONTINUE with next onentry handler block
+                    break;
+                } else {
+                    LOG_DEBUG("StateMachine: Successfully executed onentry action: {} in state: {}",
+                              action->getActionType(), stateId);
+                }
+            } else {
+                LOG_ERROR("Cannot execute onentry action: ActionExecutor is null");
+            }
         }
+
+        // Continue with next block even if this block had failures
+        // W3C SCXML 3.8: Each onentry handler is independent
     }
 
     // W3C SCXML compliance: Restore immediate mode and process queued events

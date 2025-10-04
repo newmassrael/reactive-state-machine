@@ -164,7 +164,7 @@ TEST_F(ParallelStateIntegrationTest, SCXML_W3C_ParallelStateExitActions) {
     EXPECT_EQ(rootState->getType(), Type::PARALLEL);
 
     // Verify that exit actions are properly parsed
-    const auto &exitActions = rootState->getExitActionNodes();
+    const auto &exitActions = rootState->getExitActionBlocks();
     // Note: Log actions may not be parsed as exit actions yet, so check >= 0
     EXPECT_GE(exitActions.size(), 0);
 }
@@ -265,7 +265,7 @@ TEST_F(ParallelStateIntegrationTest, SCXML_W3C_EmptyParallelStateExit) {
     EXPECT_EQ(rootState->getType(), Type::PARALLEL);
 
     // Even empty parallel states should have exit actions if specified
-    const auto &exitActions = rootState->getExitActionNodes();
+    const auto &exitActions = rootState->getExitActionBlocks();
     // Note: The exact count depends on how log actions are parsed
     EXPECT_GE(exitActions.size(), 0);  // At least 0 actions should be present
 }
@@ -297,7 +297,7 @@ TEST_F(ParallelStateIntegrationTest, SCXML_W3C_MultipleExitActionsPerState) {
     ASSERT_NE(rootState, nullptr);
 
     // Verify that multiple exit actions are parsed
-    const auto &exitActions = rootState->getExitActionNodes();
+    const auto &exitActions = rootState->getExitActionBlocks();
     // In a complete implementation, we would verify that all actions are present
     EXPECT_GE(exitActions.size(), 0);  // Multiple exit actions should be parsed
 

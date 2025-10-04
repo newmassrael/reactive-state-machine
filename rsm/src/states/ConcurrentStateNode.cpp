@@ -117,16 +117,6 @@ const std::string &ConcurrentStateNode::getInitialState() const {
     return initialState_;
 }
 
-void ConcurrentStateNode::addEntryAction(const std::string &actionId) {
-    LOG_DEBUG("Adding entry action to {}: {}", id_, actionId);
-    entryActions_.push_back(actionId);
-}
-
-void ConcurrentStateNode::addExitAction(const std::string &actionId) {
-    LOG_DEBUG("Adding exit action to {}: {}", id_, actionId);
-    exitActions_.push_back(actionId);
-}
-
 void ConcurrentStateNode::addInvoke(std::shared_ptr<IInvokeNode> invoke) {
     if (invoke) {
         LOG_DEBUG("Adding invoke to {}", id_);
@@ -166,38 +156,25 @@ const std::vector<std::string> &ConcurrentStateNode::getReactiveGuards() const {
     return reactiveGuards_;
 }
 
-const std::vector<std::string> &ConcurrentStateNode::getEntryActions() const {
-    return entryActions_;
-}
-
-const std::vector<std::string> &ConcurrentStateNode::getExitActions() const {
-    return exitActions_;
-}
-
-void ConcurrentStateNode::addEntryActionNode(std::shared_ptr<IActionNode> action) {
-    if (action) {
-        LOG_DEBUG("Adding entry action node to {}", id_);
-        entryActionNodes_.push_back(action);
-    } else {
-        LOG_WARN("Attempt to add null action node to {}", id_);
+// W3C SCXML 3.8/3.9: Block-based action methods
+void ConcurrentStateNode::addEntryActionBlock(std::vector<std::shared_ptr<IActionNode>> block) {
+    if (!block.empty()) {
+        entryActionBlocks_.push_back(std::move(block));
     }
 }
 
-void ConcurrentStateNode::addExitActionNode(std::shared_ptr<IActionNode> action) {
-    if (action) {
-        LOG_DEBUG("Adding exit action node to {}", id_);
-        exitActionNodes_.push_back(action);
-    } else {
-        LOG_WARN("Attempt to add null action node to {}", id_);
+const std::vector<std::vector<std::shared_ptr<IActionNode>>> &ConcurrentStateNode::getEntryActionBlocks() const {
+    return entryActionBlocks_;
+}
+
+void ConcurrentStateNode::addExitActionBlock(std::vector<std::shared_ptr<IActionNode>> block) {
+    if (!block.empty()) {
+        exitActionBlocks_.push_back(std::move(block));
     }
 }
 
-const std::vector<std::shared_ptr<IActionNode>> &ConcurrentStateNode::getEntryActionNodes() const {
-    return entryActionNodes_;
-}
-
-const std::vector<std::shared_ptr<IActionNode>> &ConcurrentStateNode::getExitActionNodes() const {
-    return exitActionNodes_;
+const std::vector<std::vector<std::shared_ptr<IActionNode>>> &ConcurrentStateNode::getExitActionBlocks() const {
+    return exitActionBlocks_;
 }
 
 bool ConcurrentStateNode::isFinalState() const {

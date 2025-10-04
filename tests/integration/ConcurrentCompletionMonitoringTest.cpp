@@ -440,13 +440,16 @@ TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_ChildEntryActionExecution) 
     auto parentEntryAction1 = std::make_shared<ScriptAction>("parent_entry_1", "parent_entry_action_1");
     auto parentEntryAction2 = std::make_shared<ScriptAction>("parent_entry_2", "parent_entry_action_2");
 
-    parentState->addEntryActionNode(parentEntryAction1);
-    parentState->addEntryActionNode(parentEntryAction2);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> parentEntryBlock = {parentEntryAction1, parentEntryAction2};
+    parentState->addEntryActionBlock(parentEntryBlock);
 
     // Create child state with entry action
     auto childState = std::make_shared<StateNode>("childState", Type::ATOMIC);
     auto childEntryAction = std::make_shared<ScriptAction>("child_entry", "child_entry_action");
-    childState->addEntryActionNode(childEntryAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> childEntryBlock = {childEntryAction};
+    childState->addEntryActionBlock(childEntryBlock);
 
     // Set up parent-child relationship per SCXML structure
     parentState->addChild(childState);
@@ -536,13 +539,16 @@ TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_EntryActionExecutionFailure
     auto successAction = std::make_shared<ScriptAction>("success_script", "success_action");
     auto failureAction = std::make_shared<ScriptAction>("throw new Error('intentional failure')", "failure_action");
 
-    parentState->addEntryActionNode(successAction);
-    parentState->addEntryActionNode(failureAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> parentEntryBlock = {successAction, failureAction};
+    parentState->addEntryActionBlock(parentEntryBlock);
 
     // Create child state
     auto childState = std::make_shared<StateNode>("childState", Type::ATOMIC);
     auto childAction = std::make_shared<ScriptAction>("child_script", "child_action");
-    childState->addEntryActionNode(childAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> childEntryBlock = {childAction};
+    childState->addEntryActionBlock(childEntryBlock);
 
     parentState->addChild(childState);
     parentState->setInitialState("childState");
@@ -586,13 +592,15 @@ TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_MixedActionTypes_ExecutionO
     auto assignAction = std::make_shared<AssignAction>("testVar", "value1", "assign_action");
     auto scriptAction2 = std::make_shared<ScriptAction>("script2", "script_action_2");
 
-    parentState->addEntryActionNode(scriptAction1);
-    parentState->addEntryActionNode(assignAction);
-    parentState->addEntryActionNode(scriptAction2);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> parentEntryBlock = {scriptAction1, assignAction, scriptAction2};
+    parentState->addEntryActionBlock(parentEntryBlock);
 
     auto childState = std::make_shared<StateNode>("childState", Type::ATOMIC);
     auto childScriptAction = std::make_shared<ScriptAction>("child_script", "child_script_action");
-    childState->addEntryActionNode(childScriptAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> childEntryBlock = {childScriptAction};
+    childState->addEntryActionBlock(childEntryBlock);
 
     parentState->addChild(childState);
     parentState->setInitialState("childState");
@@ -674,9 +682,15 @@ TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_DeepNestedStates_EntryActio
     auto parentAction = std::make_shared<ScriptAction>("parent_entry", "parent_action");
     auto childAction = std::make_shared<ScriptAction>("child_entry", "child_action");
 
-    grandparentState->addEntryActionNode(grandparentAction);
-    parentState->addEntryActionNode(parentAction);
-    childState->addEntryActionNode(childAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> grandparentEntryBlock = {grandparentAction};
+    grandparentState->addEntryActionBlock(grandparentEntryBlock);
+
+    std::vector<std::shared_ptr<IActionNode>> parentEntryBlock = {parentAction};
+    parentState->addEntryActionBlock(parentEntryBlock);
+
+    std::vector<std::shared_ptr<IActionNode>> childEntryBlock = {childAction};
+    childState->addEntryActionBlock(childEntryBlock);
 
     // Set up hierarchy
     parentState->addChild(childState);
@@ -751,13 +765,15 @@ TEST_F(ConcurrentCompletionMonitoringTest, SCXML_W3C_EntryActionException_System
     auto exceptionAction = std::make_shared<ScriptAction>("throw new Error('critical error')", "exception_action");
     auto recoveryAction = std::make_shared<ScriptAction>("recovery_script", "recovery_action");
 
-    parentState->addEntryActionNode(normalAction);
-    parentState->addEntryActionNode(exceptionAction);
-    parentState->addEntryActionNode(recoveryAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> parentEntryBlock = {normalAction, exceptionAction, recoveryAction};
+    parentState->addEntryActionBlock(parentEntryBlock);
 
     auto childState = std::make_shared<StateNode>("childState", Type::ATOMIC);
     auto childAction = std::make_shared<ScriptAction>("child_continues", "child_action");
-    childState->addEntryActionNode(childAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> childEntryBlock = {childAction};
+    childState->addEntryActionBlock(childEntryBlock);
 
     parentState->addChild(childState);
     parentState->setInitialState("childState");

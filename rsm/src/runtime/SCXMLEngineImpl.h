@@ -74,12 +74,6 @@ private:
     std::shared_ptr<Event> convertEvent(std::shared_ptr<Event> publicEvent) const;
 
     /**
-     * @brief Execute onentry actions for a state according to W3C SCXML specification
-     * @param stateId State ID to execute onentry actions for
-     */
-    void executeOnEntryActions(const std::string &stateId);
-
-    /**
      * @brief Generate a unique session ID for internal use
      */
     std::string generateSessionId() const;

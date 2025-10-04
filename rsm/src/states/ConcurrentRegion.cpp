@@ -259,36 +259,39 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
                             const auto &children = rootState_->getChildren();
                             for (const auto &child : children) {
                                 if (child && child->getId() == targetState) {
-                                    const auto &entryActionNodes = child->getEntryActionNodes();
-                                    if (!entryActionNodes.empty()) {
-                                        LOG_DEBUG("Executing {} entry actions for "
-                                                  "target state: {}",
-                                                  entryActionNodes.size(), targetState);
+                                    // W3C SCXML 3.8: Execute entry action blocks
+                                    const auto &entryBlocks = child->getEntryActionBlocks();
+                                    if (!entryBlocks.empty()) {
+                                        LOG_DEBUG(
+                                            "W3C SCXML 3.8: Executing {} entry action blocks for target state: {}",
+                                            entryBlocks.size(), targetState);
 
-                                        for (const auto &actionNode : entryActionNodes) {
-                                            if (!actionNode) {
-                                                LOG_WARN("Null entry ActionNode "
-                                                         "encountered, skipping");
-                                                continue;
-                                            }
-
-                                            try {
-                                                LOG_DEBUG("Executing entry "
-                                                          "ActionNode: {} (ID: {})",
-                                                          actionNode->getActionType(), actionNode->getId());
-                                                if (actionNode->execute(*executionContext_)) {
-                                                    LOG_DEBUG("Successfully executed "
-                                                              "entry ActionNode: {}",
-                                                              actionNode->getActionType());
-                                                } else {
-                                                    LOG_WARN(
-                                                        "ConcurrentRegion::processEvent - Entry ActionNode failed: {}",
-                                                        actionNode->getActionType());
+                                        for (const auto &actionBlock : entryBlocks) {
+                                            for (const auto &actionNode : actionBlock) {
+                                                if (!actionNode) {
+                                                    LOG_WARN("Null entry ActionNode "
+                                                             "encountered, skipping");
+                                                    continue;
                                                 }
-                                            } catch (const std::exception &e) {
-                                                LOG_WARN("Entry ActionNode exception: "
-                                                         "{} Error: {}",
-                                                         actionNode->getActionType(), e.what());
+
+                                                try {
+                                                    LOG_DEBUG("Executing entry "
+                                                              "ActionNode: {} (ID: {})",
+                                                              actionNode->getActionType(), actionNode->getId());
+                                                    if (actionNode->execute(*executionContext_)) {
+                                                        LOG_DEBUG("Successfully executed "
+                                                                  "entry ActionNode: {}",
+                                                                  actionNode->getActionType());
+                                                    } else {
+                                                        LOG_WARN("ConcurrentRegion::processEvent - Entry ActionNode "
+                                                                 "failed: {}",
+                                                                 actionNode->getActionType());
+                                                    }
+                                                } catch (const std::exception &e) {
+                                                    LOG_WARN("Entry ActionNode exception: "
+                                                             "{} Error: {}",
+                                                             actionNode->getActionType(), e.what());
+                                                }
                                             }
                                         }
                                     }
@@ -580,16 +583,18 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
     if (executionContext_) {
         LOG_DEBUG("Executing entry actions for: {}", rootState_->getId());
 
-        // Execute entry action nodes if available
-        const auto &entryActionNodes = rootState_->getEntryActionNodes();
-        if (!entryActionNodes.empty()) {
-            for (const auto &actionNode : entryActionNodes) {
-                if (actionNode) {
-                    try {
-                        LOG_DEBUG("Executing entry action: {}", actionNode->getId());
-                        executeActionNode(actionNode, "enterInitialState");
-                    } catch (const std::exception &e) {
-                        LOG_WARN("Entry action failed: {}", e.what());
+        // W3C SCXML 3.8: Execute entry action blocks
+        const auto &entryBlocks = rootState_->getEntryActionBlocks();
+        if (!entryBlocks.empty()) {
+            for (const auto &actionBlock : entryBlocks) {
+                for (const auto &actionNode : actionBlock) {
+                    if (actionNode) {
+                        try {
+                            LOG_DEBUG("Executing entry action: {}", actionNode->getId());
+                            executeActionNode(actionNode, "enterInitialState");
+                        } catch (const std::exception &e) {
+                            LOG_WARN("Entry action failed: {}", e.what());
+                        }
                     }
                 }
             }
@@ -655,12 +660,18 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
                                                });
 
                 if (childState != children.end() && *childState) {
-                    // Execute child state's entry actions
-                    const auto &childEntryActions = (*childState)->getEntryActionNodes();
-                    for (const auto &actionNode : childEntryActions) {
-                        if (actionNode) {
-                            LOG_DEBUG("Executing child entry action: {}", actionNode->getId());
-                            executeActionNode(actionNode, "enterInitialState");
+                    // W3C SCXML 3.8: Execute child state's entry action blocks
+                    const auto &childEntryBlocks = (*childState)->getEntryActionBlocks();
+                    for (const auto &actionBlock : childEntryBlocks) {
+                        for (const auto &actionNode : actionBlock) {
+                            if (actionNode) {
+                                LOG_DEBUG("Executing child entry action: {}", actionNode->getId());
+                                if (!executeActionNode(actionNode, "enterInitialState")) {
+                                    LOG_WARN("W3C SCXML 3.8: Child entry action failed, stopping remaining actions in "
+                                             "THIS block only");
+                                    break;  // W3C SCXML 3.8: stop remaining actions in this block
+                                }
+                            }
                         }
                     }
 
@@ -696,13 +707,20 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
                                              });
 
                             if (grandchildState != grandchildren.end() && *grandchildState) {
-                                const auto &grandchildEntryActions = (*grandchildState)->getEntryActionNodes();
-                                for (const auto &actionNode : grandchildEntryActions) {
-                                    if (actionNode) {
-                                        LOG_DEBUG("Executing grandchild entry "
-                                                  "action: {}",
-                                                  actionNode->getId());
-                                        executeActionNode(actionNode, "enterInitialState");
+                                // W3C SCXML 3.8: Execute grandchild entry action blocks
+                                const auto &grandchildEntryBlocks = (*grandchildState)->getEntryActionBlocks();
+                                for (const auto &actionBlock : grandchildEntryBlocks) {
+                                    for (const auto &actionNode : actionBlock) {
+                                        if (actionNode) {
+                                            LOG_DEBUG("Executing grandchild entry "
+                                                      "action: {}",
+                                                      actionNode->getId());
+                                            if (!executeActionNode(actionNode, "enterInitialState")) {
+                                                LOG_WARN("W3C SCXML 3.8: Grandchild entry action failed, stopping "
+                                                         "remaining actions in THIS block only");
+                                                break;  // W3C SCXML 3.8: stop remaining actions in this block
+                                            }
+                                        }
                                     }
                                 }
                             }

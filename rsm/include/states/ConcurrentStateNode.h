@@ -85,9 +85,6 @@ public:
     void setInitialState(const std::string &state) override;
     const std::string &getInitialState() const override;
 
-    void addEntryAction(const std::string &actionId) override;
-    void addExitAction(const std::string &actionId) override;
-
     void addInvoke(std::shared_ptr<IInvokeNode> invoke) override;
     const std::vector<std::shared_ptr<IInvokeNode>> &getInvoke() const override;
 
@@ -99,13 +96,11 @@ public:
     void addReactiveGuard(const std::string &guardId) override;
     const std::vector<std::string> &getReactiveGuards() const override;
 
-    const std::vector<std::string> &getEntryActions() const override;
-    const std::vector<std::string> &getExitActions() const override;
-
-    void addEntryActionNode(std::shared_ptr<IActionNode> action) override;
-    void addExitActionNode(std::shared_ptr<IActionNode> action) override;
-    const std::vector<std::shared_ptr<IActionNode>> &getEntryActionNodes() const override;
-    const std::vector<std::shared_ptr<IActionNode>> &getExitActionNodes() const override;
+    // W3C SCXML 3.8/3.9: Block-based action methods
+    void addEntryActionBlock(std::vector<std::shared_ptr<IActionNode>> block) override;
+    const std::vector<std::vector<std::shared_ptr<IActionNode>>> &getEntryActionBlocks() const override;
+    void addExitActionBlock(std::vector<std::shared_ptr<IActionNode>> block) override;
+    const std::vector<std::vector<std::shared_ptr<IActionNode>>> &getExitActionBlocks() const override;
 
     bool isFinalState() const override;
     const DoneData &getDoneData() const override;
@@ -256,10 +251,9 @@ private:
     std::string onExit_;
     std::string initialState_;
 
-    std::vector<std::string> entryActions_;
-    std::vector<std::string> exitActions_;
-    std::vector<std::shared_ptr<IActionNode>> entryActionNodes_;
-    std::vector<std::shared_ptr<IActionNode>> exitActionNodes_;
+    // W3C SCXML 3.8/3.9: Block-based action storage
+    std::vector<std::vector<std::shared_ptr<IActionNode>>> entryActionBlocks_;
+    std::vector<std::vector<std::shared_ptr<IActionNode>>> exitActionBlocks_;
 
     std::vector<std::string> reactiveGuards_;
 

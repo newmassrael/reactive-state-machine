@@ -96,30 +96,6 @@ const std::string &RSM::StateNode::getOnExit() const {
     return onExit_;
 }
 
-void RSM::StateNode::addEntryAction(const std::string &actionId) {
-    LOG_DEBUG("Adding entry action to {}: {}", id_, actionId);
-    entryActions_.push_back(actionId);
-
-    // Update onEntry_
-    if (onEntry_.empty()) {
-        onEntry_ = actionId;
-    } else {
-        onEntry_ += ";" + actionId;
-    }
-}
-
-void RSM::StateNode::addExitAction(const std::string &actionId) {
-    LOG_DEBUG("Adding exit action to {}: {}", id_, actionId);
-    exitActions_.push_back(actionId);
-
-    // Update onExit_
-    if (onExit_.empty()) {
-        onExit_ = actionId;
-    } else {
-        onExit_ += ";" + actionId;
-    }
-}
-
 void RSM::StateNode::addInvoke(std::shared_ptr<RSM::IInvokeNode> invoke) {
     if (invoke) {
         LOG_DEBUG("Adding invoke to {}: {}", id_, invoke->getId());
@@ -176,29 +152,29 @@ void RSM::StateNode::setInitialTransition(std::shared_ptr<RSM::ITransitionNode> 
     initialTransition_ = transition;
 }
 
-// IActionNode-based action methods
-void RSM::StateNode::addEntryActionNode(std::shared_ptr<RSM::IActionNode> action) {
-    if (action) {
-        LOG_DEBUG("Adding entry action node to {}: {}", id_, action->getActionType());
-        entryActionNodes_.push_back(action);
+// W3C SCXML 3.8/3.9: Block-based action methods
+void RSM::StateNode::addEntryActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) {
+    if (!block.empty()) {
+        LOG_DEBUG("W3C SCXML 3.8: Adding entry action block to {} with {} actions", id_, block.size());
+        entryActionBlocks_.push_back(std::move(block));
     } else {
-        LOG_WARN("Attempt to add null action node to {}", id_);
+        LOG_WARN("Attempted to add empty entry action block to {}", id_);
     }
 }
 
-void RSM::StateNode::addExitActionNode(std::shared_ptr<RSM::IActionNode> action) {
-    if (action) {
-        LOG_DEBUG("Adding exit action node to {}: {}", id_, action->getActionType());
-        exitActionNodes_.push_back(action);
+const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &RSM::StateNode::getEntryActionBlocks() const {
+    return entryActionBlocks_;
+}
+
+void RSM::StateNode::addExitActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) {
+    if (!block.empty()) {
+        LOG_DEBUG("W3C SCXML 3.9: Adding exit action block to {} with {} actions", id_, block.size());
+        exitActionBlocks_.push_back(std::move(block));
     } else {
-        LOG_WARN("Attempt to add null action node to {}", id_);
+        LOG_WARN("Attempted to add empty exit action block to {}", id_);
     }
 }
 
-const std::vector<std::shared_ptr<RSM::IActionNode>> &RSM::StateNode::getEntryActionNodes() const {
-    return entryActionNodes_;
-}
-
-const std::vector<std::shared_ptr<RSM::IActionNode>> &RSM::StateNode::getExitActionNodes() const {
-    return exitActionNodes_;
+const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &RSM::StateNode::getExitActionBlocks() const {
+    return exitActionBlocks_;
 }

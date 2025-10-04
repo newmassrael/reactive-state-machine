@@ -42,15 +42,12 @@ private:
     // 전환 요소 파싱
     void parseTransitions(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);
 
-    // onentry/onexit 요소 파싱
-    void parseEntryExitElements(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);
-
-    // onentry/onexit 요소를 새로운 IActionNode 기반으로 파싱
+    // W3C SCXML 3.8/3.9: onentry/onexit 요소를 IActionNode 블록 기반으로 파싱
     void parseEntryExitActionNodes(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);
 
-    // 실행 가능한 콘텐츠 파싱 헬퍼 메서드
-    void parseExecutableContent(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state,
-                                bool isEntryAction);
+    // W3C SCXML 3.8/3.9: Block-based executable content parsing
+    void parseExecutableContentBlock(const xmlpp::Element *parentElement,
+                                     std::vector<std::shared_ptr<RSM::IActionNode>> &actionBlock);
 
     // invoke 요소 파싱
     void parseInvokeElements(const xmlpp::Element *parentElement, std::shared_ptr<IStateNode> state);

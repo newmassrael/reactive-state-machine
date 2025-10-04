@@ -54,7 +54,9 @@ TEST_F(ConcurrentRegionTest, ExecuteActionNode_ActionExecuteThrowsException_Hand
     auto scriptAction = std::make_shared<ScriptAction>("throw new Error('test exception')", "exception_action");
 
     auto testState = std::make_shared<StateNode>("testState", Type::ATOMIC);
-    testState->addEntryActionNode(scriptAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> entryBlock = {scriptAction};
+    testState->addEntryActionBlock(entryBlock);
 
     // Configure mock to throw exception for this script
     mockExecutor->setScriptExecutionResult(false);  // Make it fail
@@ -76,7 +78,9 @@ TEST_F(ConcurrentRegionTest, ExecuteActionNode_ActionExecuteReturnsFalse_Handled
     auto scriptAction = std::make_shared<ScriptAction>("return false", "false_action");
 
     auto testState = std::make_shared<StateNode>("testState", Type::ATOMIC);
-    testState->addEntryActionNode(scriptAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> entryBlock = {scriptAction};
+    testState->addEntryActionBlock(entryBlock);
 
     // Configure mock to return false
     mockExecutor->setScriptExecutionResult(false);
@@ -98,7 +102,9 @@ TEST_F(ConcurrentRegionTest, ExecuteActionNode_ValidScriptAction_ReturnsTrue) {
     auto scriptAction = std::make_shared<ScriptAction>("console.log('test')", "script_action");
 
     auto testState = std::make_shared<StateNode>("testState", Type::ATOMIC);
-    testState->addEntryActionNode(scriptAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> entryBlock = {scriptAction};
+    testState->addEntryActionBlock(entryBlock);
 
     // Configure mock to succeed
     mockExecutor->setScriptExecutionResult(true);
@@ -120,7 +126,9 @@ TEST_F(ConcurrentRegionTest, ExecuteActionNode_ValidAssignAction_ReturnsTrue) {
     auto assignAction = std::make_shared<AssignAction>("testVar", "42", "assign_action");
 
     auto testState = std::make_shared<StateNode>("testState", Type::ATOMIC);
-    testState->addEntryActionNode(assignAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> entryBlock = {assignAction};
+    testState->addEntryActionBlock(entryBlock);
 
     // Configure mock to succeed for variable assignment
     mockExecutor->setVariableAssignmentResult(true);
@@ -142,7 +150,9 @@ TEST_F(ConcurrentRegionTest, ExecuteActionNode_NullExecutionContext_SkipsExecuti
     auto scriptAction = std::make_shared<ScriptAction>("console.log('test')", "script_action");
 
     auto testState = std::make_shared<StateNode>("testState", Type::ATOMIC);
-    testState->addEntryActionNode(scriptAction);
+    // W3C SCXML 3.8: Use block-based API
+    std::vector<std::shared_ptr<IActionNode>> entryBlock = {scriptAction};
+    testState->addEntryActionBlock(entryBlock);
 
     // Create region without execution context
     auto regionWithoutContext = std::make_unique<ConcurrentRegion>("testRegion", testState, nullptr);
@@ -163,9 +173,9 @@ TEST_F(ConcurrentRegionTest, ExecuteActionNode_MultipleActions_ExecutedInOrder) 
     auto action3 = std::make_shared<ScriptAction>("action3", "action_3");
 
     auto testState = std::make_shared<StateNode>("testState", Type::ATOMIC);
-    testState->addEntryActionNode(action1);
-    testState->addEntryActionNode(action2);
-    testState->addEntryActionNode(action3);
+    // W3C SCXML 3.8: Use block-based API - each action in same block
+    std::vector<std::shared_ptr<IActionNode>> entryBlock = {action1, action2, action3};
+    testState->addEntryActionBlock(entryBlock);
 
     mockExecutor->setScriptExecutionResult(true);
 
@@ -188,8 +198,9 @@ TEST_F(ConcurrentRegionTest, ExecuteActionNode_MixedActionTypes_AllExecuted) {
     auto assignAction = std::make_shared<AssignAction>("var1", "value1", "assign_action");
 
     auto testState = std::make_shared<StateNode>("testState", Type::ATOMIC);
-    testState->addEntryActionNode(scriptAction);
-    testState->addEntryActionNode(assignAction);
+    // W3C SCXML 3.8: Use block-based API - mixed actions in same block
+    std::vector<std::shared_ptr<IActionNode>> entryBlock = {scriptAction, assignAction};
+    testState->addEntryActionBlock(entryBlock);
 
     mockExecutor->setScriptExecutionResult(true);
     mockExecutor->setVariableAssignmentResult(true);

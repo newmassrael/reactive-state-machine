@@ -131,40 +131,28 @@ public:
     virtual const std::string &getOnExit() const override;
 
     /**
-     * @brief 진입 액션 추가
-     * @param actionId 액션 ID
+     * @brief W3C SCXML 3.8: 진입 액션 블록 추가 (각 onentry 핸들러는 별도 블록)
+     * @param block 액션 노드 블록
      */
-    virtual void addEntryAction(const std::string &actionId) override;
+    void addEntryActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) override;
 
     /**
-     * @brief 종료 액션 추가
-     * @param actionId 액션 ID
+     * @brief W3C SCXML 3.8: 진입 액션 블록들 조회
+     * @return 진입 액션 블록들
      */
-    virtual void addExitAction(const std::string &actionId) override;
+    const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &getEntryActionBlocks() const override;
 
     /**
-     * @brief IActionNode 기반 진입 액션 추가
-     * @param action 액션 노드
+     * @brief W3C SCXML 3.9: 종료 액션 블록 추가 (각 onexit 핸들러는 별도 블록)
+     * @param block 액션 노드 블록
      */
-    void addEntryActionNode(std::shared_ptr<RSM::IActionNode> action);
+    void addExitActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) override;
 
     /**
-     * @brief IActionNode 기반 종료 액션 추가
-     * @param action 액션 노드
+     * @brief W3C SCXML 3.9: 종료 액션 블록들 조회
+     * @return 종료 액션 블록들
      */
-    void addExitActionNode(std::shared_ptr<RSM::IActionNode> action);
-
-    /**
-     * @brief IActionNode 기반 진입 액션들 조회
-     * @return 진입 액션 노드들
-     */
-    const std::vector<std::shared_ptr<RSM::IActionNode>> &getEntryActionNodes() const;
-
-    /**
-     * @brief IActionNode 기반 종료 액션들 조회
-     * @return 종료 액션 노드들
-     */
-    const std::vector<std::shared_ptr<RSM::IActionNode>> &getExitActionNodes() const;
+    const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &getExitActionBlocks() const override;
 
     /**
      * @brief invoke 노드 추가
@@ -205,14 +193,6 @@ public:
 
     // IStateNode 인터페이스 구현
     const std::vector<std::string> &getReactiveGuards() const override;
-
-    const std::vector<std::string> &getEntryActions() const override {
-        return entryActions_;
-    }
-
-    const std::vector<std::string> &getExitActions() const override {
-        return exitActions_;
-    }
 
     bool isFinalState() const override;
 
@@ -266,12 +246,13 @@ private:
     std::string initialState_;
     std::string onEntry_;
     std::string onExit_;
-    std::vector<std::string> entryActions_;
-    std::vector<std::string> exitActions_;
 
     // New action system (IActionNode-based)
-    std::vector<std::shared_ptr<RSM::IActionNode>> entryActionNodes_;
-    std::vector<std::shared_ptr<RSM::IActionNode>> exitActionNodes_;
+
+    // W3C SCXML 3.8/3.9: Block-based action storage for proper handler isolation
+    std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> entryActionBlocks_;
+    std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> exitActionBlocks_;
+
     std::vector<std::shared_ptr<IInvokeNode>> invokes_;
     DoneData doneData_;
     std::vector<std::string> reactiveGuards_;

@@ -218,47 +218,6 @@ void RSM::StateNodeParser::parseTransitions(const xmlpp::Element *parentElement,
     LOG_DEBUG("Parsed {} transitions", state->getTransitions().size());
 }
 
-void RSM::StateNodeParser::parseEntryExitElements(const xmlpp::Element *parentElement,
-                                                  std::shared_ptr<RSM::IStateNode> state) {
-    if (!parentElement || !state || !actionParser_) {
-        return;
-    }
-
-    // onentry 요소 처리
-    auto onentryElements = ParsingCommon::findChildElements(parentElement, "onentry");
-    for (auto *onentryElement : onentryElements) {
-        auto actions = actionParser_->parseActionsInElement(onentryElement);
-        for (const auto &action : actions) {
-            // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
-            std::string actionContent;
-            if (action->getActionType() == "script") {
-                // Script content is handled during action parsing
-            } else {
-                actionContent = action->getId();
-            }
-            state->addEntryAction(actionContent);
-            LOG_DEBUG("Added entry action: {}", actionContent);
-        }
-    }
-
-    // onexit 요소 처리
-    auto onexitElements = ParsingCommon::findChildElements(parentElement, "onexit");
-    for (auto *onexitElement : onexitElements) {
-        auto actions = actionParser_->parseActionsInElement(onexitElement);
-        for (const auto &action : actions) {
-            // script 액션의 경우 textContent를 사용, 그렇지 않으면 ID 사용
-            std::string actionContent;
-            if (action->getActionType() == "script") {
-                // Script content is handled during action parsing
-            } else {
-                actionContent = action->getId();
-            }
-            state->addExitAction(actionContent);
-            LOG_DEBUG("Added exit action: {}", actionContent);
-        }
-    }
-}
-
 void RSM::StateNodeParser::parseChildStates(const xmlpp::Element *stateElement,
                                             std::shared_ptr<RSM::IStateNode> parentState,
                                             const RSM::SCXMLContext &context) {
@@ -407,27 +366,39 @@ void RSM::StateNodeParser::parseEntryExitActionNodes(const xmlpp::Element *paren
         return;
     }
 
-    // onentry 요소 처리
+    // W3C SCXML 3.8: onentry 요소 처리 - 각 onentry는 별도 블록
     auto onentryElements = ParsingCommon::findChildElements(parentElement, "onentry");
     for (auto *onentryElement : onentryElements) {
-        parseExecutableContent(onentryElement, state, true);  // true = entry actions
+        std::vector<std::shared_ptr<RSM::IActionNode>> actionBlock;
+        parseExecutableContentBlock(onentryElement, actionBlock);
+
+        if (!actionBlock.empty()) {
+            state->addEntryActionBlock(actionBlock);
+            LOG_DEBUG("W3C SCXML 3.8: Added entry action block with {} actions", actionBlock.size());
+        }
     }
 
-    // onexit 요소 처리
+    // W3C SCXML 3.9: onexit 요소 처리 - 각 onexit는 별도 블록
     auto onexitElements = ParsingCommon::findChildElements(parentElement, "onexit");
     for (auto *onexitElement : onexitElements) {
-        parseExecutableContent(onexitElement, state, false);  // false = exit actions
+        std::vector<std::shared_ptr<RSM::IActionNode>> actionBlock;
+        parseExecutableContentBlock(onexitElement, actionBlock);
+
+        if (!actionBlock.empty()) {
+            state->addExitActionBlock(actionBlock);
+            LOG_DEBUG("W3C SCXML 3.9: Added exit action block with {} actions", actionBlock.size());
+        }
     }
 }
 
-void RSM::StateNodeParser::parseExecutableContent(const xmlpp::Element *parentElement,
-                                                  std::shared_ptr<RSM::IStateNode> state, bool isEntryAction) {
-    if (!parentElement || !state) {
+void RSM::StateNodeParser::parseExecutableContentBlock(const xmlpp::Element *parentElement,
+                                                       std::vector<std::shared_ptr<RSM::IActionNode>> &actionBlock) {
+    if (!parentElement) {
         return;
     }
 
     if (!actionParser_) {
-        LOG_WARN("RSM::StateNodeParser::parseExecutableContent() - ActionParser not available");
+        LOG_WARN("RSM::StateNodeParser::parseExecutableContentBlock() - ActionParser not available");
         return;
     }
 
@@ -438,14 +409,10 @@ void RSM::StateNodeParser::parseExecutableContent(const xmlpp::Element *parentEl
             continue;
         }
 
-        // W3C SCXML 사양 준수: 모든 실행 가능한 콘텐츠를 ActionParser에 위임하여 균등하게 처리
+        // W3C SCXML: Parse each executable content element into an action node
         auto action = actionParser_->parseActionNode(element);
         if (action) {
-            if (isEntryAction) {
-                state->addEntryActionNode(action);
-            } else {
-                state->addExitActionNode(action);
-            }
+            actionBlock.push_back(action);
 
             std::string elementName = element->get_name();
             // 네임스페이스 접두사 제거
@@ -454,7 +421,7 @@ void RSM::StateNodeParser::parseExecutableContent(const xmlpp::Element *parentEl
                 elementName = elementName.substr(colonPos + 1);
             }
 
-            LOG_DEBUG("Added {} {} action via ActionParser", (isEntryAction ? "entry" : "exit"), elementName);
+            LOG_DEBUG("Parsed executable content '{}' into action block", elementName);
         } else {
             std::string elementName = element->get_name();
             LOG_DEBUG("Element '{}' not recognized as executable content by ActionParser", elementName);

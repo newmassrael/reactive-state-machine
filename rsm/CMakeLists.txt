@@ -84,7 +84,6 @@ add_library(rsm_unified
     src/runtime/StateMachine.cpp
     src/runtime/StateMachineContext.cpp
     src/runtime/StateMachineFactory.cpp
-    src/runtime/SCXMLModelExtractor.cpp
     src/runtime/ActionExecutorImpl.cpp
     src/runtime/StateMachineEventRaiser.cpp
     src/runtime/ExecutionContextImpl.cpp

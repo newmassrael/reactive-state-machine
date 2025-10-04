@@ -41,18 +41,6 @@ public:
     virtual void setInitialState(const std::string &state) = 0;
     virtual const std::string &getInitialState() const = 0;
 
-    /**
-     * @brief 진입 액션 추가
-     * @param actionId 액션 ID
-     */
-    virtual void addEntryAction(const std::string &actionId) = 0;
-
-    /**
-     * @brief 종료 액션 추가
-     * @param actionId 액션 ID
-     */
-    virtual void addExitAction(const std::string &actionId) = 0;
-
     virtual void addInvoke(std::shared_ptr<IInvokeNode> invoke) = 0;
     virtual const std::vector<std::shared_ptr<IInvokeNode>> &getInvoke() const = 0;
 
@@ -79,14 +67,11 @@ public:
     virtual void addReactiveGuard(const std::string &guardId) = 0;
     virtual const std::vector<std::string> &getReactiveGuards() const = 0;
 
-    virtual const std::vector<std::string> &getEntryActions() const = 0;
-    virtual const std::vector<std::string> &getExitActions() const = 0;
-
-    // New IActionNode-based action methods
-    virtual void addEntryActionNode(std::shared_ptr<RSM::IActionNode> action) = 0;
-    virtual void addExitActionNode(std::shared_ptr<RSM::IActionNode> action) = 0;
-    virtual const std::vector<std::shared_ptr<RSM::IActionNode>> &getEntryActionNodes() const = 0;
-    virtual const std::vector<std::shared_ptr<RSM::IActionNode>> &getExitActionNodes() const = 0;
+    // W3C SCXML 3.8/3.9: Block-based action methods for proper onentry/onexit handler isolation
+    virtual void addEntryActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) = 0;
+    virtual const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &getEntryActionBlocks() const = 0;
+    virtual void addExitActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) = 0;
+    virtual const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &getExitActionBlocks() const = 0;
 
     virtual bool isFinalState() const = 0;
 

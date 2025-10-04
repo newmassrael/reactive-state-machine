@@ -96,37 +96,21 @@ public:
         return initialState_;
     }
 
-    // Actions (mock implementation)
-    void addEntryAction(const std::string &actionId) override {
-        entryActions_.push_back(actionId);
+    // W3C SCXML 3.8/3.9: Block-based action methods
+    void addEntryActionBlock(std::vector<std::shared_ptr<IActionNode>> block) override {
+        entryActionBlocks_.push_back(std::move(block));
     }
 
-    void addExitAction(const std::string &actionId) override {
-        exitActions_.push_back(actionId);
+    const std::vector<std::vector<std::shared_ptr<IActionNode>>> &getEntryActionBlocks() const override {
+        return entryActionBlocks_;
     }
 
-    const std::vector<std::string> &getEntryActions() const override {
-        return entryActions_;
+    void addExitActionBlock(std::vector<std::shared_ptr<IActionNode>> block) override {
+        exitActionBlocks_.push_back(std::move(block));
     }
 
-    const std::vector<std::string> &getExitActions() const override {
-        return exitActions_;
-    }
-
-    void addEntryActionNode(std::shared_ptr<IActionNode> action) override {
-        entryActionNodes_.push_back(action);
-    }
-
-    void addExitActionNode(std::shared_ptr<IActionNode> action) override {
-        exitActionNodes_.push_back(action);
-    }
-
-    const std::vector<std::shared_ptr<IActionNode>> &getEntryActionNodes() const override {
-        return entryActionNodes_;
-    }
-
-    const std::vector<std::shared_ptr<IActionNode>> &getExitActionNodes() const override {
-        return exitActionNodes_;
+    const std::vector<std::vector<std::shared_ptr<IActionNode>>> &getExitActionBlocks() const override {
+        return exitActionBlocks_;
     }
 
     // History support
@@ -208,10 +192,8 @@ private:
     std::string onEntry_;
     std::string onExit_;
     std::string initialState_;
-    std::vector<std::string> entryActions_;
-    std::vector<std::string> exitActions_;
-    std::vector<std::shared_ptr<IActionNode>> entryActionNodes_;
-    std::vector<std::shared_ptr<IActionNode>> exitActionNodes_;
+    std::vector<std::vector<std::shared_ptr<IActionNode>>> entryActionBlocks_;
+    std::vector<std::vector<std::shared_ptr<IActionNode>>> exitActionBlocks_;
     std::vector<std::string> reactiveGuards_;
     HistoryType historyType_ = HistoryType::NONE;
     DoneData doneData_;

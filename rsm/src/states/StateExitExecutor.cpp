@@ -109,41 +109,38 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
     assert(executionContext->isValid() && "SCXML violation: execution context must be valid");
 
     try {
-        auto &actionExecutor = executionContext->getActionExecutor();
-        const auto &exitActionNodes = state->getExitActionNodes();
+        // W3C SCXML 3.9: Get exit action blocks
+        const auto &exitActionBlocks = state->getExitActionBlocks();
 
-        // SCXML W3C Spec: Execute exit actions in document order
-        for (const auto &exitAction : exitActionNodes) {
-            if (exitAction) {
-                logExitAction(state->getId(), "Executing SCXML exit action node");
+        // W3C SCXML 3.9: Execute exit actions in document order, block by block
+        for (const auto &actionBlock : exitActionBlocks) {
+            for (const auto &exitAction : actionBlock) {
+                if (exitAction) {
+                    logExitAction(state->getId(), "Executing SCXML exit action node");
 
-                // Using injected ActionExecutor for SCXML-compliant execution
-                try {
-                    // Execute the action through the SCXML-compliant action executor
-                    logExitAction(state->getId(), fmt::format("ActionExecutor address: {}",
-                                                              reinterpret_cast<uintptr_t>(&actionExecutor)));
+                    // Using injected ActionExecutor for SCXML-compliant execution
+                    try {
+                        // W3C SCXML 3.9: Execute the exit action through the execution context
+                        logExitAction(state->getId(),
+                                      fmt::format("Executing exit action: {}", exitAction->getActionType()));
 
-                    // SCXML-compliant action execution
-                    bool actionResult = true;  // Placeholder for actual SCXML execution
+                        // W3C SCXML 3.9: Execute the action
+                        bool actionResult = exitAction->execute(*executionContext);
 
-                    // Future SCXML implementation:
-                    // bool actionResult = actionExecutor.executeAction(*exitAction);
+                        if (!actionResult) {
+                            LOG_WARN("W3C SCXML 3.9: Exit action failed for state: {}, stopping remaining actions in "
+                                     "THIS block only",
+                                     state->getId());
+                            break;  // W3C SCXML 3.9: stop remaining actions in this block
+                        }
 
-                    // SCXML compliance check
-                    assert(actionResult && "SCXML violation: exit action execution must not fail");
-
-                    if (!actionResult) {
-                        LOG_ERROR("SCXML violation: action failed for state: {}", state->getId());
-                        assert(false && "SCXML violation: action execution failure not allowed");
+                        logExitAction(state->getId(), "Successfully executed SCXML exit action node");
+                    } catch (const std::exception &actionException) {
+                        // SCXML spec violation: exit actions should not throw
+                        LOG_ERROR("SCXML violation: {}", actionException.what());
+                        assert(false && "SCXML violation: exit actions must not throw exceptions");
                         return false;
                     }
-
-                    logExitAction(state->getId(), "Successfully executed SCXML exit action node");
-                } catch (const std::exception &actionException) {
-                    // SCXML spec violation: exit actions should not throw
-                    LOG_ERROR("SCXML violation: {}", actionException.what());
-                    assert(false && "SCXML violation: exit actions must not throw exceptions");
-                    return false;
                 }
             }
         }

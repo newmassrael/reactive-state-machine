@@ -200,54 +200,6 @@ ExecutionResult SCXMLEngineImpl::convertResult(const JSResult &jsResult) const {
     return "1.0.0";
 }
 
-void SCXMLEngineImpl::executeOnEntryActions(const std::string &stateId) {
-    if (!scxmlModel_) {
-        LOG_ERROR("Cannot execute onentry actions: SCXML model is null");
-        return;
-    }
-
-    // Find the state node
-    auto stateNode = scxmlModel_->findStateById(stateId);
-    if (!stateNode) {
-        LOG_ERROR("Cannot find state node for onentry execution: {}", stateId);
-        return;
-    }
-
-    // Get entry actions from the state
-    const auto &entryActions = stateNode->getEntryActionNodes();
-    if (entryActions.empty()) {
-        LOG_DEBUG("No onentry actions to execute for state: {}", stateId);
-        return;
-    }
-
-    LOG_DEBUG("Executing {} onentry actions for state: {}", entryActions.size(), stateId);
-
-    // W3C SCXML: Execute onentry handlers in document order
-    for (const auto &action : entryActions) {
-        if (!action) {
-            LOG_WARN("Null onentry action found in state: {}", stateId);
-            continue;
-        }
-
-        LOG_DEBUG("Executing onentry action: {} in state: {}", action->getActionType(), stateId);
-
-        // Create execution context for the action
-        if (actionExecutor_) {
-            auto sharedActionExecutor =
-                std::shared_ptr<IActionExecutor>(actionExecutor_.get(), [](IActionExecutor *) {});
-            ExecutionContextImpl context(sharedActionExecutor, sessionId_);
-
-            // Execute the action
-            if (!action->execute(context)) {
-                LOG_ERROR("Failed to execute onentry action: {} in state: {}", action->getActionType(), stateId);
-                // W3C SCXML: Continue with other actions even if one fails
-            }
-        } else {
-            LOG_ERROR("Cannot execute onentry action: ActionExecutor is null");
-        }
-    }
-}
-
 // === High-Level SCXML State Machine API Implementation ===
 
 std::string SCXMLEngineImpl::generateSessionId() const {
