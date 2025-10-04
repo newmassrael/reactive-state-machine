@@ -636,25 +636,54 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
 
     // Execute first valid transition (SCXML W3C specification)
     for (const auto &transitionNode : transitions) {
-        std::string transitionEvent = transitionNode->getEvent();
+        // W3C SCXML 3.12: A transition can have multiple event descriptors
+        // The transition matches if at least one descriptor matches the event name
+        const std::vector<std::string> &eventDescriptors = transitionNode->getEvents();
 
         // Check if this transition matches the event
-        // Allow eventless transitions when eventName is empty (automatic transitions)
         bool eventMatches = false;
+
         if (eventName.empty()) {
-            // For automatic transitions, only consider transitions without events
-            eventMatches = transitionEvent.empty();
+            // For eventless transitions, only consider transitions without event descriptors
+            eventMatches = eventDescriptors.empty();
         } else {
-            // W3C SCXML: Support wildcard (*), exact matching, and hierarchical token matching
-            // Hierarchical matching: "done.invoke" matches "done.invoke.foo"
-            if (transitionEvent == "*") {
-                eventMatches = true;
-            } else if (transitionEvent == eventName) {
-                eventMatches = true;
-            } else {
-                // Check hierarchical prefix matching (tokenized by '.')
-                // "done.invoke" should match "done.invoke.foo"
-                eventMatches = eventName.starts_with(transitionEvent + ".");
+            // W3C SCXML 3.12: Check if ANY descriptor matches the event
+            constexpr size_t WILDCARD_SUFFIX_LEN = 2;  // Length of ".*"
+
+            for (const auto &descriptor : eventDescriptors) {
+                // Skip malformed/empty descriptors from parsing errors
+                if (descriptor.empty()) {
+                    continue;
+                }
+
+                // W3C SCXML 3.12: Wildcard "*" matches any event
+                if (descriptor == "*") {
+                    eventMatches = true;
+                    break;
+                }
+
+                // W3C SCXML 3.12: Exact match
+                if (descriptor == eventName) {
+                    eventMatches = true;
+                    break;
+                }
+
+                // W3C SCXML 3.12: Wildcard pattern "foo.*" matches "foo", "foo.bar", "foo.bar.baz"
+                if (descriptor.ends_with(".*")) {
+                    std::string prefix = descriptor.substr(0, descriptor.length() - WILDCARD_SUFFIX_LEN);
+                    // Match if event is exactly the prefix OR starts with "prefix."
+                    if (eventName == prefix || eventName.starts_with(prefix + ".")) {
+                        eventMatches = true;
+                        break;
+                    }
+                } else {
+                    // W3C SCXML 3.12: Token-based prefix matching
+                    // "foo" matches "foo.bar" but NOT "foobar"
+                    if (eventName.starts_with(descriptor + ".")) {
+                        eventMatches = true;
+                        break;
+                    }
+                }
             }
         }
 
@@ -674,8 +703,18 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
         std::string targetState = targets.empty() ? "" : targets[0];
         std::string condition = transitionNode->getGuard();
 
-        LOG_DEBUG("Checking transition: {} -> {} with condition: '{}' (event: '{}')", stateNode->getId(), targetState,
-                  condition, transitionEvent);
+        // Performance optimization: Only build debug string when DEBUG logging is enabled
+        if constexpr (SPDLOG_ACTIVE_LEVEL <= SPDLOG_LEVEL_DEBUG) {
+            std::string eventDescStr;
+            for (size_t i = 0; i < eventDescriptors.size(); ++i) {
+                if (i > 0) {
+                    eventDescStr += " ";
+                }
+                eventDescStr += eventDescriptors[i];
+            }
+            LOG_DEBUG("Checking transition: {} -> {} with condition: '{}' (events: '{}')", stateNode->getId(),
+                      targetState, condition, eventDescStr);
+        }
 
         bool conditionResult = condition.empty() || evaluateCondition(condition);
         LOG_DEBUG("Condition result: {}", conditionResult ? "true" : "false");
