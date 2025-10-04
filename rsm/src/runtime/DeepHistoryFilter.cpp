@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "model/IStateNode.h"
 #include <algorithm>
+#include <unordered_set>
 
 namespace RSM {
 
@@ -22,11 +23,41 @@ std::vector<std::string> DeepHistoryFilter::filterStates(const std::vector<std::
 
     std::vector<std::string> filteredStates;
 
-    // For deep history, we record all descendant states of the parent
+    // W3C SCXML 3.11: Deep history records the deepest active descendant configuration
+    // We need to filter out intermediate compound states and keep only the leaf states
+    // (atomic or final states) that are descendants of the parent
+
+    // Optimization: Convert activeStateIds to set for O(1) lookup instead of O(n)
+    std::unordered_set<std::string> activeStateSet(activeStateIds.begin(), activeStateIds.end());
+
     for (const auto &stateId : activeStateIds) {
-        if (isDescendant(stateId, parentStateId)) {
+        if (!isDescendant(stateId, parentStateId)) {
+            continue;
+        }
+
+        // Check if this is a leaf state (atomic or final)
+        // Optimized: Check only direct children instead of all states - O(children) vs O(n)
+        bool isLeaf = true;
+
+        if (stateProvider_) {
+            auto stateNode = stateProvider_(stateId);
+            if (stateNode) {
+                // Check if any direct child of this state is also active
+                const auto &children = stateNode->getChildren();
+                for (const auto &child : children) {
+                    if (child && activeStateSet.count(child->getId())) {
+                        // Found an active child, so this is not a leaf
+                        isLeaf = false;
+                        LOG_DEBUG("State {} is not a leaf (has active child {})", stateId, child->getId());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (isLeaf) {
             filteredStates.push_back(stateId);
-            LOG_DEBUG("Recording descendant state: {}", stateId);
+            LOG_DEBUG("Recording leaf descendant state: {}", stateId);
         }
     }
 

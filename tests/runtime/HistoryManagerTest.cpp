@@ -439,7 +439,8 @@ TEST_F(HistoryManagerTest, W3C_HistoryRestoration_ShallowHistory_WithoutPrevious
 }
 
 TEST_F(HistoryManagerTest, W3C_HistoryRestoration_DeepHistory_WithNestedStates) {
-    // Setup deep history with nested state recording
+    // W3C SCXML 3.11: Deep history records ONLY active atomic descendants (leaf states)
+    // If stateB1 (compound) and stateB1a (atomic) are active, only stateB1a is recorded
     ASSERT_TRUE(historyManager_->registerHistoryState("historyB", "stateB", HistoryType::DEEP, "stateB1"));
     ASSERT_TRUE(historyManager_->recordHistory("stateB", {"stateB1", "stateB1a"}));
 
@@ -447,10 +448,11 @@ TEST_F(HistoryManagerTest, W3C_HistoryRestoration_DeepHistory_WithNestedStates) 
     auto result = historyManager_->restoreHistory("historyB");
 
     EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.targetStateIds.size(), 2);
+    // W3C Spec: Deep history filters out intermediate compound states, keeps only atomic descendants
+    EXPECT_EQ(result.targetStateIds.size(), 1);
 
-    // Should restore all recorded nested states
-    std::vector<std::string> expected = {"stateB1", "stateB1a"};
+    // Should restore only the deepest atomic state (stateB1a), not intermediate compound (stateB1)
+    std::vector<std::string> expected = {"stateB1a"};
     EXPECT_EQ(result.targetStateIds, expected);
 }
 
@@ -484,18 +486,19 @@ TEST_F(HistoryManagerTest, W3C_HistoryTypes_ShallowVsDeep_FilteringBehavior) {
     EXPECT_EQ(shallowResult.targetStateIds.size(), 1);
     EXPECT_EQ(shallowResult.targetStateIds[0], "stateA2");
 
-    // Restore deep history - should get all descendants of stateB
+    // W3C SCXML 3.11: Deep history records ONLY active atomic descendants
+    // If stateB1 (compound) and stateB1a (atomic) are active, only stateB1a is recorded
     auto deepResult = historyManager_->restoreHistory("historyB");
     EXPECT_TRUE(deepResult.success);
-    EXPECT_EQ(deepResult.targetStateIds.size(), 2);
+    EXPECT_EQ(deepResult.targetStateIds.size(), 1);  // Only atomic state
 
-    // Check that deep history contains nested states
+    // Check that deep history contains ONLY the atomic descendant (stateB1a), not compound (stateB1)
     bool hasStateB1 = std::find(deepResult.targetStateIds.begin(), deepResult.targetStateIds.end(), "stateB1") !=
                       deepResult.targetStateIds.end();
     bool hasStateB1a = std::find(deepResult.targetStateIds.begin(), deepResult.targetStateIds.end(), "stateB1a") !=
                        deepResult.targetStateIds.end();
-    EXPECT_TRUE(hasStateB1);
-    EXPECT_TRUE(hasStateB1a);
+    EXPECT_FALSE(hasStateB1);  // Compound state should NOT be recorded
+    EXPECT_TRUE(hasStateB1a);  // Atomic state should be recorded
 }
 
 // ============================================================================
@@ -567,7 +570,9 @@ TEST_F(HistoryManagerTest, W3C_StateMachineIntegration_MultipleHistoryStates) {
 
     // Record different histories
     ASSERT_TRUE(historyManager_->recordHistory("stateA", {"stateA2"}));
+    // W3C SCXML 3.11: stateB1 (compound) will be filtered out, only stateB1b (atomic) recorded
     ASSERT_TRUE(historyManager_->recordHistory("stateB", {"stateB1", "stateB1b"}));
+    // W3C SCXML 3.11: stateA and stateB (compound) filtered out, only stateA1 and stateB2 (atomic) recorded
     ASSERT_TRUE(historyManager_->recordHistory("root", {"stateA", "stateA1", "stateB", "stateB2"}));
 
     // Verify independent restoration
@@ -579,7 +584,17 @@ TEST_F(HistoryManagerTest, W3C_StateMachineIntegration_MultipleHistoryStates) {
     EXPECT_TRUE(resultB.success);
     EXPECT_TRUE(resultRoot.success);
 
+    // Shallow history: direct child only
     EXPECT_EQ(resultA.targetStateIds, std::vector<std::string>{"stateA2"});
-    EXPECT_EQ(resultB.targetStateIds.size(), 2);
-    EXPECT_GT(resultRoot.targetStateIds.size(), 2);
+
+    // Deep history for stateB: only atomic descendant (stateB1b)
+    EXPECT_EQ(resultB.targetStateIds.size(), 1);
+    EXPECT_EQ(resultB.targetStateIds[0], "stateB1b");
+
+    // Deep history for root: only atomic descendants (stateA1, stateB2)
+    EXPECT_EQ(resultRoot.targetStateIds.size(), 2);
+    EXPECT_TRUE(std::find(resultRoot.targetStateIds.begin(), resultRoot.targetStateIds.end(), "stateA1") !=
+                resultRoot.targetStateIds.end());
+    EXPECT_TRUE(std::find(resultRoot.targetStateIds.begin(), resultRoot.targetStateIds.end(), "stateB2") !=
+                resultRoot.targetStateIds.end());
 }

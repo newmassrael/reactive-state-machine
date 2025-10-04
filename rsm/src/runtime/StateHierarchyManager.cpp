@@ -27,7 +27,7 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
 
     // SCXML W3C specification section 3.4: parallel states behave differently from compound states
     if (stateNode->getType() == Type::PARALLEL) {
-        // 상태를 활성 구성에 추가 (parallel states are always added)
+        // Add state to active configuration (parallel states are always added)
         addStateToConfiguration(stateId);
         // SCXML W3C specification section 3.4: ALL child regions MUST be activated when entering parallel state
         auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
@@ -95,18 +95,12 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
             const auto &children = rootState->getChildren();
             if (!children.empty()) {
                 std::string initialChild = rootState->getInitialState();
-                LOG_WARN("TEST364: Parallel state '{}' region '{}' rootState initialState='{}'", stateId, regionStateId,
-                         initialChild);
                 if (initialChild.empty()) {
                     // SCXML W3C: Use first child as default initial state
                     initialChild = children[0]->getId();
-                    LOG_WARN("TEST364: Parallel state '{}' region '{}' using first child fallback: '{}'", stateId,
-                             regionStateId, initialChild);
                 }
 
                 addStateToConfiguration(initialChild);
-                LOG_WARN("TEST364: Parallel state '{}' region '{}' added initial child to configuration: '{}'", stateId,
-                         regionStateId, initialChild);
 
                 // W3C SCXML 6.4: Invoke defer is handled by ConcurrentRegion via callback
                 // No need to defer here - Region already processes invokes in enterInitialState()
@@ -131,6 +125,10 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
         if (!initialChildren.empty()) {
             // W3C SCXML 3.3: Pre-process deep initial targets to set desired initial children for parallel regions
             // This implements the algorithm: if descendant already in statesToEnter, skip default entry
+            // Performance optimization: Track processed parallel states to avoid duplicate ancestor traversal O(n²) →
+            // O(n)
+            std::unordered_set<std::string> processedParallelStates;
+
             std::istringstream issPreprocess(initialChildren);
             std::string targetId;
             while (issPreprocess >> targetId) {
@@ -145,6 +143,15 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
                 while (current && current != stateNode) {
                     // Check if current's parent is a parallel state
                     if (current->getParent() && current->getParent()->getType() == Type::PARALLEL) {
+                        const std::string &parallelStateId = current->getParent()->getId();
+
+                        // Optimization: Skip if we already processed this parallel state
+                        if (processedParallelStates.count(parallelStateId)) {
+                            current = current->getParent();
+                            continue;
+                        }
+                        processedParallelStates.insert(parallelStateId);
+
                         // current is a region root (direct child of parallel)
                         auto parallelState = dynamic_cast<ConcurrentStateNode *>(current->getParent());
                         if (parallelState) {
@@ -155,9 +162,9 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
                                     region->getRootState()->getId() == current->getId()) {
                                     // Found the region - set desired initial child
                                     region->setDesiredInitialChild(targetId);
-                                    LOG_WARN("TEST364: Set region '{}' desiredInitialChild='{}' from parent state '{}' "
-                                             "initial attribute",
-                                             region->getId(), targetId, stateId);
+                                    LOG_DEBUG("StateHierarchyManager: Set region '{}' desiredInitialChild='{}' from "
+                                              "parent state '{}' initial attribute",
+                                              region->getId(), targetId, stateId);
                                     break;
                                 }
                             }
@@ -362,7 +369,7 @@ void StateHierarchyManager::reset() {
 }
 
 bool StateHierarchyManager::isHierarchicalModeNeeded() const {
-    // 활성 상태가 2개 이상이면 계층적 모드가 필요
+    // Hierarchical mode is needed if there are 2 or more active states
     return activeStates_.size() > 1;
 }
 
@@ -493,7 +500,7 @@ void StateHierarchyManager::collectDescendantStates(const std::string &parentId,
 
 void StateHierarchyManager::addStateToConfiguration(const std::string &stateId) {
     if (stateId.empty() || activeSet_.find(stateId) != activeSet_.end()) {
-        return;  // 이미 활성 상태이거나 빈 ID
+        return;  // Already active or empty ID
     }
 
     activeStates_.push_back(stateId);
@@ -548,7 +555,6 @@ void StateHierarchyManager::addStateToConfiguration(const std::string &stateId) 
     }
     stateOrder += "]";
     LOG_DEBUG("addStateToConfiguration - {}", stateOrder);
-    LOG_WARN("TEST364: Configuration updated - {}", stateOrder);
 }
 
 void StateHierarchyManager::addStateToConfigurationWithoutOnEntry(const std::string &stateId) {
@@ -736,13 +742,13 @@ void StateHierarchyManager::removeStateFromConfiguration(const std::string &stat
         return;
     }
 
-    // 벡터에서 제거
+    // Remove from vector
     auto it = std::find(activeStates_.begin(), activeStates_.end(), stateId);
     if (it != activeStates_.end()) {
         activeStates_.erase(it);
     }
 
-    // 세트에서 제거
+    // Remove from set
     activeSet_.erase(stateId);
 
     LOG_DEBUG("removeStateFromConfiguration - Removed: {}", stateId);
@@ -753,14 +759,14 @@ std::string StateHierarchyManager::findInitialChildState(IStateNode *stateNode) 
         return "";
     }
 
-    // 1. 명시적 initial 속성 확인
+    // 1. Check explicit initial attribute
     std::string explicitInitial = stateNode->getInitialState();
     if (!explicitInitial.empty()) {
         LOG_DEBUG("findInitialChildState - Found explicit initial: {}", explicitInitial);
         return explicitInitial;
     }
 
-    // 2. 첫 번째 자식 상태 사용 (기본값)
+    // 2. Use first child state (default)
     const auto &children = stateNode->getChildren();
     if (!children.empty() && children[0]) {
         std::string defaultInitial = children[0]->getId();

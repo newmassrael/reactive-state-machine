@@ -142,7 +142,7 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
                 auto initialAttr = stateElement->get_attribute("initial");
                 if (initialAttr) {
                     stateNode->setInitialState(initialAttr->get_value());
-                    LOG_WARN("TEST364: State '{}' initial attribute='{}'", stateId, initialAttr->get_value());
+                    LOG_DEBUG("StateNodeParser: State '{}' initial attribute='{}'", stateId, initialAttr->get_value());
                 } else if (!stateNode->getChildren().empty()) {
                     // 초기 상태가 지정되지 않은 경우 첫 번째 자식을 사용
                     stateNode->setInitialState(stateNode->getChildren().front()->getId());
@@ -352,7 +352,7 @@ void RSM::StateNodeParser::parseInitialElement(const xmlpp::Element *initialElem
                     allTargets += transition->getTargets()[i];
                 }
                 state->setInitialState(allTargets);
-                LOG_WARN("TEST364: State '{}' <initial> transition targets='{}'", state->getId(), allTargets);
+                LOG_DEBUG("StateNodeParser: State '{}' <initial> transition targets='{}'", state->getId(), allTargets);
             }
 
             LOG_DEBUG("Initial transition set for state: {}", state->getId());

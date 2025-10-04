@@ -151,6 +151,16 @@ public:
      */
     void removeStateFromConfiguration(const std::string &stateId);
 
+    /**
+     * @brief 상태를 활성 구성에 추가 (onentry 콜백 없이)
+     *
+     * W3C SCXML: Deferred onentry execution을 위해 사용
+     * 상태를 configuration에만 추가하고 onentry는 호출하지 않음
+     *
+     * @param stateId 추가할 상태 ID
+     */
+    void addStateToConfigurationWithoutOnEntry(const std::string &stateId);
+
 private:
     /**
      * @brief SCXML W3C: Specialized cleanup for parallel states
@@ -203,16 +213,6 @@ private:
      * @param stateId 추가할 상태 ID
      */
     void addStateToConfiguration(const std::string &stateId);
-
-    /**
-     * @brief 상태를 활성 구성에 추가 (onentry 콜백 없이)
-     *
-     * W3C SCXML: Deferred onentry execution을 위해 사용
-     * 상태를 configuration에만 추가하고 onentry는 호출하지 않음
-     *
-     * @param stateId 추가할 상태 ID
-     */
-    void addStateToConfigurationWithoutOnEntry(const std::string &stateId);
 
     /**
      * @brief 복합 상태의 초기 자식 상태 찾기

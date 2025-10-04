@@ -331,7 +331,7 @@ std::vector<ConcurrentOperationResult> ConcurrentStateNode::activateAllRegions()
     LOG_DEBUG("Activating {} regions in parallel state: {}", regions_.size(), id_);
 
     for (auto &region : regions_) {
-        LOG_WARN("TEST364: Parallel state '{}' activating region '{}'", id_, region->getId());
+        LOG_DEBUG("ConcurrentStateNode: Parallel state '{}' activating region '{}'", id_, region->getId());
         auto result = region->activate();
         results.push_back(result);
 

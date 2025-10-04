@@ -472,7 +472,7 @@ void ConcurrentRegion::setConditionEvaluator(std::function<bool(const std::strin
 
 void ConcurrentRegion::setDesiredInitialChild(const std::string &childStateId) {
     desiredInitialChild_ = childStateId;
-    LOG_WARN("TEST364: Region '{}' desiredInitialChild set to '{}'", id_, childStateId);
+    LOG_DEBUG("ConcurrentRegion: Region '{}' desiredInitialChild set to '{}'", id_, childStateId);
 }
 
 // Private methods
@@ -627,7 +627,7 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
         // Priority 1: Parent state's deep initial target (e.g., s1 initial="s11p112 s11p122")
         if (!desiredInitialChild_.empty()) {
             initialChild = desiredInitialChild_;
-            LOG_WARN("TEST364: Region '{}' using desiredInitialChild: '{}'", id_, initialChild);
+            LOG_DEBUG("ConcurrentRegion: Region '{}' using desiredInitialChild: '{}'", id_, initialChild);
         }
         // Priority 2: Region's <initial> element with transition target
         else if (const auto &initialTransition = rootState_->getInitialTransition();
@@ -638,17 +638,17 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
         // Priority 3: Region's initial attribute
         else if (std::string initialFromAttr = rootState_->getInitialState(); !initialFromAttr.empty()) {
             initialChild = initialFromAttr;
-            LOG_WARN("TEST364: Region '{}' rootState '{}' has initialState='{}'", id_, rootState_->getId(),
-                     initialChild);
+            LOG_DEBUG("ConcurrentRegion: Region '{}' rootState '{}' has initialState='{}'", id_, rootState_->getId(),
+                      initialChild);
         }
         // Priority 4: First child in document order (W3C default)
         else if (!children.empty()) {
             initialChild = children[0]->getId();
-            LOG_WARN("TEST364: Region '{}' using first child as fallback: '{}'", id_, initialChild);
+            LOG_DEBUG("ConcurrentRegion: Region '{}' using first child as fallback: '{}'", id_, initialChild);
         }
 
         if (!initialChild.empty()) {
-            LOG_WARN("TEST364: Region '{}' entering initial child state: '{}'", id_, initialChild);
+            LOG_DEBUG("ConcurrentRegion: Region '{}' entering initial child state: '{}'", id_, initialChild);
             activeStates_.push_back(initialChild);
             currentState_ = initialChild;
 

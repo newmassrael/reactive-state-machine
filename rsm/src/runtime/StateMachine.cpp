@@ -20,6 +20,7 @@
 #include <random>
 #include <regex>
 #include <sstream>
+#include <unordered_set>
 
 namespace RSM {
 
@@ -135,6 +136,39 @@ bool StateMachine::start() {
     // Set running state before entering initial state to handle immediate done.state events
     isRunning_ = true;
 
+    // W3C SCXML: For initial state entry, add ancestor states to configuration first
+    // This ensures ancestor onentry actions are executed (e.g., test 388 requires s0 onentry)
+    if (model_ && hierarchyManager_) {
+        // Build ancestor chain for initial state (optimized: push_back + reverse)
+        std::vector<std::string> ancestorChain;
+        auto stateNode = model_->findStateById(initialState_);
+        IStateNode *current = stateNode ? stateNode->getParent() : nullptr;
+
+        while (current) {
+            const std::string &ancestorId = current->getId();
+            if (!ancestorId.empty()) {                // Validate non-empty ID
+                ancestorChain.push_back(ancestorId);  // O(1) append instead of O(n) insert
+            }
+            current = current->getParent();
+        }
+
+        // Reverse to get parent->child order (O(n) once instead of O(n²) inserts)
+        std::reverse(ancestorChain.begin(), ancestorChain.end());
+
+        // Add ancestors to configuration (without onentry yet)
+        for (const auto &ancestorId : ancestorChain) {
+            hierarchyManager_->addStateToConfigurationWithoutOnEntry(ancestorId);
+            LOG_DEBUG("Added ancestor state to configuration: {}", ancestorId);
+        }
+
+        // Execute onentry for ancestors in order (parent to child)
+        for (const auto &ancestorId : ancestorChain) {
+            executeOnEntryActions(ancestorId);
+            LOG_DEBUG("Executed onentry for ancestor state: {}", ancestorId);
+        }
+    }
+
+    // Now enter the initial state normally (this will execute its onentry)
     if (!enterState(initialState_)) {
         LOG_ERROR("Failed to enter initial state: {}", initialState_);
         isRunning_ = false;  // Rollback on failure
@@ -144,6 +178,11 @@ bool StateMachine::start() {
     // W3C SCXML compliance: Execute deferred invokes after initial state entry completes
     LOG_DEBUG("StateMachine: Executing pending invokes after initial state entry for session: {}", sessionId_);
     executePendingInvokes();
+
+    // W3C SCXML: Check for eventless transitions after initial state entry
+    // This handles cases where the initial state has immediate transitions (e.g., test 355)
+    checkEventlessTransitions();
+
     updateStatistics();
 
     LOG_INFO("StateMachine: Started successfully");
@@ -526,22 +565,40 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     LOG_DEBUG("SCXML hierarchical processing: Checking {} active states for event '{}'", activeStates.size(),
               eventName);
 
-    // Process states from most specific (innermost) to least specific (outermost)
+    // W3C SCXML: Process states from most specific (innermost) to least specific (outermost)
+    // Optimization: Track checked states to avoid duplicate ancestor traversal
+    std::unordered_set<std::string> checkedStates;
+
     for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
         const std::string &stateId = *it;
         auto stateNode = model_->findStateById(stateId);
-        if (stateNode) {
-            LOG_DEBUG("SCXML hierarchical processing: Checking state '{}' for transitions", stateId);
-            auto transitionResult = processStateTransitions(stateNode, eventName, eventData);
-            if (transitionResult.success) {
-                LOG_DEBUG("SCXML hierarchical processing: Transition found in state '{}': {} -> {}", stateId,
-                          transitionResult.fromState, transitionResult.toState);
+        if (!stateNode) {
+            LOG_WARN("SCXML hierarchical processing: State node not found: {}", stateId);
+            continue;
+        }
 
-                // Invoke execution consolidated to key lifecycle points
+        // W3C SCXML: Check transitions from innermost state to root
+        // Skip already-checked ancestors to avoid duplicate processing
+        IStateNode *currentNode = stateNode;
+        while (currentNode) {
+            const std::string &nodeId = currentNode->getId();
+
+            // Skip if already checked (optimization for duplicate ancestor traversal)
+            if (checkedStates.count(nodeId)) {
+                break;
+            }
+            checkedStates.insert(nodeId);
+
+            LOG_DEBUG("SCXML hierarchical processing: Checking state '{}' for transitions", nodeId);
+            auto transitionResult = processStateTransitions(currentNode, eventName, eventData);
+            if (transitionResult.success) {
+                LOG_DEBUG("SCXML hierarchical processing: Transition found in state '{}': {} -> {}", nodeId,
+                          transitionResult.fromState, transitionResult.toState);
                 return transitionResult;
             }
-        } else {
-            LOG_WARN("SCXML hierarchical processing: State node not found: {}", stateId);
+
+            // Move to parent state
+            currentNode = currentNode->getParent();
         }
     }
 
