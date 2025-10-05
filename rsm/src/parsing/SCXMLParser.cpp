@@ -10,7 +10,7 @@ RSM::SCXMLParser::SCXMLParser(std::shared_ptr<RSM::NodeFactory> nodeFactory,
     : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating SCXML parser");
 
-    // 전문화된 파서 초기화
+    // Initialize specialized parsers
     stateNodeParser_ = std::make_shared<RSM::StateNodeParser>(nodeFactory_);
     transitionParser_ = std::make_shared<RSM::TransitionParser>(nodeFactory_);
     actionParser_ = std::make_shared<RSM::ActionParser>(nodeFactory_);
@@ -19,14 +19,14 @@ RSM::SCXMLParser::SCXMLParser(std::shared_ptr<RSM::NodeFactory> nodeFactory,
     invokeParser_ = std::make_shared<RSM::InvokeParser>(nodeFactory_);
     doneDataParser_ = std::make_shared<RSM::DoneDataParser>(nodeFactory_);
 
-    // 관련 파서들을 연결
+    // Connect related parsers
     stateNodeParser_->setRelatedParsers(transitionParser_, actionParser_, dataModelParser_, invokeParser_,
                                         doneDataParser_);
 
-    // TransitionParser에 ActionParser 설정
+    // Set ActionParser for TransitionParser
     transitionParser_->setActionParser(actionParser_);
 
-    // XInclude 프로세서 설정
+    // Set up XInclude processor
     if (xincludeProcessor) {
         xincludeProcessor_ = xincludeProcessor;
     } else {
@@ -40,10 +40,10 @@ RSM::SCXMLParser::~SCXMLParser() {
 
 std::shared_ptr<RSM::SCXMLModel> RSM::SCXMLParser::parseFile(const std::string &filename) {
     try {
-        // 파싱 상태 초기화
+        // Initialize parsing state
         initParsing();
 
-        // 파일이 존재하는지 확인
+        // Check if file exists
         if (!std::filesystem::exists(filename)) {
             addError("File not found: " + filename);
             return nullptr;
@@ -51,17 +51,17 @@ std::shared_ptr<RSM::SCXMLModel> RSM::SCXMLParser::parseFile(const std::string &
 
         LOG_INFO("Parsing SCXML file: {}", filename);
 
-        // 파일 파싱
+        // Parse file
         xmlpp::DomParser parser;
         parser.set_validate(false);
-        parser.set_substitute_entities(true);  // 엔티티 대체 활성화
+        parser.set_substitute_entities(true);  // Enable entity substitution
         parser.parse_file(filename);
 
-        // XInclude 처리
+        // Process XIncludes
         LOG_DEBUG("Processing XIncludes");
         xincludeProcessor_->process(parser.get_document());
 
-        // 문서 파싱
+        // Parse document
         return parseDocument(parser.get_document());
     } catch (const std::exception &ex) {
         addError("Exception while parsing file: " + std::string(ex.what()));
@@ -71,26 +71,26 @@ std::shared_ptr<RSM::SCXMLModel> RSM::SCXMLParser::parseFile(const std::string &
 
 std::shared_ptr<RSM::SCXMLModel> RSM::SCXMLParser::parseContent(const std::string &content) {
     try {
-        // 파싱 상태 초기화
+        // Initialize parsing state
         initParsing();
 
         LOG_INFO("Parsing SCXML content");
 
-        // 문자열에서 파싱
+        // Parse from string
         xmlpp::DomParser parser;
         parser.set_validate(false);
         parser.set_substitute_entities(true);
 
-        // XML 네임스페이스 인식 활성화
+        // Enable XML namespace recognition
         parser.set_throw_messages(true);
 
         parser.parse_memory(content);
 
-        // XInclude 처리
+        // Process XIncludes
         LOG_DEBUG("Processing XIncludes");
         xincludeProcessor_->process(parser.get_document());
 
-        // 문서 파싱
+        // Parse document
         return parseDocument(parser.get_document());
     } catch (const std::exception &ex) {
         addError("Exception while parsing content: " + std::string(ex.what()));
@@ -104,14 +104,14 @@ std::shared_ptr<RSM::SCXMLModel> RSM::SCXMLParser::parseDocument(xmlpp::Document
         return nullptr;
     }
 
-    // 루트 요소 가져오기
+    // Get root element
     xmlpp::Element *rootElement = doc->get_root_node();
     if (!rootElement) {
         addError("No root element found");
         return nullptr;
     }
 
-    // 루트 요소가 scxml인지 확인
+    // Check if root element is 'scxml'
     if (!ParsingCommon::matchNodeName(rootElement->get_name(), "scxml")) {
         addError("Root element is not 'scxml', found: " + rootElement->get_name());
         return nullptr;
@@ -120,16 +120,16 @@ std::shared_ptr<RSM::SCXMLModel> RSM::SCXMLParser::parseDocument(xmlpp::Document
     LOG_INFO("Valid SCXML document "
              "found, parsing structure");
 
-    // SCXML 모델 생성
+    // Create SCXML model
     auto model = std::make_shared<SCXMLModel>();
 
-    // SCXML 노드 파싱
+    // Parse SCXML node
     bool result = parseScxmlNode(rootElement, model);
     if (result) {
         LOG_INFO("SCXML document parsed "
                  "successfully");
 
-        // 모델 검증
+        // Validate model
         if (validateModel(model)) {
             return model;
         } else {
@@ -150,10 +150,10 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
 
     LOG_DEBUG("Parsing SCXML root node");
 
-    // SCXMLContext 생성 및 초기화
+    // Create and initialize SCXMLContext
     SCXMLContext context;
 
-    // 기본 속성 파싱
+    // Parse basic attributes
     auto nameAttr = scxmlNode->get_attribute("name");
     if (nameAttr) {
         model->setName(nameAttr->get_value());
@@ -170,7 +170,7 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
     if (datamodelAttr) {
         std::string datamodelType = datamodelAttr->get_value();
         model->setDatamodel(datamodelType);
-        context.setDatamodelType(datamodelType);  // SCXMLContext에 설정
+        context.setDatamodelType(datamodelType);  // Set to SCXMLContext
         LOG_DEBUG("Datamodel: {}", datamodelType);
     }
 
@@ -178,17 +178,17 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
     if (bindingAttr) {
         std::string binding = bindingAttr->get_value();
         model->setBinding(binding);
-        context.setBinding(binding);  // SCXMLContext에 설정
+        context.setBinding(binding);  // Set to SCXMLContext
         LOG_DEBUG("Binding mode: {}", binding);
     }
 
-    // 컨텍스트 속성 파싱
+    // Parse context properties
     parseContextProperties(scxmlNode, model);
 
-    // 의존성 주입 지점 파싱
+    // Parse dependency injection points
     parseInjectPoints(scxmlNode, model);
 
-    // 가드 조건 파싱
+    // Parse guard conditions
     LOG_DEBUG("Parsing guards");
     auto guards = guardParser_->parseAllGuards(scxmlNode);
     for (const auto &guard : guards) {
@@ -207,7 +207,7 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
         }
     }
 
-    // 최상위 데이터 모델 파싱 - 여기서 context 전달
+    // Parse top-level datamodel - pass context here
     LOG_DEBUG("Parsing root datamodel");
     auto datamodelNode = ParsingCommon::findFirstChildElement(scxmlNode, "datamodel");
     if (datamodelNode) {
@@ -240,10 +240,10 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
         LOG_DEBUG("Successfully parsed {}/{} top-level script(s) (W3C SCXML 5.8)", parsedCount, scriptElements.size());
     }
 
-    // 상태 파싱 (모든 최상위 state, parallel, final 노드를 찾기)
+    // Parse states (find all top-level state, parallel, final nodes)
     LOG_DEBUG("Looking for root state nodes");
 
-    // 모든 타입의 상태 노드 수집
+    // Collect state nodes of all types
     std::vector<const xmlpp::Element *> rootStateElements;
     auto stateElements = ParsingCommon::findChildElements(scxmlNode, "state");
     rootStateElements.insert(rootStateElements.end(), stateElements.begin(), stateElements.end());
@@ -254,7 +254,7 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
     auto finalElements = ParsingCommon::findChildElements(scxmlNode, "final");
     rootStateElements.insert(rootStateElements.end(), finalElements.begin(), finalElements.end());
 
-    // 최소한 하나의 상태 노드가 있어야 함
+    // At least one state node must exist
     if (rootStateElements.empty()) {
         addError("No state nodes found in SCXML document");
         return false;
@@ -262,14 +262,14 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
 
     LOG_INFO("Found {} root state nodes", rootStateElements.size());
 
-    // 모든 루트 상태 노드 파싱
+    // Parse all root state nodes
     for (auto *stateElement : rootStateElements) {
         LOG_INFO("Parsing root state");
         auto state = stateNodeParser_->parseStateNode(stateElement, nullptr);
         if (state) {
             model->addState(state);
 
-            // 첫 번째 상태를 루트 상태로 설정 (아직 설정되지 않은 경우)
+            // Set first state as root state (if not already set)
             if (!model->getRootState()) {
                 model->setRootState(state);
             }
@@ -292,7 +292,7 @@ void RSM::SCXMLParser::parseContextProperties(const xmlpp::Element *scxmlNode, s
     LOG_DEBUG("Parsing context "
               "properties");
 
-    // 1. 직접 ctx:property 찾기
+    // 1. Find ctx:property elements directly
     auto ctxProps = ParsingCommon::findChildElements(scxmlNode, "property");
 
     for (auto *propElement : ctxProps) {
@@ -319,7 +319,7 @@ void RSM::SCXMLParser::parseInjectPoints(const xmlpp::Element *scxmlNode, std::s
 
     LOG_DEBUG("Parsing injection points");
 
-    // 의존성 주입 지점 파싱 (여러 가능한 이름으로 시도)
+    // Parse dependency injection points (try multiple possible element names)
     std::vector<std::string> injectNodeNames = {"inject-point", "inject_point", "injectpoint", "inject", "dependency"};
 
     bool foundInjectPoints = false;
@@ -353,7 +353,7 @@ void RSM::SCXMLParser::parseInjectPoints(const xmlpp::Element *scxmlNode, std::s
         }
     }
 
-    // 상태 노드 내부의 주입 지점도 확인 (선택적으로 구현 가능)
+    // Optionally check for injection points inside state nodes
 
     LOG_DEBUG("Found {} injection points", model->getInjectPoints().size());
 }
@@ -393,25 +393,28 @@ bool RSM::SCXMLParser::validateModel(std::shared_ptr<SCXMLModel> model) {
 
     LOG_INFO("Validating SCXML model");
 
-    bool isValid = true;  // 전체 유효성 검사 결과
+    bool isValid = true;  // Overall validation result
 
-    // 1. 루트 상태 확인
+    // 1. Verify root state
     if (!model->getRootState()) {
         addError("Model has no root state");
         return false;
     }
 
-    // 2. 초기 상태 검증
-    if (!model->getInitialState().empty()) {
-        if (!model->findStateById(model->getInitialState())) {
-            addError("Initial state '" + model->getInitialState() + "' not found");
-            isValid = false;  // 오류를 기록하고 계속 진행
+    // 2. Validate initial states (W3C SCXML 3.3: supports multiple initial states)
+    const auto &initialStates = model->getInitialStates();
+    if (!initialStates.empty()) {
+        for (const auto &initialStateId : initialStates) {
+            if (!model->findStateById(initialStateId)) {
+                addError("Initial state '" + initialStateId + "' not found");
+                isValid = false;  // Log error and continue
+            }
         }
     }
 
-    // 3. 상태 관계 검증
+    // 3. Validate state relationships
     for (const auto &state : model->getAllStates()) {
-        // 부모 상태 검증
+        // Validate parent state
         auto parent = state->getParent();
         if (parent) {
             bool isChild = false;
@@ -425,18 +428,18 @@ bool RSM::SCXMLParser::validateModel(std::shared_ptr<SCXMLModel> model) {
             if (!isChild) {
                 addError("State '" + state->getId() + "' has parent '" + parent->getId() +
                          "' but is not in parent's children list");
-                isValid = false;  // 오류를 기록하고 계속 진행
+                isValid = false;  // Log error and continue
             }
         }
 
-        // 전환 대상 상태 검증
+        // Validate transition target states
         for (const auto &transition : state->getTransitions()) {
             const auto &targets = transition->getTargets();
             for (const auto &target : targets) {
                 if (!target.empty() && !model->findStateById(target)) {
                     addError("Transition in state '" + state->getId() + "' references non-existent target state '" +
                              target + "'");
-                    isValid = false;  // 오류를 기록하고 계속 진행
+                    isValid = false;  // Log error and continue
                 }
             }
         }
@@ -463,14 +466,14 @@ bool RSM::SCXMLParser::validateModel(std::shared_ptr<SCXMLModel> model) {
         }
     }
 
-    // 4. 가드 검증
+    // 4. Validate guards
     for (const auto &guard : model->getGuards()) {
-        // getTarget() -> getTargetState() 로 변경
+        // Changed getTarget() -> getTargetState()
         if (!GuardUtils::isConditionExpression(guard->getTargetState()) &&
             !model->findStateById(guard->getTargetState())) {
             addWarning("Guard '" + guard->getId() + "' references non-existent target state '" +
                        guard->getTargetState() + "'");
-            // 경고만 생성하고 계속 진행
+            // Generate warning but continue validation
         }
     }
 
@@ -492,13 +495,13 @@ void RSM::SCXMLParser::addSystemVariables(std::shared_ptr<SCXMLModel> model) {
     LOG_DEBUG("Adding system variables to data model");
 
     std::string datamodelType = model->getDatamodel();
-    // 시스템 변수가 정의된 데이터 모델에만 적용
+    // Only apply to datamodels that support system variables
     if (datamodelType.empty() || datamodelType == "null") {
         LOG_DEBUG("Skipping system variables for null datamodel");
         return;
     }
 
-    // _name 시스템 변수 추가
+    // Add _name system variable
     auto nameItem = nodeFactory_->createDataModelItem("_name", datamodelType);
     nameItem->setType(datamodelType);
     if (datamodelType == "ecmascript") {
@@ -509,7 +512,7 @@ void RSM::SCXMLParser::addSystemVariables(std::shared_ptr<SCXMLModel> model) {
     model->addSystemVariable(nameItem);
     LOG_DEBUG("Added system variable: _name");
 
-    // _sessionid 시스템 변수 추가
+    // Add _sessionid system variable
     auto sessionIdItem = nodeFactory_->createDataModelItem("_sessionid", datamodelType);
     sessionIdItem->setType(datamodelType);
     if (datamodelType == "ecmascript") {
@@ -520,7 +523,7 @@ void RSM::SCXMLParser::addSystemVariables(std::shared_ptr<SCXMLModel> model) {
     model->addSystemVariable(sessionIdItem);
     LOG_DEBUG("Added system variable: _sessionid");
 
-    // _ioprocessors 시스템 변수 추가
+    // Add _ioprocessors system variable
     auto ioProcessorsItem = nodeFactory_->createDataModelItem("_ioprocessors", datamodelType);
     ioProcessorsItem->setType(datamodelType);
     if (datamodelType == "ecmascript") {

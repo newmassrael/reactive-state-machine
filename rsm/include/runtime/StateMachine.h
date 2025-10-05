@@ -326,8 +326,9 @@ private:
     // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
     // Removed: std::vector<std::string> activeStates_ (use hierarchyManager_->getActiveStates())
     bool isRunning_ = false;
-    bool isEnteringState_ = false;    // Guard against reentrant enterState calls
-    bool isProcessingEvent_ = false;  // Track event processing context
+    bool isEnteringState_ = false;                 // Guard against reentrant enterState calls
+    bool isProcessingEvent_ = false;               // Track event processing context
+    bool isEnteringInitialConfiguration_ = false;  // W3C SCXML 3.3: Track initial configuration entry
     std::string initialState_;
 
     // SCXML model
@@ -369,6 +370,9 @@ private:
 
     std::vector<DeferredInvoke> pendingInvokes_;
     std::mutex pendingInvokesMutex_;  // Thread safety for pendingInvokes_
+
+    // W3C SCXML: Thread safety for StateHierarchyManager access from JSEngine worker thread
+    mutable std::mutex hierarchyManagerMutex_;  // Protects hierarchyManager_ read access
 
     // Statistics
     mutable Statistics stats_;

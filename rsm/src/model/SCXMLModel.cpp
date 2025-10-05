@@ -3,6 +3,7 @@
 #include "model/ITransitionNode.h"
 #include <algorithm>
 #include <iostream>
+#include <sstream>
 #include <unordered_set>
 
 RSM::SCXMLModel::SCXMLModel() : rootState_(nullptr) {
@@ -35,11 +36,26 @@ const std::string &RSM::SCXMLModel::getName() const {
 
 void RSM::SCXMLModel::setInitialState(const std::string &initialState) {
     LOG_DEBUG("Setting initial state: {}", initialState);
-    initialState_ = initialState;
+
+    // W3C SCXML 3.3: Parse space-separated initial state IDs
+    initialStates_.clear();
+    std::istringstream iss(initialState);
+    std::string stateId;
+
+    while (iss >> stateId) {
+        initialStates_.push_back(stateId);
+    }
+
+    LOG_DEBUG("Parsed {} initial state(s)", initialStates_.size());
 }
 
-const std::string &RSM::SCXMLModel::getInitialState() const {
-    return initialState_;
+const std::vector<std::string> &RSM::SCXMLModel::getInitialStates() const {
+    return initialStates_;
+}
+
+std::string RSM::SCXMLModel::getInitialState() const {
+    // Return first initial state for backward compatibility
+    return initialStates_.empty() ? "" : initialStates_[0];
 }
 
 void RSM::SCXMLModel::setDatamodel(const std::string &datamodel) {
@@ -274,7 +290,14 @@ void RSM::SCXMLModel::printModelStructure() const {
     LOG_INFO("Printing model structure");
     LOG_INFO("SCXML Model Structure:\n");
     LOG_INFO("======================\n");
-    LOG_INFO("Initial State: {}", initialState_);
+    std::string initialStateStr;
+    for (size_t i = 0; i < initialStates_.size(); ++i) {
+        if (i > 0) {
+            initialStateStr += " ";
+        }
+        initialStateStr += initialStates_[i];
+    }
+    LOG_INFO("Initial State(s): {}", initialStateStr);
     LOG_INFO("Datamodel: {}", datamodel_);
 
     LOG_INFO("Context Properties:\n");

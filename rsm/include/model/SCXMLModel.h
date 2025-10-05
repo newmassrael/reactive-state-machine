@@ -46,16 +46,39 @@ public:
     const std::string &getName() const;
 
     /**
-     * @brief Set initial state ID
-     * @param initialState Initial state ID
+     * @brief Set initial state ID(s) - supports space-separated multiple states for parallel regions
+     *
+     * W3C SCXML 3.3: The 'initial' attribute can contain space-separated state IDs
+     * for parallel regions. This method parses the input string and stores all IDs.
+     *
+     * @param initialState Single state ID or space-separated list (e.g., "s1 s2 s3")
+     *
+     * @example
+     *   setInitialState("s1");         // Single initial state
+     *   setInitialState("s1 s2 s3");   // Multiple initial states for parallel
+     *   setInitialState("");           // Clear initial states (empty vector)
      */
     void setInitialState(const std::string &initialState);
 
     /**
-     * @brief Get initial state ID
-     * @return Initial state ID
+     * @brief Get initial state IDs (W3C SCXML 3.3 compliant)
+     *
+     * Returns all initial state IDs parsed from 'initial' attribute.
+     * For parallel regions, this vector contains multiple state IDs.
+     *
+     * @return Vector of initial state IDs (may be empty)
      */
-    const std::string &getInitialState() const;
+    const std::vector<std::string> &getInitialStates() const;
+
+    /**
+     * @brief Get first initial state ID (backward compatibility only)
+     *
+     * @deprecated Use getInitialStates() for W3C SCXML 3.3 compliance
+     * @return First initial state ID, or empty string if no initial states
+     * @warning Only returns the first element. For parallel regions with multiple
+     *          initial states, use getInitialStates() to avoid data loss.
+     */
+    std::string getInitialState() const;
 
     /**
      * @brief Set data model type
@@ -229,7 +252,7 @@ private:
     // Member variables
     std::shared_ptr<IStateNode> rootState_;
     std::string name_;
-    std::string initialState_;
+    std::vector<std::string> initialStates_;  // W3C SCXML 3.3: supports multiple initial states
     std::string datamodel_;
     std::unordered_map<std::string, std::string> contextProperties_;
     std::unordered_map<std::string, std::string> injectPoints_;

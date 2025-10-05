@@ -18,13 +18,38 @@
 #include "scripting/JSEngine.h"
 #include "states/ConcurrentRegion.h"
 #include "states/ConcurrentStateNode.h"
+#include <algorithm>
 #include <fstream>
 #include <random>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <unordered_set>
 
 namespace RSM {
+
+// RAII guard for exception-safe initial configuration flag management
+namespace {
+class InitialConfigurationGuard {
+public:
+    explicit InitialConfigurationGuard(bool &flag) : flag_(flag) {
+        flag_ = true;
+    }
+
+    ~InitialConfigurationGuard() {
+        flag_ = false;
+    }
+
+    // Non-copyable and non-movable
+    InitialConfigurationGuard(const InitialConfigurationGuard &) = delete;
+    InitialConfigurationGuard &operator=(const InitialConfigurationGuard &) = delete;
+    InitialConfigurationGuard(InitialConfigurationGuard &&) = delete;
+    InitialConfigurationGuard &operator=(InitialConfigurationGuard &&) = delete;
+
+private:
+    bool &flag_;
+};
+}  // anonymous namespace
 
 StateMachine::StateMachine() : isRunning_(false), jsEnvironmentReady_(false) {
     sessionId_ = JSEngine::instance().generateSessionIdString("sm_");
@@ -138,24 +163,58 @@ bool StateMachine::start() {
     // Set running state before entering initial state to handle immediate done.state events
     isRunning_ = true;
 
+    // W3C SCXML 3.3: Support multiple initial states for parallel regions
+    // W3C SCXML 3.2: If no initial attribute specified, use first state in document order
+    const auto &modelInitialStates = model_->getInitialStates();
+    std::vector<std::string> initialStates;
+
+    if (modelInitialStates.empty()) {
+        // W3C SCXML 3.2: No initial attribute - auto-select first state in document order
+        const auto &allStates = model_->getAllStates();
+        if (allStates.empty()) {
+            LOG_ERROR("StateMachine: No states found in SCXML model");
+            isRunning_ = false;
+            return false;
+        }
+
+        initialStates.push_back(allStates[0]->getId());
+        LOG_DEBUG("W3C SCXML 3.2: No initial attribute, auto-selected first state: '{}'", initialStates[0]);
+    } else {
+        // W3C SCXML 3.3: Use explicitly specified initial states
+        initialStates = modelInitialStates;
+    }
+
     // W3C SCXML: For initial state entry, add ancestor states to configuration first
     // This ensures ancestor onentry actions are executed (e.g., test 388 requires s0 onentry)
     if (model_ && hierarchyManager_) {
-        // Build ancestor chain for initial state (optimized: push_back + reverse)
+        // Collect all unique ancestors from all initial states
         std::vector<std::string> ancestorChain;
-        auto stateNode = model_->findStateById(initialState_);
-        IStateNode *current = stateNode ? stateNode->getParent() : nullptr;
+        std::set<std::string> seenAncestors;
 
-        while (current) {
-            const std::string &ancestorId = current->getId();
-            if (!ancestorId.empty()) {                // Validate non-empty ID
-                ancestorChain.push_back(ancestorId);  // O(1) append instead of O(n) insert
+        for (const auto &initialStateId : initialStates) {
+            auto stateNode = model_->findStateById(initialStateId);
+            IStateNode *current = stateNode ? stateNode->getParent() : nullptr;
+
+            std::vector<std::string> currentAncestors;
+            while (current) {
+                const std::string &ancestorId = current->getId();
+                if (!ancestorId.empty() && seenAncestors.find(ancestorId) == seenAncestors.end()) {
+                    currentAncestors.push_back(ancestorId);
+                    seenAncestors.insert(ancestorId);
+                }
+                current = current->getParent();
             }
-            current = current->getParent();
-        }
 
-        // Reverse to get parent->child order (O(n) once instead of O(n²) inserts)
-        std::reverse(ancestorChain.begin(), ancestorChain.end());
+            // Reverse to get parent->child order
+            std::reverse(currentAncestors.begin(), currentAncestors.end());
+
+            // Merge into main ancestor chain
+            for (const auto &ancestorId : currentAncestors) {
+                if (std::find(ancestorChain.begin(), ancestorChain.end(), ancestorId) == ancestorChain.end()) {
+                    ancestorChain.push_back(ancestorId);
+                }
+            }
+        }
 
         // Add ancestors to configuration (without onentry yet)
         for (const auto &ancestorId : ancestorChain) {
@@ -170,20 +229,42 @@ bool StateMachine::start() {
         }
     }
 
-    // Now enter the initial state normally (this will execute its onentry)
-    if (!enterState(initialState_)) {
-        LOG_ERROR("Failed to enter initial state: {}", initialState_);
-        isRunning_ = false;  // Rollback on failure
-        return false;
+    // W3C SCXML 3.3: Enter all initial states (supports parallel initial configuration)
+    // RAII guard ensures flag is reset even on exception
+    InitialConfigurationGuard guard(isEnteringInitialConfiguration_);
+
+    for (const auto &initialStateId : initialStates) {
+        if (!enterState(initialStateId)) {
+            LOG_ERROR("Failed to enter initial state: {}", initialStateId);
+            isRunning_ = false;
+            return false;  // Guard destructor will reset isEnteringInitialConfiguration_
+        }
+        LOG_DEBUG("Entered initial state: {}", initialStateId);
     }
 
-    // W3C SCXML compliance: Execute deferred invokes after initial state entry completes
-    LOG_DEBUG("StateMachine: Executing pending invokes after initial state entry for session: {}", sessionId_);
-    executePendingInvokes();
+    // Guard destructor will automatically reset isEnteringInitialConfiguration_ to false
 
-    // W3C SCXML: Check for eventless transitions after initial state entry
-    // This handles cases where the initial state has immediate transitions (e.g., test 355)
+    // W3C SCXML 3.13: Macrostep execution order after initial state entry
+    // Per W3C SCXML specification, invokes must only execute for states "entered and not exited":
+    //
+    // Execution sequence:
+    // 1. Enter initial states (compound states → initial children via recursive entry)
+    //    - Invokes are deferred during state entry (not executed yet)
+    // 2. Check eventless transitions (states may exit before invokes execute - test 422)
+    //    - Example: s11 has eventless transition to s12, s11 exits immediately
+    // 3. Execute pending invokes (only for states still active after step 2)
+    //    - Filter: invoke executes only if isStateActive(stateId) returns true
+    // 4. Process queued events (invokes may raise internal events)
+    // 5. Repeat eventless transition checks until stable configuration reached
+    //
+    // This order ensures W3C SCXML 3.13 compliance: "invokes execute in document order
+    // in all states that have been entered (and not exited) since last macrostep"
     checkEventlessTransitions();
+
+    // W3C SCXML compliance: Execute deferred invokes after eventless transitions
+    // Only states that remain active after eventless transitions should have invokes executed
+    LOG_DEBUG("StateMachine: Executing pending invokes after eventless transitions for session: {}", sessionId_);
+    executePendingInvokes();
 
     // W3C SCXML: Process all remaining queued events after initial state entry
     // This ensures the state machine reaches a stable state before returning,
@@ -909,9 +990,10 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
 }
 
 std::string StateMachine::getCurrentState() const {
-    // 계층 관리자는 SCXML 표준에 필수
+    // W3C SCXML: Thread safety for JSEngine worker thread access
+    std::lock_guard<std::mutex> lock(hierarchyManagerMutex_);
+
     if (!hierarchyManager_) {
-        assert(false && "StateHierarchyManager is required for SCXML compliance");
         return "";
     }
 
@@ -919,9 +1001,10 @@ std::string StateMachine::getCurrentState() const {
 }
 
 std::vector<std::string> StateMachine::getActiveStates() const {
-    // 계층 관리자는 SCXML 표준에 필수
+    // W3C SCXML: Thread safety for JSEngine worker thread access
+    std::lock_guard<std::mutex> lock(hierarchyManagerMutex_);
+
     if (!hierarchyManager_) {
-        assert(false && "StateHierarchyManager is required for SCXML compliance");
         return {};
     }
 
@@ -933,6 +1016,9 @@ bool StateMachine::isRunning() const {
 }
 
 bool StateMachine::isStateActive(const std::string &stateId) const {
+    // W3C SCXML: Thread safety for JSEngine worker thread access
+    std::lock_guard<std::mutex> lock(hierarchyManagerMutex_);
+
     if (!hierarchyManager_) {
         return false;
     }
@@ -1340,8 +1426,14 @@ bool StateMachine::enterState(const std::string &stateId) {
 
         // IMPORTANT: Release guard before checking eventless transitions
         guard.release();
-        // W3C SCXML: Check eventless transitions even on early return (initial child may have eventless transitions)
-        checkEventlessTransitions();
+
+        // W3C SCXML 3.3: Skip eventless transition check during initial configuration entry
+        // This prevents premature transitions before all initial states are entered
+        if (!isEnteringInitialConfiguration_) {
+            // W3C SCXML: Check eventless transitions even on early return (initial child may have eventless
+            // transitions)
+            checkEventlessTransitions();
+        }
         return true;
     }
 
@@ -1444,6 +1536,12 @@ bool StateMachine::checkEventlessTransitions() {
     auto activeStates = hierarchyManager_->getActiveStates();
     LOG_DEBUG("SCXML: Checking eventless transitions on {} active state(s)", activeStates.size());
 
+    // Performance: Cache state lookups to avoid repeated O(n) searches
+    std::unordered_map<std::string, IStateNode *> stateCache;
+    for (const auto &stateId : activeStates) {
+        stateCache[stateId] = model_->findStateById(stateId);
+    }
+
     IStateNode *firstEnabledState = nullptr;
     std::shared_ptr<ITransitionNode> firstTransition = nullptr;
     IStateNode *parallelAncestor = nullptr;
@@ -1451,7 +1549,7 @@ bool StateMachine::checkEventlessTransitions() {
     // Find first enabled eventless transition
     for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
         const std::string &activeStateId = *it;
-        auto stateNode = model_->findStateById(activeStateId);
+        auto stateNode = stateCache[activeStateId];
 
         if (!stateNode) {
             continue;
@@ -1513,9 +1611,13 @@ bool StateMachine::checkEventlessTransitions() {
     std::vector<TransitionInfo> enabledTransitions;
     enabledTransitions.reserve(activeStates.size());  // Optimize: pre-allocate for typical case
 
+    // W3C SCXML 3.13: Track states with selected transitions for preemption check
+    // Memory safety: Use state IDs instead of raw pointers
+    std::set<std::string> statesWithTransitions;
+
     for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
         const std::string &activeStateId = *it;
-        auto stateNode = model_->findStateById(activeStateId);
+        auto stateNode = stateCache[activeStateId];
 
         if (!stateNode) {
             continue;
@@ -1533,6 +1635,34 @@ bool StateMachine::checkEventlessTransitions() {
         }
 
         if (!isInParallel) {
+            continue;
+        }
+
+        // W3C SCXML 3.13: Preemption check - skip if descendant state already has transition
+        bool isPreempted = false;
+        for (const auto &transitionStateId : statesWithTransitions) {
+            // Check if current state is ancestor of a state that already has a transition
+            auto transitionStateNode = stateCache[transitionStateId];
+            if (!transitionStateNode) {
+                continue;
+            }
+
+            IStateNode *descendant = transitionStateNode;
+            while (descendant) {
+                if (descendant->getParent() == stateNode) {
+                    // Current state is ancestor of state with transition - preempted
+                    isPreempted = true;
+                    LOG_DEBUG("W3C SCXML 3.13: Transition from '{}' preempted by descendant state", activeStateId);
+                    break;
+                }
+                descendant = descendant->getParent();
+            }
+            if (isPreempted) {
+                break;
+            }
+        }
+
+        if (isPreempted) {
             continue;
         }
 
@@ -1565,6 +1695,7 @@ bool StateMachine::checkEventlessTransitions() {
             std::vector<std::string> exitSet = computeExitSet(activeStateId, targetState);
 
             enabledTransitions.emplace_back(stateNode, transitionNode, targetState, exitSet);
+            statesWithTransitions.insert(activeStateId);  // Track for preemption
             LOG_DEBUG("W3C SCXML 3.13: Collected parallel transition: {} -> {}", activeStateId, targetState);
 
             // W3C SCXML: Only select first enabled transition per state (document order)
@@ -1616,45 +1747,50 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
     // Convert to vector for ordered exit (deepest first)
     std::vector<std::string> allStatesToExit(exitSetUnique.begin(), exitSetUnique.end());
 
+    // Performance: Cache state lookups for sorting
+    std::unordered_map<std::string, IStateNode *> exitStateCache;
+    for (const auto &stateId : allStatesToExit) {
+        exitStateCache[stateId] = model_->findStateById(stateId);
+    }
+
     // W3C SCXML 3.13: Sort by depth (deepest first), then by reverse document order
     // States at same depth should exit in reverse document order
-    std::sort(allStatesToExit.begin(), allStatesToExit.end(), [this](const std::string &a, const std::string &b) {
-        // Count ancestors - deeper states have more ancestors
-        int depthA = 0;
-        int depthB = 0;
+    std::sort(allStatesToExit.begin(), allStatesToExit.end(),
+              [this, &exitStateCache](const std::string &a, const std::string &b) {
+                  // Count ancestors - deeper states have more ancestors
+                  int depthA = 0;
+                  int depthB = 0;
 
-        if (model_) {
-            auto nodeA = model_->findStateById(a);
-            auto nodeB = model_->findStateById(b);
+                  auto nodeA = exitStateCache.at(a);
+                  auto nodeB = exitStateCache.at(b);
 
-            if (nodeA) {
-                auto parent = nodeA->getParent();
-                while (parent) {
-                    depthA++;
-                    parent = parent->getParent();
-                }
-            }
+                  if (nodeA) {
+                      auto parent = nodeA->getParent();
+                      while (parent) {
+                          depthA++;
+                          parent = parent->getParent();
+                      }
+                  }
 
-            if (nodeB) {
-                auto parent = nodeB->getParent();
-                while (parent) {
-                    depthB++;
-                    parent = parent->getParent();
-                }
-            }
-        }
+                  if (nodeB) {
+                      auto parent = nodeB->getParent();
+                      while (parent) {
+                          depthB++;
+                          parent = parent->getParent();
+                      }
+                  }
 
-        // Primary: Sort deepest first (higher depth comes first)
-        if (depthA != depthB) {
-            return depthA > depthB;
-        }
+                  // Primary: Sort deepest first (higher depth comes first)
+                  if (depthA != depthB) {
+                      return depthA > depthB;
+                  }
 
-        // Secondary: For states at same depth, use reverse document order
-        // W3C SCXML: Exit states in reverse document order (later states exit first)
-        int posA = getStateDocumentPosition(a);
-        int posB = getStateDocumentPosition(b);
-        return posA > posB;  // Reverse document order
-    });
+                  // Secondary: For states at same depth, use reverse document order
+                  // W3C SCXML: Exit states in reverse document order (later states exit first)
+                  int posA = getStateDocumentPosition(a);
+                  int posB = getStateDocumentPosition(b);
+                  return posA > posB;  // Reverse document order
+              });
 
     LOG_DEBUG("W3C SCXML 3.13: Phase 1 - Exiting {} state(s)", allStatesToExit.size());
     for (const auto &stateId : allStatesToExit) {
