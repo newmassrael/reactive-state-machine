@@ -166,6 +166,10 @@ const std::regex TXMLConverter::CONF_SCRIPT_ELEMENT{R"(<conf:script\s*/>)", std:
 // conf:nonBoolean="" converts to cond="return" which causes JS syntax error → false
 const std::regex TXMLConverter::CONF_NONBOOLEAN_ATTR{R"nb(conf:nonBoolean="([^"]*)")nb", std::regex::optimize};
 
+// W3C SCXML 5.9: In() predicate pattern (test 310)
+// conf:inState="s1" converts to cond="In('s1')"
+const std::regex TXMLConverter::CONF_INSTATE_ATTR{R"is(conf:inState="([^"]*)")is", std::regex::optimize};
+
 // W3C SCXML 5.10: System variable binding check pattern (test 319)
 // conf:systemVarIsBound="_event" converts to cond="typeof _event !== 'undefined'"
 const std::regex TXMLConverter::CONF_SYSTEMVARISBOUND_ATTR{R"svb(conf:systemVarIsBound="([^"]*)")svb",
@@ -288,6 +292,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // W3C SCXML 5.9: Convert non-boolean expression to error-inducing condition (test 309)
     // conf:nonBoolean="" -> cond="return" (JavaScript syntax error evaluates to false)
     result = std::regex_replace(result, CONF_NONBOOLEAN_ATTR, R"(cond="return")");
+
+    // W3C SCXML 5.9: Convert In() predicate to condition (test 310)
+    // conf:inState="s1" -> cond="In('s1')"
+    result = std::regex_replace(result, CONF_INSTATE_ATTR, R"in(cond="In('$1')")in");
 
     // W3C SCXML 5.10: Convert system variable binding check to typeof condition (test 319)
     // conf:systemVarIsBound="_event" -> cond="typeof _event !== 'undefined'"

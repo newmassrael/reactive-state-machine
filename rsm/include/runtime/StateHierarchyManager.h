@@ -253,6 +253,25 @@ private:
      * @return 복합 상태 여부
      */
     bool isCompoundState(IStateNode *stateNode) const;
+
+    /**
+     * @brief Check if a state is a descendant of a given root state
+     *
+     * @param rootState Root state to check from
+     * @param stateId State ID to find
+     * @return true if stateId is rootState or a descendant of rootState
+     */
+    bool isStateDescendantOf(IStateNode *rootState, const std::string &stateId) const;
+
+    /**
+     * @brief Synchronize parallel region currentState when StateMachine modifies states directly
+     *
+     * W3C SCXML 405: When StateMachine processes eventless transitions within parallel regions,
+     * the ConcurrentRegion must be notified to update its internal state tracking.
+     *
+     * @param stateId The state that was just entered
+     */
+    void synchronizeParallelRegionState(const std::string &stateId);
 };
 
 }  // namespace RSM

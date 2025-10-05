@@ -1425,40 +1425,269 @@ bool StateMachine::enterState(const std::string &stateId) {
 }
 
 bool StateMachine::checkEventlessTransitions() {
-    // SCXML W3C specification: Check for eventless transitions on ALL active states
-    // Per W3C spec: "select transitions enabled by NULL in the current configuration"
+    // W3C SCXML 3.13: Eventless Transition Selection Algorithm
+    //
+    // 1. For each active state (reverse document order):
+    //    a. Find first enabled eventless transition (document order)
+    //    b. Check if state is within a parallel state
+    //    c. If parallel: collect transitions from ALL parallel regions (microstep)
+    //    d. If not: execute single transition immediately
+    // 2. Execute collected transitions atomically (exit all → execute all → enter all)
+    //
+    // Key Rule: Only the FIRST enabled transition per state is selected
+    // Internal transitions count as "first" and prevent further checking
+
     if (!model_) {
         return false;
     }
 
     auto activeStates = hierarchyManager_->getActiveStates();
-    LOG_DEBUG("SCXML: Checking eventless transitions on {} active state(s) in current configuration",
-              activeStates.size());
+    LOG_DEBUG("SCXML: Checking eventless transitions on {} active state(s)", activeStates.size());
 
-    // Process states from innermost to outermost (same as event processing)
+    IStateNode *firstEnabledState = nullptr;
+    std::shared_ptr<ITransitionNode> firstTransition = nullptr;
+    IStateNode *parallelAncestor = nullptr;
+
+    // Find first enabled eventless transition
     for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
         const std::string &activeStateId = *it;
         auto stateNode = model_->findStateById(activeStateId);
 
         if (!stateNode) {
-            LOG_WARN("SCXML: Active state '{}' not found in model", activeStateId);
             continue;
         }
 
-        LOG_DEBUG("SCXML: Checking state '{}' for eventless transitions", activeStateId);
+        const auto &transitions = stateNode->getTransitions();
+        for (const auto &transitionNode : transitions) {
+            const std::vector<std::string> &eventDescriptors = transitionNode->getEvents();
+            if (!eventDescriptors.empty()) {
+                continue;  // Not eventless
+            }
 
-        // Process eventless transitions (empty event name)
-        auto transitionResult = processStateTransitions(stateNode, "", "");
-        if (transitionResult.success) {
-            LOG_DEBUG("SCXML: Eventless transition executed from state '{}': {} -> {}", activeStateId,
-                      transitionResult.fromState, transitionResult.toState);
-            // W3C: First enabled transition executes, then return true
-            return true;
+            std::string condition = transitionNode->getGuard();
+            bool conditionResult = condition.empty() || evaluateCondition(condition);
+
+            if (conditionResult) {
+                firstEnabledState = stateNode;
+                firstTransition = transitionNode;
+
+                // Check if this state is within a parallel state
+                IStateNode *current = stateNode->getParent();
+                while (current) {
+                    if (current->getType() == Type::PARALLEL) {
+                        parallelAncestor = current;
+                        break;
+                    }
+                    current = current->getParent();
+                }
+
+                break;
+            }
+        }
+
+        if (firstEnabledState) {
+            break;
         }
     }
 
-    LOG_DEBUG("SCXML: No eventless transitions found in active configuration");
-    return false;
+    if (!firstEnabledState) {
+        LOG_DEBUG("SCXML: No eventless transitions found");
+        return false;
+    }
+
+    // W3C SCXML 3.13: If not in parallel state, use old single-transition approach
+    if (!parallelAncestor) {
+        LOG_DEBUG("SCXML: Single eventless transition (non-parallel)");
+        auto transitionResult = processStateTransitions(firstEnabledState, "", "");
+        if (transitionResult.success) {
+            LOG_DEBUG("SCXML: Eventless transition executed: {} -> {}", transitionResult.fromState,
+                      transitionResult.toState);
+            return true;
+        }
+        return false;
+    }
+
+    // W3C SCXML 3.13: Parallel state - collect ALL eventless transitions from all regions
+    // Algorithm: For each active state in parallel, select first enabled transition (document order)
+    LOG_DEBUG("W3C SCXML 3.13: Parallel state detected - collecting all region transitions");
+    std::vector<TransitionInfo> enabledTransitions;
+    enabledTransitions.reserve(activeStates.size());  // Optimize: pre-allocate for typical case
+
+    for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
+        const std::string &activeStateId = *it;
+        auto stateNode = model_->findStateById(activeStateId);
+
+        if (!stateNode) {
+            continue;
+        }
+
+        // Check if this state is descendant of the same parallel ancestor
+        bool isInParallel = false;
+        IStateNode *current = stateNode;
+        while (current) {
+            if (current == parallelAncestor) {
+                isInParallel = true;
+                break;
+            }
+            current = current->getParent();
+        }
+
+        if (!isInParallel) {
+            continue;
+        }
+
+        const auto &transitions = stateNode->getTransitions();
+        for (const auto &transitionNode : transitions) {
+            const std::vector<std::string> &eventDescriptors = transitionNode->getEvents();
+            if (!eventDescriptors.empty()) {
+                continue;
+            }
+
+            std::string condition = transitionNode->getGuard();
+            bool conditionResult = condition.empty() || evaluateCondition(condition);
+
+            if (!conditionResult) {
+                continue;
+            }
+
+            const auto &targets = transitionNode->getTargets();
+            if (targets.empty()) {
+                // W3C SCXML: Internal transition - execute inline and stop checking this state
+                // This is still the "first enabled transition" for this state
+                const auto &actionNodes = transitionNode->getActionNodes();
+                if (!actionNodes.empty()) {
+                    executeActionNodes(actionNodes, false);
+                }
+                break;  // First enabled transition rule applies to internal transitions too
+            }
+
+            std::string targetState = targets[0];
+            std::vector<std::string> exitSet = computeExitSet(activeStateId, targetState);
+
+            enabledTransitions.emplace_back(stateNode, transitionNode, targetState, exitSet);
+            LOG_DEBUG("W3C SCXML 3.13: Collected parallel transition: {} -> {}", activeStateId, targetState);
+
+            // W3C SCXML: Only select first enabled transition per state (document order)
+            break;
+        }
+    }
+
+    if (enabledTransitions.empty()) {
+        LOG_DEBUG("W3C SCXML 3.13: No transitions collected from parallel regions");
+        return false;
+    }
+
+    // W3C SCXML 3.13: Sort by document order
+    std::sort(enabledTransitions.begin(), enabledTransitions.end(),
+              [this](const TransitionInfo &a, const TransitionInfo &b) {
+                  int posA = getStateDocumentPosition(a.sourceState->getId());
+                  int posB = getStateDocumentPosition(b.sourceState->getId());
+                  return posA < posB;
+              });
+
+    LOG_DEBUG("W3C SCXML 3.13: Executing {} parallel transitions as microstep", enabledTransitions.size());
+
+    bool success = executeTransitionMicrostep(enabledTransitions);
+
+    if (success) {
+        updateStatistics();
+        stats_.totalTransitions += static_cast<int>(enabledTransitions.size());
+    }
+
+    return success;
+}
+
+bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> &transitions) {
+    if (transitions.empty()) {
+        return false;
+    }
+
+    LOG_DEBUG("W3C SCXML 3.13: Executing microstep with {} transition(s)", transitions.size());
+
+    // Phase 1: Exit all source states (executing onexit actions)
+    // W3C SCXML: Compute unique exit set from all transitions, exit in correct order
+    std::set<std::string> exitSetUnique;
+    for (const auto &transInfo : transitions) {
+        for (const auto &stateId : transInfo.exitSet) {
+            exitSetUnique.insert(stateId);
+        }
+    }
+
+    // Convert to vector for ordered exit (deepest first)
+    std::vector<std::string> allStatesToExit(exitSetUnique.begin(), exitSetUnique.end());
+
+    // W3C SCXML 3.13: Sort by depth (deepest first), then by reverse document order
+    // States at same depth should exit in reverse document order
+    std::sort(allStatesToExit.begin(), allStatesToExit.end(), [this](const std::string &a, const std::string &b) {
+        // Count ancestors - deeper states have more ancestors
+        int depthA = 0;
+        int depthB = 0;
+
+        if (model_) {
+            auto nodeA = model_->findStateById(a);
+            auto nodeB = model_->findStateById(b);
+
+            if (nodeA) {
+                auto parent = nodeA->getParent();
+                while (parent) {
+                    depthA++;
+                    parent = parent->getParent();
+                }
+            }
+
+            if (nodeB) {
+                auto parent = nodeB->getParent();
+                while (parent) {
+                    depthB++;
+                    parent = parent->getParent();
+                }
+            }
+        }
+
+        // Primary: Sort deepest first (higher depth comes first)
+        if (depthA != depthB) {
+            return depthA > depthB;
+        }
+
+        // Secondary: For states at same depth, use reverse document order
+        // W3C SCXML: Exit states in reverse document order (later states exit first)
+        int posA = getStateDocumentPosition(a);
+        int posB = getStateDocumentPosition(b);
+        return posA > posB;  // Reverse document order
+    });
+
+    LOG_DEBUG("W3C SCXML 3.13: Phase 1 - Exiting {} state(s)", allStatesToExit.size());
+    for (const auto &stateId : allStatesToExit) {
+        if (!exitState(stateId)) {
+            LOG_ERROR("W3C SCXML 3.13: Failed to exit state '{}' during microstep", stateId);
+            return false;
+        }
+    }
+
+    // Phase 2: Execute all transition actions in document order
+    LOG_DEBUG("W3C SCXML 3.13: Phase 2 - Executing transition actions for {} transition(s)", transitions.size());
+    for (const auto &transInfo : transitions) {
+        const auto &actionNodes = transInfo.transition->getActionNodes();
+        if (!actionNodes.empty()) {
+            LOG_DEBUG("W3C SCXML 3.13: Executing {} action(s) from transition", actionNodes.size());
+            // processEventsAfter=false: Events raised here will be queued, not processed immediately
+            executeActionNodes(actionNodes, false);
+        }
+    }
+
+    // Phase 3: Enter all target states (executing onentry actions)
+    LOG_DEBUG("W3C SCXML 3.13: Phase 3 - Entering {} target state(s)", transitions.size());
+    for (const auto &transInfo : transitions) {
+        if (!transInfo.targetState.empty()) {
+            if (!enterState(transInfo.targetState)) {
+                LOG_ERROR("W3C SCXML 3.13: Failed to enter target state '{}' during microstep", transInfo.targetState);
+                return false;
+            }
+        }
+    }
+
+    LOG_DEBUG("W3C SCXML 3.13: Microstep execution complete");
+    return true;
 }
 
 bool StateMachine::exitState(const std::string &stateId) {
@@ -2755,6 +2984,48 @@ bool StateMachine::isDescendant(const std::string &stateId, const std::string &a
 }
 
 // W3C SCXML: Find Lowest Common Ancestor of source and target states
+int StateMachine::getStateDocumentPosition(const std::string &stateId) const {
+    // W3C SCXML 3.13: Get document order position for state
+    // Uses depth-first pre-order traversal to assign positions
+    if (!model_) {
+        return -1;
+    }
+
+    // Helper to recursively assign positions
+    int position = 0;
+    std::function<int(IStateNode *, const std::string &)> findPosition = [&](IStateNode *node,
+                                                                             const std::string &targetId) -> int {
+        if (!node) {
+            return -1;
+        }
+
+        if (node->getId() == targetId) {
+            return position;
+        }
+
+        position++;
+
+        // Depth-first pre-order: visit children
+        const auto &children = node->getChildren();
+        for (const auto &child : children) {
+            int result = findPosition(child.get(), targetId);
+            if (result >= 0) {
+                return result;
+            }
+        }
+
+        return -1;
+    };
+
+    // Start from root state
+    auto rootState = model_->getRootState();
+    if (!rootState) {
+        return -1;
+    }
+
+    return findPosition(rootState.get(), stateId);
+}
+
 std::string StateMachine::findLCA(const std::string &sourceStateId, const std::string &targetStateId) const {
     if (!model_) {
         return "";

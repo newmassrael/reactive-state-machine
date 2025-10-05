@@ -124,6 +124,10 @@ private:
     // W3C SCXML 5.9: Non-boolean expression pattern (test 309)
     static const std::regex CONF_NONBOOLEAN_ATTR;
 
+    // W3C SCXML 5.9: In() predicate pattern (test 310)
+    // <transition conf:inState="s1" target="pass"/> converts to <transition cond="In('s1')" target="pass"/>
+    static const std::regex CONF_INSTATE_ATTR;
+
     // W3C SCXML 5.10: System variable binding check pattern (test 319)
     static const std::regex CONF_SYSTEMVARISBOUND_ATTR;
 

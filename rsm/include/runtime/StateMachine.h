@@ -51,6 +51,23 @@ public:
     };
 
     /**
+     * @brief W3C SCXML 3.13: Transition information for microstep execution
+     *
+     * Holds all information needed to execute a transition as part of a microstep.
+     * Multiple transitions execute atomically: exit all → execute all → enter all.
+     */
+    struct TransitionInfo {
+        IStateNode *sourceState;                      // Source state node
+        std::shared_ptr<ITransitionNode> transition;  // Transition node
+        std::string targetState;                      // Target state ID
+        std::vector<std::string> exitSet;             // States to exit (in order)
+
+        TransitionInfo(IStateNode *src, std::shared_ptr<ITransitionNode> trans, const std::string &target,
+                       const std::vector<std::string> &exits)
+            : sourceState(src), transition(trans), targetState(target), exitSet(exits) {}
+    };
+
+    /**
      * @brief Default constructor - generates random session ID
      */
     StateMachine();
@@ -401,6 +418,19 @@ private:
      */
     bool checkEventlessTransitions();
 
+    /**
+     * @brief W3C SCXML 3.13: Execute transitions as a microstep
+     *
+     * Executes multiple transitions atomically with proper phasing:
+     * 1. Exit all source states (executing onexit actions)
+     * 2. Execute all transition actions in document order
+     * 3. Enter all target states (executing onentry actions)
+     *
+     * @param transitions Vector of transitions to execute
+     * @return true if all transitions executed successfully
+     */
+    bool executeTransitionMicrostep(const std::vector<TransitionInfo> &transitions);
+
     // New IActionNode-based action execution methods
     bool initializeActionExecutor();
     bool executeActionNodes(const std::vector<std::shared_ptr<RSM::IActionNode>> &actions,
@@ -418,6 +448,7 @@ private:
     // W3C SCXML transition domain and exit set computation
     std::string findLCA(const std::string &sourceStateId, const std::string &targetStateId) const;
     std::vector<std::string> computeExitSet(const std::string &sourceStateId, const std::string &targetStateId) const;
+    int getStateDocumentPosition(const std::string &stateId) const;
     std::vector<std::string> getProperAncestors(const std::string &stateId) const;
     bool isDescendant(const std::string &stateId, const std::string &ancestorId) const;
 

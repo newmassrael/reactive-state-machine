@@ -445,6 +445,10 @@ void StateHierarchyManager::addStateToConfiguration(const std::string &stateId) 
     activeStates_.push_back(stateId);
     activeSet_.insert(stateId);
 
+    // W3C SCXML 405: Synchronize parallel region state tracking
+    // This ensures ConcurrentRegion knows about StateMachine-driven state changes
+    synchronizeParallelRegionState(stateId);
+
     // W3C SCXML: Execute onentry actions after adding state to active configuration
     if (onEntryCallback_) {
         onEntryCallback_(stateId);
@@ -666,6 +670,68 @@ bool StateHierarchyManager::isCompoundState(IStateNode *stateNode) const {
     // SCXML W3C specification: only COMPOUND types are compound states, not PARALLEL
     // Parallel states have different semantics and should not auto-enter children
     return stateNode->getType() == Type::COMPOUND;
+}
+
+bool StateHierarchyManager::isStateDescendantOf(IStateNode *rootState, const std::string &stateId) const {
+    if (!rootState) {
+        return false;
+    }
+
+    // Check if root itself is the target
+    if (rootState->getId() == stateId) {
+        return true;
+    }
+
+    // Recursively check all children
+    const auto &children = rootState->getChildren();
+    for (const auto &child : children) {
+        if (child && isStateDescendantOf(child.get(), stateId)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void StateHierarchyManager::synchronizeParallelRegionState(const std::string &stateId) {
+    // W3C SCXML 405: Synchronize ConcurrentRegion state tracking after StateMachine transitions
+    // When StateMachine processes eventless transitions inside parallel regions,
+    // the regions don't know about the state changes and keep stale activeStates_.
+    // This causes duplicate onexit execution during parallel state exit.
+
+    if (!model_ || stateId.empty()) {
+        return;
+    }
+
+    auto stateNode = model_->findStateById(stateId);
+    if (!stateNode || !stateNode->getParent()) {
+        return;
+    }
+
+    // Find the parallel state ancestor (if any)
+    IStateNode *current = stateNode->getParent();
+    while (current) {
+        if (current->getType() == Type::PARALLEL) {
+            auto parallelState = dynamic_cast<ConcurrentStateNode *>(current);
+            if (parallelState) {
+                const auto &regions = parallelState->getRegions();
+                for (const auto &region : regions) {
+                    if (region && region->getRootState()) {
+                        // Check if stateId belongs to this region
+                        if (isStateDescendantOf(region->getRootState().get(), stateId)) {
+                            region->setCurrentState(stateId);
+                            LOG_DEBUG("W3C SCXML 405: Synchronized region '{}' currentState to '{}'", region->getId(),
+                                      stateId);
+                            break;  // Found the region, no need to check others
+                        }
+                    }
+                }
+            }
+            // Only synchronize the immediate parallel parent, not ancestors
+            break;
+        }
+        current = current->getParent();
+    }
 }
 
 void StateHierarchyManager::setOnEntryCallback(std::function<void(const std::string &)> callback) {
