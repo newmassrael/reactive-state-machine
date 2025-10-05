@@ -1,6 +1,7 @@
 #include "runtime/StateHierarchyManager.h"
 #include "common/Logger.h"
 #include "model/IStateNode.h"
+#include "model/ITransitionNode.h"
 #include "model/SCXMLModel.h"
 #include "states/ConcurrentRegion.h"
 #include "states/ConcurrentStateNode.h"
@@ -127,6 +128,25 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
         // W3C SCXML 3.3: Enter initial child state(s) - supports space-separated list for deep targets
         std::string initialChildren = findInitialChildState(stateNode);
         if (!initialChildren.empty()) {
+            // W3C SCXML 3.13: Execute initial transition's executable content
+            // This must happen AFTER parent onentry and BEFORE child state entry
+            // IMPORTANT: Must be executed via callback to StateMachine for proper immediate mode control
+            auto initialTransition = stateNode->getInitialTransition();
+            if (initialTransition) {
+                const auto &actionNodes = initialTransition->getActionNodes();
+                if (!actionNodes.empty()) {
+                    if (!initialTransitionCallback_) {
+                        LOG_WARN("StateHierarchyManager: Initial transition has {} action(s) but callback not set - "
+                                 "W3C SCXML 3.13 violation for state: {}",
+                                 actionNodes.size(), stateId);
+                    } else {
+                        LOG_DEBUG("StateHierarchyManager: Executing {} actions from <initial> transition for state: {}",
+                                  actionNodes.size(), stateId);
+                        initialTransitionCallback_(actionNodes);
+                    }
+                }
+            }
+
             // W3C SCXML 3.3: Pre-process deep initial targets to set desired initial children for parallel regions
             // This implements the algorithm: if descendant already in statesToEnter, skip default entry
             // Performance optimization: Track processed parallel states to avoid duplicate ancestor traversal O(n²) →
@@ -775,6 +795,12 @@ void StateHierarchyManager::setExecutionContext(std::shared_ptr<IExecutionContex
 
     LOG_DEBUG("StateHierarchyManager: ExecutionContext set for concurrent region action execution (W3C SCXML 403c "
               "compliance)");
+}
+
+void StateHierarchyManager::setInitialTransitionCallback(
+    std::function<void(const std::vector<std::shared_ptr<IActionNode>> &)> callback) {
+    initialTransitionCallback_ = callback;
+    LOG_DEBUG("StateHierarchyManager: Initial transition callback set for W3C SCXML 3.13 compliance");
 }
 
 void StateHierarchyManager::updateRegionExecutionContexts(ConcurrentStateNode *parallelState) {

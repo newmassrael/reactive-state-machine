@@ -13,6 +13,7 @@ class SCXMLModel;
 class IStateNode;
 class IExecutionContext;
 class IInvokeNode;
+class IActionNode;
 class ConcurrentStateNode;
 
 /**
@@ -142,6 +143,17 @@ public:
     void setExecutionContext(std::shared_ptr<IExecutionContext> context);
 
     /**
+     * @brief Set callback for initial transition action execution (W3C SCXML 3.13 compliance)
+     *
+     * This callback is called when a compound state with an initial transition
+     * needs to execute the transition's actions AFTER parent onentry and BEFORE child entry.
+     * The callback must handle immediate mode control to ensure proper event queuing.
+     *
+     * @param callback Function to call with action nodes from initial transition
+     */
+    void setInitialTransitionCallback(std::function<void(const std::vector<std::shared_ptr<IActionNode>> &)> callback);
+
+    /**
      * @brief Enter a state along with all its ancestors up to a parent
      *
      * W3C SCXML 3.3: When initial attribute specifies deep descendants,
@@ -220,6 +232,9 @@ private:
 
     // Execution context for concurrent region action execution (403c fix)
     std::shared_ptr<IExecutionContext> executionContext_;
+
+    // W3C SCXML 3.13: Initial transition action callback for proper event queuing
+    std::function<void(const std::vector<std::shared_ptr<IActionNode>> &)> initialTransitionCallback_;
 
     /**
      * @brief Update execution context for all regions of a parallel state

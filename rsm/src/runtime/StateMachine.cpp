@@ -1862,6 +1862,15 @@ bool StateMachine::setupJSEnvironment() {
     if (hierarchyManager_ && executionContext_) {
         hierarchyManager_->setExecutionContext(executionContext_);
         LOG_DEBUG("StateMachine: ExecutionContext successfully configured for StateHierarchyManager (403c compliance)");
+
+        // W3C SCXML 3.13: Set initial transition callback for proper event queuing
+        hierarchyManager_->setInitialTransitionCallback(
+            [this](const std::vector<std::shared_ptr<IActionNode>> &actions) {
+                // Execute actions with immediate mode control to ensure proper event queuing
+                executeActionNodes(actions, false);
+            });
+        LOG_DEBUG(
+            "StateMachine: Initial transition callback configured for StateHierarchyManager (test 412 compliance)");
     }
 
     // W3C SCXML 5.8: Execute top-level scripts AFTER datamodel init, BEFORE start()
