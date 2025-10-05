@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
+#include "states/ConcurrentRegion.h"
 #include "states/ConcurrentStateNode.h"
 #include <algorithm>
 
@@ -57,11 +58,14 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
             for (const auto &region : regions) {
                 if (region) {
                     region->setConditionEvaluator(conditionEvaluator_);
-                    LOG_DEBUG("StateHierarchyManager: Set condition evaluator for region: {} BEFORE activation",
+                    LOG_DEBUG("StateHierarchyManager: Set condition evaluator for region '{}' BEFORE activation",
                               region->getId());
                 }
             }
         }
+
+        // W3C SCXML 403c: Set execution context for all regions BEFORE activation (DRY refactoring)
+        updateRegionExecutionContexts(parallelState);
 
         auto result = parallelState->enterParallelState();
         if (!result.isSuccess) {
@@ -237,75 +241,29 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
 }
 
 std::string StateHierarchyManager::getCurrentState() const {
-    LOG_DEBUG("getCurrentState - Active states count: {}", std::to_string(activeStates_.size()));
-
     if (activeStates_.empty()) {
-        LOG_DEBUG("No active states, returning empty");
+        LOG_WARN("No active states");
         return "";
     }
 
-    // Debug output: log each active state in the configuration with more detail
-    LOG_DEBUG("getCurrentState - DETAILED ACTIVE STATES DUMP:");
-    for (size_t i = 0; i < activeStates_.size(); ++i) {
-        std::string stateId = activeStates_[i];
-        std::string typeInfo = "unknown";
-        if (model_) {
-            auto stateNode = model_->findStateById(stateId);
-            if (stateNode) {
-                auto stateType = stateNode->getType();
-                switch (stateType) {
-                case Type::PARALLEL:
-                    typeInfo = "PARALLEL";
-                    break;
-                case Type::COMPOUND:
-                    typeInfo = "COMPOUND";
-                    break;
-                case Type::ATOMIC:
-                    typeInfo = "ATOMIC";
-                    break;
-                case Type::FINAL:
-                    typeInfo = "FINAL";
-                    break;
-                default:
-                    typeInfo = "OTHER(" + std::to_string(static_cast<int>(stateType)) + ")";
-                    break;
-                }
-            }
-        }
-        LOG_DEBUG("getCurrentState - Active state[{}]: {} (type: {})", i, stateId, typeInfo);
-    }
-
     // SCXML W3C specification: parallel states define the current state context
-    // Find the first parallel state in the active configuration
     if (model_) {
         for (const auto &stateId : activeStates_) {
             auto stateNode = model_->findStateById(stateId);
-            if (stateNode) {
-                auto stateType = stateNode->getType();
-                LOG_DEBUG("getCurrentState - State: {}, Type: {} (PARALLEL={})", stateId, static_cast<int>(stateType),
-                          static_cast<int>(Type::PARALLEL));
-
-                if (stateType == Type::PARALLEL) {
-                    LOG_DEBUG("getCurrentState - Found parallel state, returning: {}", stateId);
-                    return stateId;  // Return the parallel state as current state
-                }
-            } else {
-                LOG_WARN("getCurrentState - State node not found for: {}", stateId);
+            if (stateNode && stateNode->getType() == Type::PARALLEL) {
+                return stateId;  // Return the parallel state as current state
             }
         }
     }
 
     // SCXML W3C specification: For compound states, return the most specific (atomic) state
-    // Skip compound states and return the deepest atomic state in the configuration
     for (auto it = activeStates_.rbegin(); it != activeStates_.rend(); ++it) {
         const std::string &stateId = *it;
         if (model_) {
             auto stateNode = model_->findStateById(stateId);
             if (stateNode) {
                 auto stateType = stateNode->getType();
-                // Return atomic states (leaf states) or final states as current state
                 if (stateType == Type::ATOMIC || stateType == Type::FINAL) {
-                    LOG_DEBUG("getCurrentState - Found atomic/final state, returning: {}", stateId);
                     return stateId;
                 }
             }
@@ -313,9 +271,7 @@ std::string StateHierarchyManager::getCurrentState() const {
     }
 
     // Fallback: return the last (most specific) state in the active configuration
-    std::string result = activeStates_.back();
-    LOG_DEBUG("getCurrentState - No atomic state found, returning last state: {}", result);
-    return result;
+    return activeStates_.back();
 }
 
 std::vector<std::string> StateHierarchyManager::getActiveStates() const {
@@ -375,60 +331,43 @@ bool StateHierarchyManager::isHierarchicalModeNeeded() const {
 
 // Exit a parallel state by removing it and all its descendant regions
 void StateHierarchyManager::exitParallelStateAndDescendants(const std::string &parallelStateId) {
-    LOG_DEBUG("exitParallelStateAndDescendants - Starting removal of parallel state: {} and descendants",
-              parallelStateId);
-    LOG_DEBUG("exitParallelStateAndDescendants - Active states before removal: {} total", activeStates_.size());
-
     std::vector<std::string> statesToRemove;
 
     // SCXML W3C: Remove the parallel state itself
     auto it = std::find(activeStates_.begin(), activeStates_.end(), parallelStateId);
     if (it != activeStates_.end()) {
         statesToRemove.push_back(parallelStateId);
-        LOG_DEBUG("exitParallelStateAndDescendants - Added parallel state to removal list: {}", parallelStateId);
     } else {
-        LOG_WARN("exitParallelStateAndDescendants - Parallel state {} not found in active states", parallelStateId);
+        LOG_WARN(
+            "StateHierarchyManager::exitParallelStateAndDescendants - Parallel state '{}' not in active configuration",
+            parallelStateId);
     }
 
     // SCXML W3C: Remove all descendant states of the parallel state
     if (model_) {
         auto parallelNode = model_->findStateById(parallelStateId);
         if (parallelNode && parallelNode->getType() == Type::PARALLEL) {
-            LOG_DEBUG("exitParallelStateAndDescendants - Found parallel node, collecting regions");
             auto parallelState = dynamic_cast<ConcurrentStateNode *>(parallelNode);
             if (parallelState) {
                 const auto &regions = parallelState->getRegions();
-                LOG_DEBUG("exitParallelStateAndDescendants - Processing {} regions", regions.size());
                 for (const auto &region : regions) {
                     if (region && region->getRootState()) {
-                        // Remove region root state and its children
                         std::string regionId = region->getRootState()->getId();
-                        LOG_DEBUG("exitParallelStateAndDescendants - Collecting descendants for region: {}", regionId);
-                        size_t beforeSize = statesToRemove.size();
                         collectDescendantStates(regionId, statesToRemove);
-                        LOG_DEBUG("exitParallelStateAndDescendants - Added {} states from region {}",
-                                  statesToRemove.size() - beforeSize, regionId);
                     }
                 }
             }
         } else {
-            LOG_WARN("exitParallelStateAndDescendants - Parallel node not found or wrong type for: {}",
-                     parallelStateId);
+            LOG_WARN(
+                "StateHierarchyManager::exitParallelStateAndDescendants - Parallel node not found or wrong type: '{}'",
+                parallelStateId);
         }
-    }
-
-    LOG_DEBUG("exitParallelStateAndDescendants - Total states to remove: {}", statesToRemove.size());
-    for (const auto &state : statesToRemove) {
-        LOG_DEBUG("exitParallelStateAndDescendants - Removing state: {}", state);
     }
 
     // Remove all collected states
     for (const auto &state : statesToRemove) {
         removeStateFromConfiguration(state);
     }
-
-    LOG_DEBUG("exitParallelStateAndDescendants - Active states after removal: {} total", activeStates_.size());
-    LOG_DEBUG("exitParallelStateAndDescendants - Removed {} parallel states", statesToRemove.size());
 }
 
 // Exit a hierarchical state by removing it and all child states
@@ -508,53 +447,16 @@ void StateHierarchyManager::addStateToConfiguration(const std::string &stateId) 
 
     // W3C SCXML: Execute onentry actions after adding state to active configuration
     if (onEntryCallback_) {
-        LOG_DEBUG("addStateToConfiguration - Calling onentry callback for state: {}", stateId);
         onEntryCallback_(stateId);
-        LOG_DEBUG("addStateToConfiguration - Onentry callback completed for state: {}", stateId);
 
         // W3C SCXML: Check if state is still in configuration after onentry
         // Onentry actions can trigger eventless transitions that exit the state
         if (activeSet_.find(stateId) == activeSet_.end()) {
-            LOG_DEBUG("addStateToConfiguration - State {} was removed during onentry callback (transition occurred)",
-                      stateId);
-            return;  // State already removed, don't log or continue
+            return;  // State already removed, don't continue
         }
     } else {
-        LOG_WARN("addStateToConfiguration - No onentry callback set for state: {}", stateId);
+        LOG_WARN("StateHierarchyManager::addStateToConfiguration - No onentry callback set for state '{}'", stateId);
     }
-
-    // Check state type for debugging
-    std::string typeInfo = "unknown";
-    if (model_) {
-        auto stateNode = model_->findStateById(stateId);
-        if (stateNode) {
-            auto stateType = stateNode->getType();
-            typeInfo = std::to_string(static_cast<int>(stateType));
-            if (stateType == Type::PARALLEL) {
-                typeInfo += "(PARALLEL)";
-            } else if (stateType == Type::FINAL) {
-                typeInfo += "(FINAL)";
-            } else if (stateType == Type::COMPOUND) {
-                typeInfo += "(COMPOUND)";
-            } else if (stateType == Type::ATOMIC) {
-                typeInfo += "(ATOMIC)";
-            }
-        }
-    }
-
-    LOG_DEBUG("addStateToConfiguration - Added: {} type={} (total active: {})", stateId, typeInfo,
-              activeStates_.size());
-
-    // Log current state order for debugging
-    std::string stateOrder = "Current order: [";
-    for (size_t i = 0; i < activeStates_.size(); ++i) {
-        if (i > 0) {
-            stateOrder += ", ";
-        }
-        stateOrder += activeStates_[i];
-    }
-    stateOrder += "]";
-    LOG_DEBUG("addStateToConfiguration - {}", stateOrder);
 }
 
 void StateHierarchyManager::addStateToConfigurationWithoutOnEntry(const std::string &stateId) {
@@ -564,28 +466,6 @@ void StateHierarchyManager::addStateToConfigurationWithoutOnEntry(const std::str
 
     activeStates_.push_back(stateId);
     activeSet_.insert(stateId);
-
-    // Check state type for debugging
-    std::string typeInfo = "unknown";
-    if (model_) {
-        auto stateNode = model_->findStateById(stateId);
-        if (stateNode) {
-            auto stateType = stateNode->getType();
-            typeInfo = std::to_string(static_cast<int>(stateType));
-            if (stateType == Type::PARALLEL) {
-                typeInfo += "(PARALLEL)";
-            } else if (stateType == Type::FINAL) {
-                typeInfo += "(FINAL)";
-            } else if (stateType == Type::COMPOUND) {
-                typeInfo += "(COMPOUND)";
-            } else if (stateType == Type::ATOMIC) {
-                typeInfo += "(ATOMIC)";
-            }
-        }
-    }
-
-    LOG_DEBUG("addStateToConfigurationWithoutOnEntry - Added: {} type={} (total active: {})", stateId, typeInfo,
-              activeStates_.size());
 }
 
 bool StateHierarchyManager::enterStateWithAncestors(const std::string &targetStateId, IStateNode *stopAtParent,
@@ -802,6 +682,53 @@ void StateHierarchyManager::setInvokeDeferCallback(
 void StateHierarchyManager::setConditionEvaluator(std::function<bool(const std::string &)> evaluator) {
     conditionEvaluator_ = evaluator;
     LOG_DEBUG("StateHierarchyManager: Condition evaluator callback set for W3C SCXML transition guard compliance");
+}
+
+void StateHierarchyManager::setExecutionContext(std::shared_ptr<IExecutionContext> context) {
+    executionContext_ = context;
+
+    if (!executionContext_) {
+        LOG_WARN("StateHierarchyManager: ExecutionContext set to null - parallel state regions will not be able to "
+                 "execute transition actions (W3C SCXML 403c may fail)");
+        return;
+    }
+
+    // W3C SCXML 403c: Update executionContext for ALL existing parallel state regions
+    // This handles the case where parallel states were created before executionContext was available
+    if (model_) {
+        const auto &allStates = model_->getAllStates();
+        for (const auto &state : allStates) {
+            if (state && state->getType() == Type::PARALLEL) {
+                auto parallelState = dynamic_cast<ConcurrentStateNode *>(state.get());
+                if (parallelState) {
+                    updateRegionExecutionContexts(parallelState);
+                }
+            }
+        }
+    }
+
+    LOG_DEBUG("StateHierarchyManager: ExecutionContext set for concurrent region action execution (W3C SCXML 403c "
+              "compliance)");
+}
+
+void StateHierarchyManager::updateRegionExecutionContexts(ConcurrentStateNode *parallelState) {
+    // W3C SCXML 403c: DRY principle - centralized executionContext management for parallel state regions
+    if (!parallelState || !executionContext_) {
+        if (!executionContext_) {
+            LOG_WARN("StateHierarchyManager: Cannot update region executionContexts - executionContext is null");
+        }
+        return;
+    }
+
+    const auto &regions = parallelState->getRegions();
+    for (const auto &region : regions) {
+        if (region) {
+            region->setExecutionContext(executionContext_);
+            LOG_DEBUG(
+                "StateHierarchyManager: Set executionContext for region '{}' in parallel state '{}' (W3C SCXML 403c)",
+                region->getId(), parallelState->getId());
+        }
+    }
 }
 
 void StateHierarchyManager::updateParallelRegionCurrentStates() {

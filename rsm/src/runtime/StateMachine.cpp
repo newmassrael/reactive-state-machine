@@ -8,10 +8,12 @@
 #include "parsing/XIncludeProcessor.h"
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/DeepHistoryFilter.h"
+#include "runtime/EventRaiserImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "runtime/HistoryManager.h"
 #include "runtime/HistoryStateAutoRegistrar.h"
 #include "runtime/HistoryValidator.h"
+#include "runtime/ImmediateModeGuard.h"
 #include "runtime/ShallowHistoryFilter.h"
 #include "scripting/JSEngine.h"
 #include "states/ConcurrentRegion.h"
@@ -445,114 +447,140 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
 
         LOG_DEBUG("Processing event '{}' for parallel state: {}", eventName, currentState);
 
-        // SCXML W3C specification: First check transitions on the parallel state itself
-        // This follows the same transition evaluation logic as non-parallel states
+        // SCXML W3C specification 3.13: Check transitions on the parallel state itself
+        // Internal transitions (no target) execute actions but DON'T prevent region processing
+        // External transitions (with target) exit the parallel state and return immediately
         auto stateTransitionResult = processStateTransitions(currentStateNode, eventName, eventData);
         if (stateTransitionResult.success) {
-            LOG_DEBUG("SCXML compliant - parallel state transition executed: {} -> {}", stateTransitionResult.fromState,
-                      stateTransitionResult.toState);
-            return stateTransitionResult;
-        }
-
-        // SCXML W3C specification 3.4: Check transitions on region root states
-        // Region root states (direct children of parallel) can have transitions that exit the parallel state
-        const auto &parallelChildren = parallelState->getChildren();
-        for (const auto &child : parallelChildren) {
-            if (child) {
-                // Check if this child state has a transition for this event
-                auto childTransitionResult = processStateTransitions(child.get(), eventName, eventData);
-                if (childTransitionResult.success) {
-                    LOG_DEBUG(
-                        "SCXML W3C: Region root state '{}' has transition for event '{}' -> exiting parallel state",
-                        child->getId(), eventName);
-                    return childTransitionResult;
-                }
+            // Check if this is an external transition (toState != fromState)
+            if (stateTransitionResult.toState != stateTransitionResult.fromState) {
+                // External transition: exit parallel state
+                LOG_DEBUG("SCXML W3C: External transition from parallel state: {} -> {}",
+                          stateTransitionResult.fromState, stateTransitionResult.toState);
+                return stateTransitionResult;
             }
+            // Internal transition: actions executed, continue to region processing
+            LOG_DEBUG("SCXML W3C: Internal transition on parallel state {} (actions executed, continuing to regions)",
+                      currentState);
         }
 
-        // SCXML W3C specification 3.4: Process event in ALL regions independently
-        // Events must be broadcast to all active regions simultaneously
-        const auto &regions = parallelState->getRegions();
-        bool anyRegionTransitioned = false;
-        std::vector<std::string> transitionedRegions;
+        // SCXML W3C specification 3.13: Removed region root state check (lines 457-471)
+        // The old approach checked region root states with processStateTransitions() and returned early.
+        // This violated W3C SCXML 3.13 because:
+        // 1. It prevented proper event broadcasting to ALL regions
+        // 2. It didn't handle transition preemption correctly (child > parent)
+        // 3. It didn't respect document order for transition priority
+        // 4. It didn't distinguish cross-region vs external transitions
+        // Instead, use region->processEvent() below (lines 484-537) which properly implements SCXML 3.13
 
-        // Create EventDescriptor for region processing
-        EventDescriptor regionEvent;
-        regionEvent.eventName = eventName;
-        regionEvent.data = eventData;
-
-        for (const auto &region : regions) {
-            if (region && region->isActive()) {
-                // W3C SCXML 3.4: Each region processes events independently
-                // Use region's own processEvent method which manages its internal state
-                auto regionResult = region->processEvent(regionEvent);
-
-                // W3C SCXML 3.4: Check if region found external transition
-                if (!regionResult.externalTransitionTarget.empty()) {
-                    LOG_DEBUG("SCXML W3C: Region '{}' found external transition from '{}' to '{}' - executing",
-                              region->getId(), regionResult.externalTransitionSource,
-                              regionResult.externalTransitionTarget);
-                    // Execute the external transition from source state to target
-                    // Find the source state node by ID for safe pointer access
-                    auto sourceStateNode = model_->findStateById(regionResult.externalTransitionSource);
-                    if (sourceStateNode) {
-                        return processStateTransitions(sourceStateNode, eventName, eventData);
-                    } else {
-                        LOG_ERROR("SCXML W3C: External transition source state '{}' not found",
-                                  regionResult.externalTransitionSource);
-                        TransitionResult failureResult;
-                        failureResult.success = false;
-                        failureResult.errorMessage = "External transition source state not found";
-                        return failureResult;
-                    }
-                }
-
-                if (regionResult.isSuccess) {
-                    anyRegionTransitioned = true;
-                    transitionedRegions.push_back(region->getId());
-                    LOG_DEBUG("SCXML W3C: Region '{}' successfully processed event '{}'", region->getId(), eventName);
-                }
-            }
-        }
-
-        // W3C SCXML 3.4: If any region transitioned, check completion and return success
-        if (anyRegionTransitioned) {
-            LOG_INFO("SCXML W3C: {} regions processed transitions for event '{}'", transitionedRegions.size(),
-                     eventName);
-
-            // W3C SCXML 3.4: Check if all regions completed (reached final states)
-            bool allRegionsComplete = parallelState->areAllRegionsComplete();
-            if (allRegionsComplete) {
-                LOG_DEBUG("SCXML W3C: All parallel regions completed after transitions");
-            }
-
-            TransitionResult result;
-            result.success = true;
-            result.fromState = currentState;
-            result.toState = currentState;  // Parallel state remains active
-            result.eventName = eventName;
-            return result;
-        }
-
-        // SCXML W3C specification: If no transition on parallel state or regions, broadcast to all active regions
+        // W3C SCXML 3.13: Broadcast event to ALL regions using processEventInAllRegions()
+        // This ensures proper transition preemption, blocking, and external transition handling
         LOG_DEBUG("StateMachine: No transitions on parallel state or region children, broadcasting to all regions");
 
-        // Create EventDescriptor for SCXML-compliant event processing
-        EventDescriptor event;
-        event.eventName = eventName;
-        event.data = eventData;
+        // W3C SCXML 3.13: Disable immediate mode during parallel state event processing
+        // RAII guard ensures restoration even if processEventInAllRegions() throws exception
+        // This prevents re-entrancy: raised events must be queued, not processed immediately
+        // Otherwise, one region's <raise> action can deactivate other regions before they compute their transitions
+        std::vector<ConcurrentOperationResult> results;
+        {
+            ImmediateModeGuard guard(eventRaiser_, false);
+            LOG_DEBUG("W3C SCXML 3.13: Disabled immediate mode for parallel state event processing");
 
-        // Broadcast event to all active regions (SCXML W3C mandated)
-        auto results = parallelState->processEventInAllRegions(event);
+            // Create EventDescriptor for SCXML-compliant event processing
+            EventDescriptor event;
+            event.eventName = eventName;
+            event.data = eventData;
+
+            // Broadcast event to all active regions (SCXML W3C mandated)
+            // Exception safety: guard automatically restores immediate mode on scope exit
+            results = parallelState->processEventInAllRegions(event);
+
+            LOG_DEBUG("W3C SCXML 3.13: Immediate mode will be restored on scope exit");
+        }  // RAII guard restores immediate mode here
 
         bool anyTransitionExecuted = false;
         std::vector<std::string> successfulTransitions;
+        std::string externalTransitionTarget;
+        std::string externalTransitionSource;
 
+        // W3C SCXML 3.13: Process results from all regions
+        // Check for external transitions and collect successful transitions
         for (const auto &result : results) {
             if (result.isSuccess) {
                 anyTransitionExecuted = true;
                 successfulTransitions.push_back(result.regionId + ": SUCCESS");
             }
+
+            // W3C SCXML 3.13: Detect external transition (transition outside parallel state)
+            // Take the FIRST external transition found (document order for preemption/blocking)
+            if (!result.externalTransitionTarget.empty() && externalTransitionTarget.empty()) {
+                LOG_DEBUG("External transition from region '{}': {} -> {}", result.regionId,
+                          result.externalTransitionSource, result.externalTransitionTarget);
+                externalTransitionTarget = result.externalTransitionTarget;
+                externalTransitionSource = result.externalTransitionSource;
+                anyTransitionExecuted = true;
+            }
+        }
+
+        // W3C SCXML 3.13: Execute external transition if found
+        if (!externalTransitionTarget.empty()) {
+            LOG_DEBUG("Executing external transition from parallel state '{}' to '{}'", currentState,
+                      externalTransitionTarget);
+
+            // Check if target is a child of the current parallel state (cross-region transition)
+            auto targetStateNode = model_->findStateById(externalTransitionTarget);
+            bool isCrossRegion = false;
+
+            if (targetStateNode) {
+                auto targetParent = targetStateNode->getParent();
+                isCrossRegion = (targetParent && targetParent->getId() == currentState);
+            }
+
+            // Exit parallel state and all its regions
+            exitState(currentState);
+
+            if (isCrossRegion) {
+                // Cross-region transition: re-enter the parallel state to activate ALL regions
+                LOG_INFO("W3C SCXML 3.13: Cross-region transition {} -> {}, re-entering parallel state {}",
+                         externalTransitionSource, externalTransitionTarget, currentState);
+                enterState(currentState);
+
+                // W3C SCXML: Set executionContext for all regions after re-entry
+                // This is critical for regions to execute transition actions correctly
+                auto parallelStateNode = model_->findStateById(currentState);
+                if (parallelStateNode && parallelStateNode->getType() == Type::PARALLEL) {
+                    auto reenteredParallelState = dynamic_cast<ConcurrentStateNode *>(parallelStateNode);
+                    if (reenteredParallelState) {
+                        const auto &regions = reenteredParallelState->getRegions();
+                        for (const auto &region : regions) {
+                            if (region) {
+                                // Dynamic cast to concrete ConcurrentRegion for setExecutionContext
+                                auto concreteRegion = std::dynamic_pointer_cast<ConcurrentRegion>(region);
+                                if (concreteRegion) {
+                                    concreteRegion->setExecutionContext(executionContext_);
+                                    LOG_DEBUG("StateMachine: Set execution context for region: {} after parallel state "
+                                              "re-entry",
+                                              region->getId());
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // True external transition: enter the target state
+                LOG_INFO("W3C SCXML 3.13: External transition from parallel {}, entering target {}", currentState,
+                         externalTransitionTarget);
+                enterState(externalTransitionTarget);
+            }
+
+            stats_.totalTransitions++;
+
+            TransitionResult externalResult;
+            externalResult.success = true;
+            externalResult.fromState = currentState;
+            externalResult.toState = externalTransitionTarget;
+            externalResult.eventName = eventName;
+            return externalResult;
         }
 
         if (anyTransitionExecuted) {
@@ -1600,6 +1628,13 @@ bool StateMachine::setupJSEnvironment() {
         return false;
     }
 
+    // W3C SCXML 403c: Set execution context for concurrent region action execution
+    // This must happen AFTER executionContext_ is created in initializeActionExecutor()
+    if (hierarchyManager_ && executionContext_) {
+        hierarchyManager_->setExecutionContext(executionContext_);
+        LOG_DEBUG("StateMachine: ExecutionContext successfully configured for StateHierarchyManager (403c compliance)");
+    }
+
     // W3C SCXML 5.8: Execute top-level scripts AFTER datamodel init, BEFORE start()
     if (model_) {
         const auto &topLevelScripts = model_->getTopLevelScripts();
@@ -2235,14 +2270,15 @@ void StateMachine::executeOnEntryActions(const std::string &stateId) {
         // W3C SCXML 3.8: Each onentry handler is independent
     }
 
-    // W3C SCXML compliance: Restore immediate mode and process queued events
+    // W3C SCXML compliance: Restore immediate mode (but DON'T process queued events yet)
+    // Events must be processed AFTER the entire state tree entry completes, not during onentry
+    // This ensures parent and child states are both active before processing raised events
     if (eventRaiser_) {
         auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
         if (eventRaiserImpl) {
             eventRaiserImpl->setImmediateMode(true);
-            // Process any events that were queued during executable content execution
-            eventRaiserImpl->processQueuedEvents();
-            LOG_DEBUG("SCXML compliance: Restored immediate mode and processed queued events");
+            LOG_DEBUG(
+                "SCXML compliance: Restored immediate mode (events will be processed after state entry completes)");
         }
     }
 

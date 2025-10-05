@@ -169,7 +169,18 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
 
             // SCXML W3C compliant transition processing
             for (const auto &transition : transitions) {
-                if (transition->getEvent() == event.eventName) {
+                // W3C SCXML 3.13: Wildcard event matching - "*" matches any event
+                std::string transitionEvent = transition->getEvent();
+                bool eventMatches = (transitionEvent == event.eventName) || (transitionEvent == "*");
+
+                if (transitionEvent == "*") {
+                    LOG_DEBUG("ConcurrentRegion: Wildcard transition found in {} - event='{}' matches '{}'", id_,
+                              event.eventName, transitionEvent);
+                }
+
+                if (eventMatches) {
+                    LOG_DEBUG("ConcurrentRegion: Transition matched in {} - transition event='{}', incoming event='{}'",
+                              id_, transitionEvent, event.eventName);
                     // W3C SCXML: Evaluate guard condition before executing transition
                     std::string guard = transition->getGuard();
                     bool conditionResult = true;  // Default to true if no guard condition
@@ -193,6 +204,15 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
                         continue;  // Try next transition
                     }
 
+                    // W3C SCXML: Execute transition actions for ALL transitions (with or without targets)
+                    // Targetless transitions are internal transitions that execute actions without changing state
+                    const auto &actionNodes = transition->getActionNodes();
+                    if (!actionNodes.empty()) {
+                        // P1 refactoring: Use helper method for DRY principle
+                        std::string actionContext = fmt::format("transition event='{}'", transitionEvent);
+                        executeActionNodes(actionNodes, actionContext);
+                    }
+
                     const auto &targets = transition->getTargets();
                     if (!targets.empty()) {
                         std::string targetState = targets[0];
@@ -203,10 +223,13 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
                         bool isTargetInRegion = isDescendantOf(rootState_, targetState);
 
                         if (!isTargetInRegion) {
-                            LOG_DEBUG("ConcurrentRegion: Transition target '{}' is outside region '{}' - must be "
-                                      "handled by parent",
+                            LOG_DEBUG("ConcurrentRegion: Transition target '{}' is outside region '{}' - "
+                                      "external/cross-region transition",
                                       targetState, id_);
+
+                            // W3C SCXML 3.13: Actions already executed above for ALL transitions
                             // W3C SCXML 3.4: Return external transition info so parent can execute it
+                            // Parent (ConcurrentStateNode) will determine if this is cross-region or truly external
                             return ConcurrentOperationResult::externalTransition(id_, targetState, event.eventName,
                                                                                  currentState_);
                         }
@@ -214,41 +237,7 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
                         LOG_DEBUG("Executing transition: {} -> {} on event: {}", currentState_, targetState,
                                   event.eventName);
 
-                        // SCXML 사양 준수: ActionNode 객체를 직접 실행
-                        LOG_DEBUG("DEBUG: executionContext_ is {}", executionContext_ ? "available" : "null");
-                        if (executionContext_) {
-                            const auto &actionNodes = transition->getActionNodes();
-                            LOG_DEBUG("DEBUG: Found {} ActionNodes in transition", actionNodes.size());
-                            if (!actionNodes.empty()) {
-                                LOG_DEBUG("Executing {} ActionNodes for transition: "
-                                          "{} -> {}",
-                                          actionNodes.size(), currentState_, targetState);
-
-                                // ActionNode 직접 실행 (StateMachine과 동일한 패턴)
-                                for (const auto &actionNode : actionNodes) {
-                                    if (!actionNode) {
-                                        LOG_WARN(
-                                            "ConcurrentRegion::processEvent - Null ActionNode encountered, skipping");
-                                        continue;
-                                    }
-
-                                    try {
-                                        LOG_DEBUG("Executing ActionNode: {}", actionNode->getActionType());
-                                        if (actionNode->execute(*executionContext_)) {
-                                            LOG_DEBUG(
-                                                "ConcurrentRegion::processEvent - Successfully executed ActionNode: {}",
-                                                actionNode->getActionType());
-                                        } else {
-                                            LOG_WARN("ActionNode failed: {}", actionNode->getActionType());
-                                        }
-                                    } catch (const std::exception &e) {
-                                        LOG_WARN("ActionNode exception: {} Error: {}", actionNode->getActionType(),
-                                                 e.what());
-                                    }
-                                }
-                            }
-                        }
-
+                        // W3C SCXML: Actions already executed above for ALL transitions
                         // Update current state
                         currentState_ = targetState;
                         LOG_DEBUG("Updated current state to: {}", currentState_);
@@ -826,6 +815,38 @@ bool ConcurrentRegion::executeActionNode(const std::shared_ptr<IActionNode> &act
     } catch (const std::exception &e) {
         LOG_WARN("{} - ActionNode exception: {} Error: {}", context, actionNode->getActionType(), e.what());
         return false;
+    }
+}
+
+void ConcurrentRegion::executeActionNodes(const std::vector<std::shared_ptr<IActionNode>> &actionNodes,
+                                          const std::string &context) {
+    // P1 refactoring: DRY principle - centralized action execution
+    if (!executionContext_) {
+        LOG_ERROR("ConcurrentRegion::executeActionNodes - Cannot execute actions for '{}': executionContext is null in "
+                  "region '{}'",
+                  context, id_);
+        return;
+    }
+
+    if (actionNodes.empty()) {
+        return;  // Nothing to execute
+    }
+
+    for (const auto &actionNode : actionNodes) {
+        if (!actionNode) {
+            LOG_WARN("ConcurrentRegion::executeActionNodes - Null ActionNode in '{}', skipping", context);
+            continue;
+        }
+
+        try {
+            if (!actionNode->execute(*executionContext_)) {
+                LOG_WARN("ConcurrentRegion::executeActionNodes - ActionNode '{}' failed in '{}'",
+                         actionNode->getActionType(), context);
+            }
+        } catch (const std::exception &e) {
+            LOG_WARN("ConcurrentRegion::executeActionNodes - ActionNode '{}' exception in '{}': {}",
+                     actionNode->getActionType(), context, e.what());
+        }
     }
 }
 

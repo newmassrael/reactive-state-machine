@@ -140,6 +140,13 @@ public:
     TestReport runSpecificTest(int testId);
 
     /**
+     * @brief Run a specific test by exact test ID string (e.g., "403a" runs only test403a.scxml)
+     * @param testId Exact test ID string (e.g., "403a", "192", "215")
+     * @return Test report for the exact test
+     */
+    TestReport runTest(const std::string &testId);
+
+    /**
      * @brief Run all tests matching the given test ID (includes variants)
      * @param testId W3C test ID (e.g., 403 will run 403a, 403b, 403c if they exist)
      * @return Vector of test reports for all matching tests
@@ -160,6 +167,14 @@ public:
      */
     ITestSuite *getTestSuite() const {
         return testSuite_.get();
+    }
+
+    /**
+     * @brief Get reporter for accessing reporter interface
+     * @return Pointer to test reporter interface
+     */
+    ITestReporter *getReporter() const {
+        return reporter_.get();
     }
 };
 

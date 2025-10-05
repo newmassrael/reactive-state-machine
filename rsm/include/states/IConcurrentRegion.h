@@ -127,6 +127,12 @@ public:
     virtual void setConditionEvaluator(std::function<bool(const std::string &)> evaluator) = 0;
 
     /**
+     * @brief Set execution context for action execution (W3C SCXML 403c compliance)
+     * @param executionContext Context for JavaScript evaluation and action execution
+     */
+    virtual void setExecutionContext(std::shared_ptr<IExecutionContext> executionContext) = 0;
+
+    /**
      * @brief Set desired initial child state from parent's initial attribute (W3C SCXML 3.3)
      *
      * When a parent compound state specifies deep initial targets, this method

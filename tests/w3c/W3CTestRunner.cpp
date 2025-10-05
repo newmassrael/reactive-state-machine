@@ -424,8 +424,15 @@ std::unique_ptr<ITestSuite> TestComponentFactory::createTestSuite(const std::str
                 throw std::runtime_error("Failed to discover W3C tests: " + std::string(e.what()));
             }
 
-            std::sort(testDirs.begin(), testDirs.end(),
-                      [](const std::string &a, const std::string &b) { return extractTestId(a) < extractTestId(b); });
+            std::sort(testDirs.begin(), testDirs.end(), [](const std::string &a, const std::string &b) {
+                int idA = extractTestId(a);
+                int idB = extractTestId(b);
+                if (idA != idB) {
+                    return idA < idB;
+                }
+                // Same test ID, compare by variant suffix (e.g., ":a" < ":b" < ":c")
+                return a < b;
+            });
 
             return testDirs;
         }
@@ -984,9 +991,100 @@ TestReport W3CTestRunner::runSpecificTest(int testId) {
     throw std::runtime_error("Test " + std::to_string(testId) + " not found");
 }
 
+TestReport W3CTestRunner::runTest(const std::string &testId) {
+    auto testDirectories = testSuite_->discoverTests();
+
+    // Exact match on test ID string
+    // Test directories are in format "resources/NNN:testNNNx.scxml"
+    // We need to match the filename part exactly
+
+    LOG_DEBUG("W3CTestRunner: Looking for exact test ID: {}", testId);
+    LOG_DEBUG("W3CTestRunner: Total discovered test directories: {}", testDirectories.size());
+
+    for (const auto &testDir : testDirectories) {
+        LOG_DEBUG("W3CTestRunner: Checking testDir: {}", testDir);
+        std::string pathStr = testDir;
+
+        // Test directories are in format "../../resources/NNN:x" where NNN is test number and x is variant (a,b,c)
+        // Or "../../resources/NNN" for non-variant tests
+        size_t colonPos = pathStr.find(':');
+
+        // Extract directory path and variant suffix
+        std::filesystem::path dirPath;
+        std::string variantSuffix;
+
+        if (colonPos != std::string::npos) {
+            // Has variant suffix (e.g., "../../resources/403:a")
+            dirPath = pathStr.substr(0, colonPos);
+            variantSuffix = pathStr.substr(colonPos + 1);
+        } else {
+            // No variant suffix (e.g., "../../resources/192")
+            dirPath = pathStr;
+            variantSuffix = "";
+        }
+
+        // Extract test number from directory name
+        std::string dirName = dirPath.filename().string();
+
+        // Construct full test ID: test number + variant suffix (e.g., "403" + "a" = "403a")
+        std::string fileTestId = dirName + variantSuffix;
+
+        LOG_DEBUG("W3CTestRunner: Extracted fileTestId: {}", fileTestId);
+
+        // Exact string match
+        if (fileTestId == testId) {
+            LOG_INFO("W3CTestRunner: Found exact match for test ID '{}': {}", testId, testDir);
+
+            // Special handling for HTTP tests
+            try {
+                int numericId = std::stoi(testId);
+                if (numericId == 201) {
+                    LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+
+                    W3CHttpTestServer httpServer(8080, "/test");
+
+                    if (!httpServer.start()) {
+                        LOG_ERROR("W3C Test {}: Failed to start HTTP server on port 8080", testId);
+                        throw std::runtime_error("Failed to start HTTP server for test " + testId);
+                    }
+
+                    LOG_INFO("W3C Test {}: HTTP server started successfully on localhost:8080/test", testId);
+
+                    try {
+                        TestReport result = runSingleTestWithHttpServer(testDir, &httpServer);
+                        httpServer.stop();
+                        LOG_INFO("W3C Test {}: HTTP server stopped successfully", testId);
+                        reporter_->reportTestResult(result);
+                        return result;
+                    } catch (const std::exception &e) {
+                        httpServer.stop();
+                        LOG_ERROR("W3C Test {}: Test execution failed, HTTP server stopped: {}", testId, e.what());
+                        throw;
+                    }
+                }
+            } catch (const std::invalid_argument &) {
+                // testId is not purely numeric (e.g., "403a"), skip HTTP special handling
+            }
+
+            // Normal test execution
+            TestReport report = runSingleTest(testDir);
+            reporter_->reportTestResult(report);
+            return report;
+        }
+    }
+
+    throw std::runtime_error("Test " + testId + " not found");
+}
+
 std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
     std::vector<TestReport> matchingReports;
     auto testDirectories = testSuite_->discoverTests();
+
+    // Debug: Log discovered test directories for this test ID
+    LOG_DEBUG("W3CTestRunner: Discovered test directories for ID {}: {}", testId, testDirectories.size());
+    for (const auto &testDir : testDirectories) {
+        LOG_DEBUG("W3CTestRunner:   - {}", testDir);
+    }
 
     for (const auto &testDir : testDirectories) {
         // Extract testId from directory path (handle both normal and variant paths)
@@ -1026,6 +1124,7 @@ std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
                         httpServer.stop();
                         LOG_INFO("W3C Test {}: HTTP server stopped successfully", testId);
                         matchingReports.push_back(result);
+                        reporter_->reportTestResult(result);
                     } catch (const std::exception &e) {
                         httpServer.stop();
                         LOG_ERROR("W3C Test {}: Test execution failed, HTTP server stopped: {}", testId, e.what());
@@ -1034,6 +1133,7 @@ std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
                 } else {
                     TestReport report = runSingleTest(testDir);
                     matchingReports.push_back(report);
+                    reporter_->reportTestResult(report);
                 }
             } catch (const std::exception &e) {
                 LOG_ERROR("W3C Test Execution: Failed to run test in {}: {}", testDir, e.what());

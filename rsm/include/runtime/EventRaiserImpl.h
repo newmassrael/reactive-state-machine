@@ -106,6 +106,15 @@ public:
                     const std::string &invokeId, const std::string &originType) override;
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
+
+    /**
+     * @brief Check if immediate mode is currently enabled
+     * @return true if immediate mode is enabled, false otherwise
+     */
+    bool isImmediateModeEnabled() const {
+        return immediateMode_.load();
+    }
+
     void processQueuedEvents() override;
 
     /**

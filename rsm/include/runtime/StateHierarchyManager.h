@@ -13,6 +13,7 @@ class SCXMLModel;
 class IStateNode;
 class IExecutionContext;
 class IInvokeNode;
+class ConcurrentStateNode;
 
 /**
  * @brief 계층적 상태 관리 시스템
@@ -131,6 +132,16 @@ public:
     void setConditionEvaluator(std::function<bool(const std::string &)> evaluator);
 
     /**
+     * @brief Set execution context for concurrent region action execution
+     *
+     * This context is passed to parallel state regions during state entry
+     * to ensure proper action execution in transitions (W3C SCXML 403c compliance).
+     *
+     * @param context Execution context for JavaScript evaluation and action execution
+     */
+    void setExecutionContext(std::shared_ptr<IExecutionContext> context);
+
+    /**
      * @brief Enter a state along with all its ancestors up to a parent
      *
      * W3C SCXML 3.3: When initial attribute specifies deep descendants,
@@ -206,6 +217,19 @@ private:
     // W3C SCXML 6.4: Invoke defer callback for proper timing
     std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> invokeDeferCallback_;
     std::function<bool(const std::string &)> conditionEvaluator_;
+
+    // Execution context for concurrent region action execution (403c fix)
+    std::shared_ptr<IExecutionContext> executionContext_;
+
+    /**
+     * @brief Update execution context for all regions of a parallel state
+     *
+     * W3C SCXML 403c: DRY principle - centralized region executionContext management
+     * This helper eliminates code duplication between enterState() and setExecutionContext()
+     *
+     * @param parallelState The parallel state whose regions need executionContext update
+     */
+    void updateRegionExecutionContexts(ConcurrentStateNode *parallelState);
 
     /**
      * @brief 상태를 활성 구성에 추가

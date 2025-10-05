@@ -21,9 +21,9 @@ int main(int argc, char *argv[]) {
         std::string outputPath = "w3c_test_results.xml";
 
         // Parse command line arguments
-        std::vector<int> specificTestIds;  // empty means run all tests
-        bool runUpToMode = false;          // true if using ~number format
-        int upToTestId = 0;                // maximum test ID when using ~number
+        std::vector<std::string> specificTestIds;  // empty means run all tests (supports both "403" and "403a")
+        bool runUpToMode = false;                  // true if using ~number format
+        int upToTestId = 0;                        // maximum test ID when using ~number
 
         for (int i = 1; i < argc; i++) {
             std::string arg = argv[i];
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 
                         // Add all test IDs in the range
                         for (int testId = startId; testId <= endId; testId++) {
-                            specificTestIds.push_back(testId);
+                            specificTestIds.push_back(std::to_string(testId));
                         }
 
                         LOG_INFO("W3C CLI: Range mode enabled - will run tests {}-{} ({} tests)", startId, endId,
@@ -80,13 +80,8 @@ int main(int argc, char *argv[]) {
                         return 1;
                     }
                 } else {
-                    // Try to parse as test ID if it's a number
-                    try {
-                        specificTestIds.push_back(std::stoi(arg));
-                    } catch (const std::exception &) {
-                        fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
-                        return 1;
-                    }
+                    // Store test ID as string (supports both numeric "403" and variants "403a")
+                    specificTestIds.push_back(arg);
                 }
             }
         }
@@ -139,34 +134,40 @@ int main(int argc, char *argv[]) {
 
             LOG_INFO("W3C CLI: Running tests up to {} ({} tests: 150-{})", upToTestId, upToTestIds.size(), upToTestId);
 
+            // Begin test run for consistent reporting
+            auto testSuiteInfo = runner.getTestSuite()->getInfo();
+            runner.getReporter()->beginTestRun(testSuiteInfo.name + " (Up To Tests)");
+
             std::vector<RSM::W3C::TestReport> reports;
             for (int testId : upToTestIds) {
                 try {
-                    LOG_INFO("W3C CLI: Running test {}", testId);
-                    RSM::W3C::TestReport report = runner.runSpecificTest(testId);
-                    reports.push_back(report);
+                    LOG_INFO("W3C CLI: Running test {} (including variants if any)", testId);
+                    std::vector<RSM::W3C::TestReport> testReports = runner.runAllMatchingTests(testId);
+                    reports.insert(reports.end(), testReports.begin(), testReports.end());
 
-                    // Show result immediately
-                    std::string status;
-                    switch (report.validationResult.finalResult) {
-                    case RSM::W3C::TestResult::PASS:
-                        status = "PASS";
-                        break;
-                    case RSM::W3C::TestResult::FAIL:
-                        status = "FAIL";
-                        break;
-                    case RSM::W3C::TestResult::ERROR:
-                        status = "ERROR";
-                        break;
-                    case RSM::W3C::TestResult::TIMEOUT:
-                        status = "TIMEOUT";
-                        break;
-                    }
+                    // Show results for all variants
+                    for (const auto &report : testReports) {
+                        std::string status;
+                        switch (report.validationResult.finalResult) {
+                        case RSM::W3C::TestResult::PASS:
+                            status = "PASS";
+                            break;
+                        case RSM::W3C::TestResult::FAIL:
+                            status = "FAIL";
+                            break;
+                        case RSM::W3C::TestResult::ERROR:
+                            status = "ERROR";
+                            break;
+                        case RSM::W3C::TestResult::TIMEOUT:
+                            status = "TIMEOUT";
+                            break;
+                        }
 
-                    LOG_INFO("W3C CLI: Test {} ({}): {} ({}ms)", report.testId, report.metadata.specnum, status,
-                             report.executionContext.executionTime.count());
-                    if (report.validationResult.finalResult != RSM::W3C::TestResult::PASS) {
-                        LOG_INFO("W3C CLI: Failure reason: {}", report.validationResult.reason);
+                        LOG_INFO("W3C CLI: Test {} ({}): {} ({}ms)", report.testId, report.metadata.specnum, status,
+                                 report.executionContext.executionTime.count());
+                        if (report.validationResult.finalResult != RSM::W3C::TestResult::PASS) {
+                            LOG_INFO("W3C CLI: Failure reason: {}", report.validationResult.reason);
+                        }
                     }
 
                 } catch (const std::exception &e) {
@@ -205,14 +206,42 @@ int main(int argc, char *argv[]) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
 
+            // Complete test run reporting
+            runner.getReporter()->generateSummary(summary);
+            runner.getReporter()->endTestRun();
+
         } else if (!specificTestIds.empty()) {
             LOG_INFO("W3C CLI: Running {} specific W3C tests", specificTestIds.size());
 
+            // Begin test run for consistent reporting
+            auto testSuiteInfo = runner.getTestSuite()->getInfo();
+            runner.getReporter()->beginTestRun(testSuiteInfo.name + " (Specific Tests)");
+
             std::vector<RSM::W3C::TestReport> reports;
-            for (int testId : specificTestIds) {
+            for (const std::string &testId : specificTestIds) {
                 try {
-                    LOG_INFO("W3C CLI: Running test {} (including variants if any)", testId);
-                    std::vector<RSM::W3C::TestReport> testReports = runner.runAllMatchingTests(testId);
+                    // Check if testId is purely numeric or has variant suffix (e.g., "403a")
+                    bool isNumeric = true;
+                    for (char c : testId) {
+                        if (!std::isdigit(c)) {
+                            isNumeric = false;
+                            break;
+                        }
+                    }
+
+                    std::vector<RSM::W3C::TestReport> testReports;
+
+                    if (isNumeric) {
+                        // Numeric test ID - run all variants (e.g., "403" runs 403a, 403b, 403c)
+                        LOG_INFO("W3C CLI: Running test {} (including all variants)", testId);
+                        testReports = runner.runAllMatchingTests(std::stoi(testId));
+                    } else {
+                        // Test ID with variant suffix - run exact match only (e.g., "403a" runs only test403a.scxml)
+                        LOG_INFO("W3C CLI: Running exact test {}", testId);
+                        RSM::W3C::TestReport report = runner.runTest(testId);
+                        testReports.push_back(report);
+                    }
+
                     reports.insert(reports.end(), testReports.begin(), testReports.end());
 
                     // Show results for all variants
@@ -275,6 +304,10 @@ int main(int argc, char *argv[]) {
             if (summary.totalTests > 0) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
+
+            // Complete test run reporting
+            runner.getReporter()->generateSummary(summary);
+            runner.getReporter()->endTestRun();
 
         } else {
             RSM::Logger::info("W3C CLI: Running all W3C SCXML compliance tests...");

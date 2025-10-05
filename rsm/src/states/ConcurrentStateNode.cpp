@@ -337,6 +337,9 @@ std::vector<ConcurrentOperationResult> ConcurrentStateNode::activateAllRegions()
 
         if (!result.isSuccess) {
             LOG_WARN("Failed to activate region '{}': {}", region->getId(), result.errorMessage);
+        } else {
+            LOG_DEBUG("ConcurrentStateNode: Region '{}' activation result: success={}, isActive={}", region->getId(),
+                      result.isSuccess, region->isActive());
         }
     }
 

@@ -282,6 +282,14 @@ private:
      * @return true if action executed successfully
      */
     bool executeActionNode(const std::shared_ptr<IActionNode> &actionNode, const std::string &context);
+
+    /**
+     * @brief Execute multiple action nodes with consistent error handling
+     * @param actionNodes Vector of action nodes to execute
+     * @param context Context description for logging (e.g., "transition event='event1'")
+     * @details DRY principle: Centralizes action execution logic to avoid code duplication
+     */
+    void executeActionNodes(const std::vector<std::shared_ptr<IActionNode>> &actionNodes, const std::string &context);
 };
 
 }  // namespace RSM
