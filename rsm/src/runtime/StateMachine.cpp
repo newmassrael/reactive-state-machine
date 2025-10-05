@@ -183,6 +183,35 @@ bool StateMachine::start() {
     // This handles cases where the initial state has immediate transitions (e.g., test 355)
     checkEventlessTransitions();
 
+    // W3C SCXML: Process all remaining queued events after initial state entry
+    // This ensures the state machine reaches a stable state before returning,
+    // eliminating the need for external callers to explicitly call processQueuedEvents()
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            int iterations = 0;
+            const int MAX_START_ITERATIONS = 1000;
+
+            while (eventRaiserImpl->hasQueuedEvents()) {
+                if (++iterations > MAX_START_ITERATIONS) {
+                    LOG_ERROR("StateMachine: start() exceeded max iterations ({}) - possible infinite event loop",
+                              MAX_START_ITERATIONS);
+                    break;
+                }
+
+                LOG_DEBUG("StateMachine: Processing queued events after start (iteration {})", iterations);
+                eventRaiserImpl->processQueuedEvents();
+
+                // Check for eventless transitions after processing events
+                checkEventlessTransitions();
+            }
+
+            if (iterations > 0) {
+                LOG_DEBUG("StateMachine: All queued events processed after start ({} iterations)", iterations);
+            }
+        }
+    }
+
     updateStatistics();
 
     LOG_INFO("StateMachine: Started successfully");
@@ -789,11 +818,11 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
 
             LOG_INFO("Successfully transitioned from {} to {}", fromState, targetState);
 
-            // W3C SCXML compliance: Macrostep loop - process internal events one at a time
-            // After a transition completes, we must:
-            // 1. Check for eventless transitions on all active states
-            // 2. If none, dequeue ONE internal event and process it
-            // 3. Repeat until no eventless transitions and no internal events
+            // W3C SCXML compliance: Macrostep loop - check for eventless transitions
+            // After a transition completes, we must check for eventless transitions
+            // that may have been enabled by the state change. Repeat until no
+            // eventless transitions are found. Queued events are processed by
+            // processQueuedEvents() in FIFO order to maintain event ordering guarantees.
             if (eventRaiser_) {
                 auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
                 if (eventRaiserImpl) {
@@ -812,7 +841,8 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
                             LOG_ERROR("W3C SCXML: Check for circular eventless transitions in your SCXML document");
                             break;  // Safety exit
                         }
-                        // Step 1: Check for eventless transitions on all active states
+
+                        // W3C SCXML: Check for eventless transitions on all active states
                         bool eventlessTransitionExecuted = checkEventlessTransitions();
 
                         if (eventlessTransitionExecuted) {
@@ -820,22 +850,10 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
                             continue;  // Loop back to check for more eventless transitions
                         }
 
-                        // Step 2: No eventless transitions, check for internal events
-                        if (!eventRaiserImpl->hasQueuedEvents()) {
-                            LOG_DEBUG("W3C SCXML: No eventless transitions and no queued events, macrostep complete");
-                            break;  // Macrostep complete
-                        }
-
-                        // Step 3: Process ONE internal event
-                        LOG_DEBUG("W3C SCXML: Processing next internal event in macrostep");
-                        bool eventProcessed = eventRaiserImpl->processNextQueuedEvent();
-
-                        if (!eventProcessed) {
-                            LOG_DEBUG("W3C SCXML: No event processed, macrostep complete");
-                            break;  // No more events
-                        }
-
-                        // Loop continues - check for eventless transitions again
+                        // W3C SCXML: No eventless transitions found, exit macrostep
+                        // Queued events will be processed by processQueuedEvents() in FIFO order
+                        LOG_DEBUG("W3C SCXML: No eventless transitions, macrostep complete");
+                        break;
                     }
 
                     LOG_DEBUG("W3C SCXML: Macrostep loop complete");
