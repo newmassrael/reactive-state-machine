@@ -259,7 +259,21 @@ bool StateMachine::start() {
     //
     // This order ensures W3C SCXML 3.13 compliance: "invokes execute in document order
     // in all states that have been entered (and not exited) since last macrostep"
-    checkEventlessTransitions();
+
+    // W3C SCXML 3.13: Repeat eventless transitions until stable configuration reached
+    // This is critical for parallel states where entering a parallel state may enable
+    // new eventless transitions in its regions (e.g., test 448)
+    int eventlessIterations = 0;
+    const int MAX_EVENTLESS_ITERATIONS = 1000;
+    while (checkEventlessTransitions()) {
+        if (++eventlessIterations > MAX_EVENTLESS_ITERATIONS) {
+            LOG_ERROR("StateMachine: checkEventlessTransitions exceeded max iterations ({}) - possible infinite loop",
+                      MAX_EVENTLESS_ITERATIONS);
+            break;
+        }
+        LOG_DEBUG("StateMachine: Eventless transition executed (iteration {})", eventlessIterations);
+    }
+    LOG_DEBUG("StateMachine: Reached stable configuration after {} eventless iterations", eventlessIterations);
 
     // W3C SCXML compliance: Execute deferred invokes after eventless transitions
     // Only states that remain active after eventless transitions should have invokes executed
