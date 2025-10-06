@@ -1125,7 +1125,18 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
 
     if (!assignValue) {
         // Late binding: Create variable but don't assign value yet (leave undefined)
-        RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{});
+        auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{});
+        auto setResult = setVarFuture.get();
+
+        if (!RSM::JSEngine::isSuccess(setResult)) {
+            LOG_ERROR("StateMachine: Failed to create unbound variable '{}': {}", id, setResult.getErrorMessage());
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution",
+                                         "Failed to create variable '" + id + "': " + setResult.getErrorMessage());
+            }
+            return;
+        }
+
         LOG_DEBUG("StateMachine: Created unbound variable '{}' for late binding", id);
         return;
     }
@@ -1136,7 +1147,20 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
         auto result = future.get();
 
         if (RSM::JSEngine::isSuccess(result)) {
-            RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+            auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+            auto setResult = setVarFuture.get();
+
+            if (!RSM::JSEngine::isSuccess(setResult)) {
+                LOG_ERROR("StateMachine: Failed to set variable '{}' from expression '{}': {}", id, expr,
+                          setResult.getErrorMessage());
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Failed to set variable '" + id +
+                                                                    "' from expression '" + expr +
+                                                                    "': " + setResult.getErrorMessage());
+                }
+                return;
+            }
+
             LOG_DEBUG("StateMachine: Initialized variable '{}' from expression '{}'", id, expr);
         } else {
             LOG_ERROR("StateMachine: Failed to evaluate expression '{}' for variable '{}': {}", expr, id,
@@ -1154,11 +1178,36 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
         auto result = future.get();
 
         if (RSM::JSEngine::isSuccess(result)) {
-            RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+            auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+            auto setResult = setVarFuture.get();
+
+            if (!RSM::JSEngine::isSuccess(setResult)) {
+                LOG_ERROR("StateMachine: Failed to set variable '{}' from content: {}", id,
+                          setResult.getErrorMessage());
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Failed to set variable '" + id +
+                                                                    "' from content: " + setResult.getErrorMessage());
+                }
+                return;
+            }
+
             LOG_DEBUG("StateMachine: Initialized variable '{}' from content", id);
         } else {
             // Try setting content as string literal
-            RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{content});
+            auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{content});
+            auto setResult = setVarFuture.get();
+
+            if (!RSM::JSEngine::isSuccess(setResult)) {
+                LOG_ERROR("StateMachine: Failed to set variable '{}' as string literal: {}", id,
+                          setResult.getErrorMessage());
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution",
+                                             "Failed to set variable '" + id +
+                                                 "' as string literal: " + setResult.getErrorMessage());
+                }
+                return;
+            }
+
             LOG_DEBUG("StateMachine: Set variable '{}' as string literal from content", id);
         }
     } else {
@@ -1516,6 +1565,72 @@ bool StateMachine::enterState(const std::string &stateId) {
     return true;
 }
 
+bool StateMachine::executeTransitionDirect(IStateNode *sourceState, std::shared_ptr<ITransitionNode> transition) {
+    if (!sourceState || !transition) {
+        LOG_ERROR("StateMachine: Invalid parameters for executeTransitionDirect");
+        return false;
+    }
+
+    // Execute the transition directly without re-evaluating its condition
+    // This avoids side effects from conditions with mutations (e.g., ++var1 in W3C test 444)
+    const auto &targets = transition->getTargets();
+    bool isInternal = transition->isInternal();
+
+    if (targets.empty() && !isInternal) {
+        LOG_DEBUG("SCXML: Skipping transition with no targets (not internal)");
+        return false;
+    }
+
+    std::string targetState = targets.empty() ? "" : targets[0];
+    std::string fromState = sourceState->getId();
+
+    // W3C SCXML: Internal transitions execute actions without exiting/entering states
+    if (isInternal) {
+        LOG_DEBUG("SCXML: Executing internal eventless transition actions (no state change)");
+        const auto &actionNodes = transition->getActionNodes();
+        if (!actionNodes.empty()) {
+            if (!executeActionNodes(actionNodes, false)) {
+                LOG_ERROR("StateMachine: Failed to execute internal transition actions");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // W3C SCXML: Compute and exit ALL states in the exit set
+    std::vector<std::string> exitSet = computeExitSet(fromState, targetState);
+    LOG_DEBUG("W3C SCXML: Exiting {} states for eventless transition {} -> {}", exitSet.size(), fromState, targetState);
+
+    for (const std::string &stateToExit : exitSet) {
+        if (!exitState(stateToExit)) {
+            LOG_ERROR("Failed to exit state: {}", stateToExit);
+            return false;
+        }
+    }
+
+    // Execute transition actions
+    const auto &actionNodes = transition->getActionNodes();
+    if (!actionNodes.empty()) {
+        LOG_DEBUG("SCXML: Executing eventless transition actions");
+        if (!executeActionNodes(actionNodes, false)) {
+            LOG_ERROR("StateMachine: Failed to execute transition actions");
+            return false;
+        }
+    }
+
+    // Enter new state
+    if (!enterState(targetState)) {
+        LOG_ERROR("Failed to enter state: {}", targetState);
+        return false;
+    }
+
+    updateStatistics();
+    stats_.totalTransitions++;
+
+    LOG_DEBUG("SCXML: Eventless transition executed: {} -> {}", fromState, targetState);
+    return true;
+}
+
 bool StateMachine::checkEventlessTransitions() {
     // W3C SCXML 3.13: Eventless Transition Selection Algorithm
     //
@@ -1593,16 +1708,12 @@ bool StateMachine::checkEventlessTransitions() {
         return false;
     }
 
-    // W3C SCXML 3.13: If not in parallel state, use old single-transition approach
+    // W3C SCXML 3.13: If not in parallel state, execute the already-selected transition
+    // IMPORTANT: We already evaluated the condition, so we must not re-evaluate it
+    // to avoid side effects (e.g., ++var1 would increment twice - W3C test 444)
     if (!parallelAncestor) {
         LOG_DEBUG("SCXML: Single eventless transition (non-parallel)");
-        auto transitionResult = processStateTransitions(firstEnabledState, "", "");
-        if (transitionResult.success) {
-            LOG_DEBUG("SCXML: Eventless transition executed: {} -> {}", transitionResult.fromState,
-                      transitionResult.toState);
-            return true;
-        }
-        return false;
+        return executeTransitionDirect(firstEnabledState, firstTransition);
     }
 
     // W3C SCXML 3.13: Parallel state - collect ALL eventless transitions from all regions
@@ -1709,10 +1820,19 @@ bool StateMachine::checkEventlessTransitions() {
     }
 
     // W3C SCXML 3.13: Sort by document order
+    // Performance: Cache document positions to avoid O(n) tree traversal per comparison
+    std::unordered_map<std::string, int> positionCache;
+    for (const auto &trans : enabledTransitions) {
+        const std::string &stateId = trans.sourceState->getId();
+        if (positionCache.find(stateId) == positionCache.end()) {
+            positionCache[stateId] = getStateDocumentPosition(stateId);
+        }
+    }
+
     std::sort(enabledTransitions.begin(), enabledTransitions.end(),
-              [this](const TransitionInfo &a, const TransitionInfo &b) {
-                  int posA = getStateDocumentPosition(a.sourceState->getId());
-                  int posB = getStateDocumentPosition(b.sourceState->getId());
+              [&positionCache](const TransitionInfo &a, const TransitionInfo &b) {
+                  int posA = positionCache.at(a.sourceState->getId());
+                  int posB = positionCache.at(b.sourceState->getId());
                   return posA < posB;
               });
 
@@ -1747,48 +1867,47 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
     // Convert to vector for ordered exit (deepest first)
     std::vector<std::string> allStatesToExit(exitSetUnique.begin(), exitSetUnique.end());
 
-    // Performance: Cache state lookups for sorting
+    // Performance: Cache state lookups and depths to avoid repeated parent chain traversal
     std::unordered_map<std::string, IStateNode *> exitStateCache;
+    std::unordered_map<std::string, int> depthCache;
+
     for (const auto &stateId : allStatesToExit) {
-        exitStateCache[stateId] = model_->findStateById(stateId);
+        auto node = model_->findStateById(stateId);
+        exitStateCache[stateId] = node;
+
+        // Pre-calculate depth once for O(1) lookup during sort
+        int depth = 0;
+        if (node) {
+            auto parent = node->getParent();
+            while (parent) {
+                depth++;
+                parent = parent->getParent();
+            }
+        }
+        depthCache[stateId] = depth;
     }
 
     // W3C SCXML 3.13: Sort by depth (deepest first), then by reverse document order
-    // States at same depth should exit in reverse document order
+    // Performance: Cache document positions for O(1) lookup during sort
+    std::unordered_map<std::string, int> positionCache;
+    for (const auto &stateId : allStatesToExit) {
+        positionCache[stateId] = getStateDocumentPosition(stateId);
+    }
+
     std::sort(allStatesToExit.begin(), allStatesToExit.end(),
-              [this, &exitStateCache](const std::string &a, const std::string &b) {
-                  // Count ancestors - deeper states have more ancestors
-                  int depthA = 0;
-                  int depthB = 0;
-
-                  auto nodeA = exitStateCache.at(a);
-                  auto nodeB = exitStateCache.at(b);
-
-                  if (nodeA) {
-                      auto parent = nodeA->getParent();
-                      while (parent) {
-                          depthA++;
-                          parent = parent->getParent();
-                      }
-                  }
-
-                  if (nodeB) {
-                      auto parent = nodeB->getParent();
-                      while (parent) {
-                          depthB++;
-                          parent = parent->getParent();
-                      }
-                  }
-
+              [&depthCache, &positionCache](const std::string &a, const std::string &b) {
                   // Primary: Sort deepest first (higher depth comes first)
+                  int depthA = depthCache.at(a);
+                  int depthB = depthCache.at(b);
+
                   if (depthA != depthB) {
                       return depthA > depthB;
                   }
 
                   // Secondary: For states at same depth, use reverse document order
                   // W3C SCXML: Exit states in reverse document order (later states exit first)
-                  int posA = getStateDocumentPosition(a);
-                  int posB = getStateDocumentPosition(b);
+                  int posA = positionCache.at(a);
+                  int posB = positionCache.at(b);
                   return posA > posB;  // Reverse document order
               });
 
@@ -3178,6 +3297,8 @@ std::string StateMachine::findLCA(const std::string &sourceStateId, const std::s
 
     // Get all ancestors of source (including source itself for comparison)
     std::vector<std::string> sourceAncestors;
+    sourceAncestors.reserve(16);  // Performance: Reserve typical depth to avoid reallocation
+
     auto sourceNode = model_->findStateById(sourceStateId);
     if (sourceNode) {
         IStateNode *current = sourceNode;
@@ -3210,6 +3331,7 @@ std::string StateMachine::findLCA(const std::string &sourceStateId, const std::s
 std::vector<std::string> StateMachine::computeExitSet(const std::string &sourceStateId,
                                                       const std::string &targetStateId) const {
     std::vector<std::string> exitSet;
+    exitSet.reserve(8);  // Performance: Reserve typical exit set size to avoid reallocation
 
     if (!model_ || sourceStateId.empty()) {
         return exitSet;

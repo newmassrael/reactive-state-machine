@@ -423,6 +423,18 @@ private:
     bool checkEventlessTransitions();
 
     /**
+     * @brief Execute a single transition directly without re-evaluating its condition
+     *
+     * This method is used when a transition's condition has already been evaluated
+     * to avoid side effects from re-evaluation (e.g., W3C test 444: ++var1).
+     *
+     * @param sourceState The state containing the transition
+     * @param transition The transition to execute
+     * @return true if the transition was executed successfully, false otherwise
+     */
+    bool executeTransitionDirect(IStateNode *sourceState, std::shared_ptr<ITransitionNode> transition);
+
+    /**
      * @brief W3C SCXML 3.13: Execute transitions as a microstep
      *
      * Executes multiple transitions atomically with proper phasing:
