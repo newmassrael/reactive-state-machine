@@ -190,12 +190,12 @@ const std::regex TXMLConverter::CONF_INVALIDSESSIONID_ATTR{R"isi(conf:invalidSes
                                                            std::regex::optimize};
 
 // W3C SCXML 5.10: System variable value comparison pattern (test 329)
-// conf:idSystemVarVal="1=_sessionid" converts to cond="var1 == _sessionid"
+// conf:idSystemVarVal="1=_sessionid" converts to cond="Var1 == _sessionid"
 const std::regex TXMLConverter::CONF_IDSYSTEMVARVAL_ATTR{R"isv(conf:idSystemVarVal="([0-9]+)=(_[^"]*)")isv",
                                                          std::regex::optimize};
 
 // W3C SCXML 5.10: ID quote value comparison pattern (test 318)
-// conf:idQuoteVal="1=foo" converts to cond="var1 == 'foo'"
+// conf:idQuoteVal="1=foo" converts to cond="Var1 == 'foo'"
 const std::regex TXMLConverter::CONF_IDQUOTEVAL_ATTR{R"iqv(conf:idQuoteVal="([0-9]+)=([^"]*)")iqv",
                                                      std::regex::optimize};
 
@@ -266,12 +266,13 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Handle numeric variables: conf:isBound="1" -> cond="typeof var1 !== 'undefined'"
     std::regex isbound_numeric_pattern(R"xyz(conf:isBound="([0-9]+)")xyz");
     std::regex isbound_general_pattern(R"xyz(conf:isBound="([^"]*)")xyz");
-    result = std::regex_replace(result, isbound_numeric_pattern, R"(cond="typeof var$1 !== 'undefined'")");
+    result = std::regex_replace(result, isbound_numeric_pattern, R"(cond="typeof Var$1 !== 'undefined'")");
     result = std::regex_replace(result, isbound_general_pattern, R"(cond="typeof $1 !== 'undefined'")");
 
-    // Handle numeric id attributes: conf:id="1" -> id="var1"
+    // Handle numeric id attributes: conf:id="1" -> id="Var1" (W3C test 456)
+    // W3C SCXML tests use capital 'Var' naming convention for test variables
     std::regex id_numeric_pattern(R"def(conf:id="([0-9]+)")def");
-    result = std::regex_replace(result, id_numeric_pattern, R"(id="var$1")");
+    result = std::regex_replace(result, id_numeric_pattern, R"(id="Var$1")");
     // Convert remaining conf:id attributes to standard id
     result = std::regex_replace(result, CONF_ID_ATTR, R"(id="$1")");
 
@@ -314,12 +315,12 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, CONF_INVALIDSESSIONID_ATTR, R"(expr="'invalid_session_id'")");
 
     // W3C SCXML 5.10: Convert system variable value comparison (test 329)
-    // conf:idSystemVarVal="1=_sessionid" -> cond="var1 == _sessionid"
-    result = std::regex_replace(result, CONF_IDSYSTEMVARVAL_ATTR, R"(cond="var$1 == $2")");
+    // conf:idSystemVarVal="1=_sessionid" -> cond="Var1 == _sessionid"
+    result = std::regex_replace(result, CONF_IDSYSTEMVARVAL_ATTR, R"(cond="Var$1 == $2")");
 
     // W3C SCXML 5.10: Convert ID quote value comparison (test 318)
-    // conf:idQuoteVal="1=foo" -> cond="var1 == 'foo'"
-    result = std::regex_replace(result, CONF_IDQUOTEVAL_ATTR, R"(cond="var$1 == '$2'")");
+    // conf:idQuoteVal="1=foo" -> cond="Var1 == 'foo'"
+    result = std::regex_replace(result, CONF_IDQUOTEVAL_ATTR, R"(cond="Var$1 == '$2'")");
 
     // Convert event handling attributes
     result = std::regex_replace(result, CONF_EVENT_ATTR, R"(event="$1")");
@@ -329,34 +330,34 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert cancel sendIDExpr attribute
     // Handle numeric variables: conf:sendIDExpr="1" -> sendidexpr="var1"
     std::regex sendidexpr_numeric_pattern(R"def(conf:sendIDExpr="([0-9]+)")def");
-    result = std::regex_replace(result, sendidexpr_numeric_pattern, R"(sendidexpr="var$1")");
+    result = std::regex_replace(result, sendidexpr_numeric_pattern, R"(sendidexpr="Var$1")");
     // Convert remaining conf:sendIDExpr attributes to standard sendidexpr
     result = std::regex_replace(result, CONF_SENDIDEXPR_ATTR, R"(sendidexpr="$1")");
 
     // Convert invoke typeExpr attribute
     // Handle numeric variables: conf:typeExpr="1" -> typeexpr="var1"
     std::regex typeexpr_numeric_pattern(R"def(conf:typeExpr="([0-9]+)")def");
-    result = std::regex_replace(result, typeexpr_numeric_pattern, R"(typeexpr="var$1")");
+    result = std::regex_replace(result, typeexpr_numeric_pattern, R"(typeexpr="Var$1")");
     // Convert remaining conf:typeExpr attributes to standard typeexpr
     result = std::regex_replace(result, CONF_TYPEEXPR_ATTR, R"(typeexpr="$1")");
 
     // Convert invoke srcExpr attribute
     // Handle numeric variables: conf:srcExpr="1" -> srcexpr="var1"
     std::regex srcexpr_numeric_pattern(R"def(conf:srcExpr="([0-9]+)")def");
-    result = std::regex_replace(result, srcexpr_numeric_pattern, R"(srcexpr="var$1")");
+    result = std::regex_replace(result, srcexpr_numeric_pattern, R"(srcexpr="Var$1")");
     // Convert remaining conf:srcExpr attributes to standard srcexpr
     result = std::regex_replace(result, CONF_SRCEXPR_ATTR, R"(srcexpr="$1")");
 
     // Convert parameter and communication attributes
     // Handle numeric name attributes: conf:name="1" -> name="var1"
     std::regex name_numeric_pattern(R"abc(conf:name="([0-9]+)")abc");
-    result = std::regex_replace(result, name_numeric_pattern, R"(name="var$1")");
+    result = std::regex_replace(result, name_numeric_pattern, R"(name="Var$1")");
     // Convert remaining conf:name attributes to standard name
     result = std::regex_replace(result, CONF_NAME_ATTR, R"(name="$1")");
 
     // Handle numeric namelist attributes: conf:namelist="1" -> namelist="var1"
     std::regex namelist_numeric_pattern(R"def(conf:namelist="([0-9]+)")def");
-    result = std::regex_replace(result, namelist_numeric_pattern, R"(namelist="var$1")");
+    result = std::regex_replace(result, namelist_numeric_pattern, R"(namelist="Var$1")");
     // Convert remaining conf:namelist attributes to standard namelist
     result = std::regex_replace(result, CONF_NAMELIST_ATTR, R"(namelist="$1")");
 
@@ -374,7 +375,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert conf:delayFromVar to delayexpr with variable prefix for numeric values
     // conf:delayFromVar="1" -> delayexpr="var1" (W3C Test 175)
     std::regex delay_from_var_numeric_pattern(R"hjk(conf:delayFromVar="([0-9]+)")hjk");
-    result = std::regex_replace(result, delay_from_var_numeric_pattern, R"(delayexpr="var$1")");
+    result = std::regex_replace(result, delay_from_var_numeric_pattern, R"(delayexpr="Var$1")");
     result = std::regex_replace(result, CONF_DELAY_FROM_VAR_ATTR, R"(delayexpr="$1")");
 
     // Convert error handling and validation attributes
@@ -420,7 +421,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert conf:eventExpr to eventexpr for send elements
     // Handle numeric variables: conf:eventExpr="1" -> eventexpr="var1"
     std::regex eventexpr_numeric_pattern(R"def(conf:eventExpr="([0-9]+)")def");
-    result = std::regex_replace(result, eventexpr_numeric_pattern, R"(eventexpr="var$1")");
+    result = std::regex_replace(result, eventexpr_numeric_pattern, R"(eventexpr="Var$1")");
     // Convert remaining conf:eventExpr attributes to standard eventexpr
     result = std::regex_replace(result, CONF_EVENT_EXPR_ATTR, R"(eventexpr="$1")");
 
@@ -442,27 +443,27 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert conf:item with numeric handling
     std::regex item_numeric_pattern(R"xyz(conf:item="([0-9]+)")xyz");
     std::regex item_general_pattern(R"xyz(conf:item="([^"]*)")xyz");
-    result = std::regex_replace(result, item_numeric_pattern, R"(item="var$1")");
+    result = std::regex_replace(result, item_numeric_pattern, R"(item="Var$1")");
     result = std::regex_replace(result, item_general_pattern, R"(item="$1")");
 
     // Convert conf:index with numeric handling
     std::regex index_numeric_pattern(R"uvw(conf:index="([0-9]+)")uvw");
     std::regex index_general_pattern(R"uvw(conf:index="([^"]*)")uvw");
-    result = std::regex_replace(result, index_numeric_pattern, R"(index="var$1")");
+    result = std::regex_replace(result, index_numeric_pattern, R"(index="Var$1")");
     result = std::regex_replace(result, index_general_pattern, R"(index="$1")");
 
     // Convert conf:arrayVar with numeric handling
     std::regex arrayvar_numeric_pattern(R"xyz(conf:arrayVar="([0-9]+)")xyz");
     std::regex arrayvar_general_pattern(R"xyz(conf:arrayVar="([^"]*)")xyz");
-    result = std::regex_replace(result, arrayvar_numeric_pattern, R"(array="var$1")");
+    result = std::regex_replace(result, arrayvar_numeric_pattern, R"(array="Var$1")");
     result = std::regex_replace(result, arrayvar_general_pattern, R"(array="$1")");
 
     // Convert Test 153 specific attributes
     // First handle common comparison patterns
     std::regex compare_1_lt_2(R"abc(conf:compareIDVal="1&lt;2")abc");
     std::regex compare_3_gte_4(R"abc(conf:compareIDVal="3&gt;=4")abc");
-    result = std::regex_replace(result, compare_1_lt_2, R"(cond="var1 &lt; var2")");
-    result = std::regex_replace(result, compare_3_gte_4, R"(cond="var3 &gt;= var4")");
+    result = std::regex_replace(result, compare_1_lt_2, R"(cond="Var1 &lt; Var2")");
+    result = std::regex_replace(result, compare_3_gte_4, R"(cond="Var3 &gt;= Var4")");
 
     // Generic conf:compareIDVal pattern for other cases
     result = std::regex_replace(result, CONF_COMPARE_ID_VAL_ATTR, R"(cond="$1")");
@@ -470,7 +471,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // conf:varExpr="2" -> expr="var2" (for numeric IDs)
     std::regex varexpr_numeric_pattern(R"def(conf:varExpr="([0-9]+)")def");
     std::regex varexpr_general_pattern(R"def(conf:varExpr="([^"]*)")def");
-    result = std::regex_replace(result, varexpr_numeric_pattern, R"(expr="var$1")");
+    result = std::regex_replace(result, varexpr_numeric_pattern, R"(expr="Var$1")");
     result = std::regex_replace(result, varexpr_general_pattern, R"(expr="$1")");
 
     // Test 176 specific patterns
@@ -480,7 +481,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Test 354 specific patterns - namelist and param data access
     // conf:eventDataNamelistValue="1" -> expr="_event.data.var1" (numeric ID to varN)
     std::regex eventdata_namelist_numeric(R"mno(conf:eventDataNamelistValue="([0-9]+)")mno");
-    result = std::regex_replace(result, eventdata_namelist_numeric, R"(expr="_event.data.var$1")");
+    result = std::regex_replace(result, eventdata_namelist_numeric, R"(expr="_event.data.Var$1")");
 
     // conf:eventDataParamValue="param1" -> expr="_event.data.param1" (param name as-is)
     result = std::regex_replace(result, CONF_EVENTDATA_PARAM_VALUE_ATTR, R"(expr="_event.data.$1")");
@@ -490,7 +491,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, CONF_EVENTSENDID_ATTR, R"(expr="_event.sendid")");
 
     // W3C test 240: Generic conf:namelistIdVal pattern - converts "namelistIdVal="N=M" to cond="varN == M"
-    result = std::regex_replace(result, CONF_NAMELISTIDVAL_COMPARISON_ATTR, R"(cond="var$1 == $2")");
+    result = std::regex_replace(result, CONF_NAMELISTIDVAL_COMPARISON_ATTR, R"(cond="Var$1 == $2")");
 
     // conf:idVal common patterns (specific patterns must come before generic)
     std::regex idval_4_eq_0(R"ghi(conf:idVal="4=0")ghi");
@@ -499,26 +500,26 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     std::regex idval_1_eq_0(R"ghi(conf:idVal="1=0")ghi");
     std::regex idval_1_eq_6(R"ghi(conf:idVal="1=6")ghi");  // W3C test 155
     std::regex idval_2_eq_2(R"ghi(conf:idVal="2=2")ghi");  // W3C test 176
-    result = std::regex_replace(result, idval_4_eq_0, R"(cond="var4 == 0")");
-    result = std::regex_replace(result, idval_1_ne_5, R"(cond="var1 != var5")");
-    result = std::regex_replace(result, idval_1_eq_1, R"(cond="var1 == 1")");
-    result = std::regex_replace(result, idval_1_eq_0, R"(cond="var1 == 0")");
-    result = std::regex_replace(result, idval_1_eq_6, R"(cond="var1 == 6")");
-    result = std::regex_replace(result, idval_2_eq_2, R"(cond="var2 == 2")");
+    result = std::regex_replace(result, idval_4_eq_0, R"(cond="Var4 == 0")");
+    result = std::regex_replace(result, idval_1_ne_5, R"(cond="Var1 != Var5")");
+    result = std::regex_replace(result, idval_1_eq_1, R"(cond="Var1 == 1")");
+    result = std::regex_replace(result, idval_1_eq_0, R"(cond="Var1 == 0")");
+    result = std::regex_replace(result, idval_1_eq_6, R"(cond="Var1 == 6")");
+    result = std::regex_replace(result, idval_2_eq_2, R"(cond="Var2 == 2")");
 
     // Generic conf:idVal pattern - converts "idVal="N=M" to cond="varN == M"
-    result = std::regex_replace(result, CONF_IDVAL_COMPARISON_ATTR, R"(cond="var$1 == $2")");
+    result = std::regex_replace(result, CONF_IDVAL_COMPARISON_ATTR, R"(cond="Var$1 == $2")");
 
     // Test 183 specific patterns
     // conf:idlocation="1" -> idlocation="var1" (for numeric IDs)
     std::regex idlocation_numeric_pattern(R"def(conf:idlocation="([0-9]+)")def");
     std::regex idlocation_general_pattern(R"def(conf:idlocation="([^"]*)")def");
-    result = std::regex_replace(result, idlocation_numeric_pattern, R"(idlocation="var$1")");
+    result = std::regex_replace(result, idlocation_numeric_pattern, R"(idlocation="Var$1")");
     result = std::regex_replace(result, idlocation_general_pattern, R"(idlocation="$1")");
 
     // Test 225 specific patterns - variable equality comparison
-    // conf:VarEqVar="1 2" -> cond="var1 === var2"
-    result = std::regex_replace(result, CONF_VAREQVAR_ATTR, R"(cond="var$1 === var$2")");
+    // conf:VarEqVar="1 2" -> cond="Var1 === Var2"
+    result = std::regex_replace(result, CONF_VAREQVAR_ATTR, R"(cond="Var$1 === Var$2")");
 
     // Legacy generic conf:idVal pattern for other cases
     result = std::regex_replace(result, CONF_ID_VAL_ATTR, R"(cond="$1")");
@@ -526,7 +527,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert numeric location attributes to use var prefix (if not already handled)
     std::regex location_numeric_pattern(R"def(conf:location="([0-9]+)")def");
     std::regex location_general_pattern(R"def(conf:location="([^"]*)")def");
-    result = std::regex_replace(result, location_numeric_pattern, R"(location="var$1")");
+    result = std::regex_replace(result, location_numeric_pattern, R"(location="Var$1")");
     result = std::regex_replace(result, location_general_pattern, R"(location="$1")");
 
     // Then remove ALL remaining conf: attributes (test framework specific)
@@ -539,7 +540,7 @@ std::string TXMLConverter::getDefaultScriptContent() {
     // W3C SCXML 5.8: Test-specific script content mapping
     // Maps test IDs to their required script content
     static const std::unordered_map<int, std::string> testScripts = {
-        {302, "var1 = 1"},  // W3C SCXML 5.8: Basic top-level script execution
+        {302, "Var1 = 1"},  // W3C SCXML 5.8: Basic top-level script execution
         // Future test scripts can be added here as needed
     };
 
@@ -570,21 +571,21 @@ std::string TXMLConverter::convertConfElements(const std::string &content) {
                                 R"(<send event="$1" targetexpr="_event.origin" typeexpr="_event.origintype"/>)");
 
     // Convert conf:incrementID elements to assign increment operations
-    // Pattern: <conf:incrementID id="1"/> -> <assign location="var1" expr="var1 + 1"/>
+    // Pattern: <conf:incrementID id="1"/> -> <assign location="Var1" expr="Var1 + 1"/>
     std::regex increment_numeric_pattern(R"ghi(<conf:incrementID id="([0-9]+)"\s*/>)ghi");
     std::regex increment_general_pattern(R"jkl(<conf:incrementID id="([^"]+)"\s*/>)jkl");
-    result = std::regex_replace(result, increment_numeric_pattern, R"(<assign location="var$1" expr="var$1 + 1"/>)");
+    result = std::regex_replace(result, increment_numeric_pattern, R"(<assign location="Var$1" expr="Var$1 + 1"/>)");
     result = std::regex_replace(result, increment_general_pattern, R"(<assign location="$1" expr="$1 + 1"/>)");
 
     // Convert conf:sumVars elements to assign sum operations
     // Handle conf:sumVars elements with simple pattern matching
     // W3C test 155 specific: <conf:sumVars id1="1" id2="2"/>
     std::regex sumvars_id1_id2(R"ZZZ(<conf:sumVars id1="([^"]*)" id2="([^"]*)" */>)ZZZ");
-    result = std::regex_replace(result, sumvars_id1_id2, R"ZZZ(<assign location="var$1" expr="var$1 + var$2"/>)ZZZ");
+    result = std::regex_replace(result, sumvars_id1_id2, R"ZZZ(<assign location="Var$1" expr="Var$1 + Var$2"/>)ZZZ");
 
     // Other common patterns can be added here as needed
     std::regex sumvars_dest_id(R"ZZZ(<conf:sumVars dest="([^"]*)" id="([^"]*)" */>)ZZZ");
-    result = std::regex_replace(result, sumvars_dest_id, R"ZZZ(<assign location="var$1" expr="var$1 + var$2"/>)ZZZ");
+    result = std::regex_replace(result, sumvars_dest_id, R"ZZZ(<assign location="Var$1" expr="Var$1 + Var$2"/>)ZZZ");
 
     // Then remove ALL remaining conf: elements (test framework specific)
     result = std::regex_replace(result, CONF_ALL_ELEMENTS, "");

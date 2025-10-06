@@ -1061,6 +1061,21 @@ bool ActionExecutorImpl::executeForeachAction(const ForeachAction &action) {
                 return false;
             }
 
+            // W3C SCXML B.2 (test 457): Check if value is actually an array
+            // Empty result from resultToStringArray could mean non-array value
+            std::string arrayCheckExpr = jsArrayExpr + " instanceof Array";
+            auto arrayCheckResult = JSEngine::instance().evaluateExpression(sessionId_, arrayCheckExpr).get();
+            if (arrayCheckResult.isSuccess() && std::holds_alternative<bool>(arrayCheckResult.getInternalValue()) &&
+                !std::get<bool>(arrayCheckResult.getInternalValue())) {
+                LOG_ERROR("ActionExecutorImpl: Foreach array '{}' is not an array (value: {})", arrayExpr, resultStr);
+                // Generate error.execution event for SCXML W3C compliance
+                if (eventRaiser_ && eventRaiser_->isReady()) {
+                    eventRaiser_->raiseEvent("error.execution",
+                                             "Foreach requires an array, got non-array value: " + arrayExpr);
+                }
+                return false;
+            }
+
             LOG_DEBUG("Foreach array is empty, declaring variables without iterations");
         }
 

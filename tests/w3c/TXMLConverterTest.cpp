@@ -185,7 +185,7 @@ TEST_F(TXMLConverterTest, ConvertsIsBoundToTypeofCondition) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"(cond="typeof var4 !== 'undefined'")"), std::string::npos)
+    EXPECT_NE(result.find(R"(cond="typeof Var4 !== 'undefined'")"), std::string::npos)
         << "conf:isBound with number should convert to typeof var[number] condition";
     EXPECT_NE(result.find(R"(cond="typeof variable_x !== 'undefined'")"), std::string::npos)
         << "conf:isBound with variable should convert properly";
@@ -203,7 +203,7 @@ TEST_F(TXMLConverterTest, HandlesVariableNamesWithSpecialCharacters) {
     std::string result = converter.convertTXMLToSCXML(txml);
 
     EXPECT_NE(result.find(R"(cond="typeof var_with_underscore !== 'undefined'")"), std::string::npos);
-    EXPECT_NE(result.find(R"(cond="typeof var123 !== 'undefined'")"), std::string::npos);
+    EXPECT_NE(result.find(R"(cond="typeof Var123 !== 'undefined'")"), std::string::npos);
     EXPECT_NE(result.find(R"(cond="typeof $special !== 'undefined'")"), std::string::npos);
 }
 
@@ -345,7 +345,7 @@ TEST_F(TXMLConverterTest, ConvertsComplexForeachPattern) {
 
     // Check main conversions
     EXPECT_NE(result.find(R"(datamodel="ecmascript")"), std::string::npos) << "Should have ECMAScript datamodel";
-    EXPECT_NE(result.find(R"(cond="typeof var4 !== 'undefined'")"), std::string::npos)
+    EXPECT_NE(result.find(R"(cond="typeof Var4 !== 'undefined'")"), std::string::npos)
         << "Should convert conf:isBound to typeof condition";
     EXPECT_NE(result.find(R"(target="pass")"), std::string::npos) << "Should have pass target";
     EXPECT_NE(result.find(R"(target="fail")"), std::string::npos) << "Should have fail target";
@@ -454,12 +454,12 @@ TEST_F(TXMLConverterTest, ConvertsInvalidLocationAttribute) {
 // Test conf:invalidNamelist attribute conversion for validation
 TEST_F(TXMLConverterTest, ConvertsInvalidNamelistAttribute) {
     std::string txml = createValidTXML(R"mno(
-        <send conf:invalidNamelist="var1 var2" event="data" target="self"/>
+        <send conf:invalidNamelist="Var1 Var2" event="data" target="self"/>
     )mno");
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"pqr(namelist="var1 var2")pqr"), std::string::npos)
+    EXPECT_NE(result.find(R"pqr(namelist="Var1 Var2")pqr"), std::string::npos)
         << "conf:invalidNamelist should be converted to namelist attribute";
     EXPECT_EQ(result.find(R"stu(conf:invalidNamelist)stu"), std::string::npos)
         << "conf:invalidNamelist references should be removed";
@@ -558,7 +558,7 @@ TEST_F(TXMLConverterTest, ConvertsAllW3CIRPAttributesComprehensive) {
     <state id="test">
         <onentry>
             <assign conf:invalidLocation="testVar" expr="42"/>
-            <send conf:delay="1s" conf:invalidNamelist="var1 var2" event="timer" target="self"/>
+            <send conf:delay="1s" conf:invalidNamelist="Var1 Var2" event="timer" target="self"/>
         </onentry>
         <transition event="timer" target="checkParam">
             <if conf:eventNamedParamHasValue="event.data.hasParam">
@@ -585,7 +585,7 @@ TEST_F(TXMLConverterTest, ConvertsAllW3CIRPAttributesComprehensive) {
     EXPECT_NE(result.find(R"ghi(location="testVar")ghi"), std::string::npos)
         << "conf:invalidLocation should be converted to location";
     EXPECT_NE(result.find(R"jkl(delay="1s")jkl"), std::string::npos) << "conf:delay should be converted to delay";
-    EXPECT_NE(result.find(R"mno(namelist="var1 var2")mno"), std::string::npos)
+    EXPECT_NE(result.find(R"mno(namelist="Var1 Var2")mno"), std::string::npos)
         << "conf:invalidNamelist should be converted to namelist";
     EXPECT_NE(result.find(R"pqr(expr="event.data.hasParam")pqr"), std::string::npos)
         << "conf:eventNamedParamHasValue should be converted to expr";
@@ -699,19 +699,19 @@ TEST_F(TXMLConverterTest, ConvertsForeachConfAttributesWithNumericVariables) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // Critical validation: conf:item="4" -> item="var4" (numeric variables need var prefix)
-    EXPECT_NE(result.find(R"(item="var4")"), std::string::npos)
+    // Critical validation: conf:item="4" -> item="Var4" (numeric variables need var prefix)
+    EXPECT_NE(result.find(R"(item="Var4")"), std::string::npos)
         << "conf:item with numeric value should convert to item attribute with var prefix";
 
-    // Critical validation: conf:index="5" -> index="var5" (numeric variables need var prefix)
-    EXPECT_NE(result.find(R"(index="var5")"), std::string::npos)
+    // Critical validation: conf:index="5" -> index="Var5" (numeric variables need var prefix)
+    EXPECT_NE(result.find(R"(index="Var5")"), std::string::npos)
         << "conf:index with numeric value should convert to index attribute with var prefix";
 
-    // Critical validation: conf:arrayVar="3" -> array="var3" (numeric variables need var prefix)
-    EXPECT_NE(result.find(R"(array="var3")"), std::string::npos) << "conf:arrayVar should convert to array attribute";
+    // Critical validation: conf:arrayVar="3" -> array="Var3" (numeric variables need var prefix)
+    EXPECT_NE(result.find(R"(array="Var3")"), std::string::npos) << "conf:arrayVar should convert to array attribute";
 
     // Verify complete foreach element structure with var prefixes for numeric values
-    EXPECT_NE(result.find(R"(<foreach item="var4" index="var5" array="var3">)"), std::string::npos)
+    EXPECT_NE(result.find(R"(<foreach item="Var4" index="Var5" array="Var3">)"), std::string::npos)
         << "Complete foreach element should have all converted attributes with var prefix for numeric values";
 
     // Verify no conf: attributes remain
@@ -769,11 +769,11 @@ TEST_F(TXMLConverterTest, ValidatesJavaScriptSyntaxForNumericVariables) {
     std::string result = converter.convertTXMLToSCXML(txml);
 
     // **핵심 검증**: 숫자 변수명도 올바른 JavaScript 구문으로 변환되어야 함
-    EXPECT_NE(result.find(R"abc(cond="typeof var4 !== 'undefined'")abc"), std::string::npos)
-        << "conf:isBound=\"4\" should convert to valid JavaScript: typeof var4 !== 'undefined'";
+    EXPECT_NE(result.find(R"abc(cond="typeof Var4 !== 'undefined'")abc"), std::string::npos)
+        << "conf:isBound=\"4\" should convert to valid JavaScript: typeof Var4 !== 'undefined'";
 
-    EXPECT_NE(result.find(R"abc(cond="typeof var123 !== 'undefined'")abc"), std::string::npos)
-        << "conf:isBound=\"123\" should convert to valid JavaScript: typeof var123 !== 'undefined'";
+    EXPECT_NE(result.find(R"abc(cond="typeof Var123 !== 'undefined'")abc"), std::string::npos)
+        << "conf:isBound=\"123\" should convert to valid JavaScript: typeof Var123 !== 'undefined'";
 
     EXPECT_NE(result.find(R"abc(cond="typeof variableName !== 'undefined'")abc"), std::string::npos)
         << "conf:isBound=\"variableName\" should convert to valid JavaScript: typeof variableName !== 'undefined'";
@@ -867,27 +867,27 @@ TEST_F(TXMLConverterTest, ConvertsCompleteW3CTestPattern) {
     EXPECT_NE(result.find(R"abc(datamodel="ecmascript")abc"), std::string::npos)
         << "conf:datamodel should convert to datamodel=\"ecmascript\"";
 
-    EXPECT_NE(result.find(R"abc(id="var1")abc"), std::string::npos) << "conf:id=\"1\" should convert to id=\"var1\"";
+    EXPECT_NE(result.find(R"abc(id="Var1")abc"), std::string::npos) << "conf:id=\"1\" should convert to id=\"Var1\"";
 
-    EXPECT_NE(result.find(R"abc(id="var3")abc"), std::string::npos) << "conf:id=\"3\" should convert to id=\"var3\"";
+    EXPECT_NE(result.find(R"abc(id="Var3")abc"), std::string::npos) << "conf:id=\"3\" should convert to id=\"Var3\"";
 
     // **핵심 검증**: conf:array123이 JavaScript 배열로 변환되는지 확인
     EXPECT_NE(result.find(R"([1,2,3])"), std::string::npos)
         << "<conf:array123/> should convert to [1,2,3] inside data element";
 
     // **검증**: foreach 속성들이 올바르게 변환되는지 확인
-    EXPECT_NE(result.find(R"abc(item="var4")abc"), std::string::npos)
-        << "conf:item=\"4\" should convert to item=\"var4\" for valid JavaScript variable name";
+    EXPECT_NE(result.find(R"abc(item="Var4")abc"), std::string::npos)
+        << "conf:item=\"4\" should convert to item=\"Var4\" for valid JavaScript variable name";
 
-    EXPECT_NE(result.find(R"abc(index="var5")abc"), std::string::npos)
-        << "conf:index=\"5\" should convert to index=\"var5\" for valid JavaScript variable name";
+    EXPECT_NE(result.find(R"abc(index="Var5")abc"), std::string::npos)
+        << "conf:index=\"5\" should convert to index=\"Var5\" for valid JavaScript variable name";
 
-    EXPECT_NE(result.find(R"abc(array="var3")abc"), std::string::npos)
-        << "conf:arrayVar=\"3\" should convert to array=\"var3\" for valid JavaScript variable name";
+    EXPECT_NE(result.find(R"abc(array="Var3")abc"), std::string::npos)
+        << "conf:arrayVar=\"3\" should convert to array=\"Var3\" for valid JavaScript variable name";
 
     // **검증**: isBound가 올바른 JavaScript 구문으로 변환되는지 확인
-    EXPECT_NE(result.find(R"abc(cond="typeof var4 !== 'undefined'")abc"), std::string::npos)
-        << "conf:isBound=\"4\" should convert to valid JavaScript: typeof var4 !== 'undefined'";
+    EXPECT_NE(result.find(R"abc(cond="typeof Var4 !== 'undefined'")abc"), std::string::npos)
+        << "conf:isBound=\"4\" should convert to valid JavaScript: typeof Var4 !== 'undefined'";
 
     // **검증**: pass/fail 타겟이 올바르게 변환되는지 확인
     EXPECT_NE(result.find(R"abc(target="pass")abc"), std::string::npos)
@@ -930,13 +930,13 @@ TEST_F(TXMLConverterTest, ConvertsComparisonExpressions) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // Critical validation: conf:compareIDVal="1&lt;2" -> cond="var1 &lt; var2"
-    EXPECT_NE(result.find(R"(cond="var1 &lt; var2")"), std::string::npos)
-        << "conf:compareIDVal=\"1&lt;2\" should convert to cond=\"var1 &lt; var2\"";
+    // Critical validation: conf:compareIDVal="1&lt;2" -> cond="Var1 &lt; Var2"
+    EXPECT_NE(result.find(R"(cond="Var1 &lt; Var2")"), std::string::npos)
+        << "conf:compareIDVal=\"1&lt;2\" should convert to cond=\"Var1 &lt; Var2\"";
 
-    // Critical validation: conf:compareIDVal="3&gt;=4" -> cond="var3 &gt;= var4"
-    EXPECT_NE(result.find(R"(cond="var3 &gt;= var4")"), std::string::npos)
-        << "conf:compareIDVal=\"3&gt;=4\" should convert to cond=\"var3 &gt;= var4\"";
+    // Critical validation: conf:compareIDVal="3&gt;=4" -> cond="Var3 &gt;= Var4"
+    EXPECT_NE(result.find(R"(cond="Var3 &gt;= Var4")"), std::string::npos)
+        << "conf:compareIDVal=\"3&gt;=4\" should convert to cond=\"Var3 &gt;= Var4\"";
 
     // Verify conf:compareIDVal is removed
     EXPECT_EQ(result.find("conf:compareIDVal"), std::string::npos) << "conf:compareIDVal should be completely removed";
@@ -945,18 +945,18 @@ TEST_F(TXMLConverterTest, ConvertsComparisonExpressions) {
 // Test conf:location and conf:varExpr for assignment statements
 TEST_F(TXMLConverterTest, ConvertsAssignmentExpressions) {
     std::string txml = createValidTXML(R"(
-        <assign conf:location="var1" conf:expr="var2"/>
-        <assign conf:location="var4" conf:expr="0"/>
+        <assign conf:location="Var1" conf:expr="Var2"/>
+        <assign conf:location="Var4" conf:expr="0"/>
         <assign conf:location="varName" conf:expr="otherVar"/>
     )");
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
     // Verify conf:location and conf:expr conversions (already implemented)
-    EXPECT_NE(result.find(R"(location="var1" expr="var2")"), std::string::npos)
+    EXPECT_NE(result.find(R"(location="Var1" expr="Var2")"), std::string::npos)
         << "conf:location and conf:expr should convert to location and expr attributes";
 
-    EXPECT_NE(result.find(R"(location="var4" expr="0")"), std::string::npos)
+    EXPECT_NE(result.find(R"(location="Var4" expr="0")"), std::string::npos)
         << "conf:location and conf:expr should convert with literal values";
 
     EXPECT_NE(result.find(R"(location="varName" expr="otherVar")"), std::string::npos)
@@ -970,18 +970,18 @@ TEST_F(TXMLConverterTest, ConvertsAssignmentExpressions) {
 // Test conf:idVal attribute conversion for transition conditions
 TEST_F(TXMLConverterTest, ConvertsTransitionConditions) {
     std::string txml = createValidTXML(R"(
-        <transition conf:cond="var4 == 0" conf:targetfail=""/>
-        <transition conf:cond="var1 != var5" conf:targetpass=""/>
+        <transition conf:cond="Var4 == 0" conf:targetfail=""/>
+        <transition conf:cond="Var1 != Var5" conf:targetpass=""/>
         <transition conf:targetfail=""/>
     )");
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
     // Verify conf:cond and conf:target conversions (already implemented)
-    EXPECT_NE(result.find(R"(cond="var4 == 0" target="fail")"), std::string::npos)
+    EXPECT_NE(result.find(R"(cond="Var4 == 0" target="fail")"), std::string::npos)
         << "conf:cond and conf:targetfail should convert to cond and target attributes";
 
-    EXPECT_NE(result.find(R"(cond="var1 != var5" target="pass")"), std::string::npos)
+    EXPECT_NE(result.find(R"(cond="Var1 != Var5" target="pass")"), std::string::npos)
         << "conf:cond and conf:targetpass should convert to cond and target attributes";
 
     EXPECT_NE(result.find(R"(target="fail")"), std::string::npos)
@@ -1009,14 +1009,14 @@ TEST_F(TXMLConverterTest, ConvertsForeachWithConditionsAndAssignments) {
 <state id="s0">
   <onentry>
     <foreach conf:item="2" conf:arrayVar="3">
-      <if conf:cond="var1 &lt; var2">
-        <assign conf:location="var1" conf:expr="var2"/>
+      <if conf:cond="Var1 &lt; Var2">
+        <assign conf:location="Var1" conf:expr="Var2"/>
       <else/>
-        <assign conf:location="var4" conf:expr="0"/>
+        <assign conf:location="Var4" conf:expr="0"/>
       </if>
     </foreach>
   </onentry>
-  <transition conf:cond="var4 == 0" conf:targetfail=""/>
+  <transition conf:cond="Var4 == 0" conf:targetfail=""/>
   <transition conf:targetpass=""/>
 </state>
 <conf:pass/>
@@ -1029,37 +1029,37 @@ TEST_F(TXMLConverterTest, ConvertsForeachWithConditionsAndAssignments) {
     EXPECT_NE(result.find(R"(datamodel="ecmascript")"), std::string::npos)
         << "conf:datamodel should convert to datamodel=\"ecmascript\"";
 
-    EXPECT_NE(result.find(R"(id="var1" expr="0")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"var1\"";
+    EXPECT_NE(result.find(R"(id="Var1" expr="0")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"Var1\"";
 
-    EXPECT_NE(result.find(R"(id="var2")"), std::string::npos) << "conf:id=\"2\" should convert to id=\"var2\"";
+    EXPECT_NE(result.find(R"(id="Var2")"), std::string::npos) << "conf:id=\"2\" should convert to id=\"Var2\"";
 
-    EXPECT_NE(result.find(R"(id="var3")"), std::string::npos) << "conf:id=\"3\" should convert to id=\"var3\"";
+    EXPECT_NE(result.find(R"(id="Var3")"), std::string::npos) << "conf:id=\"3\" should convert to id=\"Var3\"";
 
-    // FIXED: W3C test 153 bug - was expecting expr="var1" instead of expr="1"
-    // conf:expr="1" should convert to literal expr="1", not variable reference expr="var1"
-    EXPECT_NE(result.find(R"(id="var4" expr="1")"), std::string::npos)
-        << "conf:id=\"4\" conf:expr=\"1\" should convert to id=\"var4\" expr=\"1\"";
+    // FIXED: W3C test 153 bug - was expecting expr="Var1" instead of expr="1"
+    // conf:expr="1" should convert to literal expr="1", not variable reference expr="Var1"
+    EXPECT_NE(result.find(R"(id="Var4" expr="1")"), std::string::npos)
+        << "conf:id=\"4\" conf:expr=\"1\" should convert to id=\"Var4\" expr=\"1\"";
 
     // **Array conversion**
     EXPECT_NE(result.find(R"([1,2,3])"), std::string::npos) << "conf:array123 should convert to [1,2,3]";
 
     // **Foreach attribute conversions**
-    EXPECT_NE(result.find(R"(item="var2" array="var3")"), std::string::npos)
+    EXPECT_NE(result.find(R"(item="Var2" array="Var3")"), std::string::npos)
         << "conf:item=\"2\" conf:arrayVar=\"3\" should convert with var prefix";
 
     // **IF condition conversion - Using already implemented conf:cond (with HTML entities)**
-    EXPECT_NE(result.find(R"(cond="var1 &lt; var2")"), std::string::npos)
+    EXPECT_NE(result.find(R"(cond="Var1 &lt; Var2")"), std::string::npos)
         << "conf:cond should convert comparison expressions to proper SCXML conditions";
 
     // **Assignment conversions - Using already implemented conf:location and conf:expr**
-    EXPECT_NE(result.find(R"(location="var1" expr="var2")"), std::string::npos)
+    EXPECT_NE(result.find(R"(location="Var1" expr="Var2")"), std::string::npos)
         << "conf:location and conf:expr should convert to location and expr attributes";
 
-    EXPECT_NE(result.find(R"(location="var4" expr="0")"), std::string::npos)
+    EXPECT_NE(result.find(R"(location="Var4" expr="0")"), std::string::npos)
         << "conf:location and conf:expr should convert with literal values";
 
     // **Transition condition conversion - Using already implemented conf:cond and conf:target**
-    EXPECT_NE(result.find(R"(cond="var4 == 0" target="fail")"), std::string::npos)
+    EXPECT_NE(result.find(R"(cond="Var4 == 0" target="fail")"), std::string::npos)
         << "conf:cond and conf:targetfail should convert to cond and target attributes";
 
     // **Final states**
@@ -1073,7 +1073,7 @@ TEST_F(TXMLConverterTest, ConvertsForeachWithConditionsAndAssignments) {
     EXPECT_EQ(result.find("conf:"), std::string::npos) << "All conf: references should be completely removed";
 
     // **Regression prevention: verify proper conditional element structure**
-    EXPECT_NE(result.find(R"(<if cond="var1 &lt; var2">)"), std::string::npos)
+    EXPECT_NE(result.find(R"(<if cond="Var1 &lt; Var2">)"), std::string::npos)
         << "IF element should have proper cond attribute for conditional logic";
 
     // Note: We're using conf:cond now, so we don't expect empty <if> elements
@@ -1117,10 +1117,10 @@ TEST_F(TXMLConverterTest, ConvertsIncrementCounterElements) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"(<assign location="var1" expr="var1 + 1"/>)"), std::string::npos)
-        << "conf:incrementID id=\"1\" should convert to assign increment for var1";
-    EXPECT_NE(result.find(R"(<assign location="var5" expr="var5 + 1"/>)"), std::string::npos)
-        << "conf:incrementID id=\"5\" should convert to assign increment for var5";
+    EXPECT_NE(result.find(R"(<assign location="Var1" expr="Var1 + 1"/>)"), std::string::npos)
+        << "conf:incrementID id=\"1\" should convert to assign increment for Var1";
+    EXPECT_NE(result.find(R"(<assign location="Var5" expr="Var5 + 1"/>)"), std::string::npos)
+        << "conf:incrementID id=\"5\" should convert to assign increment for Var5";
     EXPECT_EQ(result.find("conf:incrementID"), std::string::npos) << "conf:incrementID elements should be removed";
 }
 
@@ -1134,12 +1134,12 @@ TEST_F(TXMLConverterTest, ConvertsVariableValueComparisons) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"(cond="var1 == 1")"), std::string::npos)
-        << "conf:idVal=\"1=1\" should convert to cond=\"var1 == 1\"";
-    EXPECT_NE(result.find(R"(cond="var4 == 0")"), std::string::npos)
-        << "conf:idVal=\"4=0\" should convert to cond=\"var4 == 0\"";
-    EXPECT_NE(result.find(R"(cond="var1 != var5")"), std::string::npos)
-        << "conf:idVal=\"1!=5\" should convert to cond=\"var1 != var5\"";
+    EXPECT_NE(result.find(R"(cond="Var1 == 1")"), std::string::npos)
+        << "conf:idVal=\"1=1\" should convert to cond=\"Var1 == 1\"";
+    EXPECT_NE(result.find(R"(cond="Var4 == 0")"), std::string::npos)
+        << "conf:idVal=\"4=0\" should convert to cond=\"Var4 == 0\"";
+    EXPECT_NE(result.find(R"(cond="Var1 != Var5")"), std::string::npos)
+        << "conf:idVal=\"1!=5\" should convert to cond=\"Var1 != Var5\"";
     EXPECT_EQ(result.find("conf:idVal"), std::string::npos) << "conf:idVal attributes should be removed";
 }
 
@@ -1154,10 +1154,10 @@ TEST_F(TXMLConverterTest, ConvertsVariableExpressionAssignments) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"(location="var1" expr="var2")"), std::string::npos)
-        << "conf:location=\"1\" and conf:varExpr=\"2\" should convert to location=\"var1\" expr=\"var2\"";
-    EXPECT_NE(result.find(R"(location="var3" expr="var4")"), std::string::npos)
-        << "conf:location=\"3\" and conf:varExpr=\"4\" should convert to location=\"var3\" expr=\"var4\"";
+    EXPECT_NE(result.find(R"(location="Var1" expr="Var2")"), std::string::npos)
+        << "conf:location=\"1\" and conf:varExpr=\"2\" should convert to location=\"Var1\" expr=\"Var2\"";
+    EXPECT_NE(result.find(R"(location="Var3" expr="Var4")"), std::string::npos)
+        << "conf:location=\"3\" and conf:varExpr=\"4\" should convert to location=\"Var3\" expr=\"Var4\"";
     EXPECT_EQ(result.find("conf:varExpr"), std::string::npos) << "conf:varExpr attributes should be removed";
 }
 
@@ -1170,10 +1170,10 @@ TEST_F(TXMLConverterTest, ConvertsVariableComparisonExpressions) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"(cond="var1 &lt; var2")"), std::string::npos)
-        << "conf:compareIDVal=\"1&lt;2\" should convert to cond=\"var1 &lt; var2\"";
-    EXPECT_NE(result.find(R"(cond="var3 &gt;= var4")"), std::string::npos)
-        << "conf:compareIDVal=\"3&gt;=4\" should convert to cond=\"var3 &gt;= var4\"";
+    EXPECT_NE(result.find(R"(cond="Var1 &lt; Var2")"), std::string::npos)
+        << "conf:compareIDVal=\"1&lt;2\" should convert to cond=\"Var1 &lt; Var2\"";
+    EXPECT_NE(result.find(R"(cond="Var3 &gt;= Var4")"), std::string::npos)
+        << "conf:compareIDVal=\"3&gt;=4\" should convert to cond=\"Var3 &gt;= Var4\"";
     EXPECT_EQ(result.find("conf:compareIDVal"), std::string::npos) << "conf:compareIDVal attributes should be removed";
 }
 
@@ -1202,8 +1202,8 @@ TEST_F(TXMLConverterTest, ConvertsVariableExistenceChecks) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"(cond="typeof var1 !== 'undefined'")"), std::string::npos)
-        << "conf:isBound=\"1\" should convert to typeof check for var1";
+    EXPECT_NE(result.find(R"(cond="typeof Var1 !== 'undefined'")"), std::string::npos)
+        << "conf:isBound=\"1\" should convert to typeof check for Var1";
     EXPECT_NE(result.find(R"(cond="typeof someVar !== 'undefined'")"), std::string::npos)
         << "conf:isBound=\"someVar\" should convert to typeof check for someVar";
     EXPECT_EQ(result.find("conf:isBound"), std::string::npos) << "conf:isBound attributes should be removed";
@@ -1269,14 +1269,14 @@ TEST_F(TXMLConverterTest, ConvertsCompleteConditionalLogicScenario) {
 
     // Verify all transformations work together
     EXPECT_NE(result.find(R"(datamodel="ecmascript")"), std::string::npos);
-    EXPECT_NE(result.find(R"(id="var1")"), std::string::npos);
+    EXPECT_NE(result.find(R"(id="Var1")"), std::string::npos);
     EXPECT_NE(result.find(R"(cond="false")"), std::string::npos);
     EXPECT_NE(result.find(R"(cond="true")"), std::string::npos);
-    EXPECT_NE(result.find(R"(<assign location="var1" expr="var1 + 1"/>)"), std::string::npos);
-    EXPECT_NE(result.find(R"(item="var2" array="var3")"), std::string::npos);
-    EXPECT_NE(result.find(R"(cond="var1 &lt; var2")"), std::string::npos);
-    EXPECT_NE(result.find(R"(location="var1" expr="var2")"), std::string::npos);
-    EXPECT_NE(result.find(R"(cond="var1 == 1")"), std::string::npos);
+    EXPECT_NE(result.find(R"(<assign location="Var1" expr="Var1 + 1"/>)"), std::string::npos);
+    EXPECT_NE(result.find(R"(item="Var2" array="Var3")"), std::string::npos);
+    EXPECT_NE(result.find(R"(cond="Var1 &lt; Var2")"), std::string::npos);
+    EXPECT_NE(result.find(R"(location="Var1" expr="Var2")"), std::string::npos);
+    EXPECT_NE(result.find(R"(cond="Var1 == 1")"), std::string::npos);
     EXPECT_NE(result.find(R"(target="pass")"), std::string::npos);
     EXPECT_NE(result.find(R"(<final id="pass"/>)"), std::string::npos);
     EXPECT_EQ(result.find("conf:"), std::string::npos);
@@ -1348,8 +1348,8 @@ TEST_F(TXMLConverterTest, ConfSumVarsConversion) {
     std::string result = converter.convertTXMLToSCXML(input);
 
     // Verify conf:sumVars converts to assign with proper variable prefixes
-    EXPECT_NE(result.find(R"(<assign location="var1" expr="var1 + var2"/>)"), std::string::npos)
-        << "conf:sumVars id1=\"1\" id2=\"2\" should convert to assign location=\"var1\" expr=\"var1 + var2\"";
+    EXPECT_NE(result.find(R"(<assign location="Var1" expr="Var1 + Var2"/>)"), std::string::npos)
+        << "conf:sumVars id1=\"1\" id2=\"2\" should convert to assign location=\"Var1\" expr=\"Var1 + Var2\"";
 
     // Verify no conf: elements remain
     EXPECT_EQ(result.find("conf:sumVars"), std::string::npos) << "conf:sumVars should be completely removed";
@@ -1367,9 +1367,9 @@ TEST_F(TXMLConverterTest, ConfIdValNumericComparison) {
 
     std::string result = converter.convertTXMLToSCXML(input);
 
-    // Verify conf:idVal="1=6" converts to cond="var1 == 6"
-    EXPECT_NE(result.find(R"(cond="var1 == 6")"), std::string::npos)
-        << "conf:idVal=\"1=6\" should convert to cond=\"var1 == 6\"";
+    // Verify conf:idVal="1=6" converts to cond="Var1 == 6"
+    EXPECT_NE(result.find(R"(cond="Var1 == 6")"), std::string::npos)
+        << "conf:idVal=\"1=6\" should convert to cond=\"Var1 == 6\"";
 
     // Verify target pass conversion
     EXPECT_NE(result.find(R"(target="pass")"), std::string::npos)
@@ -1397,15 +1397,15 @@ TEST_F(TXMLConverterTest, ConfExprLiteralValues) {
 
     std::string result = converter.convertTXMLToSCXML(input);
 
-    // CRITICAL: conf:expr="1" should convert to expr="1" (literal), NOT expr="var1"
-    EXPECT_NE(result.find(R"(id="var4" expr="1")"), std::string::npos)
+    // CRITICAL: conf:expr="1" should convert to expr="1" (literal), NOT expr="Var1"
+    EXPECT_NE(result.find(R"(id="Var4" expr="1")"), std::string::npos)
         << "W3C test 153 bug fix: conf:expr=\"1\" should convert to literal expr=\"1\"";
 
-    EXPECT_NE(result.find(R"(id="var5" expr="0")"), std::string::npos)
+    EXPECT_NE(result.find(R"(id="Var5" expr="0")"), std::string::npos)
         << "conf:expr=\"0\" should convert to literal expr=\"0\"";
 
     // Verify we don't incorrectly convert literals to variable references
-    EXPECT_EQ(result.find(R"(expr="var1")"), std::string::npos)
+    EXPECT_EQ(result.find(R"(expr="Var1")"), std::string::npos)
         << "Literal values should NOT be converted to variable references";
 }
 
@@ -1435,17 +1435,17 @@ TEST_F(TXMLConverterTest, W3CTest155FullConversion) {
     std::string result = converter.convertTXMLToSCXML(input);
 
     // Verify all key conversions for W3C test 155
-    EXPECT_NE(result.find(R"(id="var1" expr="0")"), std::string::npos) << "var1 should be initialized to 0";
+    EXPECT_NE(result.find(R"(id="Var1" expr="0")"), std::string::npos) << "Var1 should be initialized to 0";
 
     EXPECT_NE(result.find(R"([1,2,3])"), std::string::npos) << "Array should be converted to JavaScript array format";
 
-    EXPECT_NE(result.find(R"(item="var2" array="var3")"), std::string::npos)
+    EXPECT_NE(result.find(R"(item="Var2" array="Var3")"), std::string::npos)
         << "foreach attributes should use var prefixes";
 
-    EXPECT_NE(result.find(R"(<assign location="var1" expr="var1 + var2"/>)"), std::string::npos)
+    EXPECT_NE(result.find(R"(<assign location="Var1" expr="Var1 + Var2"/>)"), std::string::npos)
         << "sumVars should create accumulation assignment";
 
-    EXPECT_NE(result.find(R"(cond="var1 == 6" target="pass")"), std::string::npos)
+    EXPECT_NE(result.find(R"(cond="Var1 == 6" target="pass")"), std::string::npos)
         << "Success condition should check if sum equals 6";
 
     EXPECT_NE(result.find(R"(target="fail")"), std::string::npos) << "Fallback transition to fail state";
@@ -1487,23 +1487,23 @@ TEST_F(TXMLConverterTest, W3CTest156ErrorHandlingConversion) {
     std::string result = converter.convertTXMLToSCXML(txml);
 
     // Test conf:incrementID conversion
-    EXPECT_NE(result.find(R"(<assign location="var1" expr="var1 + 1"/>)"), std::string::npos)
-        << "conf:incrementID id=\"1\" should convert to assign increment for var1";
+    EXPECT_NE(result.find(R"(<assign location="Var1" expr="Var1 + 1"/>)"), std::string::npos)
+        << "conf:incrementID id=\"1\" should convert to assign increment for Var1";
 
     // Test conf:illegalExpr conversion - should create intentional error
     EXPECT_NE(result.find(R"(expr="undefined.invalidProperty")"), std::string::npos)
         << "conf:illegalExpr should convert to expr with invalid JavaScript expression";
 
     // Test conf:idVal="1=1" conversion
-    EXPECT_NE(result.find(R"(cond="var1 == 1")"), std::string::npos)
-        << "conf:idVal=\"1=1\" should convert to cond=\"var1 == 1\"";
+    EXPECT_NE(result.find(R"(cond="Var1 == 1")"), std::string::npos)
+        << "conf:idVal=\"1=1\" should convert to cond=\"Var1 == 1\"";
 
     // Test array data conversion
     EXPECT_NE(result.find(R"([1,2,3])"), std::string::npos) << "conf:array123 should convert to [1,2,3]";
 
     // Test location conversion
-    EXPECT_NE(result.find(R"(location="var5")"), std::string::npos)
-        << "conf:location=\"5\" should convert to location=\"var5\"";
+    EXPECT_NE(result.find(R"(location="Var5")"), std::string::npos)
+        << "conf:location=\"5\" should convert to location=\"Var5\"";
 }
 
 // W3C Test 159: Error handling in executable content blocks
@@ -1536,12 +1536,12 @@ TEST_F(TXMLConverterTest, W3CTest159ExecutableContentErrorHandling) {
         << "send element should have event attribute removed to cause error";
 
     // Test conf:incrementID conversion
-    EXPECT_NE(result.find(R"(<assign location="var1" expr="var1 + 1"/>)"), std::string::npos)
-        << "conf:incrementID id=\"1\" should convert to assign increment for var1";
+    EXPECT_NE(result.find(R"(<assign location="Var1" expr="Var1 + 1"/>)"), std::string::npos)
+        << "conf:incrementID id=\"1\" should convert to assign increment for Var1";
 
     // Test conf:idVal="1=1" conversion
-    EXPECT_NE(result.find(R"(cond="var1 == 1")"), std::string::npos)
-        << "conf:idVal=\"1=1\" should convert to cond=\"var1 == 1\"";
+    EXPECT_NE(result.find(R"(cond="Var1 == 1")"), std::string::npos)
+        << "conf:idVal=\"1=1\" should convert to cond=\"Var1 == 1\"";
 
     // Test target conversions
     EXPECT_NE(result.find(R"(target="fail")"), std::string::npos)
@@ -1586,23 +1586,23 @@ TEST_F(TXMLConverterTest, W3CTest176EventDataAndIdValCondition) {
     std::string result = converter.convertTXMLToSCXML(txml);
 
     // Test variable ID conversions
-    EXPECT_NE(result.find(R"(id="var1")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"var1\"";
-    EXPECT_NE(result.find(R"(id="var2")"), std::string::npos) << "conf:id=\"2\" should convert to id=\"var2\"";
+    EXPECT_NE(result.find(R"(id="Var1")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"Var1\"";
+    EXPECT_NE(result.find(R"(id="Var2")"), std::string::npos) << "conf:id=\"2\" should convert to id=\"Var2\"";
 
     // Test location conversions
-    EXPECT_NE(result.find(R"(location="var1")"), std::string::npos)
-        << "conf:location=\"1\" should convert to location=\"var1\"";
+    EXPECT_NE(result.find(R"(location="Var1")"), std::string::npos)
+        << "conf:location=\"1\" should convert to location=\"Var1\"";
 
     // Test param varExpr conversion
-    EXPECT_NE(result.find(R"(expr="var1")"), std::string::npos) << "conf:varExpr=\"1\" should convert to expr=\"var1\"";
+    EXPECT_NE(result.find(R"(expr="Var1")"), std::string::npos) << "conf:varExpr=\"1\" should convert to expr=\"Var1\"";
 
     // **KEY TEST**: conf:eventDataFieldValue should convert to _event.data access
     EXPECT_NE(result.find(R"(expr="_event.data.aParam")"), std::string::npos)
         << "conf:eventDataFieldValue=\"aParam\" should convert to expr=\"_event.data.aParam\"";
 
     // **KEY TEST**: conf:idVal should convert to proper comparison
-    EXPECT_NE(result.find(R"(cond="var2 == 2")"), std::string::npos)
-        << "conf:idVal=\"2=2\" should convert to cond=\"var2 == 2\"";
+    EXPECT_NE(result.find(R"(cond="Var2 == 2")"), std::string::npos)
+        << "conf:idVal=\"2=2\" should convert to cond=\"Var2 == 2\"";
 
     // Test target conversions
     EXPECT_NE(result.find(R"(target="pass")"), std::string::npos)
@@ -1690,27 +1690,27 @@ TEST_F(TXMLConverterTest, W3CTest240NamelistIdValAndInvokeDataPassing) {
     std::string result = converter.convertTXMLToSCXML(txml);
 
     // Test datamodel conversions
-    EXPECT_NE(result.find(R"(id="var1")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"var1\"";
+    EXPECT_NE(result.find(R"(id="Var1")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"Var1\"";
 
     // Test namelist conversion
-    EXPECT_NE(result.find(R"(namelist="var1")"), std::string::npos)
-        << "conf:namelist=\"1\" should convert to namelist=\"var1\"";
+    EXPECT_NE(result.find(R"(namelist="Var1")"), std::string::npos)
+        << "conf:namelist=\"1\" should convert to namelist=\"Var1\"";
 
     // Test param name conversion
-    EXPECT_NE(result.find(R"(name="var1")"), std::string::npos) << "conf:name=\"1\" should convert to name=\"var1\"";
+    EXPECT_NE(result.find(R"(name="Var1")"), std::string::npos) << "conf:name=\"1\" should convert to name=\"Var1\"";
 
     // **KEY TEST**: conf:namelistIdVal should convert to proper comparison
-    EXPECT_NE(result.find(R"(cond="var1 == 1")"), std::string::npos)
-        << "conf:namelistIdVal=\"1=1\" should convert to cond=\"var1 == 1\"";
+    EXPECT_NE(result.find(R"(cond="Var1 == 1")"), std::string::npos)
+        << "conf:namelistIdVal=\"1=1\" should convert to cond=\"Var1 == 1\"";
 
     // Verify conf:idVal also works (used in second invoke)
     std::string::size_type pos = 0;
     int count = 0;
-    while ((pos = result.find(R"(cond="var1 == 1")", pos)) != std::string::npos) {
+    while ((pos = result.find(R"(cond="Var1 == 1")", pos)) != std::string::npos) {
         count++;
         pos++;
     }
-    EXPECT_EQ(count, 2) << "Should find 2 occurrences of cond=\"var1 == 1\" (namelistIdVal + idVal)";
+    EXPECT_EQ(count, 2) << "Should find 2 occurrences of cond=\"Var1 == 1\" (namelistIdVal + idVal)";
 
     // Test target conversions
     EXPECT_NE(result.find(R"(target="pass")"), std::string::npos)
@@ -1751,16 +1751,16 @@ TEST_F(TXMLConverterTest, W3CTest175DelayFromVarConversion) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // **CRITICAL TEST**: conf:delayFromVar="1" should convert to delayexpr="var1"
-    EXPECT_NE(result.find(R"(delayexpr="var1")"), std::string::npos)
-        << "conf:delayFromVar=\"1\" should convert to delayexpr=\"var1\" for dynamic delay evaluation";
+    // **CRITICAL TEST**: conf:delayFromVar="1" should convert to delayexpr="Var1"
+    EXPECT_NE(result.find(R"(delayexpr="Var1")"), std::string::npos)
+        << "conf:delayFromVar=\"1\" should convert to delayexpr=\"Var1\" for dynamic delay evaluation";
 
     // Test that send element has proper event attribute preserved
     EXPECT_NE(result.find(R"(event="event2")"), std::string::npos) << "Send element should preserve event attribute";
 
     // Test data model conversion
-    EXPECT_NE(result.find(R"(id="var1" expr="1")"), std::string::npos)
-        << "conf:id=\"1\" conf:expr=\"1\" should convert to id=\"var1\" expr=\"1\"";
+    EXPECT_NE(result.find(R"(id="Var1" expr="1")"), std::string::npos)
+        << "conf:id=\"1\" conf:expr=\"1\" should convert to id=\"Var1\" expr=\"1\"";
 
     // Test target conversions
     EXPECT_NE(result.find(R"(target="pass")"), std::string::npos)
@@ -1782,7 +1782,7 @@ TEST_F(TXMLConverterTest, W3CTest175DelayFromVarConversion) {
 TEST_F(TXMLConverterTest, W3CTest183SendIdLocationHandling) {
     std::string txml = R"(<?xml version="1.0"?>
 <!-- we test that <send> stores the value of the sendid in idlocation.  If it does,
-var1 has a value and we pass.  Otherwise we fail  -->
+Var1 has a value and we pass.  Otherwise we fail  -->
 
 <scxml initial="s0" conf:datamodel=""  version="1.0" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
 <datamodel>
@@ -1811,15 +1811,15 @@ var1 has a value and we pass.  Otherwise we fail  -->
         << "conf:datamodel should convert to datamodel=\"ecmascript\"";
 
     // Test data model conversion
-    EXPECT_NE(result.find(R"(id="var1")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"var1\"";
+    EXPECT_NE(result.find(R"(id="Var1")"), std::string::npos) << "conf:id=\"1\" should convert to id=\"Var1\"";
 
     // **KEY TEST**: conf:idlocation should convert to standard SCXML idlocation
-    EXPECT_NE(result.find(R"(idlocation="var1")"), std::string::npos)
-        << "conf:idlocation=\"1\" should convert to idlocation=\"var1\"";
+    EXPECT_NE(result.find(R"(idlocation="Var1")"), std::string::npos)
+        << "conf:idlocation=\"1\" should convert to idlocation=\"Var1\"";
 
     // **KEY TEST**: conf:isBound should convert to proper undefined check
-    EXPECT_NE(result.find(R"(cond="typeof var1 !== 'undefined'")"), std::string::npos)
-        << "conf:isBound=\"1\" should convert to cond=\"typeof var1 !== 'undefined'\"";
+    EXPECT_NE(result.find(R"(cond="typeof Var1 !== 'undefined'")"), std::string::npos)
+        << "conf:isBound=\"1\" should convert to cond=\"typeof Var1 !== 'undefined'\"";
 
     // Test target conversions
     EXPECT_NE(result.find(R"(target="pass")"), std::string::npos)
@@ -1908,7 +1908,7 @@ TEST_F(TXMLConverterTest, ConvertsCancelSendIDExprAttribute) {
     std::string result = converter.convertTXMLToSCXML(input);
 
     // Check that conf:sendIDExpr="1" is converted to sendidexpr attribute with variable reference
-    EXPECT_TRUE(result.find(R"(sendidexpr="var1")") != std::string::npos);
+    EXPECT_TRUE(result.find(R"(sendidexpr="Var1")") != std::string::npos);
     EXPECT_TRUE(result.find("conf:sendIDExpr") == std::string::npos);
 }
 
@@ -1939,7 +1939,7 @@ TEST_F(TXMLConverterTest, ConvertsInvokeTypeExprAttribute) {
     std::string result = converter.convertTXMLToSCXML(input);
 
     // Check that conf:typeExpr="1" is converted to typeexpr attribute with variable reference
-    EXPECT_TRUE(result.find(R"(typeexpr="var1")") != std::string::npos);
+    EXPECT_TRUE(result.find(R"(typeexpr="Var1")") != std::string::npos);
     EXPECT_TRUE(result.find("conf:typeExpr") == std::string::npos);
 }
 
@@ -1964,12 +1964,12 @@ TEST_F(TXMLConverterTest, ConvertsInvokeSrcExprAttribute) {
 
     std::string result = converter.convertTXMLToSCXML(input);
 
-    EXPECT_TRUE(result.find("srcexpr=\"var1\"") != std::string::npos);
+    EXPECT_TRUE(result.find("srcexpr=\"Var1\"") != std::string::npos);
     EXPECT_TRUE(result.find("type=\"http://www.w3.org/TR/scxml\"") != std::string::npos);
     EXPECT_TRUE(result.find("conf:srcExpr") == std::string::npos);
-    EXPECT_TRUE(result.find("id=\"var1\"") != std::string::npos);
+    EXPECT_TRUE(result.find("id=\"Var1\"") != std::string::npos);
     EXPECT_TRUE(result.find("expr=\"'foo'\"") != std::string::npos);
-    EXPECT_TRUE(result.find("location=\"var1\"") != std::string::npos);
+    EXPECT_TRUE(result.find("location=\"Var1\"") != std::string::npos);
     EXPECT_TRUE(result.find("expr=\"'file:test216sub1.scxml'\"") != std::string::npos);
 }
 
@@ -2003,8 +2003,8 @@ TEST_F(TXMLConverterTest, ConvertsVarEqVarAttribute) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // VarEqVar="1 2" should convert to cond="var1 === var2" and target="fail"
-    EXPECT_TRUE(result.find("cond=\"var1 === var2\"") != std::string::npos);
+    // VarEqVar="1 2" should convert to cond="Var1 === Var2" and target="fail"
+    EXPECT_TRUE(result.find("cond=\"Var1 === Var2\"") != std::string::npos);
     EXPECT_TRUE(result.find("target=\"fail\"") != std::string::npos);
     EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
     EXPECT_TRUE(result.find("conf:VarEqVar") == std::string::npos);
@@ -2101,8 +2101,8 @@ TEST_F(TXMLConverterTest, ConvertsSystemVarExprToExpr) {
         << "Expected expr=\"_sessionid\" for system variable expression (W3C SCXML 5.10 test 321)";
 
     // Verify conf:isBound conversion (handled by existing logic)
-    EXPECT_TRUE(result.find("cond=\"typeof var1 !== 'undefined'\"") != std::string::npos)
-        << "Expected cond=\"typeof var1 !== 'undefined'\" - already handled by existing conf:isBound logic";
+    EXPECT_TRUE(result.find("cond=\"typeof Var1 !== 'undefined'\"") != std::string::npos)
+        << "Expected cond=\"typeof Var1 !== 'undefined'\" - already handled by existing conf:isBound logic";
 
     EXPECT_TRUE(result.find("target=\"pass\"") != std::string::npos);
     EXPECT_TRUE(result.find("target=\"fail\"") != std::string::npos);
@@ -2212,7 +2212,7 @@ TEST_F(TXMLConverterTest, ConvertsSendToSenderToSendWithOriginExpr) {
 // ============================================================================
 
 // Test W3C SCXML 5.10: SCXML Processor MUST set the name field of _event variable
-// <assign conf:location="2" conf:eventField="name"/> should convert to <assign location="var2" expr="_event.name"/>
+// <assign conf:location="2" conf:eventField="name"/> should convert to <assign location="Var2" expr="_event.name"/>
 // Test validates conversion for multiple _event fields (name, type) to ensure pattern generality
 TEST_F(TXMLConverterTest, ConvertsEventFieldToEventExpr) {
     std::string txml = R"(<?xml version="1.0"?>
@@ -2246,12 +2246,12 @@ TEST_F(TXMLConverterTest, ConvertsEventFieldToEventExpr) {
     std::string result = converter.convertTXMLToSCXML(txml);
 
     // W3C SCXML 5.10 test 342: Verify conf:eventField="name" converts to expr="_event.name"
-    std::string expectedAssignName = R"(<assign location="var2" expr="_event.name"/>)";
+    std::string expectedAssignName = R"(<assign location="Var2" expr="_event.name"/>)";
     EXPECT_TRUE(result.find(expectedAssignName) != std::string::npos)
         << "Expected assign with _event.name expression: " << expectedAssignName << "\n(W3C SCXML 5.10 test 342)";
 
     // Verify pattern generality: conf:eventField="type" converts to expr="_event.type"
-    std::string expectedAssignType = R"(<assign location="var3" expr="_event.type"/>)";
+    std::string expectedAssignType = R"(<assign location="Var3" expr="_event.type"/>)";
     EXPECT_TRUE(result.find(expectedAssignType) != std::string::npos)
         << "Expected assign with _event.type expression: " << expectedAssignType << "\n(validates pattern generality)";
 

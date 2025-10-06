@@ -1089,6 +1089,19 @@ std::vector<std::string> JSEngine::resultToStringArray(const JSResult &result, c
         LOG_DEBUG("resultToStringArray: Processing array using JSON approach");
 
         try {
+            // W3C SCXML B.2 (test 457): Validate that value is actually an array
+            // Must check instanceof Array before attempting to iterate
+            std::string arrayCheckExpr = originalExpression + " instanceof Array";
+            LOG_DEBUG("resultToStringArray: Validating array type with expression: '{}'", arrayCheckExpr);
+            auto arrayCheckResult = RSM::JSEngine::instance().evaluateExpression(sessionId, arrayCheckExpr).get();
+
+            if (!arrayCheckResult.isSuccess() || !std::holds_alternative<bool>(arrayCheckResult.value_internal) ||
+                !std::get<bool>(arrayCheckResult.value_internal)) {
+                LOG_DEBUG(
+                    "resultToStringArray: Value is not an array (instanceof Array check failed), returning empty");
+                return arrayValues;  // Not an array, caller should check and raise error.execution
+            }
+
             // SCXML W3C Compliance: Use original expression to preserve null/undefined distinction
             std::string setVarExpr = "var _tempArray = " + originalExpression + "; _tempArray.length";
             LOG_DEBUG("resultToStringArray: Evaluating temp variable length expression: '{}'", setVarExpr);
