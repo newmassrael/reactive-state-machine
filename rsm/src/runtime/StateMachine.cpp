@@ -1158,35 +1158,58 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
 
     // Early binding or late binding value assignment: Evaluate and assign
     if (!expr.empty()) {
-        auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, expr);
-        auto result = future.get();
+        // W3C SCXML B.2: For function expressions, use direct JavaScript assignment to preserve function type
+        // Test 453: ECMAScript function literals must be stored as functions, not converted to C++
+        bool isFunctionExpression = (expr.find("function") == 0);
 
-        if (RSM::JSEngine::isSuccess(result)) {
-            auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
-            auto setResult = setVarFuture.get();
+        if (isFunctionExpression) {
+            // Use direct JavaScript assignment to avoid function → C++ → function conversion loss
+            std::string assignmentScript = id + " = " + expr;
+            auto scriptFuture = RSM::JSEngine::instance().executeScript(sessionId_, assignmentScript);
+            auto scriptResult = scriptFuture.get();
 
-            if (!RSM::JSEngine::isSuccess(setResult)) {
-                LOG_ERROR("StateMachine: Failed to set variable '{}' from expression '{}': {}", id, expr,
-                          setResult.getErrorMessage());
+            if (!RSM::JSEngine::isSuccess(scriptResult)) {
+                LOG_ERROR("StateMachine: Failed to assign function expression '{}' to variable '{}': {}", expr, id,
+                          scriptResult.getErrorMessage());
                 if (eventRaiser_) {
-                    eventRaiser_->raiseEvent("error.execution", "Failed to set variable '" + id +
-                                                                    "' from expression '" + expr +
-                                                                    "': " + setResult.getErrorMessage());
+                    eventRaiser_->raiseEvent("error.execution", "Failed to assign function expression for '" + id +
+                                                                    "': " + scriptResult.getErrorMessage());
                 }
                 return;
             }
-
-            LOG_DEBUG("StateMachine: Initialized variable '{}' from expression '{}'", id, expr);
+            LOG_DEBUG("StateMachine: Initialized function variable '{}' from expression '{}'", id, expr);
         } else {
-            LOG_ERROR("StateMachine: Failed to evaluate expression '{}' for variable '{}': {}", expr, id,
-                      result.getErrorMessage());
-            // W3C SCXML 5.3: On evaluation error, raise error.execution event and create unbound variable
-            if (eventRaiser_) {
-                eventRaiser_->raiseEvent("error.execution", "Failed to evaluate data expression for '" + id +
-                                                                "': " + result.getErrorMessage());
+            // Standard evaluation for non-function expressions
+            auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, expr);
+            auto result = future.get();
+
+            if (RSM::JSEngine::isSuccess(result)) {
+                auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+                auto setResult = setVarFuture.get();
+
+                if (!RSM::JSEngine::isSuccess(setResult)) {
+                    LOG_ERROR("StateMachine: Failed to set variable '{}' from expression '{}': {}", id, expr,
+                              setResult.getErrorMessage());
+                    if (eventRaiser_) {
+                        eventRaiser_->raiseEvent("error.execution", "Failed to set variable '" + id +
+                                                                        "' from expression '" + expr +
+                                                                        "': " + setResult.getErrorMessage());
+                    }
+                    return;
+                }
+
+                LOG_DEBUG("StateMachine: Initialized variable '{}' from expression '{}'", id, expr);
+            } else {
+                LOG_ERROR("StateMachine: Failed to evaluate expression '{}' for variable '{}': {}", expr, id,
+                          result.getErrorMessage());
+                // W3C SCXML 5.3: On evaluation error, raise error.execution event and create unbound variable
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Failed to evaluate data expression for '" + id +
+                                                                    "': " + result.getErrorMessage());
+                }
+                // Leave variable unbound (don't create it) so it can be assigned later
+                return;
             }
-            // Leave variable unbound (don't create it) so it can be assigned later
-            return;
         }
     } else if (!src.empty()) {
         // W3C SCXML 5.3: Load data from external source (test 446)

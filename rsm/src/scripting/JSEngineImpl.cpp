@@ -67,6 +67,18 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
             JS_Eval(ctx, wrappedExpression.c_str(), wrappedExpression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
     }
 
+    // W3C SCXML B.2: If it failed and the expression starts with 'function', try wrapping in parentheses for function
+    // expressions Test 453: ECMAScript function literals must be accepted as value expressions
+    if (JS_IsException(result) && expression.find("function") == 0) {
+        SPDLOG_DEBUG("JSEngine::evaluateExpressionInternal - First evaluation failed, trying wrapped expression for "
+                     "function literal");
+        JS_FreeValue(ctx, result);  // Free the exception
+
+        std::string wrappedExpression = "(" + expression + ")";
+        result =
+            JS_Eval(ctx, wrappedExpression.c_str(), wrappedExpression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
+    }
+
     if (JS_IsException(result)) {
         SPDLOG_ERROR("JSEngine::evaluateExpressionInternal - Final JS_Eval failed for expression '{}'", expression);
 
