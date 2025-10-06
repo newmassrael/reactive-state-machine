@@ -8,8 +8,9 @@
 
 namespace RSM {
 
-InternalEventTarget::InternalEventTarget(std::shared_ptr<IEventRaiser> eventRaiser, bool isExternal)
-    : eventRaiser_(eventRaiser), isExternal_(isExternal) {}
+InternalEventTarget::InternalEventTarget(std::shared_ptr<IEventRaiser> eventRaiser, bool isExternal,
+                                         const std::string &sessionId)
+    : eventRaiser_(eventRaiser), isExternal_(isExternal), sessionId_(sessionId) {}
 
 std::future<SendResult> InternalEventTarget::send(const EventDescriptor &event) {
     LOG_DEBUG("InternalEventTarget::send() - ENTRY: event='{}', target='{}'", event.eventName, event.target);
@@ -56,11 +57,13 @@ std::future<SendResult> InternalEventTarget::send(const EventDescriptor &event) 
             // Use priority-aware method with sendid and origintype for W3C SCXML compliance (test 351)
             auto priority =
                 isExternal_ ? EventRaiserImpl::EventPriority::EXTERNAL : EventRaiserImpl::EventPriority::INTERNAL;
-            LOG_DEBUG("InternalEventTarget::send() - Calling raiseEventWithPriority('{}', '{}', {}, sendid='{}', "
+            LOG_DEBUG("InternalEventTarget::send() - Calling raiseEventWithPriority('{}', '{}', {}, "
+                      "originSessionId='{}', sendid='{}', "
                       "origintype='{}')",
-                      eventName, eventData, (isExternal_ ? "EXTERNAL" : "INTERNAL"), event.sendId, originType);
-            queueSuccess = eventRaiserImpl->raiseEventWithPriority(eventName, eventData, priority, "", event.sendId, "",
-                                                                   originType);
+                      eventName, eventData, (isExternal_ ? "EXTERNAL" : "INTERNAL"), sessionId_, event.sendId,
+                      originType);
+            queueSuccess = eventRaiserImpl->raiseEventWithPriority(eventName, eventData, priority, sessionId_,
+                                                                   event.sendId, "", originType);
         } else {
             // Fallback: Use new 5-parameter raiseEvent with origintype
             LOG_DEBUG("InternalEventTarget::send() - Calling eventRaiser_->raiseEvent('{}', '{}', sendid='{}', "

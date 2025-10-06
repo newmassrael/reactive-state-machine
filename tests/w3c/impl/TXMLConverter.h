@@ -7,12 +7,87 @@
 namespace RSM::W3C {
 
 /**
- * @brief Comprehensive TXML to SCXML converter
+ * @brief Comprehensive TXML to SCXML converter for W3C SCXML Test Suite
  *
- * Converts W3C TXML test files to standard SCXML by:
- * - Removing all conf: namespace declarations and references
- * - Converting specific conf: attributes to SCXML equivalents
- * - Removing all other conf: attributes and elements
+ * Transforms Test XML (TXML) format used in W3C SCXML conformance tests into
+ * standard SCXML by converting conf: namespace attributes to their SCXML equivalents.
+ *
+ * ## Purpose
+ * W3C SCXML tests use TXML format with conf: namespace to:
+ * - Abstract test requirements from implementation details
+ * - Provide datamodel-independent test specifications
+ * - Simplify test authoring with high-level assertions
+ *
+ * ## Conversion Process
+ * 1. **Namespace Cleanup**: Remove conf: namespace declarations
+ * 2. **Pattern Matching**: Apply 50+ regex transformations for specific test patterns
+ * 3. **Attribute Conversion**: Transform conf: attributes to standard SCXML
+ * 4. **Element Replacement**: Convert conf: elements (pass/fail/script/etc.)
+ * 5. **Validation**: Ensure output is valid SCXML
+ *
+ * ## Pattern Categories
+ *
+ * ### Core Test Infrastructure (Tests: all)
+ * - **conf:datamodel**: Empty datamodel attribute → removed
+ * - **conf:targetpass**: Target to pass state → target="pass"
+ * - **conf:targetfail**: Target to fail state → target="fail"
+ * - **<conf:pass/>**: Test pass state → <final id="pass"/>
+ * - **<conf:fail/>**: Test fail state → <final id="fail"/>
+ *
+ * ### Variable Operations (Tests: 147, 153, 155)
+ * - **conf:id**: Variable identifier → id="Var{N}"
+ * - **conf:expr**: Variable expression → expr="{value}"
+ * - **conf:location**: Variable location → location="Var{N}"
+ * - **<conf:incrementID id="1"/>**: Increment variable → <assign location="Var1" expr="Var1 + 1"/>
+ * - **<conf:sumVars/>**: Sum variables → dynamic generation based on attributes
+ *
+ * ### Event System (Tests: 176, 318, 331, 332, 336, 342)
+ * - **conf:event**: Event name → event="{name}"
+ * - **conf:eventExpr**: Event expression → eventexpr="{expr}"
+ * - **conf:eventField**: Access event field → expr="_event.{field}"
+ * - **conf:eventName**: Access event name → expr="_event.name"
+ * - **conf:eventType**: Access event type → expr="_event.type"
+ * - **conf:eventSendid**: Access send ID → expr="_event.sendid"
+ * - **<conf:sendToSender name="bar"/>**: Reply to sender → <send event="bar" targetexpr="_event.origin"/>
+ *
+ * ### System Variables (Tests: 319, 321, 329, 500)
+ * - **conf:systemVarIsBound**: Check binding → cond="typeof {var} !== 'undefined'"
+ * - **conf:systemVarExpr**: System var expr → expr="{var}"
+ * - **conf:systemVarLocation**: System var loc → location="{var}"
+ * - **conf:scxmlEventIOLocation**: I/O processor location → expr="_ioprocessors['scxml']['location']"
+ *
+ * ### Communication (Tests: 183, 189, 240, 354, 496)
+ * - **conf:sendIDExpr**: Send ID expression → sendidexpr="{expr}"
+ * - **conf:basicHTTPAccessURITarget**: HTTP target → target="{uri}"
+ * - **conf:unreachableTarget**: Invalid target → targetexpr="undefined"
+ * - **conf:eventDataNamelistValue**: Namelist data → expr="_event.data.Var{N}"
+ * - **conf:eventDataParamValue**: Param data → expr="_event.data.{param}"
+ *
+ * ### Control Flow (Tests: 147, 309, 310, 445, 446)
+ * - **conf:true**: True condition → cond="true"
+ * - **conf:false**: False condition → cond="false"
+ * - **conf:nonBoolean**: Non-boolean cond → cond="return" (syntax error → false)
+ * - **conf:inState**: In() predicate → cond="In('{state}')"
+ * - **conf:item/index/arrayVar**: Foreach attrs → item="{var}" index="{idx}" array="{arr}"
+ *
+ * ### Error Handling (Tests: 296, 298, 300, etc.)
+ * - **conf:invalidLocation**: Invalid location → location="!@#$%"
+ * - **conf:illegalExpr**: Illegal expression → expr="return"
+ * - **conf:illegalTarget**: Illegal target → target="!invalid"
+ * - **conf:invalidSendType**: Invalid send type → type="invalid://type"
+ *
+ * ### Timing (Tests: 175, 185-187, etc.)
+ * - **conf:delay**: Delay value → delay="{duration}"
+ * - **conf:delayFromVar**: Delay from variable → delayexpr="Var{N}"
+ *
+ * ## Implementation Notes
+ * - Uses pre-compiled std::regex patterns with std::regex::optimize for performance
+ * - Raw string literals with unique delimiters prevent escaping conflicts
+ * - Patterns applied in specific order to handle dependencies
+ * - Validates output SCXML structure after transformation
+ *
+ * @see W3C SCXML 1.0 Specification: https://www.w3.org/TR/scxml/
+ * @see SCXML Test Suite: https://www.w3.org/Voice/2013/scxml-irp/
  */
 class TXMLConverter : public ITestConverter {
 private:
@@ -70,6 +145,8 @@ private:
     static const std::regex CONF_ILLEGAL_EXPR_ATTR;
     static const std::regex CONF_ILLEGAL_TARGET_ATTR;
     static const std::regex CONF_INVALID_SEND_TYPE_ATTR;
+    // W3C SCXML C.1: Unreachable target pattern (test 496)
+    static const std::regex CONF_UNREACHABLETARGET_ATTR;
 
     // Value and data processing patterns
     static const std::regex CONF_SOME_INLINE_VAL_ATTR;
@@ -148,6 +225,9 @@ private:
 
     // W3C SCXML 5.10: Send to sender pattern (test 336)
     static const std::regex CONF_SENDTOSENDER_ELEMENT;
+
+    // W3C SCXML C.1: SCXML Event I/O Processor location pattern (test 500)
+    static const std::regex CONF_SCXMLEVENTIOLOCATION_ATTR;
 
     // General patterns to remove all remaining conf: references
     static const std::regex CONF_ALL_ATTRIBUTES;

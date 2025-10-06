@@ -224,8 +224,9 @@ TEST_F(ActionExecutorImplTest, EventRaisingWithoutCallback) {
 }
 
 TEST_F(ActionExecutorImplTest, CurrentEventHandling) {
-    // Set current event
-    executor->setCurrentEvent("user.action", "{\"action\": \"click\"}");
+    // Set current event using EventMetadata
+    EventMetadata metadata("user.action", "{\"action\": \"click\"}");
+    executor->setCurrentEvent(metadata);
 
     // _event should be available in JavaScript
     auto result = jsEngine->evaluateExpression(sessionId, "_event.name").get();

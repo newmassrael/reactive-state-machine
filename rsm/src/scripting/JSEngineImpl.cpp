@@ -8,6 +8,35 @@
 
 namespace RSM {
 
+// === URI Encoding Helper ===
+
+/**
+ * @brief Encode string for use in URI following RFC 3986
+ * @param str String to encode
+ * @return RFC 3986 compliant percent-encoded string
+ *
+ * Encodes all characters except unreserved characters (A-Z, a-z, 0-9, -, _, ., ~)
+ * Used to prevent URI injection attacks when constructing _ioprocessors locations
+ */
+static std::string encodeURIComponent(const std::string &str) {
+    std::string result;
+    result.reserve(str.length() * 3);  // Worst case: all chars encoded
+
+    for (unsigned char c : str) {
+        // RFC 3986 unreserved characters: A-Z a-z 0-9 - _ . ~
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            result += c;
+        } else {
+            // Percent-encode all other characters
+            char buf[4];
+            std::snprintf(buf, sizeof(buf), "%%%02X", c);
+            result += buf;
+        }
+    }
+
+    return result;
+}
+
 // === Internal JavaScript Execution Methods ===
 
 JSResult JSEngine::executeScriptInternal(const std::string &sessionId, const std::string &script) {
@@ -458,15 +487,19 @@ JSResult JSEngine::setupSystemVariablesInternal(const std::string &sessionId, co
     // W3C SCXML 5.10: System variables must be read-only and raise error.execution on modification attempts
     // Use JavaScript code to define read-only properties with error handlers (tests 322, 326, 346)
 
-    // Prepare _ioprocessors array as JSON string for JavaScript
-    std::string ioProcessorsJson = "[";
+    // W3C SCXML C.1: Prepare _ioprocessors as object with location fields (test 500)
+    // _ioprocessors['scxml']['location'] must exist for SCXML Event I/O Processor
+    std::string ioProcessorsJson = "{";
     for (size_t i = 0; i < ioProcessors.size(); ++i) {
         if (i > 0) {
             ioProcessorsJson += ",";
         }
-        ioProcessorsJson += "\"" + ioProcessors[i] + "\"";
+        // Generate unique location address for each I/O processor
+        // Use RFC 3986 compliant URI encoding to prevent injection attacks
+        std::string location = "rsm://" + ioProcessors[i] + "/" + encodeURIComponent(sessionId);
+        ioProcessorsJson += "'" + ioProcessors[i] + "': { 'location': '" + location + "' }";
     }
-    ioProcessorsJson += "]";
+    ioProcessorsJson += "}";
 
     std::string setupCode = R"(
         (function() {

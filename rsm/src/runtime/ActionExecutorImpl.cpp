@@ -341,46 +341,25 @@ void ActionExecutorImpl::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaise
     }
 }
 
-void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData) {
-    // Delegate to 4-parameter version with empty sendId and invokeId
-    setCurrentEvent(eventName, eventData, "", "");
-}
-
-void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
-                                         const std::string &sendId) {
-    // Delegate to 4-parameter version with empty invokeId
-    setCurrentEvent(eventName, eventData, sendId, "");
-}
-
-void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
-                                         const std::string &sendId, const std::string &invokeId) {
-    // Delegate to 5-parameter version with empty originType
-    setCurrentEvent(eventName, eventData, sendId, invokeId, "");
-}
-
-void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
-                                         const std::string &sendId, const std::string &invokeId,
-                                         const std::string &originType) {
-    // Delegate to 6-parameter version with auto-detected event type
-    std::string eventType;
-    if (eventName.find("error.") == 0 || eventName.find("done.") == 0) {
-        eventType = "platform";
-    } else {
-        eventType = "internal";  // Default to internal, will be overridden if needed
-    }
-    setCurrentEvent(eventName, eventData, sendId, invokeId, originType, eventType);
-}
-
-void ActionExecutorImpl::setCurrentEvent(const std::string &eventName, const std::string &eventData,
-                                         const std::string &sendId, const std::string &invokeId,
-                                         const std::string &originType, const std::string &eventType) {
+void ActionExecutorImpl::setCurrentEvent(const EventMetadata &metadata) {
     // W3C SCXML 5.10: Set all event metadata fields
-    currentEventName_ = eventName;
-    currentEventData_ = eventData;
-    currentSendId_ = sendId;          // Set sendid for error events (test 332)
-    currentInvokeId_ = invokeId;      // Set invokeid for events from invoked children (test 338)
-    currentOriginType_ = originType;  // Set origintype for event processor identification (test 253, 331, 352, 372)
-    currentEventType_ = eventType;    // Set event type ("internal", "platform", "external") for test 331
+    currentEventName_ = metadata.name;
+    currentEventData_ = metadata.data;
+    currentSendId_ = metadata.sendId;
+    currentInvokeId_ = metadata.invokeId;
+    currentOriginType_ = metadata.originType;
+    currentOriginSessionId_ = metadata.originSessionId;
+
+    // Auto-detect event type if not provided
+    if (metadata.type.empty()) {
+        if (metadata.name.find("error.") == 0 || metadata.name.find("done.") == 0) {
+            currentEventType_ = "platform";
+        } else {
+            currentEventType_ = "internal";
+        }
+    } else {
+        currentEventType_ = metadata.type;
+    }
 
     // Update _event variable in JavaScript context
     ensureCurrentEventSet();
@@ -393,6 +372,7 @@ void ActionExecutorImpl::clearCurrentEvent() {
     currentInvokeId_.clear();
     currentOriginType_.clear();
     currentEventType_.clear();
+    currentOriginSessionId_.clear();
 
     // Clear _event variable in JavaScript context by setting null event
     if (isSessionReady()) {
@@ -526,6 +506,11 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
         // W3C SCXML 5.10: Set origintype for event processor identification (test 253, 331, 352, 372)
         if (!currentOriginType_.empty()) {
             event->setOriginType(currentOriginType_);
+        }
+
+        // W3C SCXML 5.10: Set origin session ID for _event.origin (test 336)
+        if (!currentOriginSessionId_.empty()) {
+            event->setOrigin(currentOriginSessionId_);
         }
 
         auto result = JSEngine::instance().setCurrentEvent(sessionId_, event).get();
@@ -768,6 +753,19 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
         std::string target = action.getTarget();
         if (target.empty() && !action.getTargetExpr().empty()) {
             target = evaluateExpression(action.getTargetExpr());
+        }
+
+        // W3C SCXML C.1 (test 496): If target evaluation results in empty or undefined, raise error.communication
+        // This handles unreachable or inaccessible target sessions
+        // Note: Only applies when targetexpr is explicitly set, not for normal internal sends
+        if (!action.getTargetExpr().empty() && (target.empty() || target == "undefined")) {
+            LOG_ERROR("ActionExecutorImpl: Send target evaluation resulted in invalid target: '{}'", target);
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.communication",
+                                         "Target session does not exist or is inaccessible: " + action.getTargetExpr(),
+                                         sendId, false /* overload discriminator for sendId variant */);
+            }
+            return false;
         }
 
         // W3C SCXML 6.2: Validate send type - generate error.execution for unsupported types

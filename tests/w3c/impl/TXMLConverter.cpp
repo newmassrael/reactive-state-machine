@@ -90,6 +90,11 @@ const std::regex TXMLConverter::CONF_ILLEGAL_TARGET_ATTR{R"xyz(conf:illegalTarge
 const std::regex TXMLConverter::CONF_INVALID_SEND_TYPE_ATTR{R"abc(conf:invalidSendType="([^"]*)")abc",
                                                             std::regex::optimize};
 
+// W3C SCXML C.1: Unreachable target pattern (test 496)
+// conf:unreachableTarget="" should generate targetexpr that evaluates to invalid target
+const std::regex TXMLConverter::CONF_UNREACHABLETARGET_ATTR{R"urt(conf:unreachableTarget="([^"]*)")urt",
+                                                            std::regex::optimize};
+
 // Value and data processing patterns
 const std::regex TXMLConverter::CONF_SOME_INLINE_VAL_ATTR{R"pqr(conf:someInlineVal="([^"]*)")pqr",
                                                           std::regex::optimize};
@@ -205,6 +210,11 @@ const std::regex TXMLConverter::CONF_IDQUOTEVAL_ATTR{R"iqv(conf:idQuoteVal="([0-
 const std::regex TXMLConverter::CONF_SENDTOSENDER_ELEMENT{R"sts(<conf:sendToSender\s+name="([^"]+)"\s*/>)sts",
                                                           std::regex::optimize};
 
+// W3C SCXML C.1: SCXML Event I/O Processor location pattern (test 500)
+// conf:scxmlEventIOLocation="" should convert to expr="_ioprocessors['scxml']['location']"
+const std::regex TXMLConverter::CONF_SCXMLEVENTIOLOCATION_ATTR{R"sel(conf:scxmlEventIOLocation="([^"]*)")sel",
+                                                               std::regex::optimize};
+
 // General patterns to remove all conf: references
 const std::regex TXMLConverter::CONF_ALL_ATTRIBUTES{R"abc(\s+conf:[^=\s>]+\s*=\s*"[^"]*")abc", std::regex::optimize};
 
@@ -275,6 +285,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, id_numeric_pattern, R"(id="Var$1")");
     // Convert remaining conf:id attributes to standard id
     result = std::regex_replace(result, CONF_ID_ATTR, R"(id="$1")");
+
+    // W3C SCXML C.1: SCXML Event I/O Processor location (test 500)
+    // conf:scxmlEventIOLocation="" -> expr="_ioprocessors['scxml']['location']"
+    result = std::regex_replace(result, CONF_SCXMLEVENTIOLOCATION_ATTR, R"(expr="_ioprocessors['scxml']['location']")");
 
     // Handle literal numeric expr attributes: conf:expr="0" -> expr="0", conf:expr="1" -> expr="1", etc.
     // These are literal values, not variable references
@@ -404,6 +418,14 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, invalid_send_type_pattern, R"($1 type="unsupported_type"$2)");
     // Then remove the conf:invalidSendType attribute itself
     result = std::regex_replace(result, CONF_INVALID_SEND_TYPE_ATTR, "");
+
+    // W3C SCXML C.1: Convert conf:unreachableTarget to targetexpr with undefined value (test 496)
+    // This causes error.communication event when target cannot be evaluated
+    // Pattern: <send conf:unreachableTarget="" event="..."/> -> <send targetexpr="undefined" event="..."/>
+    std::regex unreachable_target_pattern(R"((<send[^>]*) +conf:unreachableTarget="[^"]*"([^>]*>))");
+    result = std::regex_replace(result, unreachable_target_pattern, R"($1 targetexpr="undefined"$2)");
+    // Then remove the conf:unreachableTarget attribute itself
+    result = std::regex_replace(result, CONF_UNREACHABLETARGET_ATTR, "");
 
     // Convert value and data processing attributes
     // conf:eventdataSomeVal should be converted to platform-specific event data

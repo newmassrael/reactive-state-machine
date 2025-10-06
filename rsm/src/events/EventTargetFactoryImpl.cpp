@@ -201,7 +201,9 @@ std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createInternalTarget(const
             }
         }
 
-        auto target = std::make_shared<InternalEventTarget>(targetEventRaiser, false);  // Internal queue priority
+        // W3C SCXML 5.10: Pass sessionId for _event.origin (test 336)
+        auto target =
+            std::make_shared<InternalEventTarget>(targetEventRaiser, false, sessionId);  // Internal queue priority
 
         LOG_DEBUG("EventTargetFactoryImpl: Created internal target for URI: {} with session: {}", targetUri, sessionId);
         return target;
@@ -231,7 +233,9 @@ std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createExternalTarget(const
         }
 
         // W3C SCXML compliance: External target uses EXTERNAL priority for proper queue ordering
-        auto target = std::make_shared<InternalEventTarget>(targetEventRaiser, true);  // External queue priority
+        // W3C SCXML 5.10: Pass sessionId for _event.origin (test 336)
+        auto target =
+            std::make_shared<InternalEventTarget>(targetEventRaiser, true, sessionId);  // External queue priority
 
         LOG_DEBUG("EventTargetFactoryImpl: Created external target for W3C SCXML compliance with session: {}",
                   sessionId);

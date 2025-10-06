@@ -424,14 +424,16 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     if (actionExecutor_) {
         auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
         if (actionExecutorImpl) {
-            // W3C SCXML 5.10: Pass sendId, invokeId, originType, and eventType to ActionExecutor
-            if (!sendId.empty() || !invokeId.empty() || !originType.empty() || !eventType.empty()) {
-                actionExecutorImpl->setCurrentEvent(eventName, eventData, sendId, invokeId, originType, eventType);
+            // W3C SCXML 5.10: Set current event with full metadata using EventMetadata structure
+            EventMetadata metadata(eventName, eventData, eventType, sendId, invokeId, originType, originSessionId);
+            actionExecutorImpl->setCurrentEvent(metadata);
+
+            if (!sendId.empty() || !invokeId.empty() || !originType.empty() || !eventType.empty() ||
+                !originSessionId.empty()) {
                 LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}', sendid: '{}', "
-                          "invokeid: '{}', origintype: '{}', type: '{}'",
-                          eventName, eventData, sendId, invokeId, originType, eventType);
+                          "invokeid: '{}', origintype: '{}', type: '{}', originSessionId: '{}'",
+                          eventName, eventData, sendId, invokeId, originType, eventType, originSessionId);
             } else {
-                actionExecutorImpl->setCurrentEvent(eventName, eventData);
                 LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,
                           eventData);
             }
