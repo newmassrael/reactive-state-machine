@@ -241,8 +241,13 @@ bool ActionExecutorImpl::tryJavaScriptEvaluation(const std::string &expression, 
 
         LOG_DEBUG("Attempting JavaScript evaluation: '{}'", expression);
 
-        // Transform numeric variable names in expression before evaluation
-        std::string jsExpression = transformVariableName(expression);
+        // IMPORTANT: Do NOT transform variable names here
+        // TXMLConverter already transforms numeric IDs to varN format:
+        //   - conf:location="1" -> location="var1"
+        //   - conf:namelist="1" -> namelist="var1"
+        //   - conf:expr="1" -> expr="1" (literal number, NOT variable reference)
+        // Transforming again would incorrectly convert literal "1" to "var1"
+        std::string jsExpression = expression;
 
         // Perform JavaScript evaluation using the engine
         auto jsResult = JSEngine::instance().evaluateExpression(sessionId_, jsExpression).get();
@@ -1169,26 +1174,27 @@ bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::
         // SCXML W3C Compliance: Preserve JavaScript type information for foreach variables
         // Parse the value as JSON to maintain type (null, undefined, number, string, object)
 
-        // SCXML W3C Compliance: foreach 실행 시 새로운 변수를 선언하고 바인딩
+        // SCXML W3C Compliance: Declare and bind new variable during foreach execution
         // W3C SCXML 4.6: "the foreach element declares a new variable if 'item' doesn't already exist"
 
-        // 먼저 변수가 존재하는지 확인
-        std::string checkExpression = "typeof " + jsVarName;
+        // Check if variable already exists
+        // W3C SCXML 5.3: Variables with undefined values should be considered as "existing" (test 445, 150)
+        // Therefore, use `'var' in this` check instead of `typeof var !== 'undefined'`
+        std::string checkExpression = "'" + jsVarName + "' in this";
         auto checkResult = JSEngine::instance().evaluateExpression(sessionId_, checkExpression).get();
 
         bool variableExists = false;
-        if (checkResult.isSuccess()) {
-            std::string typeResult = checkResult.getValueAsString();
-            variableExists = (typeResult != "undefined");
+        if (checkResult.isSuccess() && std::holds_alternative<bool>(checkResult.getInternalValue())) {
+            variableExists = checkResult.getValue<bool>();
         }
 
         std::string script;
         if (!variableExists) {
-            // 새로운 변수 선언 및 할당 - W3C 표준 준수
+            // Declare and assign new variable - W3C compliance
             script = "var " + jsVarName + " = " + value + ";";
             LOG_INFO("W3C FOREACH: Creating NEW variable '{}' (JS: '{}') = {}", varName, jsVarName, value);
         } else {
-            // 기존 변수에 값 할당
+            // Assign value to existing variable
             script = jsVarName + " = " + value + ";";
             LOG_INFO("W3C FOREACH: Updating EXISTING variable '{}' (JS: '{}') = {}", varName, jsVarName, value);
         }
@@ -1196,7 +1202,7 @@ bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::
         auto setResult = JSEngine::instance().executeScript(sessionId_, script).get();
 
         if (!setResult.isSuccess()) {
-            // Fallback: 문자열 리터럴로 처리
+            // Fallback: Treat as string literal
             std::string stringLiteral = "\"" + value + "\"";
             std::string fallbackScript;
             if (!variableExists) {

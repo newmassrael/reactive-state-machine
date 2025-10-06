@@ -601,10 +601,12 @@ TEST_F(ActionExecutorImplTest, W3C_ForeachAction_NumericVariableNames) {
     EXPECT_TRUE(executor->hasVariable("2")) << "Index variable '2' should exist after foreach";
 
     // Verify final iteration values (last iteration: item=3, index=2)
-    std::string itemValue = executor->evaluateExpression("1");
+    // W3C SCXML: TXMLConverter transforms conf:item="1" → item="var1"
+    // So we must evaluate "var1", not "1" (which would be the literal number 1)
+    std::string itemValue = executor->evaluateExpression("var1");
     EXPECT_EQ(itemValue, "3") << "Item variable should contain last array element";
 
-    std::string indexValue = executor->evaluateExpression("2");
+    std::string indexValue = executor->evaluateExpression("var2");
     EXPECT_EQ(indexValue, "2") << "Index variable should contain last index (0-based)";
 }
 

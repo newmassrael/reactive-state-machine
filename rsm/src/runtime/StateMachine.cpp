@@ -1115,6 +1115,7 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
 
     std::string id = item->getId();
     std::string expr = item->getExpr();
+    std::string src = item->getSrc();
     std::string content = item->getContent();
 
     // W3C SCXML 6.4: Check if variable was pre-initialized (e.g., by invoke namelist/param)
@@ -1173,6 +1174,70 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
             // Leave variable unbound (don't create it) so it can be assigned later
             return;
         }
+    } else if (!src.empty()) {
+        // W3C SCXML 5.3: Load data from external source (test 446)
+        std::string filePath = src;
+
+        // Remove "file:" prefix if present
+        if (filePath.find("file:") == 0) {
+            filePath = filePath.substr(5);
+        }
+
+        // Resolve relative path based on SCXML file location
+        if (filePath[0] != '/') {  // Relative path
+            std::string scxmlFilePath = RSM::JSEngine::instance().getSessionFilePath(sessionId_);
+            if (!scxmlFilePath.empty()) {
+                // Extract directory from SCXML file path
+                size_t lastSlash = scxmlFilePath.find_last_of("/");
+                if (lastSlash != std::string::npos) {
+                    std::string directory = scxmlFilePath.substr(0, lastSlash + 1);
+                    filePath = directory + filePath;
+                }
+            }
+        }
+
+        // Read file content
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            LOG_ERROR("StateMachine: Failed to open file '{}' for variable '{}'", filePath, id);
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution",
+                                         "Failed to open file '" + filePath + "' for variable '" + id + "'");
+            }
+            return;
+        }
+
+        std::string fileContent((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        file.close();
+
+        // Evaluate file content as JavaScript expression
+        auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, fileContent);
+        auto result = future.get();
+
+        if (RSM::JSEngine::isSuccess(result)) {
+            auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
+            auto setResult = setVarFuture.get();
+
+            if (!RSM::JSEngine::isSuccess(setResult)) {
+                LOG_ERROR("StateMachine: Failed to set variable '{}' from file '{}': {}", id, filePath,
+                          setResult.getErrorMessage());
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Failed to set variable '" + id + "' from file '" +
+                                                                    filePath + "': " + setResult.getErrorMessage());
+                }
+                return;
+            }
+
+            LOG_DEBUG("StateMachine: Initialized variable '{}' from file '{}'", id, filePath);
+        } else {
+            LOG_ERROR("StateMachine: Failed to evaluate content from file '{}' for variable '{}': {}", filePath, id,
+                      result.getErrorMessage());
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution", "Failed to evaluate file content for '" + id +
+                                                                "': " + result.getErrorMessage());
+            }
+            return;
+        }
     } else if (!content.empty()) {
         auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, content);
         auto result = future.get();
@@ -1211,9 +1276,20 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
             LOG_DEBUG("StateMachine: Set variable '{}' as string literal from content", id);
         }
     } else {
-        // No expression or content: skip initialization (old behavior for backward compatibility)
-        // The variable will be created on first assignment via <assign> action
-        LOG_DEBUG("StateMachine: No expression or content for variable '{}', skipping initialization", id);
+        // W3C SCXML 5.3: No expression or content - create variable with undefined value (test 445)
+        auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{});
+        auto setResult = setVarFuture.get();
+
+        if (!RSM::JSEngine::isSuccess(setResult)) {
+            LOG_ERROR("StateMachine: Failed to create undefined variable '{}': {}", id, setResult.getErrorMessage());
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution",
+                                         "Failed to create variable '" + id + "': " + setResult.getErrorMessage());
+            }
+            return;
+        }
+
+        LOG_DEBUG("StateMachine: Created variable '{}' with undefined value", id);
     }
 }
 
