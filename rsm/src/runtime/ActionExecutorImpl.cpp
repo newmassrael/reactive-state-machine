@@ -735,6 +735,11 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             }
         }
 
+        // W3C SCXML 5.10.2 (test 577): Check if this is HTTP event processor (needed for validation)
+        std::string sendType = action.getType();
+        bool isHttpEventProcessor = (sendType.find("BasicHTTPEventProcessor") != std::string::npos ||
+                                     sendType == "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor");
+
         // Determine event name
         std::string eventName;
         if (!action.getEvent().empty()) {
@@ -754,9 +759,6 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
         } else {
             // W3C SCXML C.2: For HTTP event processors, event name is optional when content is provided
             // The content will be sent as the HTTP message body
-            std::string sendType = action.getType();
-            bool isHttpEventProcessor = (sendType.find("BasicHTTPEventProcessor") != std::string::npos ||
-                                         sendType == "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor");
 
             if (!isHttpEventProcessor) {
                 // For non-HTTP processors, event name is required
@@ -791,8 +793,19 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             return false;
         }
 
+        // W3C SCXML 5.10.2 (test 577): BasicHTTPEventProcessor requires target attribute
+        // If no target is specified for HTTP event processor, generate error.communication
+        if (isHttpEventProcessor && target.empty() && action.getTargetExpr().empty()) {
+            LOG_ERROR("ActionExecutorImpl: BasicHTTPEventProcessor requires target attribute");
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.communication", "BasicHTTPEventProcessor requires target attribute",
+                                         sendId, false /* overload discriminator for sendId variant */);
+            }
+            return false;
+        }
+
         // W3C SCXML 6.2: Validate send type - generate error.execution for unsupported types
-        std::string sendType = action.getType();
+        // Note: sendType already declared earlier for HTTP event processor check
         if (!sendType.empty()) {
             // Use TypeRegistry to validate event processor types
             TypeRegistry &typeRegistry = TypeRegistry::getInstance();
