@@ -896,9 +896,19 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
                     return result;
                 }
 
-                // Case 2: Internal transition with target (test 505)
+                // Case 2: Internal transition with target (test 505, 533)
                 // W3C SCXML 3.13: "if the transition has 'type' "internal", its source state is a compound state
                 // and all its target states are proper descendents of its source state"
+
+                // W3C SCXML 3.13 (test 533): Check if source state is compound
+                // If source is not compound (e.g., parallel, atomic), treat as external
+                auto sourceNode = model_->findStateById(fromState);
+                if (sourceNode && sourceNode->getType() != Type::COMPOUND) {
+                    LOG_WARN("StateMachine: Internal transition source '{}' is not a compound state (type: {}) - "
+                             "treating as external per W3C SCXML 3.13",
+                             fromState, static_cast<int>(sourceNode->getType()));
+                    isInternal = false;
+                }
 
                 // VALIDATION: Check all targets before making any state changes
                 // This ensures atomic transition semantics - either all succeed or none
