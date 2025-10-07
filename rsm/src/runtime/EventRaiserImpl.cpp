@@ -76,6 +76,16 @@ bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string
     return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, "", "", "");
 }
 
+bool EventRaiserImpl::raiseInternalEvent(const std::string &eventName, const std::string &eventData) {
+    // W3C SCXML 3.13: Internal events have higher priority than external events
+    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, "", "", "");
+}
+
+bool EventRaiserImpl::raiseExternalEvent(const std::string &eventName, const std::string &eventData) {
+    // W3C SCXML 5.10: External events have lower priority than internal events (test 510)
+    return raiseEventWithPriority(eventName, eventData, EventPriority::EXTERNAL, "", "", "");
+}
+
 bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string &eventData,
                                  const std::string &originSessionId) {
     // W3C SCXML 6.4: Raise event with origin tracking for finalize support

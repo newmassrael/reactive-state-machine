@@ -44,6 +44,16 @@ bool MockEventRaiser::raiseEvent(const std::string &eventName, const std::string
     return raiseEvent(eventName, eventData);
 }
 
+bool MockEventRaiser::raiseInternalEvent(const std::string &eventName, const std::string &eventData) {
+    // W3C SCXML 3.13: Delegate to 2-parameter version (mock doesn't track priority)
+    return raiseEvent(eventName, eventData);
+}
+
+bool MockEventRaiser::raiseExternalEvent(const std::string &eventName, const std::string &eventData) {
+    // W3C SCXML 5.10: Delegate to 2-parameter version (mock doesn't track priority)
+    return raiseEvent(eventName, eventData);
+}
+
 bool MockEventRaiser::isReady() const {
     return ready_;
 }

@@ -1044,7 +1044,7 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
                         // Check if this state has history children
                         bool hasHistoryChildren = false;
                         for (const auto &child : stateNode->getChildren()) {
-                            if (child->getType() == Type::HISTORY || child->getType() == Type::HISTORY_DEEP) {
+                            if (child->getType() == Type::HISTORY) {
                                 hasHistoryChildren = true;
                                 break;
                             }

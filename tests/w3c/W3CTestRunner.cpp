@@ -750,9 +750,9 @@ TestRunSummary W3CTestRunner::runAllTests() {
 
             TestReport report;
 
-            // Special handling for HTTP tests that require bidirectional communication
-            if (testId == 201) {
-                LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+            // Check if test requires HTTP server using cached helper method
+            if (requiresHttpServer(testDir)) {
+                LOG_INFO("W3C Test {}: Starting HTTP server for BasicHTTPEventProcessor test", testId);
 
                 // Create and start the generic W3C HTTP test server
                 W3CHttpTestServer httpServer(8080, "/test");
@@ -896,6 +896,54 @@ TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
     }
 }
 
+bool W3CTestRunner::requiresHttpServer(const std::string &testDirectory) const {
+    // Check cache first for performance (avoid redundant file I/O)
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex_);
+        auto it = httpRequirementCache_.find(testDirectory);
+        if (it != httpRequirementCache_.end()) {
+            return it->second;
+        }
+    }
+
+    // Cache miss - check metadata file
+    bool requiresHttp = false;
+    try {
+        std::string metadataPath = testSuite_->getMetadataPath(testDirectory);
+        if (!std::filesystem::exists(metadataPath)) {
+            LOG_DEBUG("W3CTestRunner: Metadata file not found: {}", metadataPath);
+        } else {
+            std::ifstream metadataFile(metadataPath);
+            if (!metadataFile.is_open()) {
+                LOG_WARN("W3CTestRunner: Failed to open metadata file: {}", metadataPath);
+            } else {
+                std::string line;
+                while (std::getline(metadataFile, line)) {
+                    // W3C SCXML C.2 BasicHTTPEventProcessor tests require HTTP server
+                    // External events must use EXTERNAL priority queue (test 510 compliance)
+                    if (line.find("specnum:") == 0 &&
+                        (line.find("C.2") != std::string::npos || line.find("6.2") != std::string::npos)) {
+                        LOG_DEBUG("W3CTestRunner: Test {} requires HTTP server (spec C.2 or 6.2)", testDirectory);
+                        requiresHttp = true;
+                        break;
+                    }
+                }
+            }
+        }
+    } catch (const std::exception &e) {
+        LOG_WARN("W3CTestRunner: Error checking HTTP requirement for {}: {}", testDirectory, e.what());
+        LOG_WARN("W3CTestRunner: Assuming no HTTP server required, test may fail if C.2 spec test");
+    }
+
+    // Cache the result
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex_);
+        httpRequirementCache_[testDirectory] = requiresHttp;
+    }
+
+    return requiresHttp;
+}
+
 TestRunSummary W3CTestRunner::calculateSummary(const std::vector<TestReport> &reports) {
     TestRunSummary summary;
     summary.totalTests = reports.size();
@@ -953,9 +1001,9 @@ TestReport W3CTestRunner::runSpecificTest(int testId) {
         }
 
         if (currentTestId == testId) {
-            // Special handling for HTTP tests that require bidirectional communication
-            if (testId == 201) {
-                LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+            // Check if test requires HTTP server using cached helper method
+            if (requiresHttpServer(testDir)) {
+                LOG_INFO("W3C Test {}: Starting HTTP server for BasicHTTPEventProcessor test", testId);
 
                 // Create and start the generic W3C HTTP test server
                 W3CHttpTestServer httpServer(8080, "/test");
@@ -1035,35 +1083,30 @@ TestReport W3CTestRunner::runTest(const std::string &testId) {
         if (fileTestId == testId) {
             LOG_INFO("W3CTestRunner: Found exact match for test ID '{}': {}", testId, testDir);
 
-            // Special handling for HTTP tests
-            try {
-                int numericId = std::stoi(testId);
-                if (numericId == 201) {
-                    LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+            // Check if test requires HTTP server using cached helper method
+            if (requiresHttpServer(testDir)) {
+                LOG_INFO("W3C Test {}: Starting HTTP server for BasicHTTPEventProcessor test", testId);
 
-                    W3CHttpTestServer httpServer(8080, "/test");
+                W3CHttpTestServer httpServer(8080, "/test");
 
-                    if (!httpServer.start()) {
-                        LOG_ERROR("W3C Test {}: Failed to start HTTP server on port 8080", testId);
-                        throw std::runtime_error("Failed to start HTTP server for test " + testId);
-                    }
-
-                    LOG_INFO("W3C Test {}: HTTP server started successfully on localhost:8080/test", testId);
-
-                    try {
-                        TestReport result = runSingleTestWithHttpServer(testDir, &httpServer);
-                        httpServer.stop();
-                        LOG_INFO("W3C Test {}: HTTP server stopped successfully", testId);
-                        reporter_->reportTestResult(result);
-                        return result;
-                    } catch (const std::exception &e) {
-                        httpServer.stop();
-                        LOG_ERROR("W3C Test {}: Test execution failed, HTTP server stopped: {}", testId, e.what());
-                        throw;
-                    }
+                if (!httpServer.start()) {
+                    LOG_ERROR("W3C Test {}: Failed to start HTTP server on port 8080", testId);
+                    throw std::runtime_error("Failed to start HTTP server for test " + testId);
                 }
-            } catch (const std::invalid_argument &) {
-                // testId is not purely numeric (e.g., "403a"), skip HTTP special handling
+
+                LOG_INFO("W3C Test {}: HTTP server started successfully on localhost:8080/test", testId);
+
+                try {
+                    TestReport result = runSingleTestWithHttpServer(testDir, &httpServer);
+                    httpServer.stop();
+                    LOG_INFO("W3C Test {}: HTTP server stopped successfully", testId);
+                    reporter_->reportTestResult(result);
+                    return result;
+                } catch (const std::exception &e) {
+                    httpServer.stop();
+                    LOG_ERROR("W3C Test {}: Test execution failed, HTTP server stopped: {}", testId, e.what());
+                    throw;
+                }
             }
 
             // Normal test execution
@@ -1106,9 +1149,9 @@ std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
 
         if (currentTestId == testId) {
             try {
-                // Special handling for HTTP tests that require bidirectional communication
-                if (testId == 201) {
-                    LOG_INFO("W3C Test {}: Starting HTTP server for bidirectional communication", testId);
+                // Check if test requires HTTP server using cached helper method
+                if (requiresHttpServer(testDir)) {
+                    LOG_INFO("W3C Test {}: Starting HTTP server for BasicHTTPEventProcessor test", testId);
 
                     W3CHttpTestServer httpServer(8080, "/test");
 
@@ -1229,10 +1272,13 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
             LOG_DEBUG("StateMachineTestExecutor (HTTP): Starting test execution for test {}", report.metadata.id);
 
             // Set up HTTP server eventCallback to use the EventRaiser
+            // W3C SCXML compliance: HTTP events must use EXTERNAL priority (test 510)
             httpServer->setEventCallback(
                 [eventRaiser = resources->eventRaiser](const std::string &eventName, const std::string &eventData) {
-                    LOG_INFO("W3CHttpTestServer: Receiving echoed event '{}' - raising to SCXML", eventName);
-                    eventRaiser->raiseEvent(eventName, eventData);
+                    LOG_INFO("W3CHttpTestServer: Receiving HTTP event '{}' - raising to SCXML with EXTERNAL priority",
+                             eventName);
+                    // W3C SCXML 5.10: HTTP events must use external queue (test 510 compliance)
+                    eventRaiser->raiseExternalEvent(eventName, eventData);
                 });
 
             // Build StateMachine with resource injection, then wrap in RAII context

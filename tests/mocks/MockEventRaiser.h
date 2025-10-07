@@ -37,6 +37,8 @@ public:
                     const std::string &invokeId) override;
     bool raiseEvent(const std::string &eventName, const std::string &eventData, const std::string &originSessionId,
                     const std::string &invokeId, const std::string &originType) override;
+    bool raiseInternalEvent(const std::string &eventName, const std::string &eventData) override;
+    bool raiseExternalEvent(const std::string &eventName, const std::string &eventData) override;
     bool isReady() const override;
     void setImmediateMode(bool immediate) override;
     void processQueuedEvents() override;

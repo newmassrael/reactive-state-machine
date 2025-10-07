@@ -119,6 +119,31 @@ public:
      * @return true if queue has events, false if empty
      */
     virtual bool hasQueuedEvents() const = 0;
+
+    /**
+     * @brief Raise an internal event (W3C SCXML 3.13: higher priority than external events)
+     *
+     * Internal events are raised by <raise> elements and have higher priority than
+     * external events. This ensures proper event queue ordering as specified by W3C SCXML.
+     *
+     * @param eventName Name of the event to raise
+     * @param eventData Data associated with the event
+     * @return true if the event was successfully queued, false if the raiser is not ready
+     */
+    virtual bool raiseInternalEvent(const std::string &eventName, const std::string &eventData) = 0;
+
+    /**
+     * @brief Raise an external event (W3C SCXML 5.10: lower priority than internal events)
+     *
+     * External events come from external I/O processors (HTTP, WebSocket, etc.) and have
+     * lower priority than internal events. This ensures proper event queue ordering for
+     * W3C SCXML compliance (test 510).
+     *
+     * @param eventName Name of the event to raise
+     * @param eventData Data associated with the event
+     * @return true if the event was successfully queued, false if the raiser is not ready
+     */
+    virtual bool raiseExternalEvent(const std::string &eventName, const std::string &eventData) = 0;
 };
 
 }  // namespace RSM

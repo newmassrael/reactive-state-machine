@@ -101,6 +101,10 @@ private:
     std::unique_ptr<ITestSuite> testSuite_;
     std::unique_ptr<ITestReporter> reporter_;
 
+    // Performance optimization: cache HTTP requirement checks to avoid redundant file I/O
+    mutable std::unordered_map<std::string, bool> httpRequirementCache_;
+    mutable std::mutex cacheMutex_;
+
     /**
      * @brief Run a single test
      */
@@ -115,6 +119,17 @@ private:
      * @brief Calculate test run statistics
      */
     TestRunSummary calculateSummary(const std::vector<TestReport> &reports);
+
+    /**
+     * @brief Check if test requires HTTP server by examining metadata (cached)
+     *
+     * W3C SCXML C.2 BasicHTTPEventProcessor tests require bidirectional HTTP communication.
+     * This method checks the metadata for "specnum: C.2" and caches the result for performance.
+     *
+     * @param testDirectory Path to the test directory
+     * @return true if HTTP server is required, false otherwise
+     */
+    bool requiresHttpServer(const std::string &testDirectory) const;
 
 public:
     /**
