@@ -138,6 +138,11 @@ std::string InternalEventTarget::resolveEventName(const EventDescriptor &event) 
 }
 
 std::string InternalEventTarget::buildEventData(const EventDescriptor &event) const {
+    // W3C SCXML B.2 test 561: Content element takes precedence over data attribute
+    if (!event.content.empty()) {
+        return event.content;
+    }
+
     if (event.data.empty() && event.params.empty()) {
         return "";
     }

@@ -1,5 +1,6 @@
 #include "common/Logger.h"
 #include "quickjs.h"
+#include "scripting/DOMBinding.h"
 #include "scripting/JSEngine.h"
 #include <climits>
 #include <cmath>
@@ -346,6 +347,21 @@ JSResult JSEngine::getVariableInternal(const std::string &sessionId, const std::
     return JSResult::createSuccess(result);
 }
 
+// W3C SCXML B.2: Helper function to parse event data as JSON or XML DOM
+static ::JSValue parseEventData(JSContext *ctx, const std::string &dataStr) {
+    // Skip leading whitespace for XML detection
+    size_t firstNonWhitespace = dataStr.find_first_not_of(" \t\r\n");
+    bool isXML = firstNonWhitespace != std::string::npos && dataStr[firstNonWhitespace] == '<';
+
+    if (isXML) {
+        // Create DOM object for XML content
+        return RSM::DOMBinding::createDOMObject(ctx, dataStr);
+    } else {
+        // Parse as JSON for non-XML content
+        return JS_ParseJSON(ctx, dataStr.c_str(), dataStr.length(), "<event-data>");
+    }
+}
+
 JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const std::shared_ptr<Event> &event) {
     SessionContext *session = getSession(sessionId);
     if (!session || !session->jsContext) {
@@ -368,11 +384,12 @@ JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const s
         // Set event data
         if (event->hasData()) {
             std::string dataStr = event->getDataAsString();
-            ::JSValue dataValue = JS_ParseJSON(ctx, dataStr.c_str(), dataStr.length(), "<event-data>");
+            ::JSValue dataValue = parseEventData(ctx, dataStr);
             if (!JS_IsException(dataValue)) {
                 JS_SetPropertyStr(ctx, eventObj, "data", dataValue);
             } else {
                 JS_SetPropertyStr(ctx, eventObj, "data", JS_UNDEFINED);
+                LOG_ERROR("JSEngine: Failed to parse event data for eventObj");
             }
         } else {
             JS_SetPropertyStr(ctx, eventObj, "data", JS_UNDEFINED);
@@ -430,25 +447,17 @@ JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const s
         JS_SetPropertyStr(ctx, eventDataProperty, "origintype", JS_NewString(ctx, event->getOriginType().c_str()));
         JS_SetPropertyStr(ctx, eventDataProperty, "invokeid", JS_NewString(ctx, event->getInvokeId().c_str()));
 
-        // Parse and set event data as JSON or fallback to undefined
+        // Parse and set event data as JSON or DOM object for XML
         if (event->hasData()) {
             std::string dataStr = event->getDataAsString();
             LOG_DEBUG("JSEngine: Setting event data from string: '{}'", dataStr);
-            ::JSValue dataValue = JS_ParseJSON(ctx, dataStr.c_str(), dataStr.length(), "<event-data>");
+            ::JSValue dataValue = parseEventData(ctx, dataStr);
             if (!JS_IsException(dataValue)) {
                 JS_SetPropertyStr(ctx, eventDataProperty, "data", dataValue);
-                LOG_DEBUG("JSEngine: Successfully parsed and set event data JSON");
+                LOG_DEBUG("JSEngine: Successfully set event data");
             } else {
-                // Log JSON parsing error
-                ::JSValue exception = JS_GetException(ctx);
-                const char *errorStr = JS_ToCString(ctx, exception);
-                LOG_ERROR("JSEngine: Failed to parse event data as JSON: '{}', error: {}", dataStr,
-                          errorStr ? errorStr : "unknown");
-                if (errorStr) {
-                    JS_FreeCString(ctx, errorStr);
-                }
-                JS_FreeValue(ctx, exception);
                 JS_SetPropertyStr(ctx, eventDataProperty, "data", JS_UNDEFINED);
+                LOG_ERROR("JSEngine: Failed to parse event data for eventDataProperty");
             }
         } else {
             LOG_DEBUG("JSEngine: Event has no data, setting _event.data to undefined");
