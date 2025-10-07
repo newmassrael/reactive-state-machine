@@ -402,7 +402,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
 
     // Convert error handling and validation attributes
     result = std::regex_replace(result, CONF_INVALID_LOCATION_ATTR, R"(location="$1")");
-    result = std::regex_replace(result, CONF_INVALID_NAMELIST_ATTR, R"(namelist="$1")");
+
+    // W3C SCXML 6.2: conf:invalidNamelist should cause send evaluation error (test 553)
+    // Reference undefined variable to trigger error during namelist evaluation
+    result = std::regex_replace(result, CONF_INVALID_NAMELIST_ATTR, R"(namelist="__undefined_variable_for_error__")");
 
     // Convert conf:illegalExpr to expr with intentionally invalid JavaScript expression
     // W3C test 156: should cause error to stop foreach execution

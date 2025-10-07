@@ -207,11 +207,11 @@ std::string ActionExecutorImpl::evaluateExpression(const std::string &expression
         return jsResult;
     }
 
-    // 대안: JavaScript 평가가 실패하면 리터럴 값으로 해석
-    LOG_DEBUG("JavaScript evaluation failed, interpreting as literal: '{}'", expression);
-    std::string literalResult = interpretAsLiteral(expression);
-    LOG_DEBUG("Literal interpretation result: '{}' -> '{}'", expression, literalResult);
-    return literalResult;
+    // W3C SCXML 6.2: If JavaScript evaluation fails (e.g., undefined variable in namelist),
+    // throw exception to propagate error up the call stack (test 553)
+    // This ensures send actions with invalid namelist are properly aborted
+    LOG_ERROR("JavaScript evaluation failed for expression: '{}'", expression);
+    throw std::runtime_error("Failed to evaluate expression: " + expression);
 }
 
 void ActionExecutorImpl::log(const std::string &level, const std::string &message) {
@@ -861,7 +861,14 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
                     LOG_DEBUG("ActionExecutorImpl: Namelist[{}] {}={}", varCount, varName, varValue);
                 } catch (const std::exception &e) {
                     LOG_ERROR("ActionExecutorImpl: Failed to evaluate namelist var '{}': {}", varName, e.what());
-                    // W3C SCXML: Continue with other variables despite failures
+                    // W3C SCXML 6.2: If evaluation of send's arguments produces an error,
+                    // the Processor MUST discard the message without attempting to deliver it (test 553)
+                    if (eventRaiser_) {
+                        eventRaiser_->raiseEvent("error.execution",
+                                                 "Failed to evaluate namelist variable '" + varName + "': " + e.what(),
+                                                 sendId, false);
+                    }
+                    return false;
                 }
             }
 
