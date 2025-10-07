@@ -36,10 +36,13 @@ bool W3CHttpTestServer::start() {
 
         running_ = true;
 
-        // Set SO_REUSEADDR to allow immediate port reuse
+        // Set SO_REUSEADDR and SO_REUSEPORT to allow immediate port reuse
         server_->set_socket_options([](socket_t sock) {
             int yes = 1;
             setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes));
+#ifdef SO_REUSEPORT
+            setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<const char *>(&yes), sizeof(yes));
+#endif
         });
 
         bool success = server_->listen("localhost", port_);
@@ -85,8 +88,8 @@ void W3CHttpTestServer::stop() {
         serverThread_.join();
     }
 
-    // Give OS time to release the port
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // Give OS more time to release the port completely
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     LOG_INFO("W3CHttpTestServer: HTTP server stopped");
 }
@@ -98,42 +101,73 @@ void W3CHttpTestServer::handlePost(const httplib::Request &req, httplib::Respons
     try {
         // Parse incoming HTTP request according to W3C SCXML BasicHTTPEventProcessor spec
         std::string eventName = "event1";  // W3C default event name
-        std::string eventData = req.body;  // Use raw body as default
+        std::string eventData;             // Will be populated based on content type
 
-        // W3C SCXML C.2: Check if body is JSON or plain content
-        bool isJsonContent = !req.body.empty() && (req.body.front() == '{' || req.body.front() == '[');
+        // W3C SCXML C.2: Check Content-Type for form data
+        std::string contentType = req.get_header_value("Content-Type");
+        bool isFormData = (contentType.find("application/x-www-form-urlencoded") != std::string::npos);
 
-        // Simple string-based event extraction for W3C compliance
-        if (!req.body.empty() && isJsonContent) {
-            // Look for "event" field in JSON using string parsing to avoid jsoncpp string_view issues
-            size_t eventPos = req.body.find("\"event\"");
-            if (eventPos != std::string::npos) {
-                size_t colonPos = req.body.find(":", eventPos);
-                if (colonPos != std::string::npos) {
-                    size_t quoteStart = req.body.find("\"", colonPos);
-                    if (quoteStart != std::string::npos) {
-                        size_t quoteEnd = req.body.find("\"", quoteStart + 1);
-                        if (quoteEnd != std::string::npos) {
-                            eventName = req.body.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                            LOG_DEBUG("W3CHttpTestServer: Extracted event name from JSON: {}", eventName);
+        // W3C SCXML C.2: For form data, extract parameters into JSON _event.data
+        if (isFormData) {
+            // W3C SCXML test 531: Check _scxmleventname parameter with highest priority
+            if (req.has_param("_scxmleventname")) {
+                eventName = req.get_param_value("_scxmleventname");
+                LOG_DEBUG("W3CHttpTestServer: Using _scxmleventname parameter: {}", eventName);
+            }
+
+            // W3C SCXML test 518, 519: Map form parameters to _event.data fields
+            json dataObj = json::object();
+            for (const auto &param : req.params) {
+                // Skip _scxmleventname as it's used for event name, not data
+                if (param.first != "_scxmleventname") {
+                    dataObj[param.first] = param.second;
+                }
+            }
+
+            // Convert to JSON string for event data
+            if (!dataObj.empty()) {
+                eventData = JsonUtils::toCompactString(dataObj);
+                LOG_DEBUG("W3CHttpTestServer: Form parameters as JSON: {}", eventData);
+            }
+        } else {
+            // W3C SCXML C.2: Check if body is JSON or plain content
+            bool isJsonContent = !req.body.empty() && (req.body.front() == '{' || req.body.front() == '[');
+
+            // Use body as event data
+            eventData = req.body;
+
+            // Simple string-based event extraction for W3C compliance
+            if (!req.body.empty() && isJsonContent) {
+                // Look for "event" field in JSON using string parsing to avoid jsoncpp string_view issues
+                size_t eventPos = req.body.find("\"event\"");
+                if (eventPos != std::string::npos) {
+                    size_t colonPos = req.body.find(":", eventPos);
+                    if (colonPos != std::string::npos) {
+                        size_t quoteStart = req.body.find("\"", colonPos);
+                        if (quoteStart != std::string::npos) {
+                            size_t quoteEnd = req.body.find("\"", quoteStart + 1);
+                            if (quoteEnd != std::string::npos) {
+                                eventName = req.body.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                                LOG_DEBUG("W3CHttpTestServer: Extracted event name from JSON: {}", eventName);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // W3C SCXML C.2: For non-JSON content, generate HTTP.POST event
-        if (!isJsonContent && !req.body.empty()) {
-            eventName = "HTTP.POST";
-            LOG_DEBUG("W3CHttpTestServer: Non-JSON content detected, using HTTP.POST event");
-        }
+            // W3C SCXML C.2: For non-JSON content, generate HTTP.POST event
+            if (!isJsonContent && !req.body.empty() && !isFormData) {
+                eventName = "HTTP.POST";
+                LOG_DEBUG("W3CHttpTestServer: Non-JSON content detected, using HTTP.POST event");
+            }
 
-        // Default event name if not specified (W3C test compatibility)
-        if (eventName.empty() || eventName == "event1") {
-            if (isJsonContent) {
-                eventName = "event1";  // Common W3C test default for JSON
-            } else {
-                eventName = "HTTP.POST";  // W3C C.2: content without event name
+            // Default event name if not specified (W3C test compatibility)
+            if (eventName.empty() || eventName == "event1") {
+                if (isJsonContent) {
+                    eventName = "event1";  // Common W3C test default for JSON
+                } else if (!isFormData) {
+                    eventName = "HTTP.POST";  // W3C C.2: content without event name
+                }
             }
         }
 
