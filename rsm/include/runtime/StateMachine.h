@@ -451,6 +451,12 @@ private:
     void handleParallelStateCompletion(const std::string &stateId);
     void setupParallelStateCallbacks();
 
+    /**
+     * @brief Generate and queue done.state.{stateId} event (W3C SCXML 3.4)
+     * @param stateId State ID for which to generate the done event
+     */
+    void generateDoneStateEvent(const std::string &stateId);
+
     bool evaluateCondition(const std::string &condition);
     bool enterState(const std::string &stateId);
     bool exitState(const std::string &stateId);

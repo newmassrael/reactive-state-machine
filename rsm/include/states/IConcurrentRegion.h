@@ -127,6 +127,21 @@ public:
     virtual void setConditionEvaluator(std::function<bool(const std::string &)> evaluator) = 0;
 
     /**
+     * @brief Set done state callback for done.state.{id} event generation (W3C SCXML 3.4)
+     *
+     * Lifecycle:
+     * 1. StateMachine calls this during setupParallelStateCallbacks() initialization
+     * 2. Callback remains valid throughout state machine lifetime
+     * 3. ConcurrentRegion invokes callback when determineIfInFinalState() returns true
+     * 4. Callback generates done.state.{regionId} event via StateMachine::generateDoneStateEvent()
+     *
+     * Thread Safety: Callback invoked synchronously in event processing thread
+     *
+     * @param callback Function to call with region ID when region reaches final state
+     */
+    virtual void setDoneStateCallback(std::function<void(const std::string &)> callback) = 0;
+
+    /**
      * @brief Set execution context for action execution (W3C SCXML 403c compliance)
      * @param executionContext Context for JavaScript evaluation and action execution
      */

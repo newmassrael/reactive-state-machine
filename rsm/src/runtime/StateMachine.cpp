@@ -2914,27 +2914,25 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
     return true;
 }
 
-void StateMachine::handleParallelStateCompletion(const std::string &stateId) {
-    LOG_DEBUG("Handling parallel state completion for: {}", stateId);
-
-    // Generate done.state.{stateId} event according to SCXML W3C specification section 3.4
+void StateMachine::generateDoneStateEvent(const std::string &stateId) {
     std::string doneEventName = "done.state." + stateId;
+    LOG_INFO("Generating done.state event: {}", doneEventName);
 
-    LOG_INFO("Generating done.state event: {} for completed parallel state: {}", doneEventName, stateId);
-
-    // Process the done.state event to trigger any transitions waiting for it
-    if (isRunning_) {
-        auto result = processEvent(doneEventName, "");
-        if (result.success) {
-            LOG_DEBUG("Successfully processed done.state event: {}", doneEventName);
+    if (isRunning_ && eventRaiser_) {
+        bool queued = eventRaiser_->raiseEvent(doneEventName, "", "", false);
+        if (queued) {
+            LOG_DEBUG("Queued done.state event: {}", doneEventName);
         } else {
-            LOG_DEBUG("No transitions found for done.state event: {} (this is normal if no transitions are waiting for "
-                      "this event)",
-                      doneEventName);
+            LOG_WARN("Failed to queue done.state event: {}", doneEventName);
         }
     } else {
-        LOG_WARN("Cannot process done.state event {} - state machine is not running", doneEventName);
+        LOG_WARN("Cannot queue done.state event {} - state machine not running or no event raiser", doneEventName);
     }
+}
+
+void StateMachine::handleParallelStateCompletion(const std::string &stateId) {
+    LOG_DEBUG("Handling parallel state completion for: {}", stateId);
+    generateDoneStateEvent(stateId);
 }
 
 void StateMachine::setupParallelStateCallbacks() {
@@ -2947,6 +2945,7 @@ void StateMachine::setupParallelStateCallbacks() {
 
     const auto &allStates = model_->getAllStates();
     int parallelStateCount = 0;
+    int regionCallbackCount = 0;
 
     for (const auto &state : allStates) {
         if (state && state->getType() == Type::PARALLEL) {
@@ -2958,6 +2957,17 @@ void StateMachine::setupParallelStateCallbacks() {
                     this->handleParallelStateCompletion(completedStateId);
                 });
 
+                // W3C SCXML 3.4 test 570: Set up done.state callback for each region
+                // When a region reaches its final state, generate done.state.{regionId} event
+                const auto &regions = parallelState->getRegions();
+                for (const auto &region : regions) {
+                    if (region) {
+                        region->setDoneStateCallback(
+                            [this](const std::string &regionId) { generateDoneStateEvent(regionId); });
+                        regionCallbackCount++;
+                    }
+                }
+
                 parallelStateCount++;
                 LOG_DEBUG("Set up completion callback for parallel state: {}", state->getId());
             } else {
@@ -2966,7 +2976,8 @@ void StateMachine::setupParallelStateCallbacks() {
         }
     }
 
-    LOG_INFO("Set up completion callbacks for {} parallel states", parallelStateCount);
+    LOG_INFO("Set up completion callbacks for {} parallel states ({} regions)", parallelStateCount,
+             regionCallbackCount);
 }
 
 void StateMachine::initializeHistoryManager() {

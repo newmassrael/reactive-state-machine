@@ -313,6 +313,13 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
         isInFinalState_ = true;
         status_ = ConcurrentRegionStatus::FINAL;
         LOG_DEBUG("Region {} reached final state", id_);
+
+        // W3C SCXML 3.4 test 570: Generate done.state.{parentId} event when region reaches final state
+        // The region ID corresponds to the parent composite state (e.g., p0s1)
+        if (doneStateCallback_) {
+            doneStateCallback_(id_);
+            LOG_DEBUG("Invoked done state callback for region: {}", id_);
+        }
     }
 
     return ConcurrentOperationResult::success(id_);
@@ -468,6 +475,11 @@ void ConcurrentRegion::setConditionEvaluator(std::function<bool(const std::strin
     LOG_DEBUG(
         "ConcurrentRegion: Condition evaluator callback set for region: {} (W3C SCXML transition guard compliance)",
         id_);
+}
+
+void ConcurrentRegion::setDoneStateCallback(std::function<void(const std::string &)> callback) {
+    doneStateCallback_ = callback;
+    LOG_DEBUG("ConcurrentRegion: Done state callback set for region: {} (W3C SCXML 3.4 compliance)", id_);
 }
 
 void ConcurrentRegion::setDesiredInitialChild(const std::string &childStateId) {

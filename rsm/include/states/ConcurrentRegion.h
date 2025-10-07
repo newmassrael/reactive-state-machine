@@ -195,6 +195,23 @@ public:
     void setConditionEvaluator(std::function<bool(const std::string &)> evaluator);
 
     /**
+     * @brief Set callback for done.state event generation (W3C SCXML 3.4 compliance)
+     *
+     * Lifecycle:
+     * 1. StateMachine calls this during setupParallelStateCallbacks() initialization
+     * 2. Callback stored in doneStateCallback_ member, valid throughout region lifetime
+     * 3. ConcurrentRegion invokes callback in processEvent() when determineIfInFinalState() returns true
+     * 4. Callback generates done.state.{regionId} event via StateMachine::generateDoneStateEvent()
+     * 5. Event queued asynchronously, allowing external transitions to handle parallel completion
+     *
+     * Thread Safety: Callback invoked synchronously in event processing thread
+     * Memory Safety: Lambda captures [this] pointer to StateMachine, valid while SM exists
+     *
+     * @param callback Function to call with region ID when region reaches final state
+     */
+    void setDoneStateCallback(std::function<void(const std::string &)> callback);
+
+    /**
      * @brief Set desired initial child state from parent's initial attribute (W3C SCXML 3.3)
      *
      * When a parent compound state specifies deep initial targets (e.g., initial="s11p112 s11p122"),
@@ -229,6 +246,9 @@ private:
 
     // W3C SCXML: Condition evaluation callback for transition guard evaluation (dependency inversion)
     std::function<bool(const std::string &)> conditionEvaluator_;
+
+    // W3C SCXML 3.4: Done state callback for done.state.{id} event generation (dependency inversion)
+    std::function<void(const std::string &)> doneStateCallback_;
 
     // W3C SCXML 3.3: Desired initial child from parent state's initial attribute
     // Used when parent compound state specifies deep initial targets (e.g., initial="s11p112 s11p122")
