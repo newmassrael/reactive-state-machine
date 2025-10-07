@@ -221,6 +221,21 @@ bool StateMachine::start() {
         for (const auto &ancestorId : ancestorChain) {
             hierarchyManager_->addStateToConfigurationWithoutOnEntry(ancestorId);
             LOG_DEBUG("Added ancestor state to configuration: {}", ancestorId);
+
+            // W3C SCXML 3.3 test 576: Setup and activate parallel state regions for deep initial targets
+            // When entering via deep initial targets (e.g., initial="s11p112 s11p122"),
+            // parallel ancestor states must have their regions properly configured and activated
+            // for event processing, invoke deferral, and action execution
+            auto ancestorState = model_->findStateById(ancestorId);
+            if (ancestorState && ancestorState->getType() == Type::PARALLEL) {
+                auto parallelState = dynamic_cast<ConcurrentStateNode *>(ancestorState);
+                if (parallelState) {
+                    if (!setupAndActivateParallelState(parallelState, ancestorId)) {
+                        isRunning_ = false;
+                        return false;
+                    }
+                }
+            }
         }
 
         // Execute onentry for ancestors in order (parent to child)
@@ -2933,6 +2948,73 @@ void StateMachine::generateDoneStateEvent(const std::string &stateId) {
 void StateMachine::handleParallelStateCompletion(const std::string &stateId) {
     LOG_DEBUG("Handling parallel state completion for: {}", stateId);
     generateDoneStateEvent(stateId);
+}
+
+bool StateMachine::setupAndActivateParallelState(ConcurrentStateNode *parallelState, const std::string &stateId) {
+    assert(parallelState && "Parallel state pointer must not be null");
+
+    const auto &regions = parallelState->getRegions();
+    if (regions.empty()) {
+        LOG_ERROR("W3C SCXML violation: Parallel state '{}' has no regions", stateId);
+        return false;
+    }
+
+    // W3C SCXML 6.4: Set invoke callback for proper invoke defer timing
+    // Regions must be able to delegate invoke execution to StateMachine
+    auto invokeCallback = [this](const std::string &stateId, const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
+        if (invokes.empty()) {
+            return;
+        }
+        LOG_DEBUG("StateMachine: Deferring {} invokes for state: {}", invokes.size(), stateId);
+
+        // Thread-safe access to pendingInvokes_
+        DeferredInvoke deferred;
+        deferred.stateId = stateId;
+        deferred.invokes = invokes;
+
+        std::lock_guard<std::mutex> lock(pendingInvokesMutex_);
+        pendingInvokes_.push_back(deferred);
+    };
+
+    for (const auto &region : regions) {
+        if (region) {
+            region->setInvokeCallback(invokeCallback);
+            LOG_DEBUG("Set invoke callback for region: {}", region->getId());
+        }
+    }
+
+    // W3C SCXML B.1: Set condition evaluator for transition guard evaluation
+    // Regions must be able to evaluate guard conditions via JavaScript engine
+    auto conditionEvaluator = [this](const std::string &condition) -> bool { return evaluateCondition(condition); };
+
+    for (const auto &region : regions) {
+        if (region) {
+            region->setConditionEvaluator(conditionEvaluator);
+        }
+    }
+
+    // W3C SCXML 3.8: Set execution context for action execution
+    // Regions need access to JavaScript engine for script evaluation
+    if (executionContext_) {
+        for (const auto &region : regions) {
+            if (region) {
+                region->setExecutionContext(executionContext_);
+            }
+        }
+        LOG_DEBUG("Set execution context for parallel state regions: {}", stateId);
+    } else {
+        LOG_WARN("Execution context not available for parallel state: {}", stateId);
+    }
+
+    // W3C SCXML 3.4: Activate all regions simultaneously
+    auto result = parallelState->enterParallelState();
+    if (!result.isSuccess) {
+        LOG_ERROR("Failed to activate parallel state regions for '{}': {}", stateId, result.errorMessage);
+        return false;
+    }
+
+    LOG_DEBUG("Successfully setup and activated parallel state: {}", stateId);
+    return true;
 }
 
 void StateMachine::setupParallelStateCallbacks() {

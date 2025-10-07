@@ -457,6 +457,18 @@ private:
      */
     void generateDoneStateEvent(const std::string &stateId);
 
+    /**
+     * @brief Setup and activate parallel state regions (W3C SCXML 3.3/3.4 compliance)
+     *
+     * Configures region callbacks and activates regions for proper event processing.
+     * This ensures regions can defer invokes, evaluate guards, and execute actions.
+     *
+     * @param parallelState Parallel state to setup and activate
+     * @param stateId State ID for logging
+     * @return true if successful, false on failure
+     */
+    bool setupAndActivateParallelState(ConcurrentStateNode *parallelState, const std::string &stateId);
+
     bool evaluateCondition(const std::string &condition);
     bool enterState(const std::string &stateId);
     bool exitState(const std::string &stateId);
