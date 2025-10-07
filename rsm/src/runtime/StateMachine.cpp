@@ -878,33 +878,194 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             // NOT getCurrentState() which may return a parallel state
             std::string fromState = stateNode->getId();
 
-            // W3C SCXML: Internal transitions execute actions without exiting/entering states
+            // W3C SCXML 3.13: Internal transitions (test 505)
             if (isInternal) {
-                LOG_DEBUG("StateMachine: Executing internal transition actions (no state change)");
-                const auto &actionNodes = transitionNode->getActionNodes();
-                if (!actionNodes.empty()) {
-                    executeActionNodes(actionNodes, false);
+                // Case 1: Internal transition with no target (targetless)
+                if (targets.empty()) {
+                    LOG_DEBUG("StateMachine: Executing internal transition actions (no state change)");
+                    const auto &actionNodes = transitionNode->getActionNodes();
+                    if (!actionNodes.empty()) {
+                        executeActionNodes(actionNodes, false);
+                    }
+
+                    TransitionResult result;
+                    result.success = true;
+                    result.fromState = fromState;
+                    result.toState = fromState;  // Same state (internal transition)
+                    result.eventName = eventName;
+                    return result;
                 }
 
-                TransitionResult result;
-                result.success = true;
-                result.fromState = fromState;
-                result.toState = fromState;  // Same state (internal transition)
-                result.eventName = eventName;
-                return result;
+                // Case 2: Internal transition with target (test 505)
+                // W3C SCXML 3.13: "if the transition has 'type' "internal", its source state is a compound state
+                // and all its target states are proper descendents of its source state"
+
+                // VALIDATION: Check all targets before making any state changes
+                // This ensures atomic transition semantics - either all succeed or none
+                for (const auto &target : targets) {
+                    // Check 1: Target state node must exist
+                    auto targetNode = model_->findStateById(target);
+                    if (!targetNode) {
+                        LOG_ERROR("Internal transition target state not found: {}", target);
+                        TransitionResult result;
+                        result.success = false;
+                        result.fromState = fromState;
+                        result.eventName = eventName;
+                        result.errorMessage = "Internal transition target state not found: " + target;
+                        return result;
+                    }
+
+                    // Check 2: Target must be a proper descendant of source
+                    if (!isDescendant(target, fromState)) {
+                        LOG_WARN("StateMachine: Internal transition target '{}' is not a descendant of source '{}' - "
+                                 "treating as external",
+                                 target, fromState);
+                        isInternal = false;
+                        break;
+                    }
+                }
+
+                // If validation passed, proceed with internal transition
+                if (isInternal) {
+                    // Valid internal transition with target
+                    // Exit only the descendants, not the source state itself
+                    LOG_DEBUG("StateMachine: Executing internal transition with target: {} -> {}", fromState,
+                              targetState);
+
+                    // W3C SCXML 3.13: Exit active descendants of source that need to be exited
+                    // For test 505: s11 is active and must be exited before entering again
+                    // Use helper method to build exit set (reduces code duplication)
+                    std::vector<std::string> exitSet = buildExitSetForDescendants(fromState, false);
+
+                    // Exit descendant states
+                    for (const auto &stateToExit : exitSet) {
+                        if (!exitState(stateToExit)) {
+                            LOG_ERROR("Failed to exit state: {}", stateToExit);
+                            inTransition_ = false;  // Clear flag on error
+                            TransitionResult result;
+                            result.success = false;
+                            result.fromState = fromState;
+                            result.eventName = eventName;
+                            result.errorMessage = "Failed to exit state: " + stateToExit;
+                            return result;
+                        }
+                    }
+
+                    // Execute transition actions
+                    const auto &actionNodes = transitionNode->getActionNodes();
+                    if (!actionNodes.empty()) {
+                        LOG_DEBUG("StateMachine: Executing internal transition actions");
+                        executeActionNodes(actionNodes, false);
+                    }
+
+                    // W3C SCXML 3.13: Enter target state(s) without re-entering source state
+                    // For internal transitions, use enterStateWithAncestors to prevent source re-entry
+                    LOG_DEBUG("StateMachine: Before entering target states, active states: {}", [this]() {
+                        auto states = hierarchyManager_->getActiveStates();
+                        std::string result;
+                        for (const auto &s : states) {
+                            if (!result.empty()) {
+                                result += ", ";
+                            }
+                            result += s;
+                        }
+                        return result;
+                    }());
+
+                    auto sourceNode = model_->findStateById(fromState);
+                    if (!sourceNode) {
+                        LOG_ERROR("Source state node not found: {}", fromState);
+                        TransitionResult result;
+                        result.success = false;
+                        result.fromState = fromState;
+                        result.eventName = eventName;
+                        result.errorMessage = "Source state node not found: " + fromState;
+                        return result;
+                    }
+
+                    for (const auto &target : targets) {
+                        LOG_DEBUG("StateMachine: Entering target state '{}' with stopAtParent='{}'", target, fromState);
+                        // Use enterStateWithAncestors with stopAtParent=source to prevent source re-entry
+                        if (!hierarchyManager_->enterStateWithAncestors(target, sourceNode, nullptr)) {
+                            LOG_ERROR("Failed to enter target state: {}", target);
+                            TransitionResult result;
+                            result.success = false;
+                            result.fromState = fromState;
+                            result.eventName = eventName;
+                            result.errorMessage = "Failed to enter target state: " + target;
+                            return result;
+                        }
+                    }
+
+                    // Check for eventless transitions after entering target
+                    checkEventlessTransitions();
+
+                    LOG_DEBUG("StateMachine: After internal transition, active states: {}", [this]() {
+                        auto states = hierarchyManager_->getActiveStates();
+                        std::string result;
+                        for (const auto &s : states) {
+                            if (!result.empty()) {
+                                result += ", ";
+                            }
+                            result += s;
+                        }
+                        return result;
+                    }());
+
+                    TransitionResult result;
+                    result.success = true;
+                    result.fromState = fromState;
+                    result.toState = targetState;  // Target state entered
+                    result.eventName = eventName;
+                    return result;
+                }
             }
 
             LOG_DEBUG("Executing SCXML compliant transition from {} to {}", fromState, targetState);
+
+            // Set transition context flag (for history recording in exitState)
+            // RAII guard ensures flag is cleared on all exit paths (normal return, error, exception)
+            TransitionGuard transitionGuard(inTransition_);
 
             // W3C SCXML 3.13: Compute exit set and LCA in one call (optimization: avoid duplicate LCA calculation)
             ExitSetResult exitSetResult = computeExitSet(fromState, targetState);
             LOG_DEBUG("W3C SCXML: Exiting {} states for transition {} -> {}", exitSetResult.states.size(), fromState,
                       targetState);
 
+            // W3C SCXML 3.6: Record history BEFORE exiting states (test 388)
+            // History must be recorded while all descendants are still active
+            // Optimization: Only record for states that actually have history children
+            if (historyManager_ && hierarchyManager_) {
+                auto currentActiveStates = hierarchyManager_->getActiveStates();
+                for (const std::string &stateToExit : exitSetResult.states) {
+                    auto stateNode = model_->findStateById(stateToExit);
+                    if (stateNode &&
+                        (stateNode->getType() == Type::COMPOUND || stateNode->getType() == Type::PARALLEL)) {
+                        // Check if this state has history children
+                        bool hasHistoryChildren = false;
+                        for (const auto &child : stateNode->getChildren()) {
+                            if (child->getType() == Type::HISTORY || child->getType() == Type::HISTORY_DEEP) {
+                                hasHistoryChildren = true;
+                                break;
+                            }
+                        }
+
+                        // Only record history if this state has history children
+                        if (hasHistoryChildren) {
+                            bool recorded = historyManager_->recordHistory(stateToExit, currentActiveStates);
+                            if (recorded) {
+                                LOG_DEBUG("Pre-recorded history for state '{}' before exit", stateToExit);
+                            }
+                        }
+                    }
+                }
+            }
+
             // Exit states in the exit set (already in correct order: deepest first)
             for (const std::string &stateToExit : exitSetResult.states) {
                 if (!exitState(stateToExit)) {
                     LOG_ERROR("Failed to exit state: {}", stateToExit);
+                    // TransitionGuard will automatically clear inTransition_ flag on return
                     TransitionResult result;
                     result.success = false;
                     result.fromState = fromState;
@@ -955,6 +1116,7 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             for (const std::string &stateToEnter : enterSet) {
                 if (!enterState(stateToEnter)) {
                     LOG_ERROR("Failed to enter state: {}", stateToEnter);
+                    // TransitionGuard will automatically clear inTransition_ flag on return
                     TransitionResult result;
                     result.success = false;
                     result.fromState = fromState;
@@ -969,6 +1131,7 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             if (isHistoryTarget) {
                 if (!enterState(targetState)) {
                     LOG_ERROR("Failed to enter history state: {}", targetState);
+                    // TransitionGuard will automatically clear inTransition_ flag on return
                     TransitionResult result;
                     result.success = false;
                     result.fromState = fromState;
@@ -1029,6 +1192,7 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             // W3C SCXML compliance: Execute deferred invokes after macrostep completes
             executePendingInvokes();
 
+            // TransitionGuard will automatically clear inTransition_ flag on return
             return TransitionResult(true, fromState, targetState, eventName);
         }
     }
@@ -2188,17 +2352,15 @@ bool StateMachine::exitState(const std::string &stateId) {
         }
     }
 
-    // Record history before removing from active states (SCXML W3C specification section 3.6)
-    // History recording needs current active states, so must happen before hierarchyManager_->exitState
-    if (historyManager_ && hierarchyManager_ && stateNodeForCleanup) {
-        if (stateNodeForCleanup->getType() == Type::COMPOUND || stateNodeForCleanup->getType() == Type::PARALLEL) {
-            // Get current active states before exiting
-            auto activeStates = hierarchyManager_->getActiveStates();
-
-            // Record history for this compound state
-            bool recorded = historyManager_->recordHistory(stateId, activeStates);
+    // W3C SCXML 3.6: History recording (test 388)
+    // In transition context: History is pre-recorded before exit set execution
+    // Outside transition context (direct exitState call): Record history now as fallback
+    if (!inTransition_ && historyManager_ && hierarchyManager_) {
+        auto currentActiveStates = hierarchyManager_->getActiveStates();
+        if (stateNode && (stateNode->getType() == Type::COMPOUND || stateNode->getType() == Type::PARALLEL)) {
+            bool recorded = historyManager_->recordHistory(stateId, currentActiveStates);
             if (recorded) {
-                LOG_DEBUG("Recorded history for compound state: {}", stateId);
+                LOG_DEBUG("Fallback: Recorded history for state '{}' (direct exitState call)", stateId);
             }
         }
     }
@@ -3463,6 +3625,86 @@ std::string StateMachine::findLCA(const std::string &sourceStateId, const std::s
     return "";
 }
 
+// Helper: Build exit set for descendants of an ancestor state
+// Used by both internal transitions and computeExitSet to avoid code duplication
+std::vector<std::string> StateMachine::buildExitSetForDescendants(const std::string &ancestorState,
+                                                                  bool excludeParallelChildren) const {
+    std::vector<std::string> exitSet;
+
+    if (!hierarchyManager_ || !model_) {
+        return exitSet;
+    }
+
+    // Get all active states
+    auto activeStates = hierarchyManager_->getActiveStates();
+
+    for (const auto &activeState : activeStates) {
+        // Skip if this is the ancestor itself
+        if (activeState == ancestorState) {
+            continue;
+        }
+
+        // Defensive: Get state node and skip if not found
+        auto activeNode = model_->findStateById(activeState);
+        if (!activeNode) {
+            LOG_WARN("buildExitSetForDescendants: Active state '{}' not found in model - skipping", activeState);
+            continue;
+        }
+
+        // Check if parent is a parallel state - skip if requested
+        if (excludeParallelChildren) {
+            auto parent = activeNode->getParent();
+            if (parent && parent->getType() == Type::PARALLEL) {
+                // Skip - parallel state's children are handled by exitParallelState
+                continue;
+            }
+        }
+
+        // Check if activeState is a descendant of ancestorState
+        if (ancestorState.empty()) {
+            // If ancestor is root (empty), all active states are descendants
+            exitSet.push_back(activeState);
+        } else {
+            // Walk up the ancestor chain to check if we reach ancestorState
+            IStateNode *current = activeNode->getParent();
+            while (current) {
+                if (current->getId() == ancestorState) {
+                    // Found ancestor - activeState is a descendant
+                    exitSet.push_back(activeState);
+                    break;
+                }
+                current = current->getParent();
+            }
+        }
+    }
+
+    // Sort by depth (deepest first) for correct exit order
+    std::sort(exitSet.begin(), exitSet.end(), [this](const std::string &a, const std::string &b) {
+        int depthA = 0, depthB = 0;
+        auto nodeA = model_->findStateById(a);
+        auto nodeB = model_->findStateById(b);
+
+        if (nodeA) {
+            IStateNode *current = nodeA->getParent();
+            while (current) {
+                depthA++;
+                current = current->getParent();
+            }
+        }
+        if (nodeB) {
+            IStateNode *current = nodeB->getParent();
+            while (current) {
+                depthB++;
+                current = current->getParent();
+            }
+        }
+
+        return depthA > depthB;  // Deeper states first
+    });
+
+    return exitSet;
+}
+
 // W3C SCXML: Compute exit set for transition from source to target
 StateMachine::ExitSetResult StateMachine::computeExitSet(const std::string &sourceStateId,
                                                          const std::string &targetStateId) const {
@@ -3483,60 +3725,14 @@ StateMachine::ExitSetResult StateMachine::computeExitSet(const std::string &sour
     result.lca = findLCA(sourceStateId, targetStateId);
 
     // W3C SCXML 3.13: Exit set = "all active states that are proper descendants of LCCA"
-    std::set<std::string> exitSetUnique;  // Use set to avoid duplicates
+    // This must include ALL active descendants, not just the source->LCA chain (test 505)
+    // Use helper method to build exit set (reduces code duplication)
+    result.states = buildExitSetForDescendants(result.lca, true);
 
-    auto sourceNode = model_->findStateById(sourceStateId);
-    if (sourceNode) {
-        IStateNode *current = sourceNode;
-        while (current != nullptr) {
-            std::string currentId = current->getId();
-
-            // Stop when we reach LCA (don't include LCA in exit set)
-            if (currentId == result.lca) {
-                break;
-            }
-
-            exitSetUnique.insert(currentId);
-            current = current->getParent();
-        }
-    }
-
-    // W3C SCXML 3.13: Parallel state regions are exited as part of the parallel state's exit process
-    // Don't add regions to exit set explicitly to avoid duplicate exit actions (test 504)
-
-    // Convert set to vector
-    result.states.assign(exitSetUnique.begin(), exitSetUnique.end());
-
-    // W3C SCXML 3.9: Sort exit set by depth (deepest first), then by reverse document order
-    std::sort(result.states.begin(), result.states.end(), [this](const std::string &a, const std::string &b) {
-        int depthA = 0, depthB = 0;
-        auto nodeA = model_->findStateById(a);
-        auto nodeB = model_->findStateById(b);
-
-        // Calculate depth
-        if (nodeA) {
-            IStateNode *current = nodeA->getParent();
-            while (current) {
-                depthA++;
-                current = current->getParent();
-            }
-        }
-        if (nodeB) {
-            IStateNode *current = nodeB->getParent();
-            while (current) {
-                depthB++;
-                current = current->getParent();
-            }
-        }
-
-        // Primary sort: by depth descending (deeper states first)
-        if (depthA != depthB) {
-            return depthA > depthB;
-        }
-
-        // Secondary sort: by reverse document order (for same depth)
-        return a > b;  // Reverse alphabetical = reverse document order (heuristic)
-    });
+    // Note: buildExitSetForDescendants already:
+    // - Excludes parallel children (test 404, 504)
+    // - Sorts by depth (deepest first)
+    // - Handles null checks defensively
 
     LOG_DEBUG("W3C SCXML: computeExitSet({} -> {}) = {} states, LCA = '{}'", sourceStateId, targetStateId,
               result.states.size(), result.lca);

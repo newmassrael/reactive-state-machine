@@ -336,6 +336,30 @@ private:
         bool isInvalid_;
     };
 
+    /**
+     * @brief RAII guard for managing transition context flag
+     *
+     * Automatically sets inTransition_ flag on construction and clears it on destruction.
+     * Provides exception safety for transition context management.
+     */
+    class TransitionGuard {
+    public:
+        explicit TransitionGuard(bool &transitionFlag) : transitionFlag_(transitionFlag) {
+            transitionFlag_ = true;
+        }
+
+        ~TransitionGuard() {
+            transitionFlag_ = false;
+        }
+
+        // Prevent copying
+        TransitionGuard(const TransitionGuard &) = delete;
+        TransitionGuard &operator=(const TransitionGuard &) = delete;
+
+    private:
+        bool &transitionFlag_;
+    };
+
     // Core state - now delegated to StateHierarchyManager
     // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
     // Removed: std::vector<std::string> activeStates_ (use hierarchyManager_->getActiveStates())
@@ -343,6 +367,7 @@ private:
     bool isEnteringState_ = false;                 // Guard against reentrant enterState calls
     bool isProcessingEvent_ = false;               // Track event processing context
     bool isEnteringInitialConfiguration_ = false;  // W3C SCXML 3.3: Track initial configuration entry
+    bool inTransition_ = false;                    // Track if we're in a transition context (for history recording)
     std::string initialState_;
 
     // SCXML model
@@ -481,6 +506,11 @@ private:
     int getStateDocumentPosition(const std::string &stateId) const;
     std::vector<std::string> getProperAncestors(const std::string &stateId) const;
     bool isDescendant(const std::string &stateId, const std::string &ancestorId) const;
+
+    // Helper: Build exit set for descendants of an ancestor state
+    // Used by both internal transitions and computeExitSet to avoid code duplication
+    std::vector<std::string> buildExitSetForDescendants(const std::string &ancestorState,
+                                                        bool excludeParallelChildren = true) const;
 
     // W3C SCXML onentry action execution
     void executeOnEntryActions(const std::string &stateId);
