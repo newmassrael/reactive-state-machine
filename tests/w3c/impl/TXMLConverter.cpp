@@ -48,6 +48,10 @@ const std::regex TXMLConverter::CONF_ID_VAL_ATTR{R"ghi(conf:idVal="([^"]*)")ghi"
 // Generic sumVars pattern - matches any attributes like id1/id2, var1/var2, etc.
 const std::regex TXMLConverter::CONF_SUMVARS_ELEMENT{R"(<conf:sumVars.*?>)", std::regex::optimize};
 
+// Test 530: invoke content with variable expression
+// conf:varChildExpr="1" -> expr="Var1"
+const std::regex TXMLConverter::CONF_VARCHILDEXPR_ATTR{R"def(conf:varChildExpr="([0-9]+)")def", std::regex::optimize};
+
 // Event handling patterns
 const std::regex TXMLConverter::CONF_EVENT_ATTR{R"def(conf:event="([^"]*)")def", std::regex::optimize};
 
@@ -361,6 +365,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, srcexpr_numeric_pattern, R"(srcexpr="Var$1")");
     // Convert remaining conf:srcExpr attributes to standard srcexpr
     result = std::regex_replace(result, CONF_SRCEXPR_ATTR, R"(srcexpr="$1")");
+
+    // W3C SCXML test 530: Convert content varChildExpr to expr attribute for invoke content
+    // conf:varChildExpr="1" -> expr="Var1"
+    result = std::regex_replace(result, CONF_VARCHILDEXPR_ATTR, R"(expr="Var$1")");
 
     // Convert parameter and communication attributes
     // Handle numeric name attributes: conf:name="1" -> name="var1"

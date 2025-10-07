@@ -105,3 +105,13 @@ void RSM::InvokeNode::setSrcExpr(const std::string &srcExpr) {
 const std::string &RSM::InvokeNode::getSrcExpr() const {
     return srcExpr_;
 }
+
+// W3C SCXML test 530: content expr attribute support for dynamic content evaluation
+void RSM::InvokeNode::setContentExpr(const std::string &contentExpr) {
+    contentExpr_ = contentExpr;
+    LOG_DEBUG("InvokeNode: Set content expr to '{}'", contentExpr);
+}
+
+const std::string &RSM::InvokeNode::getContentExpr() const {
+    return contentExpr_;
+}

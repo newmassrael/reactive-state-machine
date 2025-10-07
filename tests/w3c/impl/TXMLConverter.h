@@ -120,6 +120,9 @@ private:
     // Test 155 specific patterns
     static const std::regex CONF_SUMVARS_ELEMENT;
 
+    // Test 530 specific patterns - invoke content with variable expression
+    static const std::regex CONF_VARCHILDEXPR_ATTR;
+
     // Event handling patterns
     static const std::regex CONF_EVENT_ATTR;
     static const std::regex CONF_TYPE_ATTR;

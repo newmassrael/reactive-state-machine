@@ -257,7 +257,11 @@ void RSM::InvokeParser::parseContentElement(const xmlpp::Element *invokeElement,
 
         auto exprAttr = contentElement->get_attribute("expr");
         if (exprAttr) {
-            content = exprAttr->get_value();
+            // W3C SCXML test 530: Store expr for dynamic evaluation during invoke execution
+            std::string contentExpr = exprAttr->get_value();
+            invokeNode->setContentExpr(contentExpr);
+            LOG_DEBUG("Content element has expr attribute: '{}'", contentExpr);
+            return;
         } else {
             // 내부 XML 요소를 직렬화
             auto children = contentElement->get_children();

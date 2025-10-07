@@ -46,6 +46,10 @@ public:
     void setSrcExpr(const std::string &srcExpr) override;
     const std::string &getSrcExpr() const override;
 
+    // W3C SCXML test 530: content expr attribute support for dynamic content evaluation
+    void setContentExpr(const std::string &contentExpr) override;
+    const std::string &getContentExpr() const override;
+
 private:
     std::string id_;
     std::string type_;
@@ -56,6 +60,7 @@ private:
     std::string finalize_;
     std::string typeExpr_;
     std::string srcExpr_;
+    std::string contentExpr_;  // W3C SCXML test 530: expr attribute for content element
     bool autoForward_;
     std::vector<std::tuple<std::string, std::string, std::string>> params_;  // name, expr, location
 };

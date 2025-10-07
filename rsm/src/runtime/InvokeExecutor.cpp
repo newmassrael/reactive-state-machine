@@ -83,8 +83,26 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
 
     // Get invoke content (SCXML document)
     std::string scxmlContent = invoke->getContent();
-    LOG_DEBUG("SCXMLInvokeHandler: Invoke content length: {}, has src: {}, has srcexpr: {}", scxmlContent.length(),
-              !invoke->getSrc().empty(), !invoke->getSrcExpr().empty());
+    LOG_DEBUG("SCXMLInvokeHandler: Invoke content length: {}, has src: {}, has srcexpr: {}, has contentexpr: {}",
+              scxmlContent.length(), !invoke->getSrc().empty(), !invoke->getSrcExpr().empty(),
+              !invoke->getContentExpr().empty());
+
+    // W3C SCXML test 530: Handle contentexpr evaluation
+    if (scxmlContent.empty() && !invoke->getContentExpr().empty()) {
+        // Evaluate contentexpr in parent session context
+        auto future = JSEngine::instance().evaluateExpression(parentSessionId, invoke->getContentExpr());
+        auto result = future.get();
+
+        if (result.isSuccess()) {
+            scxmlContent = result.getValue<std::string>();
+            LOG_DEBUG("SCXMLInvokeHandler: contentexpr '{}' evaluated to content of length {}",
+                      invoke->getContentExpr(), scxmlContent.length());
+        } else {
+            LOG_ERROR("SCXMLInvokeHandler: Failed to evaluate contentexpr '{}': {}", invoke->getContentExpr(),
+                      result.getErrorMessage());
+            return "";
+        }
+    }
 
     // Handle srcexpr evaluation first
     if (scxmlContent.empty() && !invoke->getSrcExpr().empty()) {

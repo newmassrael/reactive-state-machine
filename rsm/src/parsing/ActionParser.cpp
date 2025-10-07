@@ -10,6 +10,8 @@
 #include "common/Logger.h"
 #include "parsing/ParsingCommon.h"  // ✅ Fix: Missing ParsingCommon header
 #include <algorithm>
+#include <libxml++/nodes/textnode.h>
+#include <libxml/tree.h>
 
 RSM::ActionParser::ActionParser(std::shared_ptr<RSM::NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating action parser");
@@ -59,7 +61,56 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
         auto locationAttr = actionElement->get_attribute("location");
         auto exprAttr = actionElement->get_attribute("expr");
         std::string location = locationAttr ? locationAttr->get_value() : "";
-        std::string expr = exprAttr ? exprAttr->get_value() : "";
+        std::string expr;
+
+        if (exprAttr) {
+            expr = exprAttr->get_value();
+        } else {
+            // W3C SCXML test 530: Serialize XML content as string literal
+            // When no expr attribute, serialize XML children and wrap in quotes
+            std::string xmlContent;
+            auto children = actionElement->get_children();
+            for (auto child : children) {
+                // XML element - serialize using libxml2
+                if (auto childElement = dynamic_cast<const xmlpp::Element *>(child)) {
+                    _xmlNode *node = const_cast<_xmlNode *>(childElement->cobj());
+                    auto buf = xmlBufferCreate();
+                    if (buf) {
+                        xmlNodeDump(buf, node->doc, node, 0, 0);
+                        xmlContent += (const char *)buf->content;
+                        xmlBufferFree(buf);
+                    }
+                } else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
+                    // Text node - add content directly
+                    std::string text = textNode->get_content();
+                    // Only add non-whitespace text
+                    if (!std::all_of(text.begin(), text.end(), ::isspace)) {
+                        xmlContent += text;
+                    }
+                }
+            }
+
+            // Wrap XML content in JavaScript string literal (escape quotes)
+            if (!xmlContent.empty()) {
+                // Escape quotes and backslashes for JavaScript string literal
+                std::string escaped;
+                for (char c : xmlContent) {
+                    if (c == '"') {
+                        escaped += "\\\"";
+                    } else if (c == '\\') {
+                        escaped += "\\\\";
+                    } else if (c == '\n') {
+                        escaped += "\\n";
+                    } else if (c == '\r') {
+                        escaped += "\\r";
+                    } else {
+                        escaped += c;
+                    }
+                }
+                expr = "\"" + escaped + "\"";
+            }
+        }
+
         return std::make_shared<RSM::AssignAction>(location, expr, id);
 
     } else if (elementName == "log") {
