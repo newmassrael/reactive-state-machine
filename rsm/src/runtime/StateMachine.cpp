@@ -3425,8 +3425,15 @@ bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string
             }
             return true;
         } else {
-            LOG_WARN("W3C SCXML 5.5: Failed to evaluate donedata content: {}", result.getErrorMessage());
-            outEventData = content;  // Use literal content as fallback
+            LOG_ERROR("W3C SCXML 5.5: Failed to evaluate donedata content: {}", result.getErrorMessage());
+
+            // W3C SCXML 5.10: Raise error.execution event for expression evaluation failure
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution", result.getErrorMessage());
+            }
+
+            // W3C SCXML 5.5: Return empty data (not literal content) when evaluation fails
+            outEventData = "";
             return true;
         }
     }
