@@ -1,6 +1,8 @@
 #include "states/ConcurrentStateNode.h"
 #include "common/Logger.h"
 #include "model/DoneData.h"
+#include "runtime/ActionExecutorImpl.h"
+#include "runtime/IExecutionContext.h"
 #include "states/ConcurrentRegion.h"
 #include <algorithm>
 #include <cassert>
@@ -307,13 +309,39 @@ ConcurrentOperationResult ConcurrentStateNode::enterParallelState() {
 ConcurrentOperationResult ConcurrentStateNode::exitParallelState(std::shared_ptr<IExecutionContext> executionContext) {
     LOG_DEBUG("Exiting parallel state: {}", id_);
 
-    // SCXML W3C specification section 3.4: ALL child regions MUST be deactivated when exiting
+    // W3C SCXML 3.13: Exit regions FIRST (children before parent) - test 404
     auto results = deactivateAllRegions(executionContext);
 
     // Log warnings for any deactivation issues but continue (exit should not fail)
     for (const auto &result : results) {
         if (!result.isSuccess) {
             LOG_WARN("Warning during region deactivation '{}': {}", result.regionId, result.errorMessage);
+        }
+    }
+
+    // W3C SCXML 3.13: Execute parallel state's own exit actions AFTER regions (test 404)
+    const auto &exitActionBlocks = getExitActionBlocks();
+    if (!exitActionBlocks.empty() && executionContext && executionContext->isValid()) {
+        auto &actionExecutor = executionContext->getActionExecutor();
+        auto *actionExecutorImpl = dynamic_cast<ActionExecutorImpl *>(&actionExecutor);
+
+        // Set immediate mode to false for exit actions
+        if (actionExecutorImpl) {
+            actionExecutorImpl->setImmediateMode(false);
+        }
+
+        for (const auto &actionBlock : exitActionBlocks) {
+            for (const auto &action : actionBlock) {
+                if (action) {
+                    LOG_DEBUG("Executing parallel state exit action: {}", action->getActionType());
+                    action->execute(*executionContext);
+                }
+            }
+        }
+
+        // Restore immediate mode
+        if (actionExecutorImpl) {
+            actionExecutorImpl->setImmediateMode(true);
         }
     }
 
@@ -361,7 +389,9 @@ ConcurrentStateNode::deactivateAllRegions(std::shared_ptr<IExecutionContext> exe
 
     LOG_DEBUG("Deactivating {} regions in {}", regions_.size(), id_);
 
-    for (auto &region : regions_) {
+    // W3C SCXML 3.13: Exit in reverse document order (test 404)
+    for (auto it = regions_.rbegin(); it != regions_.rend(); ++it) {
+        auto &region = *it;
         auto result = region->deactivate(executionContext);
         results.push_back(result);
 

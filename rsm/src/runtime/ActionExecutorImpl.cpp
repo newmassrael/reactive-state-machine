@@ -341,6 +341,18 @@ void ActionExecutorImpl::setEventRaiser(std::shared_ptr<IEventRaiser> eventRaise
     }
 }
 
+void ActionExecutorImpl::setImmediateMode(bool immediate) {
+    // W3C SCXML 3.13: Control immediate mode for event raising (test 404)
+    // Exit actions should queue events, not process them immediately
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            eventRaiserImpl->setImmediateMode(immediate);
+            LOG_DEBUG("ActionExecutorImpl: Set immediate mode to {}", immediate);
+        }
+    }
+}
+
 void ActionExecutorImpl::setCurrentEvent(const EventMetadata &metadata) {
     // W3C SCXML 5.10: Set all event metadata fields
     currentEventName_ = metadata.name;

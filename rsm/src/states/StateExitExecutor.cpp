@@ -1,6 +1,7 @@
 #include "states/StateExitExecutor.h"
 #include "actions/IActionNode.h"
 #include "model/IStateNode.h"
+#include "runtime/ActionExecutorImpl.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
 #include <cassert>
@@ -109,6 +110,14 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
     assert(executionContext->isValid() && "SCXML violation: execution context must be valid");
 
     try {
+        // W3C SCXML 3.13: Set immediate mode to false for exit actions (test 404)
+        // Events raised in exit actions should be queued, not processed immediately
+        auto &actionExecutor = executionContext->getActionExecutor();
+        auto *actionExecutorImpl = dynamic_cast<ActionExecutorImpl *>(&actionExecutor);
+        if (actionExecutorImpl) {
+            actionExecutorImpl->setImmediateMode(false);
+        }
+
         // W3C SCXML 3.9: Get exit action blocks
         const auto &exitActionBlocks = state->getExitActionBlocks();
 
@@ -139,10 +148,20 @@ bool StateExitExecutor::executeActionNodes(std::shared_ptr<IStateNode> state,
                         // SCXML spec violation: exit actions should not throw
                         LOG_ERROR("SCXML violation: {}", actionException.what());
                         assert(false && "SCXML violation: exit actions must not throw exceptions");
+
+                        // W3C SCXML 3.13: Restore immediate mode even on error
+                        if (actionExecutorImpl) {
+                            actionExecutorImpl->setImmediateMode(true);
+                        }
                         return false;
                     }
                 }
             }
+        }
+
+        // W3C SCXML 3.13: Restore immediate mode after exit actions (test 404)
+        if (actionExecutorImpl) {
+            actionExecutorImpl->setImmediateMode(true);
         }
 
         return true;

@@ -896,14 +896,13 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
 
             LOG_DEBUG("Executing SCXML compliant transition from {} to {}", fromState, targetState);
 
-            // W3C SCXML: Compute and exit ALL states in the exit set (not just current state)
-            // For a transition from source to target, we must exit all states from source
-            // up to (but not including) the Lowest Common Ancestor (LCA) with the target
-            std::vector<std::string> exitSet = computeExitSet(fromState, targetState);
-            LOG_DEBUG("W3C SCXML: Exiting {} states for transition {} -> {}", exitSet.size(), fromState, targetState);
+            // W3C SCXML 3.13: Compute exit set and LCA in one call (optimization: avoid duplicate LCA calculation)
+            ExitSetResult exitSetResult = computeExitSet(fromState, targetState);
+            LOG_DEBUG("W3C SCXML: Exiting {} states for transition {} -> {}", exitSetResult.states.size(), fromState,
+                      targetState);
 
             // Exit states in the exit set (already in correct order: deepest first)
-            for (const std::string &stateToExit : exitSet) {
+            for (const std::string &stateToExit : exitSetResult.states) {
                 if (!exitState(stateToExit)) {
                     LOG_ERROR("Failed to exit state: {}", stateToExit);
                     TransitionResult result;
@@ -926,16 +925,58 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
                 LOG_DEBUG("StateMachine: No transition actions for this transition");
             }
 
-            // Enter new state
-            if (!enterState(targetState)) {
-                LOG_ERROR("Failed to enter state: {}", targetState);
-                TransitionResult result;
-                result.success = false;
-                result.fromState = fromState;
-                result.toState = targetState;
-                result.eventName = eventName;
-                result.errorMessage = "Failed to enter state: " + targetState;
-                return result;
+            // W3C SCXML 3.13: Compute enter set - all states from LCA (exclusive) to target (inclusive)
+            // Special case: history states use enterStateWithAncestors(), so skip enter set
+            std::vector<std::string> enterSet;
+            bool isHistoryTarget = historyManager_ && historyManager_->isHistoryState(targetState);
+
+            if (!targetState.empty() && model_ && !isHistoryTarget) {
+                auto targetNode = model_->findStateById(targetState);
+                if (targetNode) {
+                    // Collect states from target up to LCA (exclusive)
+                    std::vector<std::string> statesToEnter;
+                    IStateNode *current = targetNode;
+                    while (current != nullptr) {
+                        std::string currentId = current->getId();
+                        if (currentId == exitSetResult.lca) {
+                            break;  // Stop at LCA (don't include LCA)
+                        }
+                        statesToEnter.push_back(currentId);
+                        current = current->getParent();
+                    }
+                    // Reverse to get shallowest first (parent before children)
+                    enterSet.assign(statesToEnter.rbegin(), statesToEnter.rend());
+                }
+            }
+
+            LOG_DEBUG("W3C SCXML: Entering {} states for transition {} -> {}", enterSet.size(), fromState, targetState);
+
+            // Enter all states in enter set (shallowest first)
+            for (const std::string &stateToEnter : enterSet) {
+                if (!enterState(stateToEnter)) {
+                    LOG_ERROR("Failed to enter state: {}", stateToEnter);
+                    TransitionResult result;
+                    result.success = false;
+                    result.fromState = fromState;
+                    result.toState = targetState;
+                    result.eventName = eventName;
+                    result.errorMessage = "Failed to enter state: " + stateToEnter;
+                    return result;
+                }
+            }
+
+            // W3C SCXML 3.10: History states handle ancestors automatically via enterStateWithAncestors()
+            if (isHistoryTarget) {
+                if (!enterState(targetState)) {
+                    LOG_ERROR("Failed to enter history state: {}", targetState);
+                    TransitionResult result;
+                    result.success = false;
+                    result.fromState = fromState;
+                    result.toState = targetState;
+                    result.eventName = eventName;
+                    result.errorMessage = "Failed to enter history state: " + targetState;
+                    return result;
+                }
             }
 
             updateStatistics();
@@ -1713,10 +1754,11 @@ bool StateMachine::executeTransitionDirect(IStateNode *sourceState, std::shared_
     }
 
     // W3C SCXML: Compute and exit ALL states in the exit set
-    std::vector<std::string> exitSet = computeExitSet(fromState, targetState);
-    LOG_DEBUG("W3C SCXML: Exiting {} states for eventless transition {} -> {}", exitSet.size(), fromState, targetState);
+    ExitSetResult exitSetResult = computeExitSet(fromState, targetState);
+    LOG_DEBUG("W3C SCXML: Exiting {} states for eventless transition {} -> {}", exitSetResult.states.size(), fromState,
+              targetState);
 
-    for (const std::string &stateToExit : exitSet) {
+    for (const std::string &stateToExit : exitSetResult.states) {
         if (!exitState(stateToExit)) {
             LOG_ERROR("Failed to exit state: {}", stateToExit);
             return false;
@@ -1733,10 +1775,42 @@ bool StateMachine::executeTransitionDirect(IStateNode *sourceState, std::shared_
         }
     }
 
-    // Enter new state
-    if (!enterState(targetState)) {
-        LOG_ERROR("Failed to enter state: {}", targetState);
-        return false;
+    // W3C SCXML 3.13: Enter states from LCA to target
+    // Special case: history states use enterStateWithAncestors(), so skip enter set
+    std::vector<std::string> enterSet;
+    bool isHistoryTarget = historyManager_ && historyManager_->isHistoryState(targetState);
+
+    if (!targetState.empty() && model_ && !isHistoryTarget) {
+        auto targetNode = model_->findStateById(targetState);
+        if (targetNode) {
+            std::vector<std::string> statesToEnter;
+            IStateNode *current = targetNode;
+            while (current != nullptr) {
+                std::string currentId = current->getId();
+                if (currentId == exitSetResult.lca) {
+                    break;
+                }
+                statesToEnter.push_back(currentId);
+                current = current->getParent();
+            }
+            enterSet.assign(statesToEnter.rbegin(), statesToEnter.rend());
+        }
+    }
+
+    // Enter all states in enter set
+    for (const std::string &stateToEnter : enterSet) {
+        if (!enterState(stateToEnter)) {
+            LOG_ERROR("Failed to enter state: {}", stateToEnter);
+            return false;
+        }
+    }
+
+    // W3C SCXML 3.10: History states handle ancestors automatically
+    if (isHistoryTarget) {
+        if (!enterState(targetState)) {
+            LOG_ERROR("Failed to enter history state: {}", targetState);
+            return false;
+        }
     }
 
     updateStatistics();
@@ -1918,9 +1992,9 @@ bool StateMachine::checkEventlessTransitions() {
             }
 
             std::string targetState = targets[0];
-            std::vector<std::string> exitSet = computeExitSet(activeStateId, targetState);
+            ExitSetResult exitSetResult = computeExitSet(activeStateId, targetState);
 
-            enabledTransitions.emplace_back(stateNode, transitionNode, targetState, exitSet);
+            enabledTransitions.emplace_back(stateNode, transitionNode, targetState, exitSetResult.states);
             statesWithTransitions.insert(activeStateId);  // Track for preemption
             LOG_DEBUG("W3C SCXML 3.13: Collected parallel transition: {} -> {}", activeStateId, targetState);
 
@@ -2063,21 +2137,12 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
 bool StateMachine::exitState(const std::string &stateId) {
     LOG_DEBUG("Exiting state: {}", stateId);
 
-    // SCXML W3C specification section 3.4: Execute exit actions in correct order for parallel states
+    // W3C SCXML 3.13: Parallel states exit actions are handled by StateHierarchyManager (test 404)
+    // Regions exit first, then parallel state's onexit is executed
+    // Non-parallel states execute exit actions here
     auto stateNode = model_->findStateById(stateId);
-    if (stateNode && stateNode->getType() == Type::PARALLEL) {
-        // For parallel states: Child regions exit FIRST, then parallel state exits
-        LOG_DEBUG("StateMachine: SCXML W3C compliant - executing parallel state exit actions in correct order");
-
-        // Exit actions for child regions are already handled by executeExitActions for parallel
-        // Execute parallel state's own onexit actions LAST
-        bool exitResult = executeExitActions(stateId);
-        if (!exitResult && isRunning_) {
-            // Only log error if machine is still running - during shutdown, raise failures are expected
-            LOG_ERROR("StateMachine: Failed to execute exit actions for parallel state: {}", stateId);
-        }
-    } else {
-        // Execute IActionNode-based exit actions for non-parallel states
+    if (stateNode && stateNode->getType() != Type::PARALLEL) {
+        // Execute IActionNode-based exit actions for non-parallel states only
         bool exitResult = executeExitActions(stateId);
         if (!exitResult && isRunning_) {
             // Only log error if machine is still running - during shutdown, raise failures are expected
@@ -2569,59 +2634,13 @@ bool StateMachine::executeExitActions(const std::string &stateId) {
         auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
         assert(parallelState && "SCXML violation: PARALLEL type state must be ConcurrentStateNode");
 
-        const auto &regions = parallelState->getRegions();
-        assert(!regions.empty() && "SCXML violation: parallel state must have at least one region");
-
         LOG_DEBUG("SCXML W3C compliant - executing exit sequence for parallel state: {}", stateId);
 
-        // SCXML W3C specification: Execute child region exit actions FIRST in REVERSE document order
-        for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
-            const auto &region = *it;
-            assert(region && "SCXML violation: parallel state cannot have null regions");
+        // W3C SCXML 3.13: Skip region exit actions if regions are already in exit set (test 504)
+        // Child regions will execute their own exit actions when their exitState() is called
+        // Only execute parallel state's own exit actions here
 
-            if (region->isActive()) {
-                auto rootState = region->getRootState();
-                assert(rootState && "SCXML violation: region must have root state");
-
-                // W3C SCXML 3.9: Execute exit action blocks for currently active child states in this region
-                const auto activeStates = region->getActiveStates();
-                const auto &children = rootState->getChildren();
-                for (const auto &child : children) {
-                    // Check if this child is currently active
-                    bool isChildActive =
-                        std::find(activeStates.begin(), activeStates.end(), child->getId()) != activeStates.end();
-                    if (child && isChildActive) {
-                        const auto &childExitBlocks = child->getExitActionBlocks();
-                        if (!childExitBlocks.empty()) {
-                            LOG_DEBUG("W3C SCXML 3.9: executing {} exit action blocks for active child state: {}",
-                                      childExitBlocks.size(), child->getId());
-                            for (size_t i = 0; i < childExitBlocks.size(); ++i) {
-                                if (!executeActionNodes(childExitBlocks[i], false)) {
-                                    LOG_WARN("W3C SCXML 3.9: Child exit block {}/{} failed, continuing", i + 1,
-                                             childExitBlocks.size());
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
-
-                // W3C SCXML 3.9: Execute exit action blocks for the region's root state
-                const auto &regionExitBlocks = rootState->getExitActionBlocks();
-                if (!regionExitBlocks.empty()) {
-                    LOG_DEBUG("W3C SCXML 3.9: executing {} exit action blocks for region: {}", regionExitBlocks.size(),
-                              region->getId());
-                    for (size_t i = 0; i < regionExitBlocks.size(); ++i) {
-                        if (!executeActionNodes(regionExitBlocks[i], false)) {
-                            LOG_WARN("W3C SCXML 3.9: Region exit block {}/{} failed, continuing", i + 1,
-                                     regionExitBlocks.size());
-                        }
-                    }
-                }
-            }
-        }
-
-        // W3C SCXML 3.9: Execute parallel state's own onexit action blocks LAST
+        // W3C SCXML 3.9: Execute parallel state's own onexit action blocks
         const auto &parallelExitBlocks = parallelState->getExitActionBlocks();
         if (!parallelExitBlocks.empty()) {
             LOG_DEBUG("W3C SCXML 3.9: executing {} exit action blocks for parallel state itself: {}",
@@ -3410,13 +3429,15 @@ std::string StateMachine::findLCA(const std::string &sourceStateId, const std::s
         return "";
     }
 
-    // Get all ancestors of source (including source itself for comparison)
+    // Get all ancestors of source (excluding source itself - W3C SCXML 3.13: test 504)
+    // W3C SCXML: "ancestor" means parent, grandparent, etc., NOT the state itself
     std::vector<std::string> sourceAncestors;
     sourceAncestors.reserve(16);  // Performance: Reserve typical depth to avoid reallocation
 
     auto sourceNode = model_->findStateById(sourceStateId);
     if (sourceNode) {
-        IStateNode *current = sourceNode;
+        // Start from parent, not source itself
+        IStateNode *current = sourceNode->getParent();
         while (current != nullptr) {
             sourceAncestors.push_back(current->getId());
             current = current->getParent();
@@ -3443,48 +3464,84 @@ std::string StateMachine::findLCA(const std::string &sourceStateId, const std::s
 }
 
 // W3C SCXML: Compute exit set for transition from source to target
-std::vector<std::string> StateMachine::computeExitSet(const std::string &sourceStateId,
-                                                      const std::string &targetStateId) const {
-    std::vector<std::string> exitSet;
-    exitSet.reserve(8);  // Performance: Reserve typical exit set size to avoid reallocation
+StateMachine::ExitSetResult StateMachine::computeExitSet(const std::string &sourceStateId,
+                                                         const std::string &targetStateId) const {
+    ExitSetResult result;
+    result.states.reserve(8);  // Performance: Reserve typical exit set size to avoid reallocation
 
     if (!model_ || sourceStateId.empty()) {
-        return exitSet;
+        return result;
     }
 
     // If target is empty (targetless transition), exit source only
     if (targetStateId.empty()) {
-        exitSet.push_back(sourceStateId);
-        return exitSet;
+        result.states.push_back(sourceStateId);
+        return result;
     }
 
-    // Find LCA (Lowest Common Ancestor)
-    std::string lca = findLCA(sourceStateId, targetStateId);
+    // W3C SCXML 3.13: Find LCA (Lowest Common Ancestor) once
+    result.lca = findLCA(sourceStateId, targetStateId);
 
-    // Collect all states from source up to (but not including) LCA
-    // These are the states we need to exit
+    // W3C SCXML 3.13: Exit set = "all active states that are proper descendants of LCCA"
+    std::set<std::string> exitSetUnique;  // Use set to avoid duplicates
+
     auto sourceNode = model_->findStateById(sourceStateId);
-    if (!sourceNode) {
-        return exitSet;
+    if (sourceNode) {
+        IStateNode *current = sourceNode;
+        while (current != nullptr) {
+            std::string currentId = current->getId();
+
+            // Stop when we reach LCA (don't include LCA in exit set)
+            if (currentId == result.lca) {
+                break;
+            }
+
+            exitSetUnique.insert(currentId);
+            current = current->getParent();
+        }
     }
 
-    IStateNode *current = sourceNode;
-    while (current != nullptr) {
-        std::string currentId = current->getId();
+    // W3C SCXML 3.13: Parallel state regions are exited as part of the parallel state's exit process
+    // Don't add regions to exit set explicitly to avoid duplicate exit actions (test 504)
 
-        // Stop when we reach LCA (don't include LCA in exit set)
-        if (currentId == lca) {
-            break;
+    // Convert set to vector
+    result.states.assign(exitSetUnique.begin(), exitSetUnique.end());
+
+    // W3C SCXML 3.9: Sort exit set by depth (deepest first), then by reverse document order
+    std::sort(result.states.begin(), result.states.end(), [this](const std::string &a, const std::string &b) {
+        int depthA = 0, depthB = 0;
+        auto nodeA = model_->findStateById(a);
+        auto nodeB = model_->findStateById(b);
+
+        // Calculate depth
+        if (nodeA) {
+            IStateNode *current = nodeA->getParent();
+            while (current) {
+                depthA++;
+                current = current->getParent();
+            }
+        }
+        if (nodeB) {
+            IStateNode *current = nodeB->getParent();
+            while (current) {
+                depthB++;
+                current = current->getParent();
+            }
         }
 
-        exitSet.push_back(currentId);
-        current = current->getParent();
-    }
+        // Primary sort: by depth descending (deeper states first)
+        if (depthA != depthB) {
+            return depthA > depthB;
+        }
+
+        // Secondary sort: by reverse document order (for same depth)
+        return a > b;  // Reverse alphabetical = reverse document order (heuristic)
+    });
 
     LOG_DEBUG("W3C SCXML: computeExitSet({} -> {}) = {} states, LCA = '{}'", sourceStateId, targetStateId,
-              exitSet.size(), lca);
+              result.states.size(), result.lca);
 
-    return exitSet;
+    return result;
 }
 
 }  // namespace RSM

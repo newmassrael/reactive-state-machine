@@ -91,6 +91,17 @@ ConcurrentOperationResult ConcurrentRegion::deactivate(std::shared_ptr<IExecutio
         return ConcurrentOperationResult::success(id_);
     }
 
+    // W3C SCXML 3.13: If activeStates_ is already empty, region was exited via exit set
+    // Skip exitAllStates to avoid duplicate exit action execution (test 504)
+    if (activeStates_.empty()) {
+        LOG_DEBUG("Region {} activeStates already empty, skipping exitAllStates", id_);
+        status_ = ConcurrentRegionStatus::INACTIVE;
+        currentState_.clear();
+        isInFinalState_ = false;
+        LOG_DEBUG("Successfully deactivated region: {}", id_);
+        return ConcurrentOperationResult::success(id_);
+    }
+
     LOG_DEBUG("Deactivating region: {}", id_);
 
     // Exit all active states
@@ -743,23 +754,14 @@ ConcurrentOperationResult ConcurrentRegion::exitAllStates(std::shared_ptr<IExecu
         bool exitActionsSuccess = true;
 
         if (exitHandler_ && !activeStates_.empty()) {
-            // Step 1: Execute exit actions for all active states in document order
+            // W3C SCXML 3.13: Execute exit actions for all active states in document order
+            // Note: activeStates_ already includes rootState_, so no need to execute it separately (test 504)
             LOG_DEBUG("Executing exit actions for active states");
 
             exitActionsSuccess = exitHandler_->executeMultipleStateExits(activeStates_, rootState_, executionContext);
 
             if (!exitActionsSuccess) {
                 LOG_WARN("Some exit actions failed, continuing with cleanup");
-            }
-
-            // Step 2: Execute parent region's exit actions (root state exit actions)
-            if (rootState_) {
-                LOG_DEBUG("Executing root state exit actions");
-                bool rootExitSuccess = exitHandler_->executeStateExitActions(rootState_, executionContext);
-                if (!rootExitSuccess) {
-                    LOG_WARN("Root state exit actions failed");
-                    exitActionsSuccess = false;
-                }
             }
         } else {
             LOG_DEBUG("No exit handler or active states, skipping exit actions");

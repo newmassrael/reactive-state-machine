@@ -68,6 +68,20 @@ public:
     };
 
     /**
+     * @brief W3C SCXML 3.13: Exit set computation result
+     *
+     * Returns both the exit set and the LCA to avoid duplicate computation.
+     */
+    struct ExitSetResult {
+        std::vector<std::string> states;  // States to exit (in order)
+        std::string lca;                  // Least Common Compound Ancestor
+
+        ExitSetResult() = default;
+
+        ExitSetResult(const std::vector<std::string> &s, const std::string &l) : states(s), lca(l) {}
+    };
+
+    /**
      * @brief Default constructor - generates random session ID
      */
     StateMachine();
@@ -463,7 +477,7 @@ private:
 
     // W3C SCXML transition domain and exit set computation
     std::string findLCA(const std::string &sourceStateId, const std::string &targetStateId) const;
-    std::vector<std::string> computeExitSet(const std::string &sourceStateId, const std::string &targetStateId) const;
+    ExitSetResult computeExitSet(const std::string &sourceStateId, const std::string &targetStateId) const;
     int getStateDocumentPosition(const std::string &stateId) const;
     std::vector<std::string> getProperAncestors(const std::string &stateId) const;
     bool isDescendant(const std::string &stateId, const std::string &ancestorId) const;

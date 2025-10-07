@@ -309,26 +309,36 @@ void StateHierarchyManager::exitState(const std::string &stateId, std::shared_pt
 
     LOG_DEBUG("exitState - Exiting state: {}", stateId);
 
-    // SCXML W3C specification section 3.4: parallel states need special exit handling
+    // W3C SCXML 3.13: Parallel states need conditional region deactivation (test 504)
+    // Check if regions are already exited (in exit set) to avoid duplicate exit actions
     if (model_) {
         auto stateNode = model_->findStateById(stateId);
         if (stateNode && stateNode->getType() == Type::PARALLEL) {
-            auto parallelState = dynamic_cast<ConcurrentStateNode *>(stateNode);
-            if (parallelState) {
-                LOG_DEBUG("exitState - Exiting parallel state with region deactivation: {}", stateId);
+            auto parallelState = static_cast<ConcurrentStateNode *>(stateNode);
+            const auto &regions = parallelState->getRegions();
+
+            // Check if any region still has active states (not yet in exit set)
+            bool hasActiveRegions = false;
+            for (const auto &region : regions) {
+                if (region && !region->getActiveStates().empty()) {
+                    hasActiveRegions = true;
+                    break;
+                }
+            }
+
+            // Only deactivate regions if they're still active
+            // If regions already exited (via exit set), skip to avoid duplicate actions
+            if (hasActiveRegions) {
+                LOG_DEBUG("exitState - Deactivating active regions in parallel state: {}", stateId);
                 auto result = parallelState->exitParallelState(executionContext);
                 if (!result.isSuccess) {
                     LOG_WARN("exitState - Warning during parallel state exit '{}': {}", stateId, result.errorMessage);
                 }
+            } else {
+                LOG_DEBUG("exitState - Parallel state '{}' regions already exited via exit set", stateId);
             }
-        }
-    }
 
-    // Use specialized exit logic for parallel states vs hierarchical states
-    if (model_) {
-        auto stateNode = model_->findStateById(stateId);
-        if (stateNode && stateNode->getType() == Type::PARALLEL) {
-            // SCXML W3C: For parallel states, remove the parallel state and ALL its descendants
+            // SCXML W3C: Remove the parallel state and ALL its descendants from active states
             exitParallelStateAndDescendants(stateId);
             return;
         }
