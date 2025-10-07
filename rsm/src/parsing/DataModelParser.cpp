@@ -1,6 +1,7 @@
 #include "parsing/DataModelParser.h"
 #include "common/Logger.h"
 #include <algorithm>
+#include <libxml/tree.h>
 
 RSM::DataModelParser::DataModelParser(std::shared_ptr<NodeFactory> nodeFactory) : nodeFactory_(nodeFactory) {
     LOG_DEBUG("Creating data model parser");
@@ -179,9 +180,15 @@ void RSM::DataModelParser::parseDataContent(const xmlpp::Element *dataNode, std:
         // 요소 노드 처리 (XML 콘텐츠)
         auto *elementNode = dynamic_cast<const xmlpp::Element *>(child);
         if (elementNode) {
-            // XML 콘텐츠를 문자열로 직렬화하는 방법이 필요함
-            // 간단한 구현을 위해 요소 이름만 기록
-            dataItem->setContent("<" + elementNode->get_name() + ">...</" + elementNode->get_name() + ">");
+            // W3C SCXML B.2 test 557: Serialize full XML content for DOM parsing
+            // Use libxml2 to serialize the XML node
+            xmlNodePtr xmlNode = const_cast<xmlNodePtr>(elementNode->cobj());
+            xmlBufferPtr buffer = xmlBufferCreate();
+            xmlNodeDump(buffer, xmlNode->doc, xmlNode, 0, 1);
+            std::string xmlContent = reinterpret_cast<const char *>(xmlBufferContent(buffer));
+            xmlBufferFree(buffer);
+
+            dataItem->setContent(xmlContent);
             LOG_DEBUG("Added XML content of type: {}", elementNode->get_name());
         }
     }

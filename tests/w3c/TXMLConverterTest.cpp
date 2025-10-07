@@ -451,7 +451,8 @@ TEST_F(TXMLConverterTest, ConvertsInvalidLocationAttribute) {
         << "conf:invalidLocation references should be removed";
 }
 
-// Test conf:invalidNamelist attribute conversion for validation
+// Test conf:invalidNamelist attribute conversion for W3C test 553
+// conf:invalidNamelist triggers error by referencing undefined variable
 TEST_F(TXMLConverterTest, ConvertsInvalidNamelistAttribute) {
     std::string txml = createValidTXML(R"mno(
         <send conf:invalidNamelist="Var1 Var2" event="data" target="self"/>
@@ -459,8 +460,10 @@ TEST_F(TXMLConverterTest, ConvertsInvalidNamelistAttribute) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    EXPECT_NE(result.find(R"pqr(namelist="Var1 Var2")pqr"), std::string::npos)
-        << "conf:invalidNamelist should be converted to namelist attribute";
+    // W3C SCXML 6.2 test 553: conf:invalidNamelist should cause namelist evaluation error
+    // Implementation converts to undefined variable reference to trigger error
+    EXPECT_NE(result.find(R"pqr(namelist="__undefined_variable_for_error__")pqr"), std::string::npos)
+        << "conf:invalidNamelist should be converted to error-triggering namelist";
     EXPECT_EQ(result.find(R"stu(conf:invalidNamelist)stu"), std::string::npos)
         << "conf:invalidNamelist references should be removed";
 }
@@ -585,8 +588,9 @@ TEST_F(TXMLConverterTest, ConvertsAllW3CIRPAttributesComprehensive) {
     EXPECT_NE(result.find(R"ghi(location="testVar")ghi"), std::string::npos)
         << "conf:invalidLocation should be converted to location";
     EXPECT_NE(result.find(R"jkl(delay="1s")jkl"), std::string::npos) << "conf:delay should be converted to delay";
-    EXPECT_NE(result.find(R"mno(namelist="Var1 Var2")mno"), std::string::npos)
-        << "conf:invalidNamelist should be converted to namelist";
+    // W3C test 553: conf:invalidNamelist converts to error-triggering undefined variable
+    EXPECT_NE(result.find(R"mno(namelist="__undefined_variable_for_error__")mno"), std::string::npos)
+        << "conf:invalidNamelist should be converted to error-triggering namelist";
     EXPECT_NE(result.find(R"pqr(expr="event.data.hasParam")pqr"), std::string::npos)
         << "conf:eventNamedParamHasValue should be converted to expr";
     EXPECT_NE(result.find(R"stu(name="resultParam")stu"), std::string::npos)
@@ -616,8 +620,9 @@ TEST_F(TXMLConverterTest, HandlesW3CIRPEdgeCases) {
 
     // Check empty value handling
     EXPECT_NE(result.find(R"yz1(delay="")yz1"), std::string::npos) << "Empty conf:delay should convert to empty delay";
-    EXPECT_NE(result.find(R"234(namelist="")234"), std::string::npos)
-        << "Empty conf:invalidNamelist should convert to empty namelist";
+    // W3C test 553: Even empty conf:invalidNamelist converts to error-triggering variable
+    EXPECT_NE(result.find(R"234(namelist="__undefined_variable_for_error__")234"), std::string::npos)
+        << "Empty conf:invalidNamelist should convert to error-triggering namelist";
     EXPECT_NE(result.find(R"567(expr="")567"), std::string::npos)
         << "Empty conf:eventNamedParamHasValue should convert to empty expr";
     EXPECT_NE(result.find(R"890(name="")890"), std::string::npos)

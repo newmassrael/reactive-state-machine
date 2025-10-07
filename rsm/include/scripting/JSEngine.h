@@ -164,6 +164,16 @@ public:
     std::future<JSResult> setVariable(const std::string &sessionId, const std::string &name, const ScriptValue &value);
 
     /**
+     * @brief Set a variable to an XML DOM object (W3C SCXML B.2)
+     * @param sessionId Target session
+     * @param name Variable name
+     * @param xmlContent XML string to parse as DOM
+     * @return Future indicating success/failure
+     */
+    std::future<JSResult> setVariableAsDOM(const std::string &sessionId, const std::string &name,
+                                           const std::string &xmlContent);
+
+    /**
      * @brief Get a variable from the specified session
      * @param sessionId Target session
      * @param name Variable name
@@ -493,6 +503,7 @@ private:
         std::string code;                       // for EXECUTE_SCRIPT, EVALUATE_EXPRESSION
         std::string variableName;               // for SET_VARIABLE, GET_VARIABLE
         ScriptValue variableValue;              // for SET_VARIABLE
+        bool isDOMObject = false;               // for SET_VARIABLE: XML DOM object (W3C SCXML B.2)
         std::shared_ptr<Event> event;           // for SET_CURRENT_EVENT
         std::string sessionName;                // for SETUP_SYSTEM_VARIABLES
         std::vector<std::string> ioProcessors;  // for SETUP_SYSTEM_VARIABLES

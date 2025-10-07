@@ -213,7 +213,7 @@ TEST_F(SCXMLEventTest, SendActionExternalTargetNotSupported) {
     // Create send action with external target
     auto sendAction = std::make_shared<SendAction>("external.event", "send5");
     sendAction->setTarget("http://example.com/webhook");
-    sendAction->setData("test");
+    sendAction->setData("'test'");  // W3C SCXML: data attribute is evaluated as JavaScript expression
 
     // Execute the action
     bool result = sendAction->execute(*context_);

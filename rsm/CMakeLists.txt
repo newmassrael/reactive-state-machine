@@ -91,6 +91,7 @@ add_library(rsm_unified
     src/runtime/EventRaiserImpl.cpp
     src/runtime/InvokeExecutor.cpp
     src/runtime/SessionManagerImpl.cpp
+    src/runtime/DataContentHelpers.cpp
     
     # History state management (SOLID architecture)
     src/runtime/HistoryManager.cpp
@@ -139,6 +140,8 @@ add_library(rsm_unified
     src/scripting/JSEngine.cpp
     src/scripting/JSEngineImpl.cpp
     src/scripting/JSExecutionEngineImpl.cpp
+    src/scripting/XMLDOMWrapper.cpp
+    src/scripting/DOMBinding.cpp
 
     # Parsing implementation
     src/parsing/StateNodeParser.cpp

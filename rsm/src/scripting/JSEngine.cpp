@@ -6,6 +6,7 @@
 #include "events/IEventDispatcher.h"
 #include "quickjs.h"
 #include "runtime/StateMachine.h"
+#include "scripting/DOMBinding.h"
 #include <chrono>
 #include <cstring>
 #include <iostream>
@@ -335,6 +336,25 @@ std::future<JSResult> JSEngine::setVariable(const std::string &sessionId, const 
     return future;
 }
 
+std::future<JSResult> JSEngine::setVariableAsDOM(const std::string &sessionId, const std::string &name,
+                                                 const std::string &xmlContent) {
+    // W3C SCXML B.2: Set variable to XML DOM object
+    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::SET_VARIABLE, sessionId);
+    request->variableName = name;
+    request->code = xmlContent;
+    request->isDOMObject = true;
+    auto future = request->promise.get_future();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        LOG_DEBUG("JSEngine: Queue setVariableAsDOM operation - size={}", requestQueue_.size());
+        requestQueue_.push(std::move(request));
+    }
+    queueCondition_.notify_one();
+
+    return future;
+}
+
 std::future<JSResult> JSEngine::getVariable(const std::string &sessionId, const std::string &name) {
     auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::GET_VARIABLE, sessionId);
     request->variableName = name;
@@ -507,9 +527,38 @@ void JSEngine::processExecutionRequest(std::unique_ptr<ExecutionRequest> request
         case ExecutionRequest::VALIDATE_EXPRESSION:
             result = validateExpressionInternal(request->sessionId, request->code);
             break;
-        case ExecutionRequest::SET_VARIABLE:
-            result = setVariableInternal(request->sessionId, request->variableName, request->variableValue);
-            break;
+        case ExecutionRequest::SET_VARIABLE: {
+            // W3C SCXML B.2: Check if this is a DOM object request
+            if (request->isDOMObject) {
+                // Create DOM object from XML content
+                SessionContext *session = getSession(request->sessionId);
+                if (session && session->jsContext) {
+                    JSContext *ctx = session->jsContext;
+                    ::JSValue domObject = RSM::DOMBinding::createDOMObject(ctx, request->code);
+
+                    if (JS_IsException(domObject)) {
+                        result = createErrorFromException(ctx);
+                    } else {
+                        // Set the variable
+                        ::JSValue global = JS_GetGlobalObject(ctx);
+                        int setResult = JS_SetPropertyStr(ctx, global, request->variableName.c_str(), domObject);
+                        JS_FreeValue(ctx, global);
+
+                        if (setResult < 0) {
+                            result = JSResult::createError("Failed to set DOM variable: " + request->variableName);
+                        } else {
+                            session->preInitializedVars.insert(request->variableName);
+                            result = JSResult::createSuccess();
+                        }
+                    }
+                } else {
+                    result = JSResult::createError("Session not found: " + request->sessionId);
+                }
+            } else {
+                // Normal variable setting
+                result = setVariableInternal(request->sessionId, request->variableName, request->variableValue);
+            }
+        } break;
         case ExecutionRequest::GET_VARIABLE:
             result = getVariableInternal(request->sessionId, request->variableName);
             break;
