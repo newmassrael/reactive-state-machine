@@ -328,6 +328,21 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
         std::istringstream iss(namelist);
         std::string varName;
         while (iss >> varName) {
+            // W3C SCXML 6.4: First evaluate variable in parent session to detect errors
+            // If evaluation fails (e.g., undefined variable), invoke must be cancelled (test 554)
+            auto future = JSEngine::instance().getVariable(parentSessionId, varName);
+            auto result = future.get();
+
+            if (!JSEngine::isSuccess(result)) {
+                LOG_ERROR(
+                    "SCXMLInvokeHandler: Failed to evaluate namelist variable '{}' in parent session: invoke cancelled",
+                    varName);
+                // W3C SCXML 6.4: If evaluation of invoke's arguments produces an error,
+                // the Processor MUST terminate processing of the element (test 554)
+                JSEngine::instance().destroySession(childSessionId);
+                return "";
+            }
+
             // W3C SCXML 6.4: Only set variable if it exists in child's datamodel
             if (childDatamodelVars.find(varName) == childDatamodelVars.end()) {
                 LOG_DEBUG("SCXMLInvokeHandler: Skipping namelist variable '{}' - not defined in child's datamodel",
@@ -335,14 +350,7 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
                 continue;
             }
 
-            auto future = JSEngine::instance().getVariable(parentSessionId, varName);
-            auto result = future.get();
-
-            if (JSEngine::isSuccess(result)) {
-                setInvokeDataVariable(childSessionId, varName, result.getInternalValue(), "namelist");
-            } else {
-                LOG_WARN("SCXMLInvokeHandler: Failed to get namelist variable '{}' from parent session", varName);
-            }
+            setInvokeDataVariable(childSessionId, varName, result.getInternalValue(), "namelist");
         }
     }
 
