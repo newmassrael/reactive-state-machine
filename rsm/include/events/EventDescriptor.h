@@ -22,6 +22,7 @@ struct EventDescriptor {
     std::string type = "scxml";                 // Event type (scxml, platform, etc.)
     std::chrono::milliseconds delay{0};         // Delivery delay
     std::map<std::string, std::string> params;  // Additional parameters
+    std::string content;                        // W3C SCXML C.2: Content for HTTP body
 
     // Evaluation expressions (for dynamic values)
     std::string eventExpr;   // Dynamic event name expression

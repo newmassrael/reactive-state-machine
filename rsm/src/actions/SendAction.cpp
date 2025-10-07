@@ -36,6 +36,7 @@ std::shared_ptr<IActionNode> SendAction::clone() const {
     cloned->sendId_ = sendId_;
     cloned->type_ = type_;
     cloned->paramsWithExpr_ = paramsWithExpr_;
+    cloned->content_ = content_;
     return cloned;
 }
 
@@ -139,6 +140,14 @@ void SendAction::clearParams() {
     paramsWithExpr_.clear();
 }
 
+void SendAction::setContent(const std::string &content) {
+    content_ = content;
+}
+
+const std::string &SendAction::getContent() const {
+    return content_;
+}
+
 std::chrono::milliseconds SendAction::parseDelayString(const std::string &delayStr) const {
     if (delayStr.empty()) {
         return std::chrono::milliseconds{0};
@@ -207,6 +216,14 @@ std::vector<std::string> SendAction::validateSpecific() const {
         }
     }
 
+    // W3C SCXML C.2: Validate content size to prevent DoS attacks
+    if (!content_.empty()) {
+        constexpr size_t MAX_CONTENT_SIZE = 10485760;  // 10MB
+        if (content_.size() > MAX_CONTENT_SIZE) {
+            errors.push_back("Content size exceeds maximum allowed: " + std::to_string(MAX_CONTENT_SIZE) + " bytes");
+        }
+    }
+
     return errors;
 }
 
@@ -237,6 +254,15 @@ std::string SendAction::getSpecificDescription() const {
 
     if (!paramsWithExpr_.empty()) {
         desc += " params=" + std::to_string(paramsWithExpr_.size());
+    }
+
+    // W3C SCXML C.2: Include content information for debugging
+    if (!content_.empty()) {
+        std::string contentPreview = content_.substr(0, 50);
+        if (content_.size() > 50) {
+            contentPreview += "...";
+        }
+        desc += " content='" + contentPreview + "'";
     }
 
     return desc;

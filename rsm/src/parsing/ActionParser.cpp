@@ -178,6 +178,24 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
             sendAction->setSendId(sendIdAttr->get_value());
         }
 
+        // W3C SCXML C.2: Parse content child element for HTTP body
+        auto contentElements = ParsingCommon::findChildElements(actionElement, "content");
+        if (!contentElements.empty()) {
+            auto contentElement = contentElements[0];
+            // Extract text content from <content> element
+            std::string contentText;
+            auto textNodes = contentElement->get_children();
+            for (auto node : textNodes) {
+                if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(node)) {
+                    contentText += textNode->get_content();
+                }
+            }
+            if (!contentText.empty()) {
+                sendAction->setContent(contentText);
+                LOG_DEBUG("ActionParser: Parsed send content: '{}'", contentText);
+            }
+        }
+
         // 🚨 CRITICAL: Parse param child elements for W3C SCXML compliance
         auto paramElements = ParsingCommon::findChildElements(actionElement, "param");
         for (auto paramElement : paramElements) {

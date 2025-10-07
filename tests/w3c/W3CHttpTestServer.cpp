@@ -100,8 +100,11 @@ void W3CHttpTestServer::handlePost(const httplib::Request &req, httplib::Respons
         std::string eventName = "event1";  // W3C default event name
         std::string eventData = req.body;  // Use raw body as default
 
+        // W3C SCXML C.2: Check if body is JSON or plain content
+        bool isJsonContent = !req.body.empty() && (req.body.front() == '{' || req.body.front() == '[');
+
         // Simple string-based event extraction for W3C compliance
-        if (!req.body.empty()) {
+        if (!req.body.empty() && isJsonContent) {
             // Look for "event" field in JSON using string parsing to avoid jsoncpp string_view issues
             size_t eventPos = req.body.find("\"event\"");
             if (eventPos != std::string::npos) {
@@ -119,9 +122,19 @@ void W3CHttpTestServer::handlePost(const httplib::Request &req, httplib::Respons
             }
         }
 
+        // W3C SCXML C.2: For non-JSON content, generate HTTP.POST event
+        if (!isJsonContent && !req.body.empty()) {
+            eventName = "HTTP.POST";
+            LOG_DEBUG("W3CHttpTestServer: Non-JSON content detected, using HTTP.POST event");
+        }
+
         // Default event name if not specified (W3C test compatibility)
-        if (eventName.empty()) {
-            eventName = "event1";  // Common W3C test default
+        if (eventName.empty() || eventName == "event1") {
+            if (isJsonContent) {
+                eventName = "event1";  // Common W3C test default for JSON
+            } else {
+                eventName = "HTTP.POST";  // W3C C.2: content without event name
+            }
         }
 
         // Generate unique sendId for W3C compliance

@@ -33,8 +33,11 @@ std::future<SendResult> HttpEventTarget::send(const EventDescriptor &event) {
             std::string payload = createJsonPayload(event);
             LOG_DEBUG("HttpEventTarget: JSON payload: {}", payload);
 
+            // W3C SCXML C.2: Determine content type based on whether content is present
+            std::string contentType = event.content.empty() ? "application/json" : "text/plain";
+
             // Perform request with retry
-            auto result = performRequestWithRetry(*client, path_, payload);
+            auto result = performRequestWithRetry(*client, path_, payload, contentType);
 
             // Convert response to SendResult
             return convertHttpResponse(result, event);
@@ -195,6 +198,12 @@ std::unique_ptr<httplib::Client> HttpEventTarget::createHttpClient() const {
 }
 
 std::string HttpEventTarget::createJsonPayload(const EventDescriptor &event) const {
+    // W3C SCXML C.2: If content is provided, use it as the HTTP body directly
+    if (!event.content.empty()) {
+        LOG_DEBUG("HttpEventTarget: Using content as HTTP body: '{}'", event.content);
+        return event.content;
+    }
+
     std::ostringstream json;
     json << "{"
          << "\"event\":\"" << escapeJsonString(event.eventName) << "\""
@@ -226,7 +235,8 @@ std::string HttpEventTarget::createJsonPayload(const EventDescriptor &event) con
 }
 
 httplib::Result HttpEventTarget::performRequestWithRetry(httplib::Client &client, const std::string &path,
-                                                         const std::string &payload) const {
+                                                         const std::string &payload,
+                                                         const std::string &contentType) const {
     httplib::Result result;
     int attempts = 0;
 
@@ -235,9 +245,9 @@ httplib::Result HttpEventTarget::performRequestWithRetry(httplib::Client &client
 
         LOG_DEBUG("HttpEventTarget: HTTP POST attempt {} to '{}' with payload: {}", attempts, path, payload);
 
-        // Perform POST request
-        LOG_DEBUG("HttpEventTarget: Executing client.Post('{}', payload, 'application/json')", path);
-        result = client.Post(path, payload, "application/json");
+        // W3C SCXML C.2: Use appropriate Content-Type (passed as parameter)
+        LOG_DEBUG("HttpEventTarget: Executing client.Post('{}', payload, '{}')", path, contentType);
+        result = client.Post(path, payload, contentType);
 
         if (result) {
             LOG_DEBUG("HttpEventTarget: HTTP POST completed, status: {}, response body: {}", result->status,

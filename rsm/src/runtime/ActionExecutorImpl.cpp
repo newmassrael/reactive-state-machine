@@ -752,13 +752,24 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
                 return false;
             }
         } else {
-            LOG_ERROR("Send action has no event or eventexpr");
-            // W3C SCXML 5.10: Generate error.execution event with sendid for failed send
-            if (eventRaiser_) {
-                eventRaiser_->raiseEvent("error.execution", "Send action has no event or eventexpr", sendId,
-                                         false /* overload discriminator for sendId variant */);
+            // W3C SCXML C.2: For HTTP event processors, event name is optional when content is provided
+            // The content will be sent as the HTTP message body
+            std::string sendType = action.getType();
+            bool isHttpEventProcessor = (sendType.find("BasicHTTPEventProcessor") != std::string::npos ||
+                                         sendType == "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor");
+
+            if (!isHttpEventProcessor) {
+                // For non-HTTP processors, event name is required
+                LOG_ERROR("Send action has no event or eventexpr");
+                // W3C SCXML 5.10: Generate error.execution event with sendid for failed send
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", "Send action has no event or eventexpr", sendId,
+                                             false /* overload discriminator for sendId variant */);
+                }
+                return false;
             }
-            return false;
+            // For HTTP processors, leave eventName empty - content will be sent as HTTP body
+            LOG_DEBUG("ActionExecutorImpl: HTTP send without event name - content will be sent as HTTP body");
         }
 
         // Determine target with W3C SCXML type processing compliance
@@ -906,6 +917,8 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             event.sendId = sendId;
             event.sessionId = sessionId_;    // W3C SCXML 6.2: Track session for delayed event cancellation
             event.params = evaluatedParams;  // W3C SCXML compliant: params evaluated at send time
+            // W3C SCXML C.2: Set content for HTTP body
+            event.content = action.getContent();
             // W3C SCXML 5.10: Set event type for origintype field (test 253, 331, 352, 372)
             event.type = sendType.empty() ? "http://www.w3.org/TR/scxml/#SCXMLEventProcessor" : sendType;
 

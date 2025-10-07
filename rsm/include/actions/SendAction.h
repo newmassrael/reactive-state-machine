@@ -199,6 +199,21 @@ public:
     void clearParams();
 
     /**
+     * @brief Set the content for the send action (W3C SCXML C.2)
+     * @param content The content to send as HTTP body
+     * @note When content is set, it takes priority over data attribute for HTTP transmission.
+     *       Maximum recommended size: 10MB (enforced by validation).
+     *       Content will be sent with Content-Type: text/plain.
+     */
+    void setContent(const std::string &content);
+
+    /**
+     * @brief Get the content for the send action
+     * @return The content
+     */
+    const std::string &getContent() const;
+
+    /**
      * @brief Parse delay string to milliseconds
      * @param delayStr Delay specification (e.g., "5s", "100ms", "2min")
      * @return Delay in milliseconds, 0 if immediate or invalid
@@ -229,6 +244,7 @@ private:
     std::string type_;                       // Event type (empty by default per W3C SCXML)
     std::string namelist_;                   // Space-separated list of variables for event data (W3C SCXML C.1)
     std::vector<SendParam> paramsWithExpr_;  // W3C SCXML compliant params with expr
+    std::string content_;                    // Content to send as HTTP body (W3C SCXML C.2)
 };
 
 }  // namespace RSM

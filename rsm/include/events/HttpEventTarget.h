@@ -119,10 +119,11 @@ private:
      * @param client HTTP client
      * @param path Request path
      * @param payload JSON payload
+     * @param contentType Content-Type header (e.g., "application/json" or "text/plain")
      * @return HTTP response result
      */
     httplib::Result performRequestWithRetry(httplib::Client &client, const std::string &path,
-                                            const std::string &payload) const;
+                                            const std::string &payload, const std::string &contentType) const;
 
     /**
      * @brief Convert HTTP response to SendResult
