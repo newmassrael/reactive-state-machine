@@ -5,6 +5,28 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      log-level:
+        description: 'Log level for test execution'
+        required: false
+        default: 'error'
+        type: choice
+        options:
+          - trace
+          - debug
+          - info
+          - warn
+          - error
+          - off
+      specific-tests:
+        description: 'Specific test numbers (comma-separated, e.g., 531,518,519) or empty for all'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -35,6 +57,22 @@ jobs:
           libspdlog-dev \
           libfmt-dev \
           libboost-dev
+
+    - name: Setup Problem Matchers
+      run: |
+        echo "::add-matcher::.github/problem-matchers/gcc.json"
+        echo "::add-matcher::.github/problem-matchers/cmake.json"
+
+    - name: Cache CMake Build
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/CMakeCache.txt
+          build/CMakeFiles
+          build/_deps
+        key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-cmake-
 
     - name: Configure CMake
       run: |
@@ -69,13 +107,24 @@ jobs:
         echo "=== Library Check ==="
         ldd build/tests/w3c_test_cli | grep libxml
 
-    - name: Run W3C SCXML Test Suite (Debug Mode)
+    - name: Run W3C SCXML Test Suite
       run: |
         cd build/tests
-        # Enable core dumps
         ulimit -c unlimited
-        # Run with debug logging (default resources path is ../../resources)
-        env SPDLOG_LEVEL=debug ./w3c_test_cli --output w3c_test_results.xml 2>&1 | tail -n 100
+        
+        # Determine log level (workflow_dispatch input or default 'debug')
+        LOG_LEVEL="${{ inputs.log-level || 'debug' }}"
+        
+        # Determine test arguments
+        if [ -n "${{ inputs.specific-tests }}" ]; then
+          # Convert comma-separated list to space-separated
+          TEST_ARGS=$(echo "${{ inputs.specific-tests }}" | tr ',' ' ')
+          echo "Running specific tests: $TEST_ARGS"
+          env SPDLOG_LEVEL=$LOG_LEVEL ./w3c_test_cli $TEST_ARGS --output w3c_test_results.xml 2>&1 | tail -n 100
+        else
+          echo "Running all tests"
+          env SPDLOG_LEVEL=$LOG_LEVEL ./w3c_test_cli --output w3c_test_results.xml 2>&1 | tail -n 100
+        fi
       continue-on-error: true
 
     - name: Analyze Crash (if occurred)

@@ -1,0 +1,46 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "gcc-error",
+      "severity": "error",
+      "pattern": [
+        {
+          "regexp": "^(.+?):(\\d+):(\\d+):\\s+(?:fatal\\s+)?(error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      ]
+    },
+    {
+      "owner": "gcc-warning",
+      "severity": "warning",
+      "pattern": [
+        {
+          "regexp": "^(.+?):(\\d+):(\\d+):\\s+(warning):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      ]
+    },
+    {
+      "owner": "gcc-note",
+      "severity": "notice",
+      "pattern": [
+        {
+          "regexp": "^(.+?):(\\d+):(\\d+):\\s+(note):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      ]
+    }
+  ]
+}
