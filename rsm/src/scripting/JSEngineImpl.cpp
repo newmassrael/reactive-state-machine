@@ -347,7 +347,7 @@ JSResult JSEngine::getVariableInternal(const std::string &sessionId, const std::
     return JSResult::createSuccess(result);
 }
 
-// W3C SCXML B.2: Helper function to parse event data as JSON or XML DOM
+// W3C SCXML B.2: Helper function to parse event data as JSON, XML DOM, or space-normalized string
 static ::JSValue parseEventData(JSContext *ctx, const std::string &dataStr) {
     // Skip leading whitespace for XML detection
     size_t firstNonWhitespace = dataStr.find_first_not_of(" \t\r\n");
@@ -356,10 +356,43 @@ static ::JSValue parseEventData(JSContext *ctx, const std::string &dataStr) {
     if (isXML) {
         // Create DOM object for XML content
         return RSM::DOMBinding::createDOMObject(ctx, dataStr);
-    } else {
-        // Parse as JSON for non-XML content
-        return JS_ParseJSON(ctx, dataStr.c_str(), dataStr.length(), "<event-data>");
     }
+
+    // Try to parse as JSON
+    ::JSValue jsonValue = JS_ParseJSON(ctx, dataStr.c_str(), dataStr.length(), "<event-data>");
+    if (!JS_IsException(jsonValue)) {
+        return jsonValue;
+    }
+
+    // W3C SCXML B.2 test 562: If not XML or JSON, create space-normalized string
+    // "processor creates space normalized string when receiving anything other than KVPs or XML"
+    JS_FreeValue(ctx, jsonValue);  // Free the exception
+
+    // Space normalization: collapse multiple whitespace (spaces, tabs, newlines) into single spaces
+    std::string normalized;
+    normalized.reserve(dataStr.length());
+    bool inWhitespace = false;
+    bool hasContent = false;
+
+    for (char c : dataStr) {
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            if (hasContent && !inWhitespace) {
+                normalized += ' ';
+                inWhitespace = true;
+            }
+        } else {
+            normalized += c;
+            inWhitespace = false;
+            hasContent = true;
+        }
+    }
+
+    // Remove trailing whitespace if any
+    if (!normalized.empty() && normalized.back() == ' ') {
+        normalized.pop_back();
+    }
+
+    return JS_NewString(ctx, normalized.c_str());
 }
 
 JSResult JSEngine::setCurrentEventInternal(const std::string &sessionId, const std::shared_ptr<Event> &event) {
