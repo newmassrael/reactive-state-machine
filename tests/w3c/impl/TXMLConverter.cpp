@@ -80,8 +80,14 @@ const std::regex TXMLConverter::CONF_SRCEXPR_ATTR{R"def(conf:srcExpr="([^"]*)")d
 
 // Parameter and communication patterns
 const std::regex TXMLConverter::CONF_NAME_ATTR{R"abc(conf:name="([^"]*)")abc", std::regex::optimize};
+// Test 226 specific patterns - numeric name conversion
+// conf:name="1" -> name="Var1" (numeric IDs)
+const std::regex TXMLConverter::CONF_NAME_NUMERIC_ATTR{R"abc(conf:name="([0-9]+)")abc", std::regex::optimize};
 
 const std::regex TXMLConverter::CONF_NAMELIST_ATTR{R"def(conf:namelist="([^"]*)")def", std::regex::optimize};
+// Test 226 specific patterns - numeric namelist conversion
+// conf:namelist="1" -> namelist="Var1" (numeric IDs)
+const std::regex TXMLConverter::CONF_NAMELIST_NUMERIC_ATTR{R"def(conf:namelist="([0-9]+)")def", std::regex::optimize};
 
 const std::regex TXMLConverter::CONF_BASIC_HTTP_TARGET_ATTR{R"ghi(conf:basicHTTPAccessURITarget="")ghi",
                                                             std::regex::optimize};
@@ -410,15 +416,13 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, CONF_VARCHILDEXPR_ATTR, R"(expr="Var$1")");
 
     // Convert parameter and communication attributes
-    // Handle numeric name attributes: conf:name="1" -> name="var1"
-    std::regex name_numeric_pattern(R"abc(conf:name="([0-9]+)")abc");
-    result = std::regex_replace(result, name_numeric_pattern, R"(name="Var$1")");
+    // Handle numeric name attributes: conf:name="1" -> name="Var1"
+    result = std::regex_replace(result, CONF_NAME_NUMERIC_ATTR, R"(name="Var$1")");
     // Convert remaining conf:name attributes to standard name
     result = std::regex_replace(result, CONF_NAME_ATTR, R"(name="$1")");
 
-    // Handle numeric namelist attributes: conf:namelist="1" -> namelist="var1"
-    std::regex namelist_numeric_pattern(R"def(conf:namelist="([0-9]+)")def");
-    result = std::regex_replace(result, namelist_numeric_pattern, R"(namelist="Var$1")");
+    // Handle numeric namelist attributes: conf:namelist="1" -> namelist="Var1"
+    result = std::regex_replace(result, CONF_NAMELIST_NUMERIC_ATTR, R"(namelist="Var$1")");
     // Convert remaining conf:namelist attributes to standard namelist
     result = std::regex_replace(result, CONF_NAMELIST_ATTR, R"(namelist="$1")");
 

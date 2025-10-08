@@ -159,7 +159,11 @@ private:
 
     // Parameter and communication patterns
     static const std::regex CONF_NAME_ATTR;
+    // conf:name="1" -> name="Var1" (numeric IDs for Test 226)
+    static const std::regex CONF_NAME_NUMERIC_ATTR;
     static const std::regex CONF_NAMELIST_ATTR;
+    // conf:namelist="1" -> namelist="Var1" (numeric IDs for Test 226)
+    static const std::regex CONF_NAMELIST_NUMERIC_ATTR;
     static const std::regex CONF_BASIC_HTTP_TARGET_ATTR;
     static const std::regex CONF_EVENT_RAW_ATTR;
 
