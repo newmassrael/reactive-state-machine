@@ -62,6 +62,10 @@ const std::regex TXMLConverter::CONF_TYPE_ATTR{R"def(conf:type="([^"]*)")def", s
 
 const std::regex TXMLConverter::CONF_SRC_ATTR{R"def(conf:src="([^"]*)")def", std::regex::optimize};
 
+// conf:sendIDExpr="1" -> sendidexpr="Var1" (numeric IDs for Test 210)
+const std::regex TXMLConverter::CONF_SENDIDEXPR_NUMERIC_ATTR{R"def(conf:sendIDExpr="([0-9]+)")def",
+                                                             std::regex::optimize};
+// conf:sendIDExpr="varname" -> sendidexpr="varname" (general)
 const std::regex TXMLConverter::CONF_SENDIDEXPR_ATTR{R"def(conf:sendIDExpr="([^"]*)")def", std::regex::optimize};
 
 const std::regex TXMLConverter::CONF_TYPEEXPR_ATTR{R"def(conf:typeExpr="([^"]*)")def", std::regex::optimize};
@@ -376,11 +380,8 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, CONF_TYPE_ATTR, R"(type="$1")");
     result = std::regex_replace(result, CONF_SRC_ATTR, R"(src="$1")");
 
-    // Convert cancel sendIDExpr attribute
-    // Handle numeric variables: conf:sendIDExpr="1" -> sendidexpr="var1"
-    std::regex sendidexpr_numeric_pattern(R"def(conf:sendIDExpr="([0-9]+)")def");
-    result = std::regex_replace(result, sendidexpr_numeric_pattern, R"(sendidexpr="Var$1")");
-    // Convert remaining conf:sendIDExpr attributes to standard sendidexpr
+    // Convert cancel sendIDExpr attribute - use pre-compiled class members (Test 210)
+    result = std::regex_replace(result, CONF_SENDIDEXPR_NUMERIC_ATTR, R"(sendidexpr="Var$1")");
     result = std::regex_replace(result, CONF_SENDIDEXPR_ATTR, R"(sendidexpr="$1")");
 
     // Convert invoke typeExpr attribute

@@ -56,7 +56,7 @@ namespace RSM::W3C {
  * - **conf:systemVarLocation**: System var loc → location="{var}"
  * - **conf:scxmlEventIOLocation**: I/O processor location → expr="_ioprocessors['scxml']['location']"
  *
- * ### Communication (Tests: 183, 189, 240, 354, 496)
+ * ### Communication (Tests: 183, 210, 240, 354, 496)
  * - **conf:sendIDExpr**: Send ID expression → sendidexpr="{expr}"
  * - **conf:basicHTTPAccessURITarget**: HTTP target → target="{uri}"
  * - **conf:unreachableTarget**: Invalid target → targetexpr="undefined"
@@ -130,6 +130,9 @@ private:
     static const std::regex CONF_EVENT_ATTR;
     static const std::regex CONF_TYPE_ATTR;
     static const std::regex CONF_SRC_ATTR;
+    // conf:sendIDExpr="1" -> sendidexpr="Var1" (numeric IDs for Test 210)
+    static const std::regex CONF_SENDIDEXPR_NUMERIC_ATTR;
+    // conf:sendIDExpr="varname" -> sendidexpr="varname" (general)
     static const std::regex CONF_SENDIDEXPR_ATTR;
     static const std::regex CONF_TYPEEXPR_ATTR;
     // W3C SCXML invoke srcexpr attribute support for dynamic source evaluation
