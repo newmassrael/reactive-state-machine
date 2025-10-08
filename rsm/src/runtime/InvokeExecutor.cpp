@@ -78,6 +78,11 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     // W3C SCXML 6.4: Generate invoke ID with state ID for "stateid.platformid" format (test 224)
     std::string invokeid = invoke->getId().empty() ? generateInvokeId(invoke->getStateId()) : invoke->getId();
 
+    // Store generated ID back to InvokeNode for later cleanup (fixes test 207, 233, 234, 237, 252, 338, 422)
+    if (invoke->getId().empty()) {
+        invoke->setId(invokeid);
+    }
+
     LOG_INFO(
         "SCXMLInvokeHandler: Starting invoke - invokeid: {}, childSession: {}, parentSession: {}, sessionExists: {}",
         invokeid, childSessionId, parentSessionId, sessionAlreadyExists);
@@ -382,11 +387,38 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     // Get reference to the session we just added (session was moved, can't use it anymore)
     auto &activeSession = activeSessions_[invokeid];
 
+    // W3C SCXML 5.10 test 338: Register invoke mapping BEFORE starting child
+    // This ensures mapping is available when child's final state onentry sends events
+    // For pre-allocated sessions (sessionAlreadyExists=true), mapping may already be registered by InvokeExecutor
+    if (!sessionAlreadyExists) {
+        JSEngine::instance().registerInvokeMapping(parentSessionId, invokeid, childSessionId);
+        LOG_DEBUG(
+            "SCXMLInvokeHandler: Registered invoke mapping before child start - parent: {}, invoke: {}, child: {}",
+            parentSessionId, invokeid, childSessionId);
+    }
+
+    // W3C SCXML Test 233, 234: Register finalize script BEFORE starting child
+    // Separate storage ensures script remains available even after invoke cancellation
+    if (!activeSession.finalizeScript.empty()) {
+        std::lock_guard<std::mutex> lock(finalizeScriptsMutex_);
+        finalizeScripts_[childSessionId] = activeSession.finalizeScript;
+        LOG_DEBUG("SCXMLInvokeHandler: Registered finalize script for child session: {}", childSessionId);
+    }
+
     // Start the child StateMachine
     LOG_DEBUG("SCXMLInvokeHandler: Starting child StateMachine for invoke: {}", invokeid);
     if (!activeSession.smContext->get()->start()) {
         LOG_ERROR("SCXMLInvokeHandler: Failed to start child StateMachine for invoke: {}", invokeid);
         activeSessions_.erase(invokeid);
+        // Unregister mapping if we registered it above
+        if (!sessionAlreadyExists) {
+            JSEngine::instance().unregisterInvokeMapping(parentSessionId, invokeid);
+        }
+        // Remove finalize script if registered
+        {
+            std::lock_guard<std::mutex> lock(finalizeScriptsMutex_);
+            finalizeScripts_.erase(childSessionId);
+        }
         JSEngine::instance().destroySession(childSessionId);
         return "";
     }
@@ -397,12 +429,6 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
     // W3C SCXML 6.5: done.invoke generation is now handled by completion callback
     // The callback ensures proper event ordering: child onexit → done.invoke
     // No need for synchronous done.invoke generation here
-
-    // Register invoke mapping in JSEngine for #_invokeid target support
-    // For pre-allocated sessions (sessionAlreadyExists=true), mapping may already be registered by InvokeExecutor
-    if (!sessionAlreadyExists) {
-        JSEngine::instance().registerInvokeMapping(parentSessionId, invokeid, childSessionId);
-    }
 
     LOG_INFO("SCXMLInvokeHandler: Successfully started SCXML invoke: {} with session: {} and running StateMachine",
              invokeid, childSessionId);
@@ -467,6 +493,14 @@ bool SCXMLInvokeHandler::cancelInvoke(const std::string &invokeid) {
 
     // Mark as inactive
     session.isActive = false;
+
+    // W3C SCXML Test 233, 234: Remove finalize script after cancellation
+    // Script is no longer needed once invoke is cancelled
+    {
+        std::lock_guard<std::mutex> lock(finalizeScriptsMutex_);
+        finalizeScripts_.erase(session.sessionId);
+        LOG_DEBUG("SCXMLInvokeHandler: Removed finalize script for cancelled child session: {}", session.sessionId);
+    }
 
     LOG_INFO("SCXMLInvokeHandler: Successfully cancelled invoke: {}", invokeid);
     return true;
@@ -621,22 +655,19 @@ std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &in
 
     LOG_DEBUG("InvokeExecutor: Executing invoke of type: {} for session: {}", invokeType, sessionId);
 
+    // W3C SCXML 6.4: Generate invoke ID if not specified, BEFORE handler execution (test 224)
+    // This ensures we can pre-register handler to prevent race conditions with immediate child completion
+    std::string invokeid = invoke->getId();
+    if (invokeid.empty()) {
+        invokeid = generateInvokeId(invoke->getStateId());
+        invoke->setId(invokeid);
+        LOG_DEBUG("InvokeExecutor: Generated invoke ID: {}", invokeid);
+    }
+
     // Check if invoke is already active to prevent duplicate execution
-    std::string invokeId = invoke->getId();
-    LOG_DEBUG("InvokeExecutor: DETAILED DEBUG - invoke ID: '{}', isEmpty: {}", invokeId, invokeId.empty());
-
-    if (!invokeId.empty()) {
-        bool isActive = isInvokeActive(invokeId);
-        LOG_DEBUG("InvokeExecutor: DETAILED DEBUG - isInvokeActive('{}') returned: {}", invokeId, isActive);
-
-        if (isActive) {
-            LOG_WARN("InvokeExecutor: Invoke {} already active, skipping duplicate execution", invokeId);
-            return invokeId;
-        } else {
-            LOG_DEBUG("InvokeExecutor: Invoke {} is not active, proceeding with execution", invokeId);
-        }
-    } else {
-        LOG_DEBUG("InvokeExecutor: Invoke ID is empty, proceeding with execution");
+    if (isInvokeActive(invokeid)) {
+        LOG_WARN("InvokeExecutor: Invoke {} already active, skipping duplicate execution", invokeid);
+        return invokeid;
     }
 
     // Create appropriate handler using factory pattern
@@ -646,57 +677,36 @@ std::string InvokeExecutor::executeInvoke(const std::shared_ptr<IInvokeNode> &in
         return "";
     }
 
-    // W3C SCXML Test 192: Set parent StateMachine for completion callback state checking (thread-safe with shared_ptr)
+    // W3C SCXML Test 192: Set parent StateMachine for completion callback (thread-safe)
     auto scxmlHandler = std::dynamic_pointer_cast<SCXMLInvokeHandler>(handler);
     auto parentSM = parentStateMachine_.lock();
     if (scxmlHandler && parentSM) {
         scxmlHandler->setParentStateMachine(parentSM);
-        LOG_DEBUG("InvokeExecutor: Set parent StateMachine for SCXML handler");
     }
 
-    // ARCHITECTURAL FIX: Pre-register invoke mapping BEFORE execution for immediate availability
-    // This ensures that any transition actions executing during invoke startup can find the mapping
-    std::string reservedInvokeId = invoke->getId();
-    std::string childSessionId;  // Declare outside if block for proper scope
+    // W3C SCXML 5.10: Pre-register handler and invoke mapping BEFORE child starts (test 338)
+    // This ensures mapping is available when child immediately completes and sends events
+    invokeHandlers_[invokeid] = handler;
+    LOG_DEBUG("InvokeExecutor: Pre-registered handler for invoke: {}", invokeid);
 
-    if (!reservedInvokeId.empty()) {
-        // Pre-register handler to prevent duplicate execution
-        invokeHandlers_[reservedInvokeId] = handler;
-        LOG_DEBUG("InvokeExecutor: Pre-registered invoke '{}' to prevent duplicates", reservedInvokeId);
+    std::string childSessionId = JSEngine::instance().generateSessionIdString("session_");
+    JSEngine::instance().registerInvokeMapping(sessionId, invokeid, childSessionId);
+    LOG_DEBUG("InvokeExecutor: Pre-registered invoke mapping - parent: {}, invoke: {}, child: {}", sessionId, invokeid,
+              childSessionId);
 
-        // CRITICAL: Generate child session ID and register invoke mapping IMMEDIATELY
-        // This architectural change ensures mapping is available during transition actions
-        childSessionId = JSEngine::instance().generateSessionIdString("session_");
-        JSEngine::instance().registerInvokeMapping(sessionId, reservedInvokeId, childSessionId);
-        LOG_DEBUG("InvokeExecutor: ARCHITECTURAL FIX - Pre-registered invoke mapping: parent={}, invoke={}, child={}",
-                  sessionId, reservedInvokeId, childSessionId);
-    }
-
-    // Execute invoke using appropriate method
-    std::string invokeid;
-    if (!reservedInvokeId.empty()) {
-        LOG_DEBUG("InvokeExecutor: Starting invoke with session ID - reservedInvokeId: {}, childSessionId: {}",
-                  reservedInvokeId, childSessionId);
-        // Pass the pre-allocated child session ID to the handler
-        invokeid = handler->startInvokeWithSessionId(invoke, sessionId, eventDispatcher_, childSessionId);
-    } else {
-        LOG_DEBUG("InvokeExecutor: Starting invoke without explicit ID - generating session ID");
-        // Fallback for invokes without explicit ID
-        invokeid = handler->startInvoke(invoke, sessionId, eventDispatcher_);
-    }
-    if (invokeid.empty()) {
+    // Start invoke with pre-allocated child session ID
+    std::string returnedId = handler->startInvokeWithSessionId(invoke, sessionId, eventDispatcher_, childSessionId);
+    if (returnedId.empty()) {
         LOG_ERROR("InvokeExecutor: Handler failed to start invoke of type: {}", invokeType);
 
-        // Remove pre-registration if invoke failed
-        if (!reservedInvokeId.empty()) {
-            invokeHandlers_.erase(reservedInvokeId);
-            LOG_DEBUG("InvokeExecutor: Removed pre-registration for failed invoke '{}'", reservedInvokeId);
-        }
+        // Cleanup: Remove both handler registration and invoke mapping
+        invokeHandlers_.erase(invokeid);
+        JSEngine::instance().unregisterInvokeMapping(sessionId, invokeid);
+
         return "";
     }
 
-    // Track handler for cancellation (update if different ID was generated)
-    invokeHandlers_[invokeid] = handler;
+    // Track handler for cancellation (invokeid should match returnedId)
 
     LOG_INFO("InvokeExecutor: Successfully executed invoke: {} of type: {} for session: {}", invokeid, invokeType,
              sessionId);
@@ -805,8 +815,8 @@ std::string InvokeExecutor::generateInvokeId(const std::string &stateId) const {
     return UniqueIdGenerator::generateInvokeId(stateId);
 }
 
-std::vector<StateMachine *> InvokeExecutor::getAutoForwardSessions(const std::string &parentSessionId) {
-    std::vector<StateMachine *> result;
+std::vector<std::shared_ptr<StateMachine>> InvokeExecutor::getAutoForwardSessions(const std::string &parentSessionId) {
+    std::vector<std::shared_ptr<StateMachine>> result;
 
     // Iterate through all handlers and collect autoForward sessions
     for (const auto &[invokeid, handler] : invokeHandlers_) {
@@ -843,6 +853,8 @@ void InvokeExecutor::cleanupInvoke(const std::string &invokeid) {
 }
 
 std::string InvokeExecutor::getFinalizeScriptForChildSession(const std::string &childSessionId) const {
+    LOG_DEBUG("InvokeExecutor: Looking up finalize script for child session: {}", childSessionId);
+
     // Iterate through all handlers to find the one with matching child session
     for (const auto &[invokeid, handler] : invokeHandlers_) {
         // Check if handler is SCXML type
@@ -851,14 +863,12 @@ std::string InvokeExecutor::getFinalizeScriptForChildSession(const std::string &
             if (scxmlHandler) {
                 std::string finalizeScript = scxmlHandler->getFinalizeScriptForChildSession(childSessionId);
                 if (!finalizeScript.empty()) {
-                    LOG_DEBUG("InvokeExecutor: Found finalize script for child session: {}", childSessionId);
                     return finalizeScript;
                 }
             }
         }
     }
 
-    LOG_DEBUG("InvokeExecutor: No finalize script found for child session: {}", childSessionId);
     return "";
 }
 
@@ -994,12 +1004,15 @@ std::string SCXMLInvokeHandler::loadSCXMLFromFile(const std::string &filepath, c
     return content;
 }
 
-std::vector<StateMachine *> SCXMLInvokeHandler::getAutoForwardSessions(const std::string &parentSessionId) {
-    std::vector<StateMachine *> result;
+std::vector<std::shared_ptr<StateMachine>>
+SCXMLInvokeHandler::getAutoForwardSessions(const std::string &parentSessionId) {
+    std::vector<std::shared_ptr<StateMachine>> result;
     for (auto &[invokeid, session] : activeSessions_) {
         if (session.isActive && session.parentSessionId == parentSessionId && session.autoForward) {
             if (session.smContext) {
-                result.push_back(session.smContext->get());
+                // W3C SCXML 6.4: Use shared_ptr to prevent use-after-free during autoForward iteration (test 338)
+                // Child might reach final state during processEvent, triggering cleanup
+                result.push_back(session.smContext->getShared());
             }
         }
     }
@@ -1007,13 +1020,16 @@ std::vector<StateMachine *> SCXMLInvokeHandler::getAutoForwardSessions(const std
 }
 
 std::string SCXMLInvokeHandler::getFinalizeScriptForChildSession(const std::string &childSessionId) const {
-    for (const auto &[invokeid, session] : activeSessions_) {
-        if (session.isActive && session.sessionId == childSessionId) {
-            LOG_DEBUG("SCXMLInvokeHandler: Found finalize script for child session: {} (invokeid: {})", childSessionId,
-                      invokeid);
-            return session.finalizeScript;
-        }
+    // W3C SCXML Test 233, 234: Lookup from separate finalize script storage
+    // This ensures script is available even after invoke cancellation
+    std::lock_guard<std::mutex> lock(finalizeScriptsMutex_);
+    auto it = finalizeScripts_.find(childSessionId);
+    if (it != finalizeScripts_.end()) {
+        LOG_DEBUG("SCXMLInvokeHandler: Found finalize script for child session: {}", childSessionId);
+        return it->second;
     }
+
+    LOG_DEBUG("SCXMLInvokeHandler: No finalize script found for child session: {}", childSessionId);
     return "";
 }
 
