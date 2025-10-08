@@ -114,6 +114,9 @@ private:
 
     // Test 153 specific patterns
     static const std::regex CONF_COMPARE_ID_VAL_ATTR;
+    // conf:varExpr="1" -> expr="Var1" (numeric IDs for Tests 153, 186)
+    static const std::regex CONF_VAR_EXPR_NUMERIC_ATTR;
+    // conf:varExpr="varname" -> expr="varname" (general)
     static const std::regex CONF_VAR_EXPR_ATTR;
     static const std::regex CONF_ID_VAL_ATTR;
 

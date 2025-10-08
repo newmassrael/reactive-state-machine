@@ -41,6 +41,9 @@ const std::regex TXMLConverter::CONF_INCREMENT_ID_ELEMENT{R"ghi(<conf:incrementI
 // Test 153 specific patterns
 const std::regex TXMLConverter::CONF_COMPARE_ID_VAL_ATTR{R"abc(conf:compareIDVal="([^"]*)")abc", std::regex::optimize};
 
+// conf:varExpr="1" -> expr="Var1" (numeric IDs for Tests 153, 186)
+const std::regex TXMLConverter::CONF_VAR_EXPR_NUMERIC_ATTR{R"def(conf:varExpr="([0-9]+)")def", std::regex::optimize};
+// conf:varExpr="varname" -> expr="varname" (general)
 const std::regex TXMLConverter::CONF_VAR_EXPR_ATTR{R"def(conf:varExpr="([^"]*)")def", std::regex::optimize};
 
 const std::regex TXMLConverter::CONF_ID_VAL_ATTR{R"ghi(conf:idVal="([^"]*)")ghi", std::regex::optimize};
@@ -527,11 +530,9 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Generic conf:compareIDVal pattern for other cases
     result = std::regex_replace(result, CONF_COMPARE_ID_VAL_ATTR, R"(cond="$1")");
 
-    // conf:varExpr="2" -> expr="var2" (for numeric IDs)
-    std::regex varexpr_numeric_pattern(R"def(conf:varExpr="([0-9]+)")def");
-    std::regex varexpr_general_pattern(R"def(conf:varExpr="([^"]*)")def");
-    result = std::regex_replace(result, varexpr_numeric_pattern, R"(expr="Var$1")");
-    result = std::regex_replace(result, varexpr_general_pattern, R"(expr="$1")");
+    // conf:varExpr - use pre-compiled class members (Tests 153, 186)
+    result = std::regex_replace(result, CONF_VAR_EXPR_NUMERIC_ATTR, R"(expr="Var$1")");
+    result = std::regex_replace(result, CONF_VAR_EXPR_ATTR, R"(expr="$1")");
 
     // Event data field access (Tests: 176, 186, 205, 233, 234)
     // conf:eventDataFieldValue="aParam" -> expr="_event.data.aParam"
