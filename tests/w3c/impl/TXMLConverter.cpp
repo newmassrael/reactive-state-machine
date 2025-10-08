@@ -77,7 +77,16 @@ const std::regex TXMLConverter::CONF_BASIC_HTTP_TARGET_ATTR{R"ghi(conf:basicHTTP
 const std::regex TXMLConverter::CONF_EVENT_RAW_ATTR{R"jkl(conf:eventRaw="")jkl", std::regex::optimize};
 
 // Timing and delay patterns
+// conf:delay="1" -> delay="1s" (numeric values with CSS2 spec suffix)
+const std::regex TXMLConverter::CONF_DELAY_NUMERIC_ATTR{R"hjk(conf:delay="([0-9]+(?:\.[0-9]+)?)")hjk",
+                                                        std::regex::optimize};
+// conf:delay="varname" -> delay="varname" (general)
 const std::regex TXMLConverter::CONF_DELAY_ATTR{R"ghi(conf:delay="([^"]*)")ghi", std::regex::optimize};
+
+// conf:delayFromVar="1" -> delayexpr="Var1" (numeric IDs for Test 175)
+const std::regex TXMLConverter::CONF_DELAY_FROM_VAR_NUMERIC_ATTR{R"hjk(conf:delayFromVar="([0-9]+)")hjk",
+                                                                 std::regex::optimize};
+// conf:delayFromVar="varname" -> delayexpr="varname" (general)
 const std::regex TXMLConverter::CONF_DELAY_FROM_VAR_ATTR{R"hjk(conf:delayFromVar="([^"]*)")hjk", std::regex::optimize};
 
 // Error handling and validation patterns
@@ -408,15 +417,13 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Convert event raw attributes (remove as they are test-specific)
     result = std::regex_replace(result, CONF_EVENT_RAW_ATTR, R"(expr="_event.raw")");
 
-    // Convert timing and delay attributes (add "s" suffix for numeric values per CSS2 spec)
-    std::regex delay_numeric_pattern(R"hjk(conf:delay="([0-9]+(?:\.[0-9]+)?)")hjk");
-    result = std::regex_replace(result, delay_numeric_pattern, R"(delay="$1s")");
+    // Convert timing and delay attributes - use pre-compiled class members
+    // Tests 185-187: Add "s" suffix for numeric values per CSS2 spec
+    result = std::regex_replace(result, CONF_DELAY_NUMERIC_ATTR, R"(delay="$1s")");
     result = std::regex_replace(result, CONF_DELAY_ATTR, R"(delay="$1")");
 
-    // Convert conf:delayFromVar to delayexpr with variable prefix for numeric values
-    // conf:delayFromVar="1" -> delayexpr="var1" (W3C Test 175)
-    std::regex delay_from_var_numeric_pattern(R"hjk(conf:delayFromVar="([0-9]+)")hjk");
-    result = std::regex_replace(result, delay_from_var_numeric_pattern, R"(delayexpr="Var$1")");
+    // Convert conf:delayFromVar to delayexpr (Test 175)
+    result = std::regex_replace(result, CONF_DELAY_FROM_VAR_NUMERIC_ATTR, R"(delayexpr="Var$1")");
     result = std::regex_replace(result, CONF_DELAY_FROM_VAR_ATTR, R"(delayexpr="$1")");
 
     // Convert error handling and validation attributes

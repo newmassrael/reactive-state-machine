@@ -139,7 +139,14 @@ private:
     static const std::regex CONF_EVENT_RAW_ATTR;
 
     // Timing and delay patterns
+    // conf:delay="1" -> delay="1s" (numeric values with CSS2 spec suffix)
+    static const std::regex CONF_DELAY_NUMERIC_ATTR;
+    // conf:delay="varname" -> delay="varname" (general)
     static const std::regex CONF_DELAY_ATTR;
+
+    // conf:delayFromVar="1" -> delayexpr="Var1" (numeric IDs for Test 175)
+    static const std::regex CONF_DELAY_FROM_VAR_NUMERIC_ATTR;
+    // conf:delayFromVar="varname" -> delayexpr="varname" (general)
     static const std::regex CONF_DELAY_FROM_VAR_ATTR;
 
     // Error handling and validation patterns
