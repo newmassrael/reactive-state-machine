@@ -91,6 +91,20 @@ namespace RSM::W3C {
  */
 class TXMLConverter : public ITestConverter {
 private:
+    // ========================================================================
+    // Test Environment Configuration Constants
+    // ========================================================================
+
+    /**
+     * @brief Default HTTP test server URL for BasicHTTPEventProcessor tests
+     * @see W3C Test 201: BasicHTTPEventProcessor target URL
+     */
+    static constexpr const char *HTTP_TEST_SERVER_URL = "http://localhost:8080/test";
+
+    // ========================================================================
+    // Regex Pattern Definitions
+    // ========================================================================
+
     // Namespace and structural patterns
     static const std::regex CONF_NAMESPACE_DECL;
     static const std::regex CONF_DATAMODEL_ATTR;

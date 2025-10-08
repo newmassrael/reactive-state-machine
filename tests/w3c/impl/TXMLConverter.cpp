@@ -420,7 +420,8 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, CONF_NAMELIST_ATTR, R"(namelist="$1")");
 
     // Convert HTTP target attributes (remove as they are test-specific)
-    result = std::regex_replace(result, CONF_BASIC_HTTP_TARGET_ATTR, R"(target="http://localhost:8080/test")");
+    result = std::regex_replace(result, CONF_BASIC_HTTP_TARGET_ATTR,
+                                std::string(R"(target=")") + HTTP_TEST_SERVER_URL + R"(")");
 
     // Convert event raw attributes (remove as they are test-specific)
     result = std::regex_replace(result, CONF_EVENT_RAW_ATTR, R"(expr="_event.raw")");
