@@ -313,7 +313,12 @@ bool StateMachine::start() {
                 }
 
                 LOG_DEBUG("StateMachine: Processing queued events after start (iteration {})", iterations);
-                eventRaiserImpl->processQueuedEvents();
+
+                // W3C SCXML 3.3: RAII guard to prevent recursive auto-processing during batch event processing
+                {
+                    BatchProcessingGuard batchGuard(isBatchProcessing_);
+                    eventRaiserImpl->processQueuedEvents();
+                }
 
                 // Check for eventless transitions after processing events
                 checkEventlessTransitions();
@@ -403,7 +408,7 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     // Set event processing flag with RAII for exception safety
     struct ProcessingEventGuard {
         bool &flag_;
-        bool wasAlreadySet_;
+        bool wasAlreadySet_;  // Public member to check if this is a nested call
 
         explicit ProcessingEventGuard(bool &flag) : flag_(flag), wasAlreadySet_(flag) {
             if (!wasAlreadySet_) {
@@ -570,6 +575,22 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                 // External transition: exit parallel state
                 LOG_DEBUG("SCXML W3C: External transition from parallel state: {} -> {}",
                           stateTransitionResult.fromState, stateTransitionResult.toState);
+
+                // W3C SCXML 3.3: Process all internal events before returning
+                // Only process if this is the top-level event (not nested/recursive call)
+                if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
+                    auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+                    if (eventRaiserImpl) {
+                        while (eventRaiserImpl->hasQueuedEvents()) {
+                            LOG_DEBUG(
+                                "W3C SCXML 3.3: Processing queued internal event after parallel external transition");
+                            if (!eventRaiserImpl->processNextQueuedEvent()) {
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 return stateTransitionResult;
             }
             // Internal transition: actions executed, continue to region processing
@@ -693,6 +714,22 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             externalResult.fromState = currentState;
             externalResult.toState = externalTransitionTarget;
             externalResult.eventName = eventName;
+
+            // W3C SCXML 3.3: Process all internal events before returning
+            // Only process if this is the top-level event (not nested/recursive call)
+            if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
+                auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+                if (eventRaiserImpl) {
+                    while (eventRaiserImpl->hasQueuedEvents()) {
+                        LOG_DEBUG(
+                            "W3C SCXML 3.3: Processing queued internal event after external transition from parallel");
+                        if (!eventRaiserImpl->processNextQueuedEvent()) {
+                            break;
+                        }
+                    }
+                }
+            }
+
             return externalResult;
         }
 
@@ -706,6 +743,20 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             bool allRegionsComplete = parallelState->areAllRegionsComplete();
             if (allRegionsComplete) {
                 LOG_DEBUG("SCXML W3C: All parallel regions completed for state: {}", currentState);
+
+                // W3C SCXML 3.4: Process done.state events when all regions complete
+                // Only process if this is the top-level event (not nested/recursive call)
+                if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
+                    auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+                    if (eventRaiserImpl) {
+                        while (eventRaiserImpl->hasQueuedEvents()) {
+                            LOG_DEBUG("W3C SCXML 3.4: Processing done.state event after parallel completion");
+                            if (!eventRaiserImpl->processNextQueuedEvent()) {
+                                break;
+                            }
+                        }
+                    }
+                }
             }
 
             // Invoke execution consolidated to key lifecycle points            // Return success with parallel state as
@@ -715,6 +766,9 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             finalResult.fromState = currentState;
             finalResult.toState = currentState;  // Parallel state remains active
             finalResult.eventName = eventName;
+
+            // W3C SCXML 3.3: Internal events will be processed at hierarchical transition completion
+            // Removed auto-processing here to prevent out-of-order execution during eventless transitions
             return finalResult;
         } else {
             LOG_DEBUG("No transitions executed in any region for event: {}", eventName);
@@ -764,6 +818,21 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             if (transitionResult.success) {
                 LOG_DEBUG("SCXML hierarchical processing: Transition found in state '{}': {} -> {}", nodeId,
                           transitionResult.fromState, transitionResult.toState);
+
+                // W3C SCXML 3.3: Process all internal events before returning
+                // Only process if this is the top-level event (not nested/recursive call)
+                if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
+                    auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+                    if (eventRaiserImpl) {
+                        while (eventRaiserImpl->hasQueuedEvents()) {
+                            LOG_DEBUG("W3C SCXML 3.3: Processing queued internal event after successful transition");
+                            if (!eventRaiserImpl->processNextQueuedEvent()) {
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 return transitionResult;
             }
 
@@ -781,6 +850,23 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     result.fromState = getCurrentState();
     result.eventName = eventName;
     result.errorMessage = "No valid transitions found in active state hierarchy";
+
+    // W3C SCXML 3.3: Process all internal events before returning
+    // After processing an external event, the system MUST process all queued internal events
+    // This ensures done.state events are automatically processed (test: W3C_Parallel_CompletionCriteria)
+    // Only process if this is the top-level event (not nested/recursive call)
+    if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            while (eventRaiserImpl->hasQueuedEvents()) {
+                LOG_DEBUG("W3C SCXML 3.3: Processing queued internal event");
+                if (!eventRaiserImpl->processNextQueuedEvent()) {
+                    break;  // Queue became empty or processing failed
+                }
+            }
+        }
+    }
+
     return result;
 }
 
@@ -1120,15 +1206,28 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             if (!targetState.empty() && model_ && !isHistoryTarget) {
                 auto targetNode = model_->findStateById(targetState);
                 if (targetNode) {
-                    // Collect states from target up to LCA (exclusive)
+                    // W3C SCXML: Compute enter set from target up to (not including) LCA
+                    // Special case (test 579): if target == LCA (ancestor transition),
+                    // include target in enter set to ensure onentry is executed
                     std::vector<std::string> statesToEnter;
                     IStateNode *current = targetNode;
+
                     while (current != nullptr) {
                         std::string currentId = current->getId();
-                        if (currentId == exitSetResult.lca) {
-                            break;  // Stop at LCA (don't include LCA)
+
+                        // W3C SCXML: Don't include LCA unless it's the target (ancestor transition)
+                        if (currentId == exitSetResult.lca && currentId != targetState) {
+                            break;  // Reached LCA for normal transition, stop without adding it
                         }
+
+                        // Add state to enter set
                         statesToEnter.push_back(currentId);
+
+                        // If we just added target==LCA (ancestor transition), stop here
+                        if (currentId == exitSetResult.lca) {
+                            break;
+                        }
+
                         current = current->getParent();
                     }
                     // Reverse to get shallowest first (parent before children)
@@ -1761,6 +1860,27 @@ bool StateMachine::enterState(const std::string &stateId) {
             LOG_INFO("History restoration successful, entering {} target states",
                      restorationResult.targetStateIds.size());
 
+            // W3C SCXML 3.10 (test 579): Execute default transition actions BEFORE entering target state
+            // "The processor MUST execute any executable content in the transition...
+            //  However the Processor MUST execute this content only if there is no stored history"
+            bool hasRecordedHistory = restorationResult.isRestoredFromRecording;
+            if (!hasRecordedHistory && model_) {
+                auto historyStateNode = model_->findStateById(stateId);
+                if (historyStateNode) {
+                    const auto &transitions = historyStateNode->getTransitions();
+                    if (!transitions.empty()) {
+                        // History state should have exactly one default transition
+                        const auto &defaultTransition = transitions[0];
+                        const auto &actions = defaultTransition->getActionNodes();
+                        if (!actions.empty()) {
+                            LOG_DEBUG("W3C SCXML 3.10: Executing {} default transition actions for history state {}",
+                                      actions.size(), stateId);
+                            executeActionNodes(actions, "history default transition");
+                        }
+                    }
+                }
+            }
+
             // Release guard before entering target states (allows recursive enterState calls)
             guard.release();
 
@@ -1782,6 +1902,7 @@ bool StateMachine::enterState(const std::string &stateId) {
                     }
                 }
             }
+
             return allSucceeded;
         } else {
             LOG_ERROR("History restoration failed: {}", restorationResult.errorMessage);
@@ -2554,6 +2675,11 @@ bool StateMachine::setupJSEnvironment() {
             });
         LOG_DEBUG(
             "StateMachine: Initial transition callback configured for StateHierarchyManager (test 412 compliance)");
+
+        // W3C SCXML 3.10: Set history manager for direct restoration (test 579)
+        // This avoids EnterStateGuard issues from reentrant enterState calls
+        hierarchyManager_->setHistoryManager(historyManager_.get());
+        LOG_DEBUG("StateMachine: History manager configured for StateHierarchyManager (test 579 compliance)");
     }
 
     // W3C SCXML 5.8: Execute top-level scripts AFTER datamodel init, BEFORE start()
@@ -2604,6 +2730,15 @@ bool StateMachine::setupJSEnvironment() {
     if (eventRaiser_ && actionExecutor_) {
         actionExecutor_->setEventRaiser(eventRaiser_);
         LOG_DEBUG("StateMachine: EventRaiser passed to ActionExecutor for session: {}", sessionId_);
+    }
+
+    // W3C SCXML: Auto-initialize EventRaiser if not already set (for standalone StateMachine)
+    // This ensures done.state events can be queued during start() when parallel regions complete
+    if (!eventRaiser_) {
+        auto eventRaiser = std::make_shared<EventRaiserImpl>();
+        setEventRaiser(eventRaiser);
+        EventRaiserService::getInstance().registerEventRaiser(sessionId_, eventRaiser);
+        LOG_DEBUG("StateMachine: Auto-initialized EventRaiser for session: {}", sessionId_);
     }
 
     // Register EventRaiser with JSEngine after session creation
@@ -3899,6 +4034,14 @@ StateMachine::ExitSetResult StateMachine::computeExitSet(const std::string &sour
     // This must include ALL active descendants, not just the source->LCA chain (test 505)
     // Use helper method to build exit set (reduces code duplication)
     result.states = buildExitSetForDescendants(result.lca, true);
+
+    // W3C SCXML 3.10 (test 579): Ancestor transition (target == LCA)
+    // When transitioning to an ancestor state, the target must also be exited and re-entered
+    // This ensures onexit/onentry are executed, allowing data changes (e.g., Var1++)
+    if (targetStateId == result.lca && hierarchyManager_ && hierarchyManager_->isStateActive(targetStateId)) {
+        result.states.push_back(targetStateId);
+        LOG_DEBUG("W3C SCXML: Ancestor transition detected, including target '{}' in exit set", targetStateId);
+    }
 
     // Note: buildExitSetForDescendants already:
     // - Excludes parallel children (test 404, 504)

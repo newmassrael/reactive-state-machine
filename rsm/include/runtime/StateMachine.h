@@ -360,12 +360,30 @@ private:
         bool &transitionFlag_;
     };
 
+    // W3C SCXML 3.3: RAII guard for batch processing to prevent recursive auto-processing
+    struct BatchProcessingGuard {
+        bool &flag_;
+
+        explicit BatchProcessingGuard(bool &flag) : flag_(flag) {
+            flag_ = true;
+        }
+
+        ~BatchProcessingGuard() {
+            flag_ = false;
+        }
+
+        // Prevent copying
+        BatchProcessingGuard(const BatchProcessingGuard &) = delete;
+        BatchProcessingGuard &operator=(const BatchProcessingGuard &) = delete;
+    };
+
     // Core state - now delegated to StateHierarchyManager
     // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
     // Removed: std::vector<std::string> activeStates_ (use hierarchyManager_->getActiveStates())
     bool isRunning_ = false;
     bool isEnteringState_ = false;                 // Guard against reentrant enterState calls
     bool isProcessingEvent_ = false;               // Track event processing context
+    bool isBatchProcessing_ = false;               // Track batch event processing to prevent recursive auto-processing
     bool isEnteringInitialConfiguration_ = false;  // W3C SCXML 3.3: Track initial configuration entry
     bool inTransition_ = false;                    // Track if we're in a transition context (for history recording)
     std::string initialState_;

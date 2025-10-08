@@ -15,6 +15,7 @@ class IExecutionContext;
 class IInvokeNode;
 class IActionNode;
 class ConcurrentStateNode;
+class HistoryManager;
 
 /**
  * @brief 계층적 상태 관리 시스템
@@ -154,6 +155,26 @@ public:
     void setInitialTransitionCallback(std::function<void(const std::vector<std::shared_ptr<IActionNode>> &)> callback);
 
     /**
+     * @brief Set callback for entering states via StateMachine
+     *
+     * W3C SCXML 3.10: When entering initial child states, delegate to StateMachine::enterState
+     * to ensure history states are properly restored instead of re-executing defaults
+     *
+     * @param callback Function to call to enter a state (returns success/failure)
+     */
+    void setEnterStateCallback(std::function<bool(const std::string &)> callback);
+
+    /**
+     * @brief Set history manager for direct history restoration
+     *
+     * W3C SCXML 3.10: Allows StateHierarchyManager to handle history restoration
+     * without triggering EnterStateGuard issues from reentrant calls
+     *
+     * @param historyManager History manager instance
+     */
+    void setHistoryManager(HistoryManager *historyManager);
+
+    /**
      * @brief Enter a state along with all its ancestors up to a parent
      *
      * W3C SCXML 3.3: When initial attribute specifies deep descendants,
@@ -235,6 +256,14 @@ private:
 
     // W3C SCXML 3.13: Initial transition action callback for proper event queuing
     std::function<void(const std::vector<std::shared_ptr<IActionNode>> &)> initialTransitionCallback_;
+
+    // W3C SCXML 3.10: State entry callback for history restoration
+    // When entering initial child states, delegate to StateMachine::enterState
+    // to ensure history states are properly restored instead of re-executing defaults
+    std::function<bool(const std::string &)> enterStateCallback_;
+
+    // W3C SCXML 3.10: History manager for direct history restoration (test 579)
+    HistoryManager *historyManager_;
 
     /**
      * @brief Update execution context for all regions of a parallel state

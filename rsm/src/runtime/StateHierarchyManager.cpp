@@ -3,13 +3,15 @@
 #include "model/IStateNode.h"
 #include "model/ITransitionNode.h"
 #include "model/SCXMLModel.h"
+#include "runtime/HistoryManager.h"
 #include "states/ConcurrentRegion.h"
 #include "states/ConcurrentStateNode.h"
 #include <algorithm>
 
 namespace RSM {
 
-StateHierarchyManager::StateHierarchyManager(std::shared_ptr<SCXMLModel> model) : model_(model) {
+StateHierarchyManager::StateHierarchyManager(std::shared_ptr<SCXMLModel> model)
+    : model_(model), historyManager_(nullptr) {
     LOG_DEBUG("StateHierarchyManager: Initialized with SCXML model");
 }
 
@@ -26,6 +28,55 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
     }
 
     LOG_DEBUG("enterState - Entering state: {}", stateId);
+
+    // W3C SCXML 3.10: History states must be restored, not entered directly
+    if (stateNode->getType() == Type::HISTORY) {
+        if (!historyManager_) {
+            LOG_ERROR("enterState - History state {} requires historyManager but it's not set", stateId);
+            return false;
+        }
+
+        LOG_DEBUG("enterState - Restoring history state: {}", stateId);
+
+        // W3C SCXML 3.10: Restore history and enter target states
+        auto restorationResult = historyManager_->restoreHistory(stateId);
+        if (!restorationResult.success || restorationResult.targetStateIds.empty()) {
+            LOG_ERROR("enterState - History restoration failed for: {}", stateId);
+            return false;
+        }
+
+        LOG_DEBUG("enterState - History restoration successful, entering {} target states",
+                  restorationResult.targetStateIds.size());
+
+        // W3C SCXML 3.10 (test 579): Execute default transition actions ONLY if no stored history
+        bool hasRecordedHistory = restorationResult.isRestoredFromRecording;
+        if (!hasRecordedHistory && model_) {
+            auto historyStateNode = model_->findStateById(stateId);
+            if (historyStateNode) {
+                const auto &transitions = historyStateNode->getTransitions();
+                if (!transitions.empty()) {
+                    const auto &defaultTransition = transitions[0];
+                    const auto &actions = defaultTransition->getActionNodes();
+                    if (!actions.empty() && initialTransitionCallback_) {
+                        LOG_DEBUG("enterState - Executing {} default transition actions for history state {}",
+                                  actions.size(), stateId);
+                        initialTransitionCallback_(actions);
+                    }
+                }
+            }
+        }
+
+        // Enter all target states from history restoration
+        bool allEntered = true;
+        for (const auto &targetStateId : restorationResult.targetStateIds) {
+            if (!enterState(targetStateId)) {
+                LOG_ERROR("enterState - Failed to enter history target state: {}", targetStateId);
+                allEntered = false;
+            }
+        }
+
+        return allEntered;
+    }
 
     // SCXML W3C specification section 3.4: parallel states behave differently from compound states
     if (stateNode->getType() == Type::PARALLEL) {
@@ -207,8 +258,9 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
             while (iss >> initialChild) {
                 LOG_DEBUG("enterState - Compound state: {} entering initial child: {}", stateId, initialChild);
 
-                // W3C SCXML 3.3: For deep initial targets (not direct children), enter all ancestors
                 auto childState = model_->findStateById(initialChild);
+
+                // W3C SCXML 3.3: For deep initial targets (not direct children), enter all ancestors
                 if (childState && childState->getParent() != stateNode) {
                     // Deep target - need to enter intermediate ancestors
                     LOG_DEBUG("enterState - Deep initial target detected, entering ancestors for: {}", initialChild);
@@ -217,7 +269,7 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
                         allEntered = false;
                     }
                 } else {
-                    // Direct child - use normal recursive entry
+                    // Direct child - use recursive entry (history states handled by early delegation)
                     if (!enterState(initialChild)) {
                         LOG_ERROR("enterState - Failed to enter initial child: {}", initialChild);
                         allEntered = false;
@@ -402,6 +454,17 @@ void StateHierarchyManager::exitParallelStateAndDescendants(const std::string &p
 
 // Exit a hierarchical state by removing it and all child states
 void StateHierarchyManager::exitHierarchicalState(const std::string &stateId) {
+    // Log current active states before exit
+    std::string activeStatesStr;
+    for (const auto &state : activeStates_) {
+        if (!activeStatesStr.empty()) {
+            activeStatesStr += ", ";
+        }
+        activeStatesStr += state;
+    }
+    LOG_DEBUG("exitHierarchicalState - Current active states: [{}]", activeStatesStr);
+    LOG_DEBUG("exitHierarchicalState - Requested to exit state: {}", stateId);
+
     std::vector<std::string> statesToRemove;
 
     bool foundState = false;
@@ -413,6 +476,16 @@ void StateHierarchyManager::exitHierarchicalState(const std::string &stateId) {
             statesToRemove.push_back(*it);
         }
     }
+
+    // Log what will be removed
+    std::string toRemoveStr;
+    for (const auto &state : statesToRemove) {
+        if (!toRemoveStr.empty()) {
+            toRemoveStr += ", ";
+        }
+        toRemoveStr += state;
+    }
+    LOG_DEBUG("exitHierarchicalState - Will remove {} states: [{}]", statesToRemove.size(), toRemoveStr);
 
     for (const auto &state : statesToRemove) {
         removeStateFromConfiguration(state);
@@ -811,6 +884,16 @@ void StateHierarchyManager::setInitialTransitionCallback(
     std::function<void(const std::vector<std::shared_ptr<IActionNode>> &)> callback) {
     initialTransitionCallback_ = callback;
     LOG_DEBUG("StateHierarchyManager: Initial transition callback set for W3C SCXML 3.13 compliance");
+}
+
+void StateHierarchyManager::setEnterStateCallback(std::function<bool(const std::string &)> callback) {
+    enterStateCallback_ = callback;
+    LOG_DEBUG("StateHierarchyManager: Enter state callback set for W3C SCXML 3.10 history compliance");
+}
+
+void StateHierarchyManager::setHistoryManager(HistoryManager *historyManager) {
+    historyManager_ = historyManager;
+    LOG_DEBUG("StateHierarchyManager: History manager set for W3C SCXML 3.10 direct restoration");
 }
 
 void StateHierarchyManager::updateRegionExecutionContexts(ConcurrentStateNode *parallelState) {

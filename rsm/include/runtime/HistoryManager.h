@@ -19,11 +19,13 @@ struct HistoryRestorationResult {
     bool success = false;                     // Whether restoration succeeded
     std::vector<std::string> targetStateIds;  // States to enter after restoration
     std::string errorMessage;                 // Error description if failed
+    bool isRestoredFromRecording = false;     // True if restored from recorded history, false if using default
 
-    static HistoryRestorationResult createSuccess(const std::vector<std::string> &states) {
+    static HistoryRestorationResult createSuccess(const std::vector<std::string> &states, bool fromRecording = false) {
         HistoryRestorationResult result;
         result.success = true;
         result.targetStateIds = states;
+        result.isRestoredFromRecording = fromRecording;
         return result;
     }
 

@@ -135,13 +135,13 @@ HistoryRestorationResult HistoryManager::restoreHistory(const std::string &histo
         // Restore from recorded history
         const auto &entry = historyIt->second;
         LOG_INFO("HistoryManager: Restoring {} recorded states for {}", entry.recordedStateIds.size(), historyStateId);
-        return HistoryRestorationResult::createSuccess(entry.recordedStateIds);
+        return HistoryRestorationResult::createSuccess(entry.recordedStateIds, true);  // fromRecording = true
     } else {
         // Use default states
         auto defaultStates = getDefaultStates(historyInfo);
         LOG_INFO("HistoryManager: No recorded history found, using {} default states for {}", defaultStates.size(),
                  historyStateId);
-        return HistoryRestorationResult::createSuccess(defaultStates);
+        return HistoryRestorationResult::createSuccess(defaultStates, false);  // fromRecording = false
     }
 }
 
