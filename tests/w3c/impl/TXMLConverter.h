@@ -148,8 +148,13 @@ private:
     static const std::regex CONF_SENDIDEXPR_NUMERIC_ATTR;
     // conf:sendIDExpr="varname" -> sendidexpr="varname" (general)
     static const std::regex CONF_SENDIDEXPR_ATTR;
+    // conf:typeExpr="1" -> typeexpr="Var1" (numeric IDs for Test 215)
+    static const std::regex CONF_TYPEEXPR_NUMERIC_ATTR;
+    // conf:typeExpr="varname" -> typeexpr="varname" (general)
     static const std::regex CONF_TYPEEXPR_ATTR;
-    // W3C SCXML invoke srcexpr attribute support for dynamic source evaluation
+    // conf:srcExpr="1" -> srcexpr="Var1" (numeric IDs for Test 216)
+    static const std::regex CONF_SRCEXPR_NUMERIC_ATTR;
+    // conf:srcExpr="varname" -> srcexpr="varname" (general)
     static const std::regex CONF_SRCEXPR_ATTR;
 
     // Parameter and communication patterns
