@@ -1532,13 +1532,13 @@ TEST_F(TXMLConverterTest, W3CTest159ExecutableContentErrorHandling) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // Test conf:illegalTarget conversion - should remove event attribute to create error
+    // Test conf:illegalTarget conversion - should convert to invalid target value
     EXPECT_EQ(result.find(R"(conf:illegalTarget)"), std::string::npos)
         << "conf:illegalTarget should be completely removed";
 
-    // Test that event attribute is removed from send element with conf:illegalTarget
-    EXPECT_NE(result.find(R"(<send />)"), std::string::npos)
-        << "send element should have event attribute removed to cause error";
+    // Test that conf:illegalTarget converts to target="!invalid" to trigger error.execution
+    EXPECT_NE(result.find(R"(target="!invalid")"), std::string::npos)
+        << "conf:illegalTarget should convert to target=\"!invalid\" to cause error.execution";
 
     // Test conf:incrementID conversion
     EXPECT_NE(result.find(R"(<assign location="Var1" expr="Var1 + 1"/>)"), std::string::npos)

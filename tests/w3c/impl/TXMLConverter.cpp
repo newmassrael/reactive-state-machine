@@ -182,6 +182,10 @@ const std::regex TXMLConverter::CONF_IDVAL_COMPARISON_ATTR{R"def(conf:idVal="([0
 // conf:eventSendid="" converts to expr="_event.sendid"
 const std::regex TXMLConverter::CONF_EVENTSENDID_ATTR{R"esi(conf:eventSendid="([^"]*)")esi", std::regex::optimize};
 
+// Test 198 specific patterns - event origintype validation
+// conf:originTypeEq="value" converts to cond="_event.origintype == 'value'"
+const std::regex TXMLConverter::CONF_ORIGINTYPEEQ_ATTR{R"ote(conf:originTypeEq="([^"]*)")ote", std::regex::optimize};
+
 // Test 240 specific patterns - namelist variable comparison
 const std::regex TXMLConverter::CONF_NAMELISTIDVAL_COMPARISON_ATTR{R"def(conf:namelistIdVal="([0-9]+)=([0-9]+)")def",
                                                                    std::regex::optimize};
@@ -552,6 +556,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Test 332 specific patterns
     // conf:eventSendid="" -> expr="_event.sendid"
     result = std::regex_replace(result, CONF_EVENTSENDID_ATTR, R"(expr="_event.sendid")");
+
+    // Test 198 specific patterns
+    // conf:originTypeEq="value" -> cond="_event.origintype == 'value'"
+    result = std::regex_replace(result, CONF_ORIGINTYPEEQ_ATTR, R"(cond="_event.origintype == '$1'")");
 
     // W3C test 240: Generic conf:namelistIdVal pattern - converts "namelistIdVal="N=M" to cond="varN == M"
     result = std::regex_replace(result, CONF_NAMELISTIDVAL_COMPARISON_ATTR, R"(cond="Var$1 == $2")");
