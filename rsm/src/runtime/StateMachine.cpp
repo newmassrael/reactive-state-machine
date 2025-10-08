@@ -2415,6 +2415,10 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
 
     LOG_DEBUG("W3C SCXML 3.13: Executing microstep with {} transition(s)", transitions.size());
 
+    // Set transition context flag (for history recording in exitState)
+    // RAII guard ensures flag is cleared on all exit paths (normal return, error, exception)
+    TransitionGuard transitionGuard(inTransition_);
+
     // Phase 1: Exit all source states (executing onexit actions)
     // W3C SCXML: Compute unique exit set from all transitions, exit in correct order
     std::set<std::string> exitSetUnique;
@@ -2470,6 +2474,35 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
                   int posB = positionCache.at(b);
                   return posA > posB;  // Reverse document order
               });
+
+    // W3C SCXML 3.6 (test 580): Record history BEFORE exiting states
+    // History must be recorded while all descendants are still active
+    // Only record for states that actually have history children
+    if (historyManager_ && hierarchyManager_) {
+        auto currentActiveStates = hierarchyManager_->getActiveStates();
+        for (const auto &stateToExit : allStatesToExit) {
+            auto stateNode = exitStateCache[stateToExit];
+            if (stateNode && (stateNode->getType() == Type::COMPOUND || stateNode->getType() == Type::PARALLEL)) {
+                // Check if this state has history children
+                bool hasHistoryChildren = false;
+                for (const auto &child : stateNode->getChildren()) {
+                    if (child->getType() == Type::HISTORY) {
+                        hasHistoryChildren = true;
+                        break;
+                    }
+                }
+
+                // Only record history if this state has history children
+                if (hasHistoryChildren) {
+                    bool recorded = historyManager_->recordHistory(stateToExit, currentActiveStates);
+                    if (recorded) {
+                        LOG_DEBUG("Pre-recorded history for state '{}' before microstep exit (W3C SCXML 3.6, test 580)",
+                                  stateToExit);
+                    }
+                }
+            }
+        }
+    }
 
     LOG_DEBUG("W3C SCXML 3.13: Phase 1 - Exiting {} state(s)", allStatesToExit.size());
     for (const auto &stateId : allStatesToExit) {
@@ -4041,6 +4074,24 @@ StateMachine::ExitSetResult StateMachine::computeExitSet(const std::string &sour
     if (targetStateId == result.lca && hierarchyManager_ && hierarchyManager_->isStateActive(targetStateId)) {
         result.states.push_back(targetStateId);
         LOG_DEBUG("W3C SCXML: Ancestor transition detected, including target '{}' in exit set", targetStateId);
+    }
+
+    // W3C SCXML 3.10 (test 580): History state transition
+    // When transitioning to a history state whose parent is active, exit and re-enter the parent
+    // This ensures onexit/onentry actions execute (e.g., Var1++ in onexit)
+    auto targetNode = model_->findStateById(targetStateId);
+    if (targetNode && targetNode->getType() == Type::HISTORY) {
+        auto parentNode = targetNode->getParent();
+        if (parentNode && hierarchyManager_ && hierarchyManager_->isStateActive(parentNode->getId())) {
+            std::string parentId = parentNode->getId();
+            // Check if parent is not already in exit set
+            if (std::find(result.states.begin(), result.states.end(), parentId) == result.states.end()) {
+                result.states.push_back(parentId);
+                LOG_DEBUG(
+                    "W3C SCXML 3.10: History state transition, including active parent '{}' in exit set (test 580)",
+                    parentId);
+            }
+        }
     }
 
     // Note: buildExitSetForDescendants already:

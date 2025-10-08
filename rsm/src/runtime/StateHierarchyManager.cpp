@@ -156,7 +156,57 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
                     initialChild = children[0]->getId();
                 }
 
-                addStateToConfiguration(initialChild);
+                // W3C SCXML 3.10: History states never end up part of the configuration
+                // Check if initial child is a history state - if so, restore history instead
+                auto initialChildNode = model_->findStateById(initialChild);
+                if (initialChildNode && initialChildNode->getType() == Type::HISTORY) {
+                    LOG_DEBUG(
+                        "StateHierarchyManager: Initial child '{}' is HISTORY state, performing history restoration "
+                        "(W3C SCXML 3.10 compliance)",
+                        initialChild);
+
+                    // W3C SCXML 3.10: Restore history directly using HistoryManager
+                    if (!historyManager_) {
+                        LOG_ERROR("StateHierarchyManager: History state {} requires historyManager but it's not set",
+                                  initialChild);
+                    } else {
+                        auto restorationResult = historyManager_->restoreHistory(initialChild);
+                        if (restorationResult.success && !restorationResult.targetStateIds.empty()) {
+                            LOG_DEBUG(
+                                "StateHierarchyManager: History restoration successful, entering {} target states",
+                                restorationResult.targetStateIds.size());
+
+                            // W3C SCXML 3.10: Execute default transition actions ONLY if no recorded history
+                            bool hasRecordedHistory = restorationResult.isRestoredFromRecording;
+                            if (!hasRecordedHistory) {
+                                const auto &transitions = initialChildNode->getTransitions();
+                                if (!transitions.empty() && transitions[0]) {
+                                    const auto &defaultTransition = transitions[0];
+                                    const auto &actions = defaultTransition->getActionNodes();
+                                    if (!actions.empty() && initialTransitionCallback_) {
+                                        LOG_DEBUG("StateHierarchyManager: Executing {} default transition actions for "
+                                                  "history state {}",
+                                                  actions.size(), initialChild);
+                                        initialTransitionCallback_(actions);
+                                    }
+                                }
+                            }
+
+                            // Add restored states to configuration (not the history state itself)
+                            for (const auto &targetStateId : restorationResult.targetStateIds) {
+                                addStateToConfiguration(targetStateId);
+                                LOG_DEBUG("StateHierarchyManager: Added restored state to configuration: {}",
+                                          targetStateId);
+                            }
+                        } else {
+                            LOG_ERROR("StateHierarchyManager: History restoration failed for {}: {}", initialChild,
+                                      restorationResult.errorMessage);
+                        }
+                    }
+                } else {
+                    // Normal state - add to configuration
+                    addStateToConfiguration(initialChild);
+                }
 
                 // W3C SCXML 6.4: Invoke defer is handled by ConcurrentRegion via callback
                 // No need to defer here - Region already processes invokes in enterInitialState()

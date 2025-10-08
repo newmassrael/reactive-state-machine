@@ -661,17 +661,32 @@ ConcurrentOperationResult ConcurrentRegion::enterInitialState() {
 
         if (!initialChild.empty()) {
             LOG_DEBUG("ConcurrentRegion: Region '{}' entering initial child state: '{}'", id_, initialChild);
-            activeStates_.push_back(initialChild);
-            currentState_ = initialChild;
 
-            // Execute entry actions for child state and handle recursive nesting
-            if (executionContext_) {
-                auto childState = std::find_if(children.begin(), children.end(),
-                                               [&initialChild](const std::shared_ptr<IStateNode> &child) {
-                                                   return child && child->getId() == initialChild;
-                                               });
+            // Find the child state node once for efficiency
+            auto childState = std::find_if(children.begin(), children.end(),
+                                           [&initialChild](const std::shared_ptr<IStateNode> &child) {
+                                               return child && child->getId() == initialChild;
+                                           });
 
-                if (childState != children.end() && *childState) {
+            if (childState != children.end() && *childState) {
+                // W3C SCXML 3.10: History states never end up part of the configuration
+                // If initial child is a history state, it will be handled by StateHierarchyManager
+                // Do NOT add history state to activeStates_ - it must remain transparent
+                if ((*childState)->getType() == Type::HISTORY) {
+                    LOG_DEBUG("ConcurrentRegion: Initial child '{}' is HISTORY state, skipping activeStates addition "
+                              "(W3C SCXML 3.10 compliance, test 580)",
+                              initialChild);
+                    // History restoration will be handled externally by StateHierarchyManager
+                    // Do not set currentState_ or add to activeStates_
+                    return ConcurrentOperationResult::success(id_);
+                }
+
+                // Normal state - add to active configuration
+                activeStates_.push_back(initialChild);
+                currentState_ = initialChild;
+
+                // Execute entry actions for child state and handle recursive nesting
+                if (executionContext_) {
                     // W3C SCXML 3.8: Execute child state's entry action blocks
                     const auto &childEntryBlocks = (*childState)->getEntryActionBlocks();
                     for (const auto &actionBlock : childEntryBlocks) {
