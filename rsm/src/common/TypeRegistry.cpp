@@ -1,4 +1,5 @@
 #include "common/TypeRegistry.h"
+#include "common/Constants.h"
 #include "common/Logger.h"
 #include <algorithm>
 #include <cctype>
@@ -141,7 +142,7 @@ bool TypeRegistry::isBasicHttpEventProcessor(const std::string &uri) {
     std::string normalizedUri = normalizeUri(uri);
 
     // Direct W3C BasicHTTPEventProcessor URI
-    const std::string basicHttpUri = "http://www.w3.org/tr/scxml/#basichttpeventprocessor";
+    const std::string basicHttpUri = normalizeUri(Constants::BASIC_HTTP_EVENT_PROCESSOR_URI);
     if (normalizedUri == basicHttpUri) {
         return true;
     }
@@ -164,7 +165,7 @@ bool TypeRegistry::isScxmlEventProcessor(const std::string &uri) {
     std::string normalizedUri = normalizeUri(uri);
 
     // Direct W3C SCXMLEventProcessor URI
-    const std::string scxmlUri = "http://www.w3.org/tr/scxml/#scxmleventprocessor";
+    const std::string scxmlUri = normalizeUri(Constants::SCXML_EVENT_PROCESSOR_URI);
     if (normalizedUri == scxmlUri) {
         return true;
     }
@@ -252,12 +253,12 @@ void TypeRegistry::initializeDefaultTypes() {
     // SCXML Event Processor (internal)
     registerType(Category::EVENT_PROCESSOR, "scxml", "scxml");
     registerType(Category::EVENT_PROCESSOR, "internal", "scxml");
-    registerType(Category::EVENT_PROCESSOR, "http://www.w3.org/TR/scxml/#SCXMLEventProcessor", "scxml");
-    registerType(Category::EVENT_PROCESSOR, "http://www.w3.org/TR/scxml/#SCXMLEventProcessor/", "scxml");
+    registerType(Category::EVENT_PROCESSOR, Constants::SCXML_EVENT_PROCESSOR_URI, "scxml");
+    registerType(Category::EVENT_PROCESSOR, std::string(Constants::SCXML_EVENT_PROCESSOR_URI) + "/", "scxml");
 
     // Basic HTTP Event Processor
-    registerType(Category::EVENT_PROCESSOR, "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor", "basic-http");
-    registerType(Category::EVENT_PROCESSOR, "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor/", "basic-http");
+    registerType(Category::EVENT_PROCESSOR, Constants::BASIC_HTTP_EVENT_PROCESSOR_URI, "basic-http");
+    registerType(Category::EVENT_PROCESSOR, std::string(Constants::BASIC_HTTP_EVENT_PROCESSOR_URI) + "/", "basic-http");
     registerType(Category::EVENT_PROCESSOR, "basichttp", "basic-http");
     registerType(Category::EVENT_PROCESSOR, "basic-http", "basic-http");
     registerType(Category::EVENT_PROCESSOR, "http", "basic-http");   // Default HTTP mapping
