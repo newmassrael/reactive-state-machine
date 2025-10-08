@@ -36,4 +36,19 @@ constexpr const char *SCXML_EVENT_PROCESSOR_URI = "http://www.w3.org/TR/scxml/#S
  */
 constexpr const char *BASIC_HTTP_EVENT_PROCESSOR_URI = "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor";
 
+// ============================================================================
+// W3C SCXML Invoke Processor URIs (W3C SCXML 6.4)
+// ============================================================================
+
+/**
+ * @brief Standard SCXML Invoke Processor URI
+ *
+ * Default invoke processor for SCXML sub-documents.
+ * Platforms MUST support this type for invoke elements.
+ *
+ * @see W3C SCXML 1.0 Section 6.4
+ * @see W3C Test 220: Processors MUST support this type
+ */
+constexpr const char *SCXML_INVOKE_PROCESSOR_URI = "http://www.w3.org/TR/scxml/";
+
 }  // namespace RSM::Constants

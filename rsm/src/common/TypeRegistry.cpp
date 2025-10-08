@@ -270,8 +270,11 @@ void TypeRegistry::initializeDefaultTypes() {
 
     // SCXML Invoke
     registerType(Category::INVOKE_PROCESSOR, "scxml", "scxml");
-    registerType(Category::INVOKE_PROCESSOR, "http://www.w3.org/TR/scxml", "scxml");
-    registerType(Category::INVOKE_PROCESSOR, "http://www.w3.org/TR/scxml/", "scxml");
+    registerType(Category::INVOKE_PROCESSOR, Constants::SCXML_INVOKE_PROCESSOR_URI, "scxml");
+    registerType(Category::INVOKE_PROCESSOR,
+                 std::string(Constants::SCXML_INVOKE_PROCESSOR_URI)
+                     .substr(0, std::string(Constants::SCXML_INVOKE_PROCESSOR_URI).length() - 1),
+                 "scxml");  // Without trailing slash
     registerType(Category::INVOKE_PROCESSOR, "application/scxml+xml", "scxml");
     registerType(Category::INVOKE_PROCESSOR, "text/scxml", "scxml");
 

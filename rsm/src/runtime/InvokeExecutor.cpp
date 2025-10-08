@@ -1,5 +1,6 @@
 #include "runtime/InvokeExecutor.h"
 #include "SCXMLTypes.h"
+#include "common/Constants.h"
 #include "common/Logger.h"
 #include "common/UniqueIdGenerator.h"
 #include "events/EventDescriptor.h"
@@ -517,8 +518,10 @@ std::shared_ptr<IInvokeHandler> InvokeHandlerFactory::createHandler(const std::s
         // W3C SCXML: Register all standard SCXML invoke type variations
         auto scxmlHandler = []() { return std::make_shared<SCXMLInvokeHandler>(); };
         registerHandler("scxml", scxmlHandler);
-        registerHandler("http://www.w3.org/TR/scxml/", scxmlHandler);  // With trailing slash
-        registerHandler("http://www.w3.org/TR/scxml", scxmlHandler);   // Without trailing slash
+        registerHandler(Constants::SCXML_INVOKE_PROCESSOR_URI, scxmlHandler);
+        registerHandler(std::string(Constants::SCXML_INVOKE_PROCESSOR_URI)
+                            .substr(0, std::string(Constants::SCXML_INVOKE_PROCESSOR_URI).length() - 1),
+                        scxmlHandler);  // Without trailing slash
         initialized = true;
     }
 
