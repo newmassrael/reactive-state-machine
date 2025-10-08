@@ -141,6 +141,15 @@ const std::regex TXMLConverter::CONF_ARRAY456_PATTERN{R"(<conf:array456\s*/>)", 
 const std::regex TXMLConverter::CONF_EVENTDATA_FIELD_VALUE_ATTR{R"def(conf:eventDataFieldValue="([^"]*)")def",
                                                                 std::regex::optimize};
 
+// Event data value validation patterns (Tests: 179, 294, 527, 529)
+// conf:eventdataVal="123" or conf:eventdataVal="'foo'" converts to cond="_event.data == value"
+const std::regex TXMLConverter::CONF_EVENTDATAVAL_ATTR{R"edv(conf:eventdataVal="([^"]*)")edv", std::regex::optimize};
+
+// Event data variable value validation pattern (Test: 294)
+// conf:eventvarVal="1=1" converts to cond="_event.data.Var1 == 1"
+const std::regex TXMLConverter::CONF_EVENTVARVAL_ATTR{R"evv(conf:eventvarVal="([0-9]+)=([0-9]+)")evv",
+                                                      std::regex::optimize};
+
 // Test 354 specific patterns - namelist and param data access
 // conf:eventDataNamelistValue="1" converts to expr="_event.data.var1"
 const std::regex TXMLConverter::CONF_EVENTDATA_NAMELIST_VALUE_ATTR{R"ghi(conf:eventDataNamelistValue="([^"]*)")ghi",
@@ -511,6 +520,15 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // conf:eventDataFieldValue="aParam" -> expr="_event.data.aParam"
     result = std::regex_replace(result, CONF_EVENTDATA_FIELD_VALUE_ATTR, R"(expr="_event.data.$1")");
 
+    // Event data value validation patterns (Tests: 179, 294, 527, 529)
+    // conf:eventdataVal="123" -> cond="_event.data == 123"
+    // conf:eventdataVal="'foo'" -> cond="_event.data == 'foo'" (preserves quotes)
+    result = std::regex_replace(result, CONF_EVENTDATAVAL_ATTR, R"(cond="_event.data == $1")");
+
+    // Event data variable value validation pattern (Test: 294)
+    // conf:eventvarVal="1=1" -> cond="_event.data.Var1 == 1"
+    result = std::regex_replace(result, CONF_EVENTVARVAL_ATTR, R"(cond="_event.data.Var$1 == $2")");
+
     // Test 354 specific patterns - namelist and param data access
     // conf:eventDataNamelistValue="1" -> expr="_event.data.var1" (numeric ID to varN)
     std::regex eventdata_namelist_numeric(R"mno(conf:eventDataNamelistValue="([0-9]+)")mno");
@@ -597,6 +615,11 @@ std::string TXMLConverter::convertConfElements(const std::string &content) {
     // Convert W3C test data array elements to JavaScript arrays
     result = std::regex_replace(result, CONF_ARRAY123_PATTERN, "[1,2,3]");
     result = std::regex_replace(result, CONF_ARRAY456_PATTERN, "[4,5,6]");
+
+    // W3C SCXML test 294: Convert conf:contentFoo to content element with 'foo' value
+    // <conf:contentFoo/> -> <content>'foo'</content>
+    std::regex contentFooPattern(R"(<conf:contentFoo\s*/>)");
+    result = std::regex_replace(result, contentFooPattern, R"(<content>'foo'</content>)");
 
     // W3C SCXML 5.10: Convert conf:sendToSender to send with origin expressions (test 336)
     // <conf:sendToSender name="bar"/> -> <send event="bar" targetexpr="_event.origin" typeexpr="_event.origintype"/>

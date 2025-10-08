@@ -181,6 +181,15 @@ private:
     // Event data field access (Tests: 176, 186, 205, 233, 234)
     static const std::regex CONF_EVENTDATA_FIELD_VALUE_ATTR;
 
+    // Event data value validation patterns (Tests: 179, 294, 527, 529)
+    // conf:eventdataVal="123" converts to cond="_event.data == 123"
+    // conf:eventdataVal="'foo'" converts to cond="_event.data == 'foo'"
+    static const std::regex CONF_EVENTDATAVAL_ATTR;
+
+    // Event data variable value validation pattern (Test: 294)
+    // conf:eventvarVal="1=1" converts to cond="_event.data.Var1 == 1"
+    static const std::regex CONF_EVENTVARVAL_ATTR;
+
     // Test 354 specific patterns - namelist and param data access
     static const std::regex CONF_EVENTDATA_NAMELIST_VALUE_ATTR;
     static const std::regex CONF_EVENTDATA_PARAM_VALUE_ATTR;
