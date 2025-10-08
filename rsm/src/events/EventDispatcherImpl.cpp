@@ -1,5 +1,6 @@
 #include "events/EventDispatcherImpl.h"
 #include "common/Logger.h"
+#include "common/StringUtils.h"
 #include <sstream>
 #include <stdexcept>
 
@@ -30,13 +31,24 @@ std::future<SendResult> EventDispatcherImpl::sendEvent(const EventDescriptor &ev
             return errorPromise.get_future();
         }
 
-        // Check if this is a delayed event
-        if (event.delay.count() > 0) {
+        // W3C SCXML Test 230: Platform events (done.*, error.*) must be queued
+        // to prevent nested processing issues when child completes during parent transition
+        bool isPlatform = isPlatformEvent(event.eventName);
+
+        // Check if this is a delayed event or platform event that needs queueing
+        if (event.delay.count() > 0 || isPlatform) {
+            auto effectiveDelay = event.delay;
+            if (isPlatform && effectiveDelay.count() == 0) {
+                // Platform events queue immediately (0ms) to prevent nested processing
+                effectiveDelay = std::chrono::milliseconds(0);
+                LOG_DEBUG("Platform event '{}' queued immediately (0ms)", event.eventName);
+            }
+
             LOG_DEBUG("Scheduling delayed event '{}' with {}ms delay in session '{}' (sendId: '{}')", event.eventName,
-                      event.delay.count(), event.sessionId, event.sendId);
+                      effectiveDelay.count(), event.sessionId, event.sendId);
 
             // Schedule the event for delayed execution
-            auto sendIdFuture = scheduler_->scheduleEvent(event, event.delay, target, event.sendId, event.sessionId);
+            auto sendIdFuture = scheduler_->scheduleEvent(event, effectiveDelay, target, event.sendId, event.sessionId);
 
             // Convert sendId future to SendResult future
             std::promise<SendResult> resultPromise;

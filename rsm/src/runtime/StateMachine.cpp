@@ -1,5 +1,6 @@
 #include "runtime/StateMachine.h"
 #include "common/Logger.h"
+#include "common/StringUtils.h"
 #include "events/EventRaiserService.h"
 
 #include "factory/NodeFactory.h"
@@ -433,7 +434,48 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
         ProcessingEventGuard &operator=(const ProcessingEventGuard &) = delete;
     };
 
+    // W3C SCXML 5.10: RAII guard to protect _event during nested event processing (Test 230)
+    struct EventContextGuard {
+        ActionExecutorImpl *actionExecutorImpl_;  // Cached pointer to avoid dynamic_pointer_cast overhead
+        EventMetadata savedEvent_;
+        bool isNested_;
+
+        explicit EventContextGuard(ActionExecutorImpl *actionExecutorImpl, const EventMetadata &newEvent)
+            : actionExecutorImpl_(actionExecutorImpl), isNested_(false) {
+            if (actionExecutorImpl_) {
+                // Save current event (may be from parent processEvent call)
+                savedEvent_ = actionExecutorImpl_->getCurrentEvent();
+                isNested_ = !savedEvent_.name.empty();
+
+                if (isNested_) {
+                    LOG_DEBUG(
+                        "EventContextGuard: Nested event processing - saving _event='{}', setting new _event='{}'",
+                        savedEvent_.name, newEvent.name);
+                }
+
+                // Set new event for this processing level
+                actionExecutorImpl_->setCurrentEvent(newEvent);
+            }
+        }
+
+        ~EventContextGuard() {
+            if (actionExecutorImpl_ && isNested_) {
+                // Restore saved event
+                actionExecutorImpl_->setCurrentEvent(savedEvent_);
+                LOG_DEBUG("EventContextGuard: Restored _event='{}' after nested processing", savedEvent_.name);
+            }
+        }
+
+        // Delete copy constructor and assignment
+        EventContextGuard(const EventContextGuard &) = delete;
+        EventContextGuard &operator=(const EventContextGuard &) = delete;
+    };
+
     ProcessingEventGuard eventGuard(isProcessingEvent_);
+
+    // W3C SCXML 5.10: Protect _event during nested event processing with RAII guard (Test 230)
+    EventMetadata currentEventMetadata(eventName, eventData, eventType, sendId, invokeId, originType, originSessionId);
+    EventContextGuard eventContextGuard(cachedExecutorImpl_, currentEventMetadata);
 
     // Count this event
     stats_.totalEvents++;
@@ -441,24 +483,12 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     // Store event data for access in guards/actions
     currentEventData_ = eventData;
 
-    // W3C SCXML compliance: Set current event in ActionExecutor for _event context
-    if (actionExecutor_) {
-        auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
-        if (actionExecutorImpl) {
-            // W3C SCXML 5.10: Set current event with full metadata using EventMetadata structure
-            EventMetadata metadata(eventName, eventData, eventType, sendId, invokeId, originType, originSessionId);
-            actionExecutorImpl->setCurrentEvent(metadata);
-
-            if (!sendId.empty() || !invokeId.empty() || !originType.empty() || !eventType.empty() ||
-                !originSessionId.empty()) {
-                LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}', sendid: '{}', "
-                          "invokeid: '{}', origintype: '{}', type: '{}', originSessionId: '{}'",
-                          eventName, eventData, sendId, invokeId, originType, eventType, originSessionId);
-            } else {
-                LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName,
-                          eventData);
-            }
-        }
+    if (!sendId.empty() || !invokeId.empty() || !originType.empty() || !eventType.empty() || !originSessionId.empty()) {
+        LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}', sendid: '{}', "
+                  "invokeid: '{}', origintype: '{}', type: '{}', originSessionId: '{}'",
+                  eventName, eventData, sendId, invokeId, originType, eventType, originSessionId);
+    } else {
+        LOG_DEBUG("StateMachine: Set current event in ActionExecutor - event: '{}', data: '{}'", eventName, eventData);
     }
 
     // W3C SCXML Test 252: Filter events from cancelled invoke child sessions
@@ -525,11 +555,20 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     }
 
     // W3C SCXML 1.0 Section 6.4: Auto-forward external events to child invoke sessions
-    if (invokeExecutor_) {
+    // Autoforward all events EXCEPT platform events (done.*, error.*) which are state machine internal
+    // W3C Test 230: Events from child sessions ARE autoforwarded back to verify field preservation
+    // Use shared_ptr to prevent use-after-free if child reaches final state during processEvent
+    bool isPlatform = isPlatformEvent(eventName);
+    LOG_DEBUG("W3C SCXML 6.4: Autoforward check - event='{}', invokeExecutor={}, isPlatform={}", eventName,
+              (invokeExecutor_ ? "YES" : "NO"), isPlatform);
+    if (invokeExecutor_ && !isPlatform) {
         auto autoForwardSessions = invokeExecutor_->getAutoForwardSessions(sessionId_);
-        for (auto *childStateMachine : autoForwardSessions) {
-            if (childStateMachine->isRunning()) {
-                childStateMachine->processEvent(eventName, eventData);
+        LOG_DEBUG("W3C SCXML 6.4: Found {} autoforward sessions for parent '{}'", autoForwardSessions.size(),
+                  sessionId_);
+        for (const auto &childStateMachine : autoForwardSessions) {
+            if (childStateMachine && childStateMachine->isRunning()) {
+                LOG_DEBUG("W3C SCXML 6.4: Auto-forwarding event '{}' to child session", eventName);
+                childStateMachine->processEvent(eventName, eventData, originSessionId, sendId, invokeId, originType);
             }
         }
     }
@@ -1191,9 +1230,29 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             // W3C compliance: Events raised in transition actions must be queued, not processed immediately
             const auto &actionNodes = transitionNode->getActionNodes();
             if (!actionNodes.empty()) {
+                // W3C SCXML 5.10: Protect _event during transition action execution (Test 230)
+                // Save current event context before executing actions to prevent corruption by nested events
+                EventMetadata savedEvent;
+                if (actionExecutor_) {
+                    auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
+                    if (actionExecutorImpl) {
+                        savedEvent = actionExecutorImpl->getCurrentEvent();
+                    }
+                }
+
                 LOG_DEBUG("StateMachine: Executing transition actions (events will be queued)");
                 // processEventsAfter=false: Don't process events yet, they will be handled in macrostep loop
                 executeActionNodes(actionNodes, false);
+
+                // W3C SCXML 5.10: Restore _event after transition action execution
+                if (actionExecutor_) {
+                    auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
+                    if (actionExecutorImpl) {
+                        actionExecutorImpl->setCurrentEvent(savedEvent);
+                        LOG_DEBUG("StateMachine: Restored _event after transition actions (name='{}', data='{}')",
+                                  savedEvent.name, savedEvent.data);
+                    }
+                }
             } else {
                 LOG_DEBUG("StateMachine: No transition actions for this transition");
             }
@@ -2517,9 +2576,27 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
     for (const auto &transInfo : transitions) {
         const auto &actionNodes = transInfo.transition->getActionNodes();
         if (!actionNodes.empty()) {
+            // W3C SCXML 5.10: Protect _event during transition action execution (Test 230)
+            // Save current event context before executing actions to prevent corruption by nested events
+            EventMetadata savedEvent;
+            if (actionExecutor_) {
+                auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
+                if (actionExecutorImpl) {
+                    savedEvent = actionExecutorImpl->getCurrentEvent();
+                }
+            }
+
             LOG_DEBUG("W3C SCXML 3.13: Executing {} action(s) from transition", actionNodes.size());
             // processEventsAfter=false: Events raised here will be queued, not processed immediately
             executeActionNodes(actionNodes, false);
+
+            // W3C SCXML 5.10: Restore _event after transition action execution
+            if (actionExecutor_) {
+                auto actionExecutorImpl = std::dynamic_pointer_cast<ActionExecutorImpl>(actionExecutor_);
+                if (actionExecutorImpl) {
+                    actionExecutorImpl->setCurrentEvent(savedEvent);
+                }
+            }
         }
     }
 
@@ -2800,6 +2877,9 @@ bool StateMachine::initializeActionExecutor() {
     try {
         // Create ActionExecutor using the same session as StateMachine
         actionExecutor_ = std::make_shared<ActionExecutorImpl>(sessionId_);
+
+        // Cache the pointer to avoid dynamic_pointer_cast overhead in hot path
+        cachedExecutorImpl_ = dynamic_cast<ActionExecutorImpl *>(actionExecutor_.get());
 
         // Inject EventRaiser if already set via builder pattern
         if (eventRaiser_) {

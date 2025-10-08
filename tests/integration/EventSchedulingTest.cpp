@@ -864,4 +864,183 @@ TEST_F(EventSchedulingTest, SCXML_InternalEventQueue_FIFOOrdering) {
     LOG_DEBUG("=== SCXML 3.12.1: All FIFO ordering tests passed ===");
 }
 
+/**
+ * @brief W3C SCXML Test 230: Autoforward preserves all event fields
+ *
+ * Specification: W3C SCXML 6.4 <invoke> autoforward attribute
+ *
+ * Test scenario:
+ * 1. Parent invokes child with autoforward="true"
+ * 2. Child sends "childToParent" event to parent with specific data
+ * 3. Parent receives event and captures all _event fields
+ * 4. Parent automatically forwards event back to child (autoforward)
+ * 5. Child receives forwarded event and captures all _event fields
+ * 6. Verify that ALL event fields are preserved during autoforward
+ *
+ * Event fields that must be preserved:
+ * - name: Event name ("childToParent")
+ * - type: Event type ("external")
+ * - sendid: Send ID from original send action
+ * - origin: Origin session ID (child session)
+ * - origintype: Origin type URI ("http://www.w3.org/TR/scxml/#SCXMLEventProcessor")
+ * - invokeid: Invoke ID
+ * - data: Event data ({"testData": "testValue123"})
+ *
+ * TXML source: test230.txml (manual test)
+ * Comments: "a manual test that an autoforwarded event has the same fields
+ *            and values as the original event"
+ */
+TEST_F(EventSchedulingTest, W3C_Test230_AutoforwardPreservesAllEventFields) {
+    LOG_DEBUG("=== W3C SCXML Test 230: Autoforward Event Field Preservation ===");
+
+    auto parentStateMachine = std::make_shared<StateMachine>();
+
+    std::string scxmlContent = R"scxml(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0"
+       initial="s0" datamodel="ecmascript">
+
+    <datamodel>
+        <data id="parent_name" expr="''"/>
+        <data id="parent_type" expr="''"/>
+        <data id="parent_sendid" expr="''"/>
+        <data id="parent_origin" expr="''"/>
+        <data id="parent_origintype" expr="''"/>
+        <data id="parent_invokeid" expr="''"/>
+        <data id="parent_data" expr="''"/>
+    </datamodel>
+
+    <state id="s0" initial="s01">
+        <onentry>
+            <send event="timeout" delay="3000ms"/>
+        </onentry>
+
+        <invoke id="childInvokeId" type="scxml" autoforward="true">
+            <content>
+                <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0"
+                       initial="sub0" datamodel="ecmascript">
+
+                    <datamodel>
+                        <data id="child_name" expr="''"/>
+                        <data id="child_type" expr="''"/>
+                        <data id="child_sendid" expr="''"/>
+                        <data id="child_origin" expr="''"/>
+                        <data id="child_origintype" expr="''"/>
+                        <data id="child_invokeid" expr="''"/>
+                        <data id="child_data" expr="''"/>
+                    </datamodel>
+
+                    <state id="sub0">
+                        <onentry>
+                            <send target="#_parent" event="childToParent">
+                                <param name="testData" expr="'testValue123'"/>
+                            </send>
+                        </onentry>
+
+                        <transition event="childToParent" target="subFinal">
+                            <assign location="child_name" expr="_event.name"/>
+                            <assign location="child_type" expr="_event.type"/>
+                            <assign location="child_sendid" expr="_event.sendid"/>
+                            <assign location="child_origin" expr="_event.origin"/>
+                            <assign location="child_origintype" expr="_event.origintype"/>
+                            <assign location="child_invokeid" expr="_event.invokeid"/>
+                            <assign location="child_data" expr="JSON.stringify(_event.data)"/>
+                        </transition>
+                    </state>
+
+                    <final id="subFinal"/>
+                </scxml>
+            </content>
+        </invoke>
+
+        <state id="s01">
+            <transition event="childToParent" target="s02">
+                <assign location="parent_name" expr="_event.name"/>
+                <assign location="parent_type" expr="_event.type"/>
+                <assign location="parent_sendid" expr="_event.sendid"/>
+                <assign location="parent_origin" expr="_event.origin"/>
+                <assign location="parent_origintype" expr="_event.origintype"/>
+                <assign location="parent_invokeid" expr="_event.invokeid"/>
+                <assign location="parent_data" expr="JSON.stringify(_event.data)"/>
+            </transition>
+        </state>
+
+        <state id="s02">
+            <transition event="done.invoke.childInvokeId" target="pass"/>
+            <transition event="timeout" target="fail"/>
+        </state>
+
+        <final id="pass"/>
+        <final id="fail"/>
+    </state>
+</scxml>)scxml";
+
+    // W3C SCXML Test 230: Create EventRaiserImpl with callback that processes events on parent SM
+    auto parentEventRaiser = std::make_shared<RSM::EventRaiserImpl>(
+        [&parentStateMachine](const std::string &name, const std::string &data) -> bool {
+            if (parentStateMachine && parentStateMachine->isRunning()) {
+                return parentStateMachine->processEvent(name, data).success;
+            }
+            return false;
+        });
+
+    parentStateMachine->setEventDispatcher(dispatcher_);
+    parentStateMachine->setEventRaiser(parentEventRaiser);
+
+    ASSERT_TRUE(parentStateMachine->loadSCXMLFromString(scxmlContent)) << "Failed to load SCXML";
+    ASSERT_TRUE(parentStateMachine->start()) << "Failed to start StateMachine";
+
+    // Wait for test completion (max 5 seconds)
+    bool completed = false;
+    for (int i = 0; i < 50 && !completed; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::string state = parentStateMachine->getCurrentState();
+        completed = (state == "pass" || state == "fail");
+    }
+
+    ASSERT_TRUE(completed) << "Test did not complete within timeout";
+
+    std::string finalState = parentStateMachine->getCurrentState();
+    EXPECT_EQ(finalState, "pass") << "Test should reach pass state";
+
+    // Retrieve and verify event field values
+    std::string parentSessionId = parentStateMachine->getSessionId();
+    auto parentName = JSEngine::instance().getVariable(parentSessionId, "parent_name").get().getValueAsString();
+    auto parentType = JSEngine::instance().getVariable(parentSessionId, "parent_type").get().getValueAsString();
+    auto parentSendId = JSEngine::instance().getVariable(parentSessionId, "parent_sendid").get().getValueAsString();
+    auto parentOrigin = JSEngine::instance().getVariable(parentSessionId, "parent_origin").get().getValueAsString();
+    auto parentOrigintype =
+        JSEngine::instance().getVariable(parentSessionId, "parent_origintype").get().getValueAsString();
+    auto parentInvokeid = JSEngine::instance().getVariable(parentSessionId, "parent_invokeid").get().getValueAsString();
+    auto parentData = JSEngine::instance().getVariable(parentSessionId, "parent_data").get().getValueAsString();
+
+    std::string childSessionId = JSEngine::instance().getInvokeSessionId(parentSessionId, "childInvokeId");
+    ASSERT_FALSE(childSessionId.empty()) << "Child session should exist";
+
+    auto childName = JSEngine::instance().getVariable(childSessionId, "child_name").get().getValueAsString();
+    auto childType = JSEngine::instance().getVariable(childSessionId, "child_type").get().getValueAsString();
+    auto childSendId = JSEngine::instance().getVariable(childSessionId, "child_sendid").get().getValueAsString();
+    auto childOrigin = JSEngine::instance().getVariable(childSessionId, "child_origin").get().getValueAsString();
+    auto childOrigintype =
+        JSEngine::instance().getVariable(childSessionId, "child_origintype").get().getValueAsString();
+    auto childInvokeid = JSEngine::instance().getVariable(childSessionId, "child_invokeid").get().getValueAsString();
+    auto childData = JSEngine::instance().getVariable(childSessionId, "child_data").get().getValueAsString();
+
+    // W3C SCXML 6.4: Verify ALL event fields are preserved during autoforward
+    EXPECT_EQ(childName, parentName) << "Autoforwarded event.name must match original";
+    EXPECT_EQ(childType, parentType) << "Autoforwarded event.type must match original";
+    EXPECT_EQ(childSendId, parentSendId) << "Autoforwarded event.sendid must match original";
+    EXPECT_EQ(childOrigin, parentOrigin) << "Autoforwarded event.origin must match original";
+    EXPECT_EQ(childOrigintype, parentOrigintype) << "Autoforwarded event.origintype must match original";
+    EXPECT_EQ(childInvokeid, parentInvokeid) << "Autoforwarded event.invokeid must match original";
+    EXPECT_EQ(childData, parentData) << "Autoforwarded event.data must match original";
+
+    // Verify event field values are not empty
+    EXPECT_FALSE(parentName.empty()) << "Parent event name should not be empty";
+    EXPECT_FALSE(childName.empty()) << "Child event name should not be empty";
+    EXPECT_EQ(parentName, "childToParent") << "Event name should be 'childToParent'";
+
+    parentStateMachine->stop();
+    LOG_DEBUG("=== W3C Test 230 PASSED: All event fields preserved during autoforward ===");
+}
+
 }  // namespace RSM

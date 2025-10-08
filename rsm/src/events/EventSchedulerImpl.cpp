@@ -66,8 +66,12 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     auto now = std::chrono::steady_clock::now();
     auto executeAt = now + delay;
 
+    // Assign sequence number for FIFO ordering (events with same executeAt)
+    uint64_t sequenceNum = eventSequenceCounter_.fetch_add(1, std::memory_order_relaxed);
+
     // Create scheduled event as shared_ptr for safe async access
-    auto scheduledEvent = std::make_shared<ScheduledEvent>(event, executeAt, target, actualSendId, sessionId);
+    auto scheduledEvent =
+        std::make_shared<ScheduledEvent>(event, executeAt, target, actualSendId, sessionId, sequenceNum);
     auto future = scheduledEvent->sendIdPromise.get_future();
 
     // Set the send ID promise immediately

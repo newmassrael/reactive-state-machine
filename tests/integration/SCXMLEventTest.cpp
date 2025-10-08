@@ -18,6 +18,7 @@
 #include <thread>
 
 namespace RSM {
+
 namespace Test {
 
 /**

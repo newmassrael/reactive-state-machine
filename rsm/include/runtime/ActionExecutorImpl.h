@@ -122,6 +122,12 @@ public:
     void setCurrentEvent(const EventMetadata &metadata);
 
     /**
+     * @brief Get current event metadata (W3C SCXML 5.10 _event protection during nested processing)
+     * @return Current event metadata
+     */
+    EventMetadata getCurrentEvent() const;
+
+    /**
      * @brief Clear current event data
      */
     void clearCurrentEvent();

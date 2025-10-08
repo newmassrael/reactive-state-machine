@@ -15,6 +15,7 @@ public:
 
     // IInvokeNode 인터페이스 구현
     virtual const std::string &getId() const override;
+    virtual void setId(const std::string &id) override;
     virtual const std::string &getType() const override;
     virtual const std::string &getSrc() const override;
     virtual bool isAutoForward() const override;

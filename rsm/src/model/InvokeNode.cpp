@@ -14,6 +14,11 @@ const std::string &RSM::InvokeNode::getId() const {
     return id_;
 }
 
+void RSM::InvokeNode::setId(const std::string &id) {
+    LOG_DEBUG("Setting ID for invoke: {} -> {}", id_, id);
+    id_ = id;
+}
+
 const std::string &RSM::InvokeNode::getType() const {
     return type_;
 }

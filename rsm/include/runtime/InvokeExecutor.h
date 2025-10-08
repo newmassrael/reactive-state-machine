@@ -95,9 +95,9 @@ public:
     /**
      * @brief Get all active child state machines with autoForward enabled
      * @param parentSessionId Parent session ID
-     * @return Vector of child StateMachine pointers with autoForward=true
+     * @return Vector of child StateMachine shared_ptrs with autoForward=true (prevents use-after-free during iteration)
      */
-    std::vector<StateMachine *> getAutoForwardSessions(const std::string &parentSessionId);
+    std::vector<std::shared_ptr<StateMachine>> getAutoForwardSessions(const std::string &parentSessionId);
 
     /**
      * @brief Get finalize script for an event from an invoked child session
@@ -139,6 +139,11 @@ private:
     std::deque<std::string> cancelledSessionsOrder_;          // FIFO order for eviction
     std::unordered_set<std::string> cancelledChildSessions_;  // Fast lookup
     mutable std::mutex cancelledSessionsMutex_;               // Thread safety
+
+    // W3C SCXML Test 233, 234: Finalize script mapping (childSessionId -> script)
+    // Separate storage ensures finalize scripts remain available after invoke cancellation
+    std::unordered_map<std::string, std::string> finalizeScripts_;
+    mutable std::mutex finalizeScriptsMutex_;  // Thread safety
 
     // W3C SCXML Test 192: Parent StateMachine weak_ptr for completion callback state checking (thread-safe)
     std::weak_ptr<StateMachine> parentStateMachine_;
@@ -275,9 +280,9 @@ public:
     /**
      * @brief Get all active invoke sessions with autoForward enabled
      * @param parentSessionId Parent session ID
-     * @return Vector of child StateMachine pointers with autoForward=true
+     * @return Vector of child StateMachine shared_ptrs with autoForward=true (prevents use-after-free during iteration)
      */
-    std::vector<StateMachine *> getAutoForwardSessions(const std::string &parentSessionId);
+    std::vector<std::shared_ptr<StateMachine>> getAutoForwardSessions(const std::string &parentSessionId);
 
     /**
      * @brief Get finalize script for an event from an invoked child session

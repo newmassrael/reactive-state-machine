@@ -23,6 +23,7 @@ namespace RSM {
 
 class StateNode;
 class TransitionNode;
+class ActionExecutorImpl;  // Forward declaration for cached pointer optimization
 
 /**
  * @brief SCXML-based State Machine Implementation
@@ -398,6 +399,7 @@ private:
 
     // Action execution infrastructure
     std::shared_ptr<IActionExecutor> actionExecutor_;
+    ActionExecutorImpl *cachedExecutorImpl_ = nullptr;  // Cached pointer to avoid dynamic_pointer_cast
     std::shared_ptr<IExecutionContext> executionContext_;
 
     // Hierarchical state management

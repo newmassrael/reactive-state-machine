@@ -68,22 +68,29 @@ private:
         std::promise<std::string> sendIdPromise;
         std::string sendId;
         std::string sessionId;
+        uint64_t sequenceNumber = 0;  // FIFO ordering for events with same executeAt
         bool cancelled = false;
 
         ScheduledEvent(const EventDescriptor &evt, std::chrono::steady_clock::time_point execTime,
-                       std::shared_ptr<IEventTarget> tgt, const std::string &id, const std::string &sessId)
-            : event(evt), executeAt(execTime), target(std::move(tgt)), sendId(id), sessionId(sessId) {}
+                       std::shared_ptr<IEventTarget> tgt, const std::string &id, const std::string &sessId,
+                       uint64_t seqNum)
+            : event(evt), executeAt(execTime), target(std::move(tgt)), sendId(id), sessionId(sessId),
+              sequenceNumber(seqNum) {}
     };
 
     /**
-     * @brief Comparator for priority queue (earlier times have higher priority)
+     * @brief Comparator for priority queue (earlier times have higher priority, FIFO for same time)
      * CRITICAL FIX: Use shared_ptr instead of raw pointers for memory safety
      */
     struct ExecutionTimeComparator {
         bool operator()(const std::shared_ptr<ScheduledEvent> &a, const std::shared_ptr<ScheduledEvent> &b) const {
             // For min-heap, we want earlier times to have higher priority
             // std::priority_queue is max-heap by default, so we reverse the comparison
-            return a->executeAt > b->executeAt;
+            if (a->executeAt != b->executeAt) {
+                return a->executeAt > b->executeAt;
+            }
+            // FIFO ordering: lower sequence number = higher priority (earlier in queue)
+            return a->sequenceNumber > b->sequenceNumber;
         }
     };
 
@@ -176,6 +183,9 @@ private:
 
     // Send ID generation - REMOVED: Now using UniqueIdGenerator
     // std::atomic<uint64_t> sendIdCounter_{0}; // DEPRECATED: Consolidated to UniqueIdGenerator
+
+    // Sequence number for FIFO ordering of events with same executeAt time
+    std::atomic<uint64_t> eventSequenceCounter_{0};
 
     // Event execution
     EventExecutionCallback executionCallback_;

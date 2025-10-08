@@ -11,6 +11,7 @@ public:
     virtual ~IInvokeNode() = default;
 
     virtual const std::string &getId() const = 0;
+    virtual void setId(const std::string &id) = 0;
     virtual const std::string &getType() const = 0;
     virtual const std::string &getSrc() const = 0;
     virtual bool isAutoForward() const = 0;

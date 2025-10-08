@@ -1,5 +1,6 @@
 #include "runtime/EventRaiserImpl.h"
 #include "common/Logger.h"
+#include "common/StringUtils.h"
 #include <mutex>
 
 namespace RSM {
@@ -108,8 +109,13 @@ bool EventRaiserImpl::raiseEvent(const std::string &eventName, const std::string
                                  const std::string &originSessionId, const std::string &invokeId,
                                  const std::string &originType) {
     // W3C SCXML 5.10: Raise event with full metadata (origin, invoke ID, and origintype)
-    return raiseEventWithPriority(eventName, eventData, EventPriority::INTERNAL, originSessionId, "", invokeId,
-                                  originType);
+    // W3C SCXML Test 230: Platform events (done.*, error.*) must be queued, not processed immediately
+    // This prevents nested processing issues when child completes during parent transition
+    EventPriority priority = EventPriority::INTERNAL;
+    if (isPlatformEvent(eventName)) {
+        priority = EventPriority::EXTERNAL;  // Force queueing for platform events
+    }
+    return raiseEventWithPriority(eventName, eventData, priority, originSessionId, "", invokeId, originType);
 }
 
 bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const std::string &eventData,
@@ -126,8 +132,11 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
     }
 
     // W3C SCXML compliance: Check if immediate mode is enabled
-    if (immediateMode_.load()) {
-        // Immediate processing for SCXML executable content
+    // W3C SCXML Test 230: Platform events (done.*, error.*) must ALWAYS be queued
+    // to prevent nested processing issues when child completes during parent transition
+    bool isPlatform = isPlatformEvent(eventName);
+    if (immediateMode_.load() && !isPlatform) {
+        // Immediate processing for SCXML executable content (except platform events)
         LOG_DEBUG("EventRaiserImpl: Processing event '{}' immediately (SCXML mode)", eventName);
 
         // Get callback under lock
@@ -383,7 +392,7 @@ bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {
 
         // W3C SCXML 5.10: Store event type in thread-local for StateMachine to access (test 331)
         // Event type is "platform" for error/done events, otherwise based on priority
-        if (event.eventName.find("error.") == 0 || event.eventName.find("done.") == 0) {
+        if (isPlatformEvent(event.eventName)) {
             currentEventType_ = "platform";
         } else if (event.priority == EventPriority::INTERNAL) {
             currentEventType_ = "internal";

@@ -9,6 +9,7 @@
 #include "actions/SendAction.h"
 #include "common/Constants.h"
 #include "common/Logger.h"
+#include "common/StringUtils.h"
 #include "common/TypeRegistry.h"
 #include "common/UniqueIdGenerator.h"
 #include "events/EventDescriptor.h"
@@ -365,7 +366,7 @@ void ActionExecutorImpl::setCurrentEvent(const EventMetadata &metadata) {
 
     // Auto-detect event type if not provided
     if (metadata.type.empty()) {
-        if (metadata.name.find("error.") == 0 || metadata.name.find("done.") == 0) {
+        if (isPlatformEvent(metadata.name)) {
             currentEventType_ = "platform";
         } else {
             currentEventType_ = "internal";
@@ -376,6 +377,11 @@ void ActionExecutorImpl::setCurrentEvent(const EventMetadata &metadata) {
 
     // Update _event variable in JavaScript context
     ensureCurrentEventSet();
+}
+
+EventMetadata ActionExecutorImpl::getCurrentEvent() const {
+    return EventMetadata(currentEventName_, currentEventData_, currentEventType_, currentSendId_, currentInvokeId_,
+                         currentOriginType_, currentOriginSessionId_);
 }
 
 void ActionExecutorImpl::clearCurrentEvent() {
