@@ -852,9 +852,9 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             eventData = evaluateExpression(action.getData());
         }
 
-        // W3C SCXML C.1: Build event data from namelist and params (Test 354)
-        // Priority: params can override namelist values (W3C spec compliant)
-        std::map<std::string, std::string> evaluatedParams;
+        // W3C SCXML C.1: Build event data from namelist and params (Test 354, 178)
+        // W3C SCXML: Supports duplicate param names - all values must be included (Test 178)
+        std::map<std::string, std::vector<std::string>> evaluatedParams;
 
         // Step 1: Evaluate namelist variables (if present)
         const std::string &namelist = action.getNamelist();
@@ -870,7 +870,7 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
                 varCount++;
                 try {
                     std::string varValue = evaluateExpression(varName);
-                    evaluatedParams[varName] = varValue;
+                    evaluatedParams[varName].push_back(varValue);
                     LOG_DEBUG("ActionExecutorImpl: Namelist[{}] {}={}", varCount, varName, varValue);
                 } catch (const std::exception &e) {
                     LOG_ERROR("ActionExecutorImpl: Failed to evaluate namelist var '{}': {}", varName, e.what());
@@ -899,7 +899,8 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
                 paramCount++;
                 try {
                     std::string paramValue = evaluateExpression(param.expr);
-                    evaluatedParams[param.name] = paramValue;  // May override namelist value
+                    evaluatedParams[param.name].push_back(
+                        paramValue);  // W3C SCXML: Support duplicate param names (Test 178)
                     LOG_DEBUG("ActionExecutorImpl: Param[{}] {}={} (expr: '{}')", paramCount, param.name, paramValue,
                               param.expr);
                 } catch (const std::exception &e) {

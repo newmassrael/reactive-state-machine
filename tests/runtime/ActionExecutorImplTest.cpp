@@ -1,6 +1,7 @@
 #include "runtime/ActionExecutorImpl.h"
 #include "actions/AssignAction.h"
 #include "actions/ForeachAction.h"
+#include "actions/IfAction.h"
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
@@ -631,6 +632,142 @@ TEST_F(ActionExecutorImplTest, W3C_ForeachAction_NumericArrayVariableAccess) {
 
     std::string result = executor->evaluateExpression("result");
     EXPECT_EQ(result, "abc") << "Should iterate over array stored in numeric variable";
+}
+
+// ============================================================================
+// If/ElseIf/Else Conditional Logic Tests - W3C SCXML 3.13 Compliance
+// ============================================================================
+
+TEST_F(ActionExecutorImplTest, SCXML_ConditionalExecutor_ShortCircuitEvaluation) {
+    LOG_DEBUG("=== SCXML 3.13: Conditional Execution (if/elseif/else) Test ===");
+
+    // W3C SCXML 3.13: Only the first matching branch in an if/elseif/else construct should execute
+    // This test verifies proper short-circuit evaluation similar to W3C test 147
+
+    // Setup test variable
+    EXPECT_TRUE(executor->assignVariable("counter", "0"));
+    EXPECT_TRUE(executor->assignVariable("shouldExecute", "true"));
+    EXPECT_TRUE(executor->assignVariable("shouldNotExecute", "false"));
+
+    // Test 1: Simple if-else with first clause true
+    {
+        auto ifAction = std::make_shared<IfAction>("shouldExecute");
+        auto incrementAction1 = std::make_shared<AssignAction>("counter", "counter + 1");
+        ifAction->addIfAction(incrementAction1);
+
+        // Add else branch - should NOT execute
+        auto &elseBranch = ifAction->addElseBranch();
+        auto incrementAction2 = std::make_shared<AssignAction>("counter", "counter + 100");
+        elseBranch.actions.push_back(incrementAction2);
+
+        EXPECT_TRUE(executor->executeIfAction(*ifAction));
+
+        std::string counterValue = executor->evaluateExpression("counter");
+        EXPECT_EQ(counterValue, "1") << "Only if branch should execute, not else";
+    }
+
+    // Test 2: if-elseif-else with elseif true (W3C test 147 scenario)
+    {
+        executor->assignVariable("counter", "0");
+
+        auto ifAction = std::make_shared<IfAction>("shouldNotExecute");
+        auto incrementAction1 = std::make_shared<AssignAction>("counter", "counter + 10");
+        ifAction->addIfAction(incrementAction1);
+
+        // Add ElseIf branch (true) - should execute
+        auto &elseIfBranch = ifAction->addElseIfBranch("shouldExecute");
+        auto incrementAction2 = std::make_shared<AssignAction>("counter", "counter + 1");
+        elseIfBranch.actions.push_back(incrementAction2);
+
+        // Add Else branch - should NOT execute after true elseif
+        auto &elseBranch = ifAction->addElseBranch();
+        auto incrementAction3 = std::make_shared<AssignAction>("counter", "counter + 100");
+        elseBranch.actions.push_back(incrementAction3);
+
+        EXPECT_TRUE(executor->executeIfAction(*ifAction));
+
+        std::string counterValue = executor->evaluateExpression("counter");
+        EXPECT_EQ(counterValue, "1") << "Only elseif branch should execute when it's true";
+    }
+
+    // Test 3: Multiple elseif branches - only first true one executes
+    {
+        executor->assignVariable("counter", "0");
+        executor->assignVariable("firstCondition", "false");
+        executor->assignVariable("secondCondition", "true");
+        executor->assignVariable("thirdCondition", "true");  // Also true but should not execute
+
+        auto ifAction = std::make_shared<IfAction>("firstCondition");
+        auto incrementAction1 = std::make_shared<AssignAction>("counter", "counter + 1");
+        ifAction->addIfAction(incrementAction1);
+
+        // First ElseIf (true) - should execute
+        auto &elseIf1 = ifAction->addElseIfBranch("secondCondition");
+        auto incrementAction2 = std::make_shared<AssignAction>("counter", "counter + 10");
+        elseIf1.actions.push_back(incrementAction2);
+
+        // Second ElseIf (true but should NOT execute due to short-circuit)
+        auto &elseIf2 = ifAction->addElseIfBranch("thirdCondition");
+        auto incrementAction3 = std::make_shared<AssignAction>("counter", "counter + 100");
+        elseIf2.actions.push_back(incrementAction3);
+
+        // Else (should NOT execute)
+        auto &elseBranch = ifAction->addElseBranch();
+        auto incrementAction4 = std::make_shared<AssignAction>("counter", "counter + 1000");
+        elseBranch.actions.push_back(incrementAction4);
+
+        EXPECT_TRUE(executor->executeIfAction(*ifAction));
+
+        std::string counterValue = executor->evaluateExpression("counter");
+        EXPECT_EQ(counterValue, "10") << "Only first true elseif should execute (short-circuit)";
+    }
+
+    // Test 4: All conditions false - else executes
+    {
+        executor->assignVariable("counter", "0");
+
+        auto ifAction = std::make_shared<IfAction>("false");
+        auto incrementAction1 = std::make_shared<AssignAction>("counter", "counter + 1");
+        ifAction->addIfAction(incrementAction1);
+
+        // Add ElseIf branch (false)
+        auto &elseIfBranch = ifAction->addElseIfBranch("false");
+        auto incrementAction2 = std::make_shared<AssignAction>("counter", "counter + 10");
+        elseIfBranch.actions.push_back(incrementAction2);
+
+        // Add Else branch - should execute
+        auto &elseBranch = ifAction->addElseBranch();
+        auto incrementAction3 = std::make_shared<AssignAction>("counter", "counter + 100");
+        elseBranch.actions.push_back(incrementAction3);
+
+        EXPECT_TRUE(executor->executeIfAction(*ifAction));
+
+        std::string counterValue = executor->evaluateExpression("counter");
+        EXPECT_EQ(counterValue, "100") << "Else branch should execute when all conditions are false";
+    }
+
+    // Test 5: No else branch with all false conditions
+    {
+        executor->assignVariable("counter", "0");
+
+        auto ifAction = std::make_shared<IfAction>("false");
+        auto incrementAction1 = std::make_shared<AssignAction>("counter", "counter + 1");
+        ifAction->addIfAction(incrementAction1);
+
+        // Add ElseIf branch (false)
+        auto &elseIfBranch = ifAction->addElseIfBranch("false");
+        auto incrementAction2 = std::make_shared<AssignAction>("counter", "counter + 10");
+        elseIfBranch.actions.push_back(incrementAction2);
+
+        // No else branch
+
+        EXPECT_TRUE(executor->executeIfAction(*ifAction));
+
+        std::string counterValue = executor->evaluateExpression("counter");
+        EXPECT_EQ(counterValue, "0") << "Counter should remain unchanged when no conditions match and no else";
+    }
+
+    LOG_DEBUG("=== SCXML 3.13: Conditional Execution Test Complete - All tests passed ===");
 }
 
 // ============================================================================

@@ -29,7 +29,8 @@ private:
     std::string sessionId_;
 
     // Store the last event parameters for W3C test access (eventName -> params map)
-    mutable std::map<std::string, std::map<std::string, std::string>> lastEventParams_;
+    // W3C SCXML: Support duplicate param names - each param can have multiple values (Test 178)
+    mutable std::map<std::string, std::map<std::string, std::vector<std::string>>> lastEventParams_;
 
     // REFACTOR: Use shared EventScheduler instead of duplicate implementation
     std::shared_ptr<IEventScheduler> scheduler_;
@@ -106,9 +107,9 @@ public:
     /**
      * @brief Get the parameters from the last dispatched event
      * @param eventName Event name to get parameters for
-     * @return Map of parameter name to evaluated value
+     * @return Map of parameter name to evaluated values (W3C SCXML: supports duplicate param names - Test 178)
      */
-    std::map<std::string, std::string> getLastEventParams(const std::string &eventName) const;
+    std::map<std::string, std::vector<std::string>> getLastEventParams(const std::string &eventName) const;
 };
 
 }  // namespace RSM::W3C

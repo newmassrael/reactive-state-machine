@@ -178,7 +178,7 @@ private:
     static const std::regex CONF_ARRAY123_PATTERN;
     static const std::regex CONF_ARRAY456_PATTERN;
 
-    // Test 176 specific patterns - event data field access
+    // Event data field access (Tests: 176, 186, 205, 233, 234)
     static const std::regex CONF_EVENTDATA_FIELD_VALUE_ATTR;
 
     // Test 354 specific patterns - namelist and param data access

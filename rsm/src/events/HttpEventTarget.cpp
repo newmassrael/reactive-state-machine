@@ -58,12 +58,16 @@ std::future<SendResult> HttpEventTarget::send(const EventDescriptor &event) {
                     firstParam = false;
                 }
 
+                // W3C SCXML: Support duplicate param names (Test 178)
+                // Each value in the vector must be added as a separate param
                 for (auto it = event.params.begin(); it != event.params.end(); ++it) {
-                    if (!firstParam) {
-                        payload += "&";
+                    for (const auto &value : it->second) {
+                        if (!firstParam) {
+                            payload += "&";
+                        }
+                        firstParam = false;
+                        payload += urlEncode(it->first) + "=" + urlEncode(value);
                     }
-                    firstParam = false;
-                    payload += urlEncode(it->first) + "=" + urlEncode(it->second);
                 }
                 contentType = "application/x-www-form-urlencoded";
                 LOG_DEBUG("HttpEventTarget: Form-encoded payload: {}", payload);

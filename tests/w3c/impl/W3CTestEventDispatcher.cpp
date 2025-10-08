@@ -152,7 +152,8 @@ size_t W3CTestEventDispatcher::cancelEventsForSession(const std::string &session
     return cancelledCount;
 }
 
-std::map<std::string, std::string> W3CTestEventDispatcher::getLastEventParams(const std::string &eventName) const {
+std::map<std::string, std::vector<std::string>>
+W3CTestEventDispatcher::getLastEventParams(const std::string &eventName) const {
     auto it = lastEventParams_.find(eventName);
     if (it != lastEventParams_.end()) {
         return it->second;

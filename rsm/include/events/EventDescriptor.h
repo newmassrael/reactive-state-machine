@@ -14,15 +14,15 @@ namespace RSM {
  * Supports both internal and external events with full parameter support.
  */
 struct EventDescriptor {
-    std::string eventName;                      // Event name (required)
-    std::string target = "#_internal";          // Target URI (default: internal)
-    std::string data;                           // Event data payload
-    std::string sendId;                         // Unique send identifier
-    std::string sessionId;                      // Session ID that created this event (for cancellation)
-    std::string type = "scxml";                 // Event type (scxml, platform, etc.)
-    std::chrono::milliseconds delay{0};         // Delivery delay
-    std::map<std::string, std::string> params;  // Additional parameters
-    std::string content;                        // W3C SCXML C.2: Content for HTTP body
+    std::string eventName;                                   // Event name (required)
+    std::string target = "#_internal";                       // Target URI (default: internal)
+    std::string data;                                        // Event data payload
+    std::string sendId;                                      // Unique send identifier
+    std::string sessionId;                                   // Session ID that created this event (for cancellation)
+    std::string type = "scxml";                              // Event type (scxml, platform, etc.)
+    std::chrono::milliseconds delay{0};                      // Delivery delay
+    std::map<std::string, std::vector<std::string>> params;  // Additional parameters (W3C: supports duplicate names)
+    std::string content;                                     // W3C SCXML C.2: Content for HTTP body
 
     // Evaluation expressions (for dynamic values)
     std::string eventExpr;   // Dynamic event name expression

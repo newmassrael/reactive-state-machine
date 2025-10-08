@@ -163,9 +163,16 @@ std::string InternalEventTarget::buildEventData(const EventDescriptor &event) co
         eventDataJson["data"] = event.data;
     }
 
-    // Add parameters
+    // Add parameters (W3C SCXML: Support duplicate param names - Test 178)
     for (const auto &param : event.params) {
-        eventDataJson[param.first] = param.second;
+        if (param.second.size() == 1) {
+            // Single value: store as string
+            eventDataJson[param.first] = param.second[0];
+        } else if (param.second.size() > 1) {
+            // Multiple values: store as array (duplicate param names)
+            eventDataJson[param.first] = param.second;
+        }
+        // Empty vector: skip (should not happen in normal operation)
     }
 
     return JsonUtils::toCompactString(eventDataJson);

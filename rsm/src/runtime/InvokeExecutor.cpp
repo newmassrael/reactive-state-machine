@@ -242,7 +242,7 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
 
                 // W3C SCXML: Use parent session ID directly to avoid lookup issues
                 // Store parent session ID in params for ParentEventTarget routing
-                event.params["_parentSessionId"] = parentSessionId;
+                event.params["_parentSessionId"].push_back(parentSessionId);
 
                 auto resultFuture = eventDispatcher->sendEvent(event);
                 LOG_INFO("SCXMLInvokeHandler: {} sent to parent after child completion (target: {}, parentSession: {})",

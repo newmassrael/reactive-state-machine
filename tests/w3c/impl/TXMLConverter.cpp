@@ -137,7 +137,7 @@ const std::regex TXMLConverter::CONF_ARRAY123_PATTERN{R"(<conf:array123\s*/>)", 
 
 const std::regex TXMLConverter::CONF_ARRAY456_PATTERN{R"(<conf:array456\s*/>)", std::regex::optimize};
 
-// Test 176 specific patterns - event data field access
+// Event data field access (Tests: 176, 186, 205, 233, 234)
 const std::regex TXMLConverter::CONF_EVENTDATA_FIELD_VALUE_ATTR{R"def(conf:eventDataFieldValue="([^"]*)")def",
                                                                 std::regex::optimize};
 
@@ -507,7 +507,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, varexpr_numeric_pattern, R"(expr="Var$1")");
     result = std::regex_replace(result, varexpr_general_pattern, R"(expr="$1")");
 
-    // Test 176 specific patterns
+    // Event data field access (Tests: 176, 186, 205, 233, 234)
     // conf:eventDataFieldValue="aParam" -> expr="_event.data.aParam"
     result = std::regex_replace(result, CONF_EVENTDATA_FIELD_VALUE_ATTR, R"(expr="_event.data.$1")");
 

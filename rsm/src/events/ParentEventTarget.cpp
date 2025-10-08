@@ -81,7 +81,7 @@ std::future<SendResult> ParentEventTarget::sendImmediately(const EventDescriptor
         std::string parentSessionId;
         auto it = event.params.find("_parentSessionId");
         if (it != event.params.end() && !it->second.empty()) {
-            parentSessionId = it->second;
+            parentSessionId = it->second[0];  // W3C SCXML: Get first value from vector
             LOG_DEBUG("ParentEventTarget: Using parent session from params: '{}'", parentSessionId);
         } else {
             parentSessionId = findParentSessionId(actualChildSessionId);
@@ -117,13 +117,19 @@ std::future<SendResult> ParentEventTarget::sendImmediately(const EventDescriptor
         std::string eventData = event.data;
 
         // W3C SCXML: Format params as JSON object to match ECMAScript data model
-        // This enables _event.data.paramName access in finalize handlers (Test 233)
+        // This enables _event.data.paramName access in finalize handlers (Test 233, 178)
         if (!event.params.empty()) {
             json eventDataJson = json::object();
 
-            // Add all params to the JSON object
+            // Add all params to the JSON object (W3C SCXML: Support duplicate param names - Test 178)
             for (const auto &param : event.params) {
-                eventDataJson[param.first] = param.second;
+                if (param.second.size() == 1) {
+                    // Single value: store as string
+                    eventDataJson[param.first] = param.second[0];
+                } else if (param.second.size() > 1) {
+                    // Multiple values: store as array (duplicate param names)
+                    eventDataJson[param.first] = param.second;
+                }
             }
 
             eventData = JsonUtils::toCompactString(eventDataJson);

@@ -743,4 +743,125 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
               child1ReceivedOwnEvent.load(), child2ReceivedOwnEvent.load(), sessionIsolationViolated.load());
 }
 
+/**
+ * @brief W3C SCXML 3.12.1: Events are inserted into the queue in the order in which they are raised
+ *
+ * This test validates the SCXML specification requirement that events with the same priority
+ * must be processed in FIFO (First-In-First-Out) order. The internal event queue must preserve
+ * the order of raised events to ensure deterministic state machine behavior.
+ *
+ * W3C SCXML Specification Reference:
+ * - Section 3.12.1: Event Queue Processing
+ * - Internal events have higher priority than external events
+ * - Within same priority, events must maintain insertion order
+ */
+TEST_F(EventSchedulingTest, SCXML_InternalEventQueue_FIFOOrdering) {
+    LOG_DEBUG("=== SCXML 3.12.1: Internal Event Queue FIFO Ordering Test ===");
+
+    // Create EventRaiserImpl instance
+    auto eventRaiser = std::make_shared<EventRaiserImpl>();
+
+    // Track processed event order
+    std::vector<std::string> processedOrder;
+    std::mutex orderMutex;
+
+    // Set callback that records event processing order
+    eventRaiser->setEventCallback(
+        [&processedOrder, &orderMutex](const std::string &eventName, const std::string &) -> bool {
+            std::lock_guard<std::mutex> lock(orderMutex);
+            processedOrder.push_back(eventName);
+            LOG_DEBUG("Processed event: {}, current order: {}", eventName, processedOrder.size());
+            return true;
+        });
+
+    // Test 1: Same priority events should maintain FIFO order
+    LOG_DEBUG("Test 1: Raising foo and bar with INTERNAL priority");
+
+    // Raise events in specific order (simulating test 144)
+    EXPECT_TRUE(eventRaiser->raiseInternalEvent("foo", ""));
+    EXPECT_TRUE(eventRaiser->raiseInternalEvent("bar", ""));
+
+    // Process all queued events
+    eventRaiser->processQueuedEvents();
+
+    // Verify FIFO order
+    ASSERT_EQ(processedOrder.size(), 2) << "Should process exactly 2 events";
+    EXPECT_EQ(processedOrder[0], "foo") << "foo should be processed first";
+    EXPECT_EQ(processedOrder[1], "bar") << "bar should be processed second";
+
+    LOG_DEBUG("Test 1 passed: Events processed in FIFO order");
+
+    // Test 2: Multiple events with same priority
+    processedOrder.clear();
+    LOG_DEBUG("Test 2: Raising multiple events with INTERNAL priority");
+
+    std::vector<std::string> expectedOrder = {"event1", "event2", "event3", "event4", "event5"};
+    for (const auto &eventName : expectedOrder) {
+        EXPECT_TRUE(eventRaiser->raiseInternalEvent(eventName, ""));
+    }
+
+    eventRaiser->processQueuedEvents();
+
+    ASSERT_EQ(processedOrder.size(), expectedOrder.size()) << "Should process all events";
+    for (size_t i = 0; i < expectedOrder.size(); ++i) {
+        EXPECT_EQ(processedOrder[i], expectedOrder[i])
+            << "Event at position " << i << " should be " << expectedOrder[i];
+    }
+
+    LOG_DEBUG("Test 2 passed: Multiple events processed in FIFO order");
+
+    // Test 3: Mixed priority events (INTERNAL should come before EXTERNAL)
+    processedOrder.clear();
+    LOG_DEBUG("Test 3: Mixed priority events");
+
+    // Raise events with different priorities
+    EXPECT_TRUE(eventRaiser->raiseExternalEvent("external1", ""));
+    EXPECT_TRUE(eventRaiser->raiseInternalEvent("internal1", ""));
+    EXPECT_TRUE(eventRaiser->raiseExternalEvent("external2", ""));
+    EXPECT_TRUE(eventRaiser->raiseInternalEvent("internal2", ""));
+
+    eventRaiser->processQueuedEvents();
+
+    ASSERT_EQ(processedOrder.size(), 4) << "Should process all 4 events";
+
+    // All INTERNAL events should come before EXTERNAL events
+    // Within each priority, FIFO order should be maintained
+    EXPECT_EQ(processedOrder[0], "internal1") << "First INTERNAL event should be processed first";
+    EXPECT_EQ(processedOrder[1], "internal2") << "Second INTERNAL event should be processed second";
+    EXPECT_EQ(processedOrder[2], "external1") << "First EXTERNAL event should be processed third";
+    EXPECT_EQ(processedOrder[3], "external2") << "Second EXTERNAL event should be processed fourth";
+
+    LOG_DEBUG("Test 3 passed: Priority ordering with FIFO within each priority");
+
+    // Test 4: Process one event at a time (W3C SCXML compliance)
+    processedOrder.clear();
+    LOG_DEBUG("Test 4: Processing events one at a time");
+
+    EXPECT_TRUE(eventRaiser->raiseInternalEvent("first", ""));
+    EXPECT_TRUE(eventRaiser->raiseInternalEvent("second", ""));
+    EXPECT_TRUE(eventRaiser->raiseInternalEvent("third", ""));
+
+    // Process events one at a time
+    EXPECT_TRUE(eventRaiser->processNextQueuedEvent());
+    ASSERT_EQ(processedOrder.size(), 1) << "Should process exactly one event";
+    EXPECT_EQ(processedOrder[0], "first");
+
+    EXPECT_TRUE(eventRaiser->processNextQueuedEvent());
+    ASSERT_EQ(processedOrder.size(), 2) << "Should process second event";
+    EXPECT_EQ(processedOrder[1], "second");
+
+    EXPECT_TRUE(eventRaiser->processNextQueuedEvent());
+    ASSERT_EQ(processedOrder.size(), 3) << "Should process third event";
+    EXPECT_EQ(processedOrder[2], "third");
+
+    EXPECT_FALSE(eventRaiser->processNextQueuedEvent()) << "Queue should be empty";
+
+    LOG_DEBUG("Test 4 passed: Single event processing maintains FIFO order");
+
+    // Clean up
+    eventRaiser->shutdown();
+
+    LOG_DEBUG("=== SCXML 3.12.1: All FIFO ordering tests passed ===");
+}
+
 }  // namespace RSM
