@@ -449,13 +449,9 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // The Processor must detect invalid target and raise error.execution
     result = std::regex_replace(result, CONF_ILLEGAL_TARGET_ATTR, R"(target="!invalid")");
 
-    // Convert conf:invalidSendType by adding invalid type attribute to create send type error
-    // W3C test 199: should cause error to be generated for unsupported send type
-    // Pattern: <send conf:invalidSendType="" event="..."/> -> <send type="unsupported_type" event="..."/>
-    std::regex invalid_send_type_pattern(R"((<send[^>]*) +conf:invalidSendType="[^"]*"([^>]*>))");
-    result = std::regex_replace(result, invalid_send_type_pattern, R"($1 type="unsupported_type"$2)");
-    // Then remove the conf:invalidSendType attribute itself
-    result = std::regex_replace(result, CONF_INVALID_SEND_TYPE_ATTR, "");
+    // W3C SCXML 6.2 (test 199): Convert conf:invalidSendType to unsupported type value
+    // The Processor must detect unsupported type and raise error.execution
+    result = std::regex_replace(result, CONF_INVALID_SEND_TYPE_ATTR, R"(type="unsupported_type")");
 
     // W3C SCXML C.1: Convert conf:unreachableTarget to targetexpr with undefined value (test 496)
     // This causes error.communication event when target cannot be evaluated
