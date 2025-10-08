@@ -213,6 +213,10 @@ const std::regex TXMLConverter::CONF_ISBOUND_GENERAL_ATTR{R"xyz(conf:isBound="([
 // Pattern matches numeric variable indices separated by space: "1 2" -> var1, var2
 const std::regex TXMLConverter::CONF_VAREQVAR_ATTR{R"def(conf:VarEqVar="([0-9]+) ([0-9]+)")def", std::regex::optimize};
 
+// Test 224 specific patterns - variable prefix check
+// conf:varPrefix="2 1" -> cond="Var1.indexOf(Var2) === 0" (checks if Var1 starts with Var2)
+const std::regex TXMLConverter::CONF_VARPREFIX_ATTR{R"vp(conf:varPrefix="([0-9]+) ([0-9]+)")vp", std::regex::optimize};
+
 // W3C SCXML 5.8: Top-level script element pattern (test 302)
 const std::regex TXMLConverter::CONF_SCRIPT_ELEMENT{R"(<conf:script\s*/>)", std::regex::optimize};
 
@@ -584,6 +588,10 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Test 225 specific patterns - variable equality comparison
     // conf:VarEqVar="1 2" -> cond="Var1 === Var2"
     result = std::regex_replace(result, CONF_VAREQVAR_ATTR, R"(cond="Var$1 === Var$2")");
+
+    // Test 224 specific patterns - variable prefix check
+    // conf:varPrefix="2 1" -> cond="Var1.indexOf(Var2) === 0" (checks if Var1 starts with Var2)
+    result = std::regex_replace(result, CONF_VARPREFIX_ATTR, R"(cond="Var$2.indexOf(Var$1) === 0")");
 
     // Legacy generic conf:idVal pattern for other cases
     result = std::regex_replace(result, CONF_ID_VAL_ATTR, R"(cond="$1")");

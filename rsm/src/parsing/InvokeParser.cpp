@@ -19,16 +19,14 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
         return nullptr;
     }
 
-    // id 속성 검색
+    // W3C SCXML 6.4: Parse id attribute if present, otherwise leave empty for runtime generation
+    // Runtime generation uses "stateid.platformid" format for W3C compliance (test 224)
     std::string id;
     auto idAttr = invokeElement->get_attribute("id");
     if (idAttr) {
         id = idAttr->get_value();
-    } else {
-        // id가 없으면 자동 생성
-        id = "invoke_" + std::to_string(reinterpret_cast<uintptr_t>(invokeElement));
-        LOG_DEBUG("Generated id: {}", id);
     }
+    // If no id attribute, leave empty - InvokeExecutor will generate W3C compliant ID at runtime
 
     // InvokeNode 생성
     auto invokeNode = nodeFactory_->createInvokeNode(id);

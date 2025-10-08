@@ -39,6 +39,10 @@ public:
     // W3C SCXML test 530: content expr attribute support for dynamic content evaluation
     virtual void setContentExpr(const std::string &contentExpr) = 0;
     virtual const std::string &getContentExpr() const = 0;
+
+    // W3C SCXML 6.4: State ID for invoke ID generation in "stateid.platformid" format (test 224)
+    virtual void setStateId(const std::string &stateId) = 0;
+    virtual const std::string &getStateId() const = 0;
 };
 
 }  // namespace RSM

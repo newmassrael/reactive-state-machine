@@ -75,8 +75,8 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
                                                     const std::string &parentSessionId,
                                                     std::shared_ptr<IEventDispatcher> eventDispatcher,
                                                     const std::string &childSessionId, bool sessionAlreadyExists) {
-    // Generate unique invoke ID
-    std::string invokeid = invoke->getId().empty() ? generateInvokeId() : invoke->getId();
+    // W3C SCXML 6.4: Generate invoke ID with state ID for "stateid.platformid" format (test 224)
+    std::string invokeid = invoke->getId().empty() ? generateInvokeId(invoke->getStateId()) : invoke->getId();
 
     LOG_INFO(
         "SCXMLInvokeHandler: Starting invoke - invokeid: {}, childSession: {}, parentSession: {}, sessionExists: {}",
@@ -500,9 +500,9 @@ bool SCXMLInvokeHandler::shouldFilterCancelledInvokeEvent(const std::string &chi
     return shouldFilter;
 }
 
-std::string SCXMLInvokeHandler::generateInvokeId() const {
-    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
-    return UniqueIdGenerator::generateInvokeId();
+std::string SCXMLInvokeHandler::generateInvokeId(const std::string &stateId) const {
+    // W3C SCXML 6.4: Use centralized UniqueIdGenerator with state ID for "stateid.platformid" format
+    return UniqueIdGenerator::generateInvokeId(stateId);
 }
 
 // ============================================================================
@@ -800,9 +800,9 @@ void InvokeExecutor::setParentStateMachine(std::shared_ptr<StateMachine> stateMa
     }
 }
 
-std::string InvokeExecutor::generateInvokeId() const {
-    // REFACTOR: Use centralized UniqueIdGenerator instead of duplicate logic
-    return UniqueIdGenerator::generateInvokeId();
+std::string InvokeExecutor::generateInvokeId(const std::string &stateId) const {
+    // W3C SCXML 6.4: Use centralized UniqueIdGenerator with state ID for "stateid.platformid" format
+    return UniqueIdGenerator::generateInvokeId(stateId);
 }
 
 std::vector<StateMachine *> InvokeExecutor::getAutoForwardSessions(const std::string &parentSessionId) {

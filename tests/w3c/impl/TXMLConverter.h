@@ -251,6 +251,10 @@ private:
     // Test 225 specific patterns - variable equality comparison
     static const std::regex CONF_VAREQVAR_ATTR;
 
+    // Test 224 specific patterns - variable prefix check (string starts with)
+    // conf:varPrefix="2 1" -> cond="Var1.indexOf(Var2) === 0" (checks if Var1 starts with Var2)
+    static const std::regex CONF_VARPREFIX_ATTR;
+
     // W3C SCXML 5.8: Top-level script element pattern (test 302)
     static const std::regex CONF_SCRIPT_ELEMENT;
 

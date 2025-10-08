@@ -143,7 +143,7 @@ private:
     // W3C SCXML Test 192: Parent StateMachine weak_ptr for completion callback state checking (thread-safe)
     std::weak_ptr<StateMachine> parentStateMachine_;
 
-    std::string generateInvokeId() const;
+    std::string generateInvokeId(const std::string &stateId = "") const;
 
     /**
      * @brief Helper to set invoke data variables in child session (DRY for namelist/param processing)
@@ -305,7 +305,7 @@ private:
     // Track handlers by invokeid for cancellation
     std::unordered_map<std::string, std::shared_ptr<IInvokeHandler>> invokeHandlers_;
 
-    std::string generateInvokeId() const;
+    std::string generateInvokeId(const std::string &stateId = "") const;
     void cleanupInvoke(const std::string &invokeid);
 };
 

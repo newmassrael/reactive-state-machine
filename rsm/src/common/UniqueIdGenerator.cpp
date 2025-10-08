@@ -28,7 +28,26 @@ std::string UniqueIdGenerator::generateSendId() {
     return generateBaseId("send", sendIdCount_);
 }
 
-std::string UniqueIdGenerator::generateInvokeId() {
+std::string UniqueIdGenerator::generateInvokeId(const std::string &stateId) {
+    // W3C SCXML 6.4: Invoke ID format MUST be "stateid.platformid" (test 224)
+    if (!stateId.empty()) {
+        // Increment the specific counter for this ID type
+        uint64_t typeCounter = invokeIdCount_.fetch_add(1);
+
+        // Increment global counter for overall uniqueness
+        uint64_t globalCount = globalCounter_.fetch_add(1);
+
+        // W3C compliant format: stateid.platformid
+        std::ostringstream oss;
+        oss << stateId << ".invoke_" << globalCount;
+
+        std::string id = oss.str();
+        LOG_DEBUG("UniqueIdGenerator: Generated W3C invoke ID: {} (type counter: {})", id, typeCounter);
+
+        return id;
+    }
+
+    // Legacy format for backward compatibility when no state ID provided
     return generateBaseId("invoke", invokeIdCount_);
 }
 

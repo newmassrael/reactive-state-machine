@@ -115,3 +115,13 @@ void RSM::InvokeNode::setContentExpr(const std::string &contentExpr) {
 const std::string &RSM::InvokeNode::getContentExpr() const {
     return contentExpr_;
 }
+
+// W3C SCXML 6.4: State ID for invoke ID generation in "stateid.platformid" format (test 224)
+void RSM::InvokeNode::setStateId(const std::string &stateId) {
+    stateId_ = stateId;
+    LOG_DEBUG("InvokeNode: Set state ID to '{}'", stateId);
+}
+
+const std::string &RSM::InvokeNode::getStateId() const {
+    return stateId_;
+}

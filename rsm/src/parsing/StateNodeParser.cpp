@@ -258,6 +258,9 @@ void RSM::StateNodeParser::parseInvokeElements(const xmlpp::Element *parentEleme
     for (auto *invokeElement : invokeElements) {
         auto invokeNode = invokeParser_->parseInvokeNode(invokeElement);
         if (invokeNode) {
+            // W3C SCXML 6.4: Set parent state ID for invoke ID generation (test 224)
+            invokeNode->setStateId(state->getId());
+
             // Invoke 노드를 상태에 추가
             state->addInvoke(invokeNode);
             LOG_DEBUG("Added invoke: {}", invokeNode->getId());
