@@ -441,16 +441,9 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // W3C test 156: should cause error to stop foreach execution
     result = std::regex_replace(result, CONF_ILLEGAL_EXPR_ATTR, R"(expr="undefined.invalidProperty")");
 
-    // Convert conf:illegalTarget by removing event attribute to cause send element error
-    // W3C test 159: should cause error to stop executable content processing
-    // Missing event attribute in send element will cause execution error
-    // Pattern handles both: <send event="..." conf:illegalTarget=""/> and <send conf:illegalTarget="" event="..."/>
-    std::regex illegal_target_pattern1(R"((<send[^>]*conf:illegalTarget="[^"]*"[^>]*) +event="[^"]*"([^>]*>))");
-    std::regex illegal_target_pattern2(R"((<send[^>]*) +event="[^"]*"([^>]*conf:illegalTarget="[^"]*"[^>]*>))");
-    result = std::regex_replace(result, illegal_target_pattern1, R"($1$2)");
-    result = std::regex_replace(result, illegal_target_pattern2, R"($1$2)");
-    // Then remove the conf:illegalTarget attribute itself
-    result = std::regex_replace(result, CONF_ILLEGAL_TARGET_ATTR, "");
+    // W3C SCXML 6.2 (tests 159, 194): Convert conf:illegalTarget to invalid target value
+    // The Processor must detect invalid target and raise error.execution
+    result = std::regex_replace(result, CONF_ILLEGAL_TARGET_ATTR, R"(target="!invalid")");
 
     // Convert conf:invalidSendType by adding invalid type attribute to create send type error
     // W3C test 199: should cause error to be generated for unsupported send type

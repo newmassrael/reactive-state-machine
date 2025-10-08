@@ -780,6 +780,17 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             target = evaluateExpression(action.getTargetExpr());
         }
 
+        // W3C SCXML 6.2 (tests 159, 194): Validate target format
+        // Invalid target values (e.g., starting with "!") must raise error.execution
+        if (!target.empty() && target[0] == '!') {
+            LOG_ERROR("ActionExecutorImpl: Invalid target value: '{}'", target);
+            if (eventRaiser_) {
+                eventRaiser_->raiseEvent("error.execution", "Invalid target value: " + target, sendId,
+                                         false /* overload discriminator for sendId variant */);
+            }
+            return false;
+        }
+
         // W3C SCXML C.1 (test 496): If target evaluation results in empty or undefined, raise error.communication
         // This handles unreachable or inaccessible target sessions
         // Note: Only applies when targetexpr is explicitly set, not for normal internal sends
