@@ -171,7 +171,18 @@ const std::regex TXMLConverter::CONF_NAMELISTIDVAL_COMPARISON_ATTR{R"def(conf:na
                                                                    std::regex::optimize};
 
 // Test 183 specific patterns - send idlocation and variable binding
-const std::regex TXMLConverter::CONF_IDLOCATION_ATTR{R"def(conf:idlocation="([^"]*)")def", std::regex::optimize};
+// conf:idlocation="1" -> idlocation="Var1" (numeric IDs)
+const std::regex TXMLConverter::CONF_IDLOCATION_NUMERIC_ATTR{R"def(conf:idlocation="([0-9]+)")def",
+                                                             std::regex::optimize};
+// conf:idlocation="varname" -> idlocation="varname" (general)
+const std::regex TXMLConverter::CONF_IDLOCATION_GENERAL_ATTR{R"def(conf:idlocation="([^"]*)")def",
+                                                             std::regex::optimize};
+
+// Variable binding check patterns (Tests: 183, 150, 151, etc.)
+// conf:isBound="1" -> cond="typeof Var1 !== 'undefined'" (numeric IDs)
+const std::regex TXMLConverter::CONF_ISBOUND_NUMERIC_ATTR{R"xyz(conf:isBound="([0-9]+)")xyz", std::regex::optimize};
+// conf:isBound="varname" -> cond="typeof varname !== 'undefined'" (general)
+const std::regex TXMLConverter::CONF_ISBOUND_GENERAL_ATTR{R"xyz(conf:isBound="([^"]*)")xyz", std::regex::optimize};
 
 // Test 225 specific patterns - variable equality comparison
 // Pattern matches numeric variable indices separated by space: "1 2" -> var1, var2
@@ -285,12 +296,11 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, CONF_TARGETPASS_ATTR, R"(target="pass")");
     result = std::regex_replace(result, CONF_TARGETFAIL_ATTR, R"(target="fail")");
 
-    // Convert conf:isBound to typeof checks
-    // Handle numeric variables: conf:isBound="1" -> cond="typeof var1 !== 'undefined'"
-    std::regex isbound_numeric_pattern(R"xyz(conf:isBound="([0-9]+)")xyz");
-    std::regex isbound_general_pattern(R"xyz(conf:isBound="([^"]*)")xyz");
-    result = std::regex_replace(result, isbound_numeric_pattern, R"(cond="typeof Var$1 !== 'undefined'")");
-    result = std::regex_replace(result, isbound_general_pattern, R"(cond="typeof $1 !== 'undefined'")");
+    // Convert conf:isBound to typeof checks (Tests: 183, 150, 151, etc.)
+    // conf:isBound="1" -> cond="typeof Var1 !== 'undefined'"
+    // conf:isBound="varname" -> cond="typeof varname !== 'undefined'"
+    result = std::regex_replace(result, CONF_ISBOUND_NUMERIC_ATTR, R"(cond="typeof Var$1 !== 'undefined'")");
+    result = std::regex_replace(result, CONF_ISBOUND_GENERAL_ATTR, R"(cond="typeof $1 !== 'undefined'")");
 
     // Handle numeric id attributes: conf:id="1" -> id="Var1" (W3C test 456)
     // W3C SCXML tests use capital 'Var' naming convention for test variables
@@ -561,12 +571,9 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     // Generic conf:idVal pattern - converts "idVal="N=M" to cond="varN == M"
     result = std::regex_replace(result, CONF_IDVAL_COMPARISON_ATTR, R"(cond="Var$1 == $2")");
 
-    // Test 183 specific patterns
-    // conf:idlocation="1" -> idlocation="var1" (for numeric IDs)
-    std::regex idlocation_numeric_pattern(R"def(conf:idlocation="([0-9]+)")def");
-    std::regex idlocation_general_pattern(R"def(conf:idlocation="([^"]*)")def");
-    result = std::regex_replace(result, idlocation_numeric_pattern, R"(idlocation="Var$1")");
-    result = std::regex_replace(result, idlocation_general_pattern, R"(idlocation="$1")");
+    // Test 183 specific patterns - use pre-compiled class members
+    result = std::regex_replace(result, CONF_IDLOCATION_NUMERIC_ATTR, R"(idlocation="Var$1")");
+    result = std::regex_replace(result, CONF_IDLOCATION_GENERAL_ATTR, R"(idlocation="$1")");
 
     // Test 225 specific patterns - variable equality comparison
     // conf:VarEqVar="1 2" -> cond="Var1 === Var2"

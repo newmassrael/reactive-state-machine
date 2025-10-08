@@ -202,7 +202,16 @@ private:
     static const std::regex CONF_NAMELISTIDVAL_COMPARISON_ATTR;
 
     // Test 183 specific patterns - send idlocation and variable binding
-    static const std::regex CONF_IDLOCATION_ATTR;
+    // conf:idlocation="1" -> idlocation="Var1" (numeric IDs)
+    static const std::regex CONF_IDLOCATION_NUMERIC_ATTR;
+    // conf:idlocation="varname" -> idlocation="varname" (general)
+    static const std::regex CONF_IDLOCATION_GENERAL_ATTR;
+
+    // Variable binding check patterns (Tests: 183, 150, 151, etc.)
+    // conf:isBound="1" -> cond="typeof Var1 !== 'undefined'" (numeric IDs)
+    static const std::regex CONF_ISBOUND_NUMERIC_ATTR;
+    // conf:isBound="varname" -> cond="typeof varname !== 'undefined'" (general)
+    static const std::regex CONF_ISBOUND_GENERAL_ATTR;
 
     // Test 225 specific patterns - variable equality comparison
     static const std::regex CONF_VAREQVAR_ATTR;
