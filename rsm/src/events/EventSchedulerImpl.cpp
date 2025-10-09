@@ -25,7 +25,29 @@ EventSchedulerImpl::EventSchedulerImpl(EventExecutionCallback executionCallback)
 }
 
 EventSchedulerImpl::~EventSchedulerImpl() {
-    shutdown(true);
+    // CRITICAL: Destructor must ALWAYS wait for threads, even if shutdown() was called previously
+    // We can't detach in destructor context because object is being destroyed
+
+    // Signal shutdown
+    shutdownRequested_ = true;
+    callbackShutdownRequested_ = true;
+    callbackCondition_.notify_all();
+    timerCondition_.notify_all();
+
+    // Force join callback threads (can't detach in destructor)
+    for (auto &thread : callbackThreads_) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+
+    // Force join timer thread (can't detach in destructor)
+    if (timerThread_.joinable()) {
+        timerThread_.join();
+    }
+
+    // Now safe to destroy other members
+    running_ = false;
 }
 
 std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor &event,
@@ -173,15 +195,17 @@ size_t EventSchedulerImpl::getScheduledEventCount() const {
 }
 
 void EventSchedulerImpl::shutdown(bool waitForCompletion) {
-    if (!running_) {
-        return;  // Already shut down
+    // CRITICAL FIX: Always signal shutdown and check threads, even if already marked as not running
+    // This ensures destructor can safely join threads that were previously detached
+    bool alreadyShutdown = !running_.exchange(false);
+
+    if (!alreadyShutdown) {
+        LOG_DEBUG("EventSchedulerImpl: Shutting down scheduler (waitForCompletion={})", waitForCompletion);
     }
 
-    LOG_DEBUG("EventSchedulerImpl: Shutting down scheduler (waitForCompletion={})", waitForCompletion);
-
+    // Always set shutdown flags to signal threads
     shutdownRequested_ = true;
     callbackShutdownRequested_ = true;
-    running_ = false;
 
     // Wake up callback threads
     callbackCondition_.notify_all();
@@ -190,13 +214,15 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
     // This is more reliable than comparing thread IDs
     bool calledFromSchedulerThread = isInSchedulerThread_;
 
+    // CRITICAL: Never detach threads - this creates unsafe scenario where threads
+    // can outlive the object and access destroyed member variables
+    // If called from scheduler thread, skip join to avoid deadlock, but threads
+    // will be joined in destructor when called from external context
+
     // Wait for callback threads to finish
-    for (auto &thread : callbackThreads_) {
-        if (thread.joinable()) {
-            // CRITICAL: If called from scheduler thread, must detach to avoid deadlock
-            if (calledFromSchedulerThread || !waitForCompletion) {
-                thread.detach();
-            } else {
+    if (!calledFromSchedulerThread && waitForCompletion) {
+        for (auto &thread : callbackThreads_) {
+            if (thread.joinable()) {
                 thread.join();
             }
         }
@@ -206,13 +232,8 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
     timerCondition_.notify_all();
 
     // Wait for timer thread to finish BEFORE acquiring mutex to prevent deadlock
-    if (timerThread_.joinable()) {
-        // CRITICAL: If called from scheduler thread, must detach to avoid deadlock
-        if (calledFromSchedulerThread || !waitForCompletion) {
-            timerThread_.detach();
-        } else {
-            timerThread_.join();
-        }
+    if (!calledFromSchedulerThread && waitForCompletion && timerThread_.joinable()) {
+        timerThread_.join();
     }
 
     // Clear all scheduled events AFTER timer thread has terminated

@@ -1,0 +1,55 @@
+# Lightweight Dockerfile for ThreadSanitizer-enabled development environment
+# Uses system glibc with nscd workarounds to prevent DNS resolver crashes
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Mark this as Docker TSAN environment for CMake auto-detection
+ENV IN_DOCKER_TSAN=1
+
+# ThreadSanitizer options for non-instrumented modules
+ENV TSAN_OPTIONS="ignore_noninstrumented_modules=1"
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    gdb \
+    git \
+    pkg-config \
+    python3-pip \
+    ninja-build \
+    libxml2-dev \
+    libboost-dev \
+    libssl-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install latest meson from pip (Ubuntu 22.04 has 0.61.2, libxml++ needs >= 0.62.0)
+RUN pip3 install meson
+
+# Workaround 1: Disable nscd to prevent glibc DNS resolver TLS crashes with TSAN
+# nscd (Name Service Cache Daemon) has known thread safety issues that cause
+# ThreadSanitizer to crash when calling getaddrinfo()
+RUN systemctl disable nscd 2>/dev/null || true
+
+# Workaround 2: Configure nsswitch.conf to bypass nscd entirely
+# Force direct DNS resolution without nscd intermediary
+RUN echo "# DNS resolution without nscd - prevents TSAN crashes" > /etc/nsswitch.conf && \
+    echo "passwd:         files systemd" >> /etc/nsswitch.conf && \
+    echo "group:          files systemd" >> /etc/nsswitch.conf && \
+    echo "shadow:         files" >> /etc/nsswitch.conf && \
+    echo "hosts:          files dns" >> /etc/nsswitch.conf && \
+    echo "networks:       files" >> /etc/nsswitch.conf && \
+    echo "protocols:      files" >> /etc/nsswitch.conf && \
+    echo "services:       files" >> /etc/nsswitch.conf && \
+    echo "ethers:         files" >> /etc/nsswitch.conf && \
+    echo "rpc:            files" >> /etc/nsswitch.conf
+
+# Create workspace directory
+WORKDIR /workspace
+
+# Set default command
+CMD ["/bin/bash"]

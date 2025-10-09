@@ -7,6 +7,7 @@
 #include "states/ConcurrentRegion.h"
 #include "states/ConcurrentStateNode.h"
 #include <algorithm>
+#include <sstream>
 
 namespace RSM {
 

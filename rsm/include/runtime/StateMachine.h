@@ -433,6 +433,12 @@ private:
     // W3C SCXML: Thread safety for StateHierarchyManager access from JSEngine worker thread
     mutable std::mutex hierarchyManagerMutex_;  // Protects hierarchyManager_ read access
 
+    // CRITICAL: Mutex for processEvent execution synchronization (ASAN heap-use-after-free fix)
+    // Ensures destructor waits for any in-progress processEvent calls to complete
+    // before destroying StateMachine, preventing ProcessingEventGuard from accessing freed memory
+    // Thread-local depth tracking handles W3C SCXML nested event processing without recursive_mutex
+    std::mutex processEventMutex_;
+
     // Statistics
     mutable Statistics stats_;
 

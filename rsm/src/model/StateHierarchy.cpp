@@ -3,6 +3,7 @@
 #include "model/ITransitionNode.h"
 #include <algorithm>
 #include <iostream>
+#include <sstream>
 #include <stack>
 #include <unordered_set>
 

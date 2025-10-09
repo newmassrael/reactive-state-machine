@@ -38,7 +38,7 @@ namespace RSM {
  *   "source": "scxml"
  * }
  */
-class HttpEventTarget : public IEventTarget {
+class HttpEventTarget : public IEventTarget, public std::enable_shared_from_this<HttpEventTarget> {
 public:
     /**
      * @brief Construct HTTP event target

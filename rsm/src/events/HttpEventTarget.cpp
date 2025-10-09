@@ -19,14 +19,18 @@ HttpEventTarget::HttpEventTarget(const std::string &targetUri, std::chrono::mill
 }
 
 std::future<SendResult> HttpEventTarget::send(const EventDescriptor &event) {
-    return std::async(std::launch::async, [this, event]() -> SendResult {
+    // Capture shared_ptr to keep HttpEventTarget alive during async execution
+    auto self = shared_from_this();
+
+    // Capture EventDescriptor by value to avoid dangling reference
+    return std::async(std::launch::async, [self, event]() -> SendResult {
         try {
-            LOG_DEBUG("HttpEventTarget: Sending event '{}' to '{}'", event.eventName, targetUri_);
+            LOG_DEBUG("HttpEventTarget: Sending event '{}' to '{}'", event.eventName, self->targetUri_);
 
             // Create HTTP client
-            auto client = createHttpClient();
+            auto client = self->createHttpClient();
             if (!client) {
-                return SendResult::error("Failed to create HTTP client for " + targetUri_,
+                return SendResult::error("Failed to create HTTP client for " + self->targetUri_,
                                          SendResult::ErrorType::NETWORK_ERROR);
             }
 
@@ -73,16 +77,16 @@ std::future<SendResult> HttpEventTarget::send(const EventDescriptor &event) {
                 LOG_DEBUG("HttpEventTarget: Form-encoded payload: {}", payload);
             } else {
                 // W3C SCXML C.2: Determine content type based on whether content is present
-                payload = createJsonPayload(event);
+                payload = self->createJsonPayload(event);
                 contentType = event.content.empty() ? "application/json" : "text/plain";
                 LOG_DEBUG("HttpEventTarget: JSON payload: {}", payload);
             }
 
             // Perform request with retry
-            auto result = performRequestWithRetry(*client, path_, payload, contentType);
+            auto result = self->performRequestWithRetry(*client, self->path_, payload, contentType);
 
             // Convert response to SendResult
-            return convertHttpResponse(result, event);
+            return self->convertHttpResponse(result, event);
 
         } catch (const std::exception &e) {
             LOG_ERROR("HttpEventTarget: Exception during send: {}", e.what());

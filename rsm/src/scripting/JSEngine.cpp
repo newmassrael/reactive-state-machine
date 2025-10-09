@@ -451,15 +451,19 @@ void JSEngine::executionWorker() {
               static_cast<size_t>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
 
     // Create QuickJS runtime in worker thread to ensure thread safety
-    runtime_ = JS_NewRuntime();
-    if (!runtime_) {
+    JSRuntime *tempRuntime = JS_NewRuntime();
+    if (!tempRuntime) {
         LOG_ERROR("JSEngine: Failed to create QuickJS runtime in worker thread");
         return;
     }
     LOG_DEBUG("JSEngine: QuickJS runtime created in worker thread");
 
-    // RAII: Signal constructor that initialization is complete
-    queueCondition_.notify_all();
+    // RAII: Signal constructor that initialization is complete with proper synchronization
+    {
+        std::unique_lock<std::mutex> lock(queueMutex_);
+        runtime_ = tempRuntime;
+        queueCondition_.notify_all();
+    }
     LOG_DEBUG("JSEngine: Worker thread initialization complete");
 
     while (!shouldStop_) {

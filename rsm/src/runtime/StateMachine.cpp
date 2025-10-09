@@ -30,6 +30,10 @@
 
 namespace RSM {
 
+// Thread-local depth tracking for nested processEvent calls (W3C SCXML compliance)
+// Prevents deadlock by allowing same-thread recursion without re-acquiring mutex
+thread_local int processEventDepth = 0;
+
 // RAII guard for exception-safe initial configuration flag management
 namespace {
 class InitialConfigurationGuard {
@@ -87,6 +91,27 @@ StateMachine::StateMachine(const std::string &sessionId) : isRunning_(false), js
 StateMachine::~StateMachine() {
     // Clear callbacks first to prevent execution during destruction
     completionCallback_ = nullptr;
+
+    // CRITICAL: Clear EventRaiser callback to prevent heap-use-after-free
+    // EventScheduler threads may still be running and executing callbacks
+    // Clearing the callback ensures they won't access destroyed StateMachine
+    // DO NOT shutdown EventDispatcher here - it would cancel delayed events needed by W3C tests
+    if (eventRaiser_) {
+        auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
+        if (eventRaiserImpl) {
+            LOG_DEBUG("StateMachine: Clearing EventRaiser callback before destruction");
+            eventRaiserImpl->clearEventCallback();
+        }
+    }
+
+    // CRITICAL: Wait for any in-progress processEvent calls to complete (ASAN heap-use-after-free fix)
+    // Lock mutex to ensure no processEvent is running when we proceed with destruction
+    // This prevents ProcessingEventGuard from accessing freed isProcessingEvent_ member
+    // Thread-local depth tracking ensures nested calls don't cause deadlock
+    {
+        std::lock_guard<std::mutex> processEventLock(processEventMutex_);
+        LOG_DEBUG("StateMachine: All processEvent calls completed, proceeding with destruction");
+    }
 
     if (isRunning_) {
         stop();
@@ -405,6 +430,25 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
 
     LOG_DEBUG("StateMachine: Processing event: '{}' with data: '{}' in session: '{}', originSessionId: '{}'", eventName,
               eventData, sessionId_, originSessionId);
+
+    // CRITICAL: Thread-local depth tracking for nested processEvent calls (ASAN heap-use-after-free fix)
+    // Top-level call (depth==0): acquire mutex to synchronize with destructor
+    // Nested call (depth>0): same thread, no mutex needed (prevents deadlock)
+    // This pattern matches EventSchedulerImpl's thread-local approach
+    bool isTopLevelCall = (processEventDepth == 0);
+    std::unique_ptr<std::lock_guard<std::mutex>> processEventLock;
+    if (isTopLevelCall) {
+        processEventLock = std::make_unique<std::lock_guard<std::mutex>>(processEventMutex_);
+    }
+
+    // RAII-style depth tracking with exception safety
+    ++processEventDepth;
+
+    struct DepthGuard {
+        ~DepthGuard() {
+            --processEventDepth;
+        }
+    } depthGuard;
 
     // Set event processing flag with RAII for exception safety
     struct ProcessingEventGuard {

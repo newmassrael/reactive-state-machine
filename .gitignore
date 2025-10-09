@@ -92,3 +92,4 @@ docs/xml/
 resources/*/*.scxml
 
 claudedocs
+docker_tsan/docker-tsan-build.log

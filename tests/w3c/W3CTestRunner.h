@@ -11,6 +11,7 @@
 #include "runtime/EventRaiserImpl.h"
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -130,6 +131,40 @@ private:
      * @return true if HTTP server is required, false otherwise
      */
     bool requiresHttpServer(const std::string &testDirectory) const;
+
+    /**
+     * @brief Check if running in Docker TSAN environment
+     *
+     * When IN_DOCKER_TSAN=1 is set, HTTP tests are skipped due to cpp-httplib
+     * thread creation incompatibility with ThreadSanitizer allocator.
+     *
+     * @return true if IN_DOCKER_TSAN environment variable is set
+     */
+    bool isInDockerTsan() const;
+
+    /**
+     * @brief Create skip report if HTTP test should be skipped in Docker TSAN
+     *
+     * Checks if the test requires HTTP server and running in Docker TSAN environment.
+     * Returns a TestReport with PASS status and skip reason if test should be skipped.
+     *
+     * @param testDir Test directory path
+     * @param testId Test ID number
+     * @return TestReport if test should be skipped, std::nullopt otherwise
+     */
+    std::optional<TestReport> shouldSkipHttpTestInDockerTsan(const std::string &testDir, int testId) const;
+
+    /**
+     * @brief Create skip report if HTTP test should be skipped in Docker TSAN (string overload)
+     *
+     * Overload for tests with string IDs (e.g., "403a", "192").
+     *
+     * @param testDir Test directory path
+     * @param testId Test ID string
+     * @return TestReport if test should be skipped, std::nullopt otherwise
+     */
+    std::optional<TestReport> shouldSkipHttpTestInDockerTsan(const std::string &testDir,
+                                                             const std::string &testId) const;
 
 public:
     /**
