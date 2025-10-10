@@ -51,6 +51,9 @@ function(apply_rsm_test_policies target_name)
     )
 endfunction()
 
+# ============================================================================
+# Performance Benchmarks (Optional)
+# ============================================================================
 # 모든 테스트 타겟 이름 리스트
 set(RSM_TEST_TARGETS
     rsm_scxml_tests
@@ -448,30 +451,63 @@ target_include_directories(w3c_test_cli
 add_dependencies(w3c_test_cli libxmlxx_external rsm_unified)
 
 # ============================================================================
-# CTest 실행 순서 최적화 (빠른 피드백 → 종합 검증)
+# CTest 실행 순서 최적화 (빠른 피드백 → 종합 검증 → 성능 측정)
 # ============================================================================
 
-# Phase 1: 빠른 단위 테스트 (개발 중 빠른 피드백, ~1-5초)
+# Phase 1: 빠른 단위 테스트 (개발 중 빠른 피드백, <1초)
+add_test(NAME CoreParserTests COMMAND core_parser_tests)
+add_test(NAME StatesTests COMMAND states_tests)
+add_test(NAME HistoryTests COMMAND history_tests)
+
+# Phase 2: 핵심 컴포넌트 테스트 (기본 기능 검증, ~1-5초)
+add_test(NAME StateMachineTests COMMAND state_machine_tests)
+add_test(NAME JSEngineTests COMMAND js_engine_tests)
+add_test(NAME ActionTests COMMAND action_tests)
 add_test(NAME RSMSCXMLTests COMMAND rsm_scxml_tests)
 # add_test(NAME ReadySCXMLEngineTests COMMAND simple_scxml_engine_tests)  # Temporarily disabled
 
-# Phase 2: 핵심 컴포넌트 테스트 (기본 기능 검증, ~5-15초)
-add_test(NAME JSEngineTests COMMAND js_engine_tests)
-add_test(NAME CoreParserTests COMMAND core_parser_tests)
-add_test(NAME StateMachineTests COMMAND state_machine_tests)
-
-# Phase 3: 고급 기능 테스트 (특화 기능 검증, ~10-30초)
-add_test(NAME ActionTests COMMAND action_tests)
-add_test(NAME HistoryTests COMMAND history_tests)
-add_test(NAME StatesTests COMMAND states_tests)
-
-# Phase 4: 통합 테스트 (시스템 레벨 검증, ~30-60초)
-add_test(NAME IntegrationTests COMMAND integration_tests)
-add_test(NAME ConcurrencyTests COMMAND concurrency_tests)
-
-# Phase 5: W3C 호환성 테스트 (표준 준수 검증, ~60초+)
+# Phase 3: 통합 및 동시성 테스트 (시스템 레벨 검증, ~5-15초)
 add_test(NAME TXMLConverterTests COMMAND txml_converter_tests)
+add_test(NAME ConcurrencyTests COMMAND concurrency_tests)
+add_test(NAME IntegrationTests COMMAND integration_tests)
+
+# Phase 4: W3C 표준 준수 검증 (종합 검증, ~40초)
 add_test(NAME W3CFullComplianceTests COMMAND w3c_test_cli)
+
+# ============================================================================
+# CTest 실행 순서 제어: COST 속성으로 우선순위 설정
+# CTest는 높은 COST를 가진 테스트를 먼저 실행하므로,
+# 벤치마크(COST=1000)보다 높은 값을 메인 테스트에 부여하여 순서 보장
+# ============================================================================
+
+# Phase 1: COST 5000 (가장 먼저 실행)
+set_tests_properties(CoreParserTests PROPERTIES COST 5000)
+set_tests_properties(StatesTests PROPERTIES COST 5000)
+set_tests_properties(HistoryTests PROPERTIES COST 5000)
+
+# Phase 2: COST 4000
+set_tests_properties(StateMachineTests PROPERTIES COST 4000)
+set_tests_properties(JSEngineTests PROPERTIES COST 4000)
+set_tests_properties(ActionTests PROPERTIES COST 4000)
+set_tests_properties(RSMSCXMLTests PROPERTIES COST 4000)
+
+# Phase 3: COST 3000
+set_tests_properties(TXMLConverterTests PROPERTIES COST 3000)
+set_tests_properties(ConcurrencyTests PROPERTIES COST 3000)
+set_tests_properties(IntegrationTests PROPERTIES COST 3000)
+
+# Phase 4: COST 2000 (벤치마크보다 높음)
+set_tests_properties(W3CFullComplianceTests PROPERTIES COST 2500)
+
+# Phase 5: 벤치마크는 COST 1000으로 마지막에 실행됨 (benchmarks/CMakeLists.txt에 정의)
+
+# Phase 5: 성능 벤치마크 (기능 검증 후 성능 측정, 마지막 실행)
+# Benchmark subdirectory must be included AFTER all main tests to ensure proper execution order
+option(BUILD_BENCHMARKS "Build performance benchmarks" ON)
+if(BUILD_BENCHMARKS)
+    message(STATUS "Building performance benchmarks")
+    add_subdirectory(benchmarks)
+endif()
 
 # ============================================================================
 # 테스트 의존성 및 우선순위 설정

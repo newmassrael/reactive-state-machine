@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <shared_mutex>  // TSAN FIX: For reader-writer lock pattern
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -149,8 +150,10 @@ private:
     void ensureThreadsStarted();
 
     // Thread safety
-    mutable std::mutex schedulerMutex_;
-    std::condition_variable timerCondition_;
+    // TSAN FIX: Use shared_mutex for reader-writer pattern to prevent find()/erase() race
+    mutable std::shared_mutex schedulerMutex_;
+    // TSAN FIX: condition_variable_any supports any mutex type including shared_mutex
+    std::condition_variable_any timerCondition_;
 
     // TSAN FIX: Cached next event time to avoid queue access in wait_until predicate
     // This prevents data race when vector reallocation happens during predicate evaluation

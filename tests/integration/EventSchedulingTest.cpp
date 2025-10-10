@@ -442,25 +442,30 @@ TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
     auto actionExecutor3 = std::make_shared<ActionExecutorImpl>("session_3");
 
     // Set up event raising for each session
+    // TSAN FIX: Thread-safe access with mutex protection
     std::vector<std::string> session1Events, session2Events, session3Events;
+    std::mutex sessionEventsMutex;
 
     auto mockEventRaiser1 = std::make_shared<RSM::Test::MockEventRaiser>(
-        [&session1Events](const std::string &name, const std::string &data) -> bool {
+        [&session1Events, &sessionEventsMutex](const std::string &name, const std::string &data) -> bool {
             (void)data;  // Suppress unused parameter warning
+            std::lock_guard<std::mutex> lock(sessionEventsMutex);
             session1Events.push_back(name);
             return true;
         });
 
     auto mockEventRaiser2 = std::make_shared<RSM::Test::MockEventRaiser>(
-        [&session2Events](const std::string &name, const std::string &data) -> bool {
+        [&session2Events, &sessionEventsMutex](const std::string &name, const std::string &data) -> bool {
             (void)data;  // Suppress unused parameter warning
+            std::lock_guard<std::mutex> lock(sessionEventsMutex);
             session2Events.push_back(name);
             return true;
         });
 
     auto mockEventRaiser3 = std::make_shared<RSM::Test::MockEventRaiser>(
-        [&session3Events](const std::string &name, const std::string &data) -> bool {
+        [&session3Events, &sessionEventsMutex](const std::string &name, const std::string &data) -> bool {
             (void)data;  // Suppress unused parameter warning
+            std::lock_guard<std::mutex> lock(sessionEventsMutex);
             session3Events.push_back(name);
             return true;
         });
@@ -541,19 +546,22 @@ TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
     // Verify timing (should be around 300ms)
     EXPECT_GE(elapsed.count(), 300);
 
-    // Verify session 1 and 3 events executed
-    EXPECT_EQ(session1Events.size(), 1);
-    if (session1Events.size() > 0) {
-        EXPECT_EQ(session1Events[0], "session1.event");
-    }
+    // Verify session 1 and 3 events executed (TSAN FIX: with mutex protection)
+    {
+        std::lock_guard<std::mutex> lock(sessionEventsMutex);
+        EXPECT_EQ(session1Events.size(), 1);
+        if (session1Events.size() > 0) {
+            EXPECT_EQ(session1Events[0], "session1.event");
+        }
 
-    EXPECT_EQ(session3Events.size(), 1);
-    if (session3Events.size() > 0) {
-        EXPECT_EQ(session3Events[0], "session3.event");
-    }
+        EXPECT_EQ(session3Events.size(), 1);
+        if (session3Events.size() > 0) {
+            EXPECT_EQ(session3Events[0], "session3.event");
+        }
 
-    // Verify session 2 event was cancelled and never executed
-    EXPECT_EQ(session2Events.size(), 0);
+        // Verify session 2 event was cancelled and never executed
+        EXPECT_EQ(session2Events.size(), 0);
+    }
 
     // Verify no events are still scheduled
     EXPECT_FALSE(scheduler_->hasEvent("session1_event"));

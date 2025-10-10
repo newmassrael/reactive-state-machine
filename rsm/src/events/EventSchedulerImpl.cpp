@@ -66,7 +66,8 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
         return errorPromise.get_future();
     }
 
-    std::lock_guard<std::mutex> lock(schedulerMutex_);
+    // TSAN FIX: Use unique_lock for write operations (insert/erase)
+    std::unique_lock<std::shared_mutex> lock(schedulerMutex_);
 
     // Lazy thread initialization to prevent constructor deadlock
     ensureThreadsStarted();
@@ -75,12 +76,12 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     std::string actualSendId = sendId.empty() ? generateSendId() : sendId;
 
     // Cancel existing event with same send ID (W3C SCXML behavior)
-    // CRITICAL FIX: Atomic cancellation of existing event under mutex lock
+    // TSAN FIX: Only mark as cancelled, don't erase from sendIdIndex_
+    // Timer thread will cleanup during processReadyEvents() - single-writer pattern
     auto existingIt = sendIdIndex_.find(actualSendId);
     if (existingIt != sendIdIndex_.end()) {
         LOG_DEBUG("EventSchedulerImpl: Cancelling existing event with sendId: {}", actualSendId);
         existingIt->second->cancelled = true;
-        sendIdIndex_.erase(existingIt);
         // Priority queue entry will be cleaned up during processReadyEvents()
     }
 
@@ -126,7 +127,8 @@ bool EventSchedulerImpl::cancelEvent(const std::string &sendId, const std::strin
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(schedulerMutex_);
+    // TSAN FIX: Use shared_lock for find(), only read access needed
+    std::shared_lock<std::shared_mutex> lock(schedulerMutex_);
 
     auto it = sendIdIndex_.find(sendId);
     if (it != sendIdIndex_.end() && !it->second->cancelled) {
@@ -138,11 +140,9 @@ bool EventSchedulerImpl::cancelEvent(const std::string &sendId, const std::strin
         }
 
         LOG_DEBUG("EventSchedulerImpl: Cancelling event with sendId: {}", sendId);
-        // CRITICAL FIX: Atomic cancellation - mark cancelled then remove from index
-        // Priority queue entry will be cleaned up during processReadyEvents()
+        // TSAN FIX: Only mark as cancelled, don't erase from sendIdIndex_
+        // Timer thread will cleanup during processReadyEvents() - single-writer pattern
         it->second->cancelled = true;
-        sendIdIndex_.erase(it);
-        indexSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
 
         // Notify timer thread about cancellation
         timerCondition_.notify_one();
@@ -161,21 +161,19 @@ size_t EventSchedulerImpl::cancelEventsForSession(const std::string &sessionId) 
         return 0;
     }
 
-    std::lock_guard<std::mutex> lock(schedulerMutex_);
+    // TSAN FIX: Use shared_lock for iteration, only marking cancelled flag
+    std::shared_lock<std::shared_mutex> lock(schedulerMutex_);
 
     size_t cancelledCount = 0;
-    auto it = sendIdIndex_.begin();
 
-    while (it != sendIdIndex_.end()) {
-        if (it->second->sessionId == sessionId && !it->second->cancelled) {
+    // TSAN FIX: Only mark as cancelled, don't erase from sendIdIndex_
+    // Timer thread will cleanup during processReadyEvents() - single-writer pattern
+    for (auto &[sendId, event] : sendIdIndex_) {
+        if (event->sessionId == sessionId && !event->cancelled) {
             LOG_DEBUG("EventSchedulerImpl: Cancelling event '{}' with sendId '{}' for session '{}'",
-                      it->second->event.eventName, it->first, sessionId);
-            it->second->cancelled = true;
-            it = sendIdIndex_.erase(it);
-            indexSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
+                      event->event.eventName, sendId, sessionId);
+            event->cancelled = true;
             cancelledCount++;
-        } else {
-            ++it;
         }
     }
 
@@ -193,7 +191,8 @@ bool EventSchedulerImpl::hasEvent(const std::string &sendId) const {
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(schedulerMutex_);
+    // TSAN FIX: Use shared_lock for read-only find() operation
+    std::shared_lock<std::shared_mutex> lock(schedulerMutex_);
     auto it = sendIdIndex_.find(sendId);
     return it != sendIdIndex_.end() && !it->second->cancelled;
 }
@@ -201,7 +200,8 @@ bool EventSchedulerImpl::hasEvent(const std::string &sendId) const {
 size_t EventSchedulerImpl::getScheduledEventCount() const {
     // CONSISTENCY FIX: Use mutex to ensure consistency with actual container
     // Atomic counters are kept for internal use (wait predicates), but public API must be consistent
-    std::lock_guard<std::mutex> lock(schedulerMutex_);
+    // TSAN FIX: Use shared_lock for read-only size() access
+    std::shared_lock<std::shared_mutex> lock(schedulerMutex_);
     return sendIdIndex_.size();
 }
 
@@ -250,7 +250,8 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
     // Clear all scheduled events AFTER timer thread has terminated
     // CRITICAL FIX: This prevents deadlock where timer thread holds mutex while shutdown() tries to acquire it
     {
-        std::lock_guard<std::mutex> lock(schedulerMutex_);
+        // TSAN FIX: Use unique_lock for write operations (clear/erase)
+        std::unique_lock<std::shared_mutex> lock(schedulerMutex_);
         size_t cancelledCount = sendIdIndex_.size();
         sendIdIndex_.clear();
         indexSize_.store(0, std::memory_order_release);  // TSAN FIX: Reset atomic counter
@@ -281,7 +282,8 @@ void EventSchedulerImpl::timerThreadMain() {
     LOG_DEBUG("EventSchedulerImpl: Timer thread started");
 
     while (!shutdownRequested_) {
-        std::unique_lock<std::mutex> lock(schedulerMutex_);
+        // TSAN FIX: Use unique_lock with shared_mutex for condition variable wait
+        std::unique_lock<std::shared_mutex> lock(schedulerMutex_);
 
         // TSAN FIX: Use atomic queue size to avoid calling empty() which triggers races
         size_t currentSize = queueSize_.load(std::memory_order_acquire);
@@ -336,7 +338,8 @@ size_t EventSchedulerImpl::processReadyEvents() {
 
     // Collect ready events from priority queue under lock
     {
-        std::lock_guard<std::mutex> lock(schedulerMutex_);
+        // TSAN FIX: Use unique_lock for write operations (erase from sendIdIndex_)
+        std::unique_lock<std::shared_mutex> lock(schedulerMutex_);
 
         // Process events from priority queue in execution time order
         // TSAN FIX: Use atomic size instead of empty() to avoid vector pointer races
@@ -499,7 +502,8 @@ std::string EventSchedulerImpl::generateSendId() {
 
 std::chrono::steady_clock::time_point EventSchedulerImpl::getNextExecutionTime() const {
     // CRITICAL FIX: External interface with proper mutex protection
-    std::lock_guard<std::mutex> lock(schedulerMutex_);
+    // TSAN FIX: Use shared_lock for read-only access to queue
+    std::shared_lock<std::shared_mutex> lock(schedulerMutex_);
     return getNextExecutionTimeUnlocked();
 }
 

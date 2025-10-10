@@ -364,6 +364,9 @@ bool StateHierarchyManager::enterState(const std::string &stateId) {
 }
 
 std::string StateHierarchyManager::getCurrentState() const {
+    // TSAN FIX: Protect configuration access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
+
     if (activeStates_.empty()) {
         LOG_WARN("No active states");
         return "";
@@ -398,10 +401,14 @@ std::string StateHierarchyManager::getCurrentState() const {
 }
 
 std::vector<std::string> StateHierarchyManager::getActiveStates() const {
+    // TSAN FIX: Protect configuration access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
     return activeStates_;
 }
 
 bool StateHierarchyManager::isStateActive(const std::string &stateId) const {
+    // TSAN FIX: Protect configuration access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
     return activeSet_.find(stateId) != activeSet_.end();
 }
 
@@ -452,12 +459,18 @@ void StateHierarchyManager::exitState(const std::string &stateId, std::shared_pt
 }
 
 void StateHierarchyManager::reset() {
+    // TSAN FIX: Protect configuration access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
+
     LOG_DEBUG("Clearing all active states");
     activeStates_.clear();
     activeSet_.clear();
 }
 
 bool StateHierarchyManager::isHierarchicalModeNeeded() const {
+    // TSAN FIX: Protect configuration access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
+
     // Hierarchical mode is needed if there are 2 or more active states
     return activeStates_.size() > 1;
 }
@@ -466,14 +479,19 @@ bool StateHierarchyManager::isHierarchicalModeNeeded() const {
 void StateHierarchyManager::exitParallelStateAndDescendants(const std::string &parallelStateId) {
     std::vector<std::string> statesToRemove;
 
-    // SCXML W3C: Remove the parallel state itself
-    auto it = std::find(activeStates_.begin(), activeStates_.end(), parallelStateId);
-    if (it != activeStates_.end()) {
-        statesToRemove.push_back(parallelStateId);
-    } else {
-        LOG_WARN(
-            "StateHierarchyManager::exitParallelStateAndDescendants - Parallel state '{}' not in active configuration",
-            parallelStateId);
+    // TSAN FIX: Access activeStates_ while holding the lock
+    {
+        std::lock_guard<std::mutex> lock(configurationMutex_);
+
+        // SCXML W3C: Remove the parallel state itself
+        auto it = std::find(activeStates_.begin(), activeStates_.end(), parallelStateId);
+        if (it != activeStates_.end()) {
+            statesToRemove.push_back(parallelStateId);
+        } else {
+            LOG_WARN("StateHierarchyManager::exitParallelStateAndDescendants - Parallel state '{}' not in active "
+                     "configuration",
+                     parallelStateId);
+        }
     }
 
     // SCXML W3C: Remove all descendant states of the parallel state
@@ -505,26 +523,31 @@ void StateHierarchyManager::exitParallelStateAndDescendants(const std::string &p
 
 // Exit a hierarchical state by removing it and all child states
 void StateHierarchyManager::exitHierarchicalState(const std::string &stateId) {
-    // Log current active states before exit
-    std::string activeStatesStr;
-    for (const auto &state : activeStates_) {
-        if (!activeStatesStr.empty()) {
-            activeStatesStr += ", ";
-        }
-        activeStatesStr += state;
-    }
-    LOG_DEBUG("exitHierarchicalState - Current active states: [{}]", activeStatesStr);
-    LOG_DEBUG("exitHierarchicalState - Requested to exit state: {}", stateId);
-
     std::vector<std::string> statesToRemove;
 
-    bool foundState = false;
-    for (auto it = activeStates_.begin(); it != activeStates_.end(); ++it) {
-        if (*it == stateId) {
-            foundState = true;
+    // TSAN FIX: Collect states to remove while holding the lock
+    {
+        std::lock_guard<std::mutex> lock(configurationMutex_);
+
+        // Log current active states before exit
+        std::string activeStatesStr;
+        for (const auto &state : activeStates_) {
+            if (!activeStatesStr.empty()) {
+                activeStatesStr += ", ";
+            }
+            activeStatesStr += state;
         }
-        if (foundState) {
-            statesToRemove.push_back(*it);
+        LOG_DEBUG("exitHierarchicalState - Current active states: [{}]", activeStatesStr);
+        LOG_DEBUG("exitHierarchicalState - Requested to exit state: {}", stateId);
+
+        bool foundState = false;
+        for (auto it = activeStates_.begin(); it != activeStates_.end(); ++it) {
+            if (*it == stateId) {
+                foundState = true;
+            }
+            if (foundState) {
+                statesToRemove.push_back(*it);
+            }
         }
     }
 
@@ -549,13 +572,18 @@ void StateHierarchyManager::exitHierarchicalState(const std::string &stateId) {
 void StateHierarchyManager::collectDescendantStates(const std::string &parentId, std::vector<std::string> &collector) {
     LOG_DEBUG("collectDescendantStates - Collecting descendants for parent: {}", parentId);
 
-    // Add the parent state itself if it's in active states
-    auto it = std::find(activeStates_.begin(), activeStates_.end(), parentId);
-    if (it != activeStates_.end()) {
-        collector.push_back(parentId);
-        LOG_DEBUG("collectDescendantStates - Added parent state: {}", parentId);
-    } else {
-        LOG_DEBUG("collectDescendantStates - Parent state {} not in active states", parentId);
+    // TSAN FIX: Access activeStates_ while holding the lock
+    {
+        std::lock_guard<std::mutex> lock(configurationMutex_);
+
+        // Add the parent state itself if it's in active states
+        auto it = std::find(activeStates_.begin(), activeStates_.end(), parentId);
+        if (it != activeStates_.end()) {
+            collector.push_back(parentId);
+            LOG_DEBUG("collectDescendantStates - Added parent state: {}", parentId);
+        } else {
+            LOG_DEBUG("collectDescendantStates - Parent state {} not in active states", parentId);
+        }
     }
 
     // Find and add all child states recursively
@@ -592,32 +620,45 @@ void StateHierarchyManager::collectDescendantStates(const std::string &parentId,
 }
 
 void StateHierarchyManager::addStateToConfiguration(const std::string &stateId) {
-    if (stateId.empty() || activeSet_.find(stateId) != activeSet_.end()) {
-        return;  // Already active or empty ID
-    }
+    // TSAN FIX: Add to configuration while holding lock, then release before callback
+    bool shouldExecuteCallback = false;
 
-    activeStates_.push_back(stateId);
-    activeSet_.insert(stateId);
+    {
+        std::lock_guard<std::mutex> lock(configurationMutex_);
+
+        if (stateId.empty() || activeSet_.find(stateId) != activeSet_.end()) {
+            return;  // Already active or empty ID
+        }
+
+        activeStates_.push_back(stateId);
+        activeSet_.insert(stateId);
+        shouldExecuteCallback = true;
+    }
 
     // W3C SCXML 405: Synchronize parallel region state tracking
     // This ensures ConcurrentRegion knows about StateMachine-driven state changes
     synchronizeParallelRegionState(stateId);
 
     // W3C SCXML: Execute onentry actions after adding state to active configuration
-    if (onEntryCallback_) {
+    // TSAN FIX: Execute callback OUTSIDE the lock to avoid deadlock
+    if (shouldExecuteCallback && onEntryCallback_) {
         onEntryCallback_(stateId);
 
         // W3C SCXML: Check if state is still in configuration after onentry
         // Onentry actions can trigger eventless transitions that exit the state
+        std::lock_guard<std::mutex> lock(configurationMutex_);
         if (activeSet_.find(stateId) == activeSet_.end()) {
             return;  // State already removed, don't continue
         }
-    } else {
+    } else if (shouldExecuteCallback) {
         LOG_WARN("StateHierarchyManager::addStateToConfiguration - No onentry callback set for state '{}'", stateId);
     }
 }
 
 void StateHierarchyManager::addStateToConfigurationWithoutOnEntry(const std::string &stateId) {
+    // TSAN FIX: Protect configuration access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
+
     if (stateId.empty() || activeSet_.find(stateId) != activeSet_.end()) {
         return;  // Already active or empty ID
     }
@@ -776,6 +817,9 @@ bool StateHierarchyManager::enterStateWithAncestors(const std::string &targetSta
 }
 
 void StateHierarchyManager::removeStateFromConfiguration(const std::string &stateId) {
+    // TSAN FIX: Protect configuration access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
+
     if (stateId.empty()) {
         return;
     }
@@ -977,6 +1021,9 @@ void StateHierarchyManager::updateParallelRegionCurrentStates() {
     if (!model_) {
         return;
     }
+
+    // TSAN FIX: Protect activeStates_ access with mutex
+    std::lock_guard<std::mutex> lock(configurationMutex_);
 
     // Map: region ID -> deepest active state ID within that region
     std::unordered_map<std::string, std::string> regionDeepestState;

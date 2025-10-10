@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -243,6 +244,9 @@ private:
     std::shared_ptr<SCXMLModel> model_;
     std::vector<std::string> activeStates_;      // 활성 상태 리스트 (계층 순서)
     std::unordered_set<std::string> activeSet_;  // 빠른 검색용 세트
+
+    // TSAN FIX: Mutex to protect activeStates_ and activeSet_ from concurrent access
+    mutable std::mutex configurationMutex_;
 
     // W3C SCXML onentry callback
     std::function<void(const std::string &)> onEntryCallback_;
