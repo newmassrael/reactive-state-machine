@@ -149,11 +149,11 @@ private:
      */
     void ensureThreadsStarted();
 
-    // Thread safety
-    // TSAN FIX: Use shared_mutex for reader-writer pattern to prevent find()/erase() race
-    mutable std::shared_mutex schedulerMutex_;
-    // TSAN FIX: condition_variable_any supports any mutex type including shared_mutex
-    std::condition_variable_any timerCondition_;
+    // Thread safety - Fine-Grained Locking Strategy
+    // PERFORMANCE: Separate mutexes to reduce lock contention and improve concurrent throughput
+    mutable std::shared_mutex queueMutex_;        // Protects executionQueue_ and queueSize_
+    mutable std::shared_mutex indexMutex_;        // Protects sendIdIndex_ and indexSize_
+    std::condition_variable_any timerCondition_;  // Timer thread notification
 
     // TSAN FIX: Cached next event time to avoid queue access in wait_until predicate
     // This prevents data race when vector reallocation happens during predicate evaluation
