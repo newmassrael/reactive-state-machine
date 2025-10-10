@@ -369,10 +369,11 @@ void StateMachine::stop() {
 
     LOG_DEBUG("StateMachine: Stopping state machine");
 
-    // Use StateHierarchyManager to check current state
-    std::string currentState = getCurrentState();
-    if (!currentState.empty()) {
-        exitState(currentState);
+    // W3C SCXML Test 250: Exit ALL active states with onexit handlers
+    // Must exit in reverse document order (children before parents)
+    auto activeStates = getActiveStates();
+    for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
+        exitState(*it);
     }
 
     isRunning_ = false;

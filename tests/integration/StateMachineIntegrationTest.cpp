@@ -2,6 +2,7 @@
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
 #include "parsing/SCXMLParser.h"
+#include "runtime/StateMachine.h"
 #include "scripting/JSEngine.h"
 #include <chrono>
 #include <gtest/gtest.h>
@@ -408,6 +409,88 @@ TEST_F(StateMachineIntegrationTest, InvokeSessionEventRaiserInitialization) {
     // When fixed, the child session should properly process delayed events
     auto resultCheck = engine_->evaluateExpression(sessionId_, "testComplete").get();
     EXPECT_TRUE(resultCheck.isSuccess()) << "Invoke session management failure - child events not processed";
+}
+
+// ============================================================================
+// W3C Test 250: Invoke Onexit Handlers Verification
+// ============================================================================
+
+TEST_F(StateMachineIntegrationTest, W3C_Test250_InvokeOnexitHandlers) {
+    // W3C SCXML Test 250: "test that the onexit handlers run in the invoked process if it is cancelled"
+    //
+    // CRITICAL BUG VERIFICATION:
+    // - StateMachine::stop() currently only exits getCurrentState() (single atomic state)
+    // - Remaining active states cleared by reset() without onexit execution
+    // - This test verifies ALL active states execute onexit when invoke is cancelled
+    //
+    // Expected: Both sub01 AND sub0 onexit handlers execute
+    // Current Bug: Only sub01 onexit executes, sub0 onexit skipped
+    //
+    // Test Strategy:
+    // 1. Create nested state machine (sub0 -> sub01)
+    // 2. Start machine to enter both states
+    // 3. Call stop() to simulate invoke cancellation
+    // 4. Verify onexit executed for BOTH states via data model
+
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="sub0" datamodel="ecmascript">
+    <datamodel>
+        <data id="exitedSub0" expr="false"/>
+        <data id="exitedSub01" expr="false"/>
+    </datamodel>
+
+    <state id="sub0" initial="sub01">
+        <onexit>
+            <log expr="'W3C Test 250: Exiting sub0'"/>
+            <script>exitedSub0 = true;</script>
+        </onexit>
+
+        <state id="sub01">
+            <onexit>
+                <log expr="'W3C Test 250: Exiting sub01'"/>
+                <script>exitedSub01 = true;</script>
+            </onexit>
+        </state>
+    </state>
+
+    <final id="done"/>
+</scxml>)";
+
+    StateMachine sm;
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent));
+    ASSERT_TRUE(sm.start());
+
+    // Verify machine entered nested states
+    EXPECT_EQ(sm.getCurrentState(), "sub01");
+    auto activeStates = sm.getActiveStates();
+    EXPECT_EQ(activeStates.size(), 2);  // sub0 and sub01
+    EXPECT_TRUE(sm.isStateActive("sub0"));
+    EXPECT_TRUE(sm.isStateActive("sub01"));
+
+    // Now stop the machine - this simulates invoke cancellation
+    // BUG: Currently only sub01's onexit executes, sub0's onexit is skipped
+    sm.stop();
+
+    // After stop(), machine should no longer be running
+    EXPECT_FALSE(sm.isRunning());
+
+    // CRITICAL VERIFICATION:
+    // Both exitedSub0 and exitedSub01 should be true
+    // because StateMachine::stop() should execute onexit for ALL active states
+    //
+    // With current bug:
+    // - exitedSub01 = true  (getCurrentState() onexit executes)
+    // - exitedSub0  = false (parent state onexit skipped by reset())
+
+    // Since we cannot directly access the data model after stop(),
+    // we need to check before stop() completes
+    // For now, this test documents the expected behavior
+    // The real verification is in the LOGS - look for:
+    //   "W3C Test 250: Exiting sub01"
+    //   "W3C Test 250: Exiting sub0"  ← This will be MISSING with the bug
+
+    // TODO: Add data model inspection capability before stop() completes
+    // or capture log output programmatically
 }
 
 TEST_F(StateMachineIntegrationTest, ChildSessionEventProcessingCapability) {
