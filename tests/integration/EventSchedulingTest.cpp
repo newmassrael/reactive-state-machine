@@ -1229,4 +1229,58 @@ TEST_F(EventSchedulingTest, W3C_Test250_InvokeCancellationExecutesOnexitHandlers
     LOG_DEBUG("=== W3C Test 250 PASSED: All onexit handlers executed during invoke cancellation ===");
 }
 
+// ============================================================================
+// W3C Test 301: External Script Loading Validation
+// ============================================================================
+
+/**
+ * @brief W3C SCXML Test 301: Verify document rejection when external script cannot be loaded
+ *
+ * Specification: W3C SCXML 5.8 - External Script Loading
+ *
+ * W3C SCXML 5.8: "If the script specified by the 'src' attribute of a script element
+ * cannot be downloaded within a platform-specific timeout interval, the document is
+ * considered non-conformant, and the platform MUST reject it."
+ *
+ * TXML source: test/w3c/txml/test301.txml (manual test)
+ * TXML Comments: "the processor should reject this document because it can't download
+ *                 the script. Therefore we fail if it runs at all. This test is valid
+ *                 only for datamodels that support scripting"
+ *
+ * Test Strategy:
+ * 1. Create SCXML with single external script that cannot be loaded
+ * 2. Attempt to load the document
+ * 3. Verify document is rejected (loadSCXMLFromString returns false)
+ *
+ * This test converts the manual TXML test to an automated integration test by verifying
+ * that documents with unloadable external scripts are properly rejected during loading.
+ */
+TEST_F(EventSchedulingTest, W3C_Test301_ExternalScriptRejection) {
+    LOG_DEBUG("=== W3C SCXML Test 301: External Script Rejection ===");
+
+    // TXML test301.txml structure with external script that cannot be loaded
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<!-- the processor should reject this document because it can't download the script -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
+       initial="s0" datamodel="ecmascript">
+    <script src="/nonexistent/external_script.js"/>
+    
+    <state id="s0">
+        <transition target="fail"/>
+    </state>
+    
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    StateMachine sm;
+    bool loadResult = sm.loadSCXMLFromString(scxmlContent);
+
+    // W3C SCXML 5.8: Document must be rejected
+    EXPECT_FALSE(loadResult)
+        << "W3C Test 301: Document with unloadable external script must be rejected (W3C SCXML 5.8)";
+
+    LOG_DEBUG("=== W3C Test 301 PASSED: Document with external script correctly rejected ===");
+}
+
 }  // namespace RSM
