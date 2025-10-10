@@ -152,6 +152,14 @@ private:
     mutable std::mutex schedulerMutex_;
     std::condition_variable timerCondition_;
 
+    // TSAN FIX: Cached next event time to avoid queue access in wait_until predicate
+    // This prevents data race when vector reallocation happens during predicate evaluation
+    std::chrono::steady_clock::time_point nextEventTime_{std::chrono::steady_clock::time_point::max()};
+
+    // TSAN FIX: Atomic counters to avoid STL container internal pointer races
+    std::atomic<size_t> queueSize_{0};
+    std::atomic<size_t> indexSize_{0};
+
     // Event storage: Priority Queue + HashMap hybrid + Per-Session Queues
     // CRITICAL FIX: Use shared_ptr in priority queue for memory safety
     std::priority_queue<std::shared_ptr<ScheduledEvent>, std::vector<std::shared_ptr<ScheduledEvent>>,

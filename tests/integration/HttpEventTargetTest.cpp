@@ -7,6 +7,7 @@
 #include "SimpleMockHttpServer.h"
 #include "actions/SendAction.h"
 #include "common/Logger.h"
+#include "common/TestUtils.h"
 #include "events/EventTargetFactoryImpl.h"
 #include "events/HttpEventTarget.h"
 #include "mocks/MockEventRaiser.h"
@@ -21,6 +22,11 @@ namespace RSM {
 class HttpEventTargetTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // Skip HTTP tests in Docker TSAN environment (SimpleMockHttpServer thread creation incompatible with TSAN)
+        if (RSM::Test::Utils::isInDockerTsan()) {
+            GTEST_SKIP() << "Skipping HTTP test in Docker TSAN environment";
+        }
+
         // Start embedded mock HTTP server
         mockServer_ = std::make_unique<SimpleMockHttpServer>();
         mockServerUrl_ = mockServer_->start();

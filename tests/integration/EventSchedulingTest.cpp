@@ -48,7 +48,10 @@ protected:
         // Create event execution callback (SCXML compliant - delegates to target)
         eventExecutionCallback_ = [this](const EventDescriptor &event, std::shared_ptr<IEventTarget> target,
                                          const std::string &sendId) -> bool {
-            executedEvents_.push_back({event, target, sendId});
+            {
+                std::lock_guard<std::mutex> lock(eventsMutex_);
+                executedEvents_.push_back({event, target, sendId});
+            }
 
             // SCXML Compliance: Always delegate to target for proper event handling
             // InternalEventTarget will call ActionExecutor's callback which adds to raisedEvents_
@@ -71,6 +74,7 @@ protected:
         raisedEvents_.clear();
         mockEventRaiser_ = std::make_shared<RSM::Test::MockEventRaiser>(
             [this](const std::string &name, const std::string &data) -> bool {
+                std::lock_guard<std::mutex> lock(eventsMutex_);
                 raisedEvents_.push_back({name, data});
                 return true;
             });
@@ -125,8 +129,10 @@ protected:
     std::shared_ptr<RSM::Test::MockEventRaiser> mockEventRaiser_;
     EventExecutionCallback eventExecutionCallback_;
 
+    // Thread-safe access to event vectors (TSAN compliance)
     std::vector<ExecutedEvent> executedEvents_;
     std::vector<RaisedEvent> raisedEvents_;
+    std::mutex eventsMutex_;  // Protects executedEvents_ and raisedEvents_
 };
 
 /**
@@ -190,10 +196,13 @@ TEST_F(EventSchedulingTest, ImmediateEventSending) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Verify event was raised internally
-    EXPECT_EQ(raisedEvents_.size(), 1);
-    EXPECT_EQ(raisedEvents_[0].name, "test.event");
-    // SCXML compliance: data is passed through without modification
-    EXPECT_EQ(raisedEvents_[0].data, "test data");
+    {
+        std::lock_guard<std::mutex> lock(eventsMutex_);
+        EXPECT_EQ(raisedEvents_.size(), 1);
+        EXPECT_EQ(raisedEvents_[0].name, "test.event");
+        // SCXML compliance: data is passed through without modification
+        EXPECT_EQ(raisedEvents_[0].data, "test data");
+    }
 }
 
 /**
@@ -217,7 +226,10 @@ TEST_F(EventSchedulingTest, DelayedEventSending) {
     EXPECT_TRUE(success);
 
     // Verify event is NOT immediately executed
-    EXPECT_EQ(raisedEvents_.size(), 0);
+    {
+        std::lock_guard<std::mutex> lock(eventsMutex_);
+        EXPECT_EQ(raisedEvents_.size(), 0);
+    }
 
     // Wait for delay plus some buffer
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
@@ -227,8 +239,11 @@ TEST_F(EventSchedulingTest, DelayedEventSending) {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
     EXPECT_GE(elapsed.count(), 100);  // At least 100ms delay
-    EXPECT_EQ(raisedEvents_.size(), 1);
-    EXPECT_EQ(raisedEvents_[0].name, "delayed.event");
+    {
+        std::lock_guard<std::mutex> lock(eventsMutex_);
+        EXPECT_EQ(raisedEvents_.size(), 1);
+        EXPECT_EQ(raisedEvents_[0].name, "delayed.event");
+    }
 }
 
 /**
@@ -267,7 +282,10 @@ TEST_F(EventSchedulingTest, EventCancellation) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // Verify event was NOT executed
-    EXPECT_EQ(raisedEvents_.size(), 0);
+    {
+        std::lock_guard<std::mutex> lock(eventsMutex_);
+        EXPECT_EQ(raisedEvents_.size(), 0);
+    }
 }
 
 /**
@@ -279,7 +297,7 @@ TEST_F(EventSchedulingTest, MultipleDelayedEvents) {
 
     // Schedule multiple events with different delays
     std::vector<std::string> eventNames = {"event1", "event2", "event3"};
-    std::vector<int> delays = {50, 100, 150};  // ms
+    std::vector<int> delays = {200, 300, 400};  // ms - increased to avoid race with scheduling overhead
 
     for (size_t i = 0; i < eventNames.size(); ++i) {
         SendAction sendAction(eventNames[i]);
@@ -291,19 +309,28 @@ TEST_F(EventSchedulingTest, MultipleDelayedEvents) {
         EXPECT_TRUE(success);
     }
 
-    // Verify all events are scheduled
+    // Verify all events are scheduled (with brief delay to ensure scheduling completes)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     EXPECT_EQ(scheduler_->getScheduledEventCount(), 3);
 
     // Wait for all events to execute with polling to avoid race conditions
     auto start = std::chrono::steady_clock::now();
-    auto timeout = std::chrono::milliseconds(500);  // Generous timeout
+    auto timeout = std::chrono::milliseconds(800);  // Generous timeout for 400ms max delay
 
-    while (raisedEvents_.size() < 3 && std::chrono::steady_clock::now() - start < timeout) {
+    size_t raisedCount = 0;
+    while (raisedCount < 3 && std::chrono::steady_clock::now() - start < timeout) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        {
+            std::lock_guard<std::mutex> lock(eventsMutex_);
+            raisedCount = raisedEvents_.size();
+        }
     }
 
     // Verify all events were executed
-    EXPECT_EQ(raisedEvents_.size(), 3) << "Expected 3 events but got " << raisedEvents_.size();
+    {
+        std::lock_guard<std::mutex> lock(eventsMutex_);
+        EXPECT_EQ(raisedEvents_.size(), 3) << "Expected 3 events but got " << raisedEvents_.size();
+    }
 
     // Verify no events are still scheduled
     EXPECT_EQ(scheduler_->getScheduledEventCount(), 0);
@@ -389,7 +416,10 @@ TEST_F(EventSchedulingTest, ShutdownWithPendingEvents) {
     EXPECT_EQ(scheduler_->getScheduledEventCount(), 0);
 
     // Verify event was not executed
-    EXPECT_EQ(raisedEvents_.size(), 0);
+    {
+        std::lock_guard<std::mutex> lock(eventsMutex_);
+        EXPECT_EQ(raisedEvents_.size(), 0);
+    }
 }
 
 /**

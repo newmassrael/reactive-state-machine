@@ -953,12 +953,8 @@ bool W3CTestRunner::requiresHttpServer(const std::string &testDirectory) const {
     return requiresHttp;
 }
 
-bool W3CTestRunner::isInDockerTsan() const {
-    return std::getenv("IN_DOCKER_TSAN") != nullptr;
-}
-
 std::optional<TestReport> W3CTestRunner::shouldSkipHttpTestInDockerTsan(const std::string &testDir, int testId) const {
-    if (!requiresHttpServer(testDir) || !isInDockerTsan()) {
+    if (!requiresHttpServer(testDir) || !RSM::Test::Utils::isInDockerTsan()) {
         return std::nullopt;
     }
 
@@ -976,7 +972,7 @@ std::optional<TestReport> W3CTestRunner::shouldSkipHttpTestInDockerTsan(const st
 
 std::optional<TestReport> W3CTestRunner::shouldSkipHttpTestInDockerTsan(const std::string &testDir,
                                                                         const std::string &testId) const {
-    if (!requiresHttpServer(testDir) || !isInDockerTsan()) {
+    if (!requiresHttpServer(testDir) || !RSM::Test::Utils::isInDockerTsan()) {
         return std::nullopt;
     }
 

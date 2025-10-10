@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/TestUtils.h"
 #include "events/EventDispatcherImpl.h"
 #include "events/EventSchedulerImpl.h"
 #include "interfaces/ITestConverter.h"
@@ -131,16 +132,6 @@ private:
      * @return true if HTTP server is required, false otherwise
      */
     bool requiresHttpServer(const std::string &testDirectory) const;
-
-    /**
-     * @brief Check if running in Docker TSAN environment
-     *
-     * When IN_DOCKER_TSAN=1 is set, HTTP tests are skipped due to cpp-httplib
-     * thread creation incompatibility with ThreadSanitizer allocator.
-     *
-     * @return true if IN_DOCKER_TSAN environment variable is set
-     */
-    bool isInDockerTsan() const;
 
     /**
      * @brief Create skip report if HTTP test should be skipped in Docker TSAN

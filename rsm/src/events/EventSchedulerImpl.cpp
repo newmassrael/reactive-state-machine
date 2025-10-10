@@ -102,7 +102,14 @@ std::future<std::string> EventSchedulerImpl::scheduleEvent(const EventDescriptor
     // Store in both data structures
     // CRITICAL FIX: Store shared_ptr instead of raw pointer for memory safety
     sendIdIndex_[actualSendId] = scheduledEvent;
+    indexSize_.fetch_add(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
     executionQueue_.push(scheduledEvent);
+    queueSize_.fetch_add(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
+
+    // TSAN FIX: Update cached next event time to avoid queue access in wait_until predicate
+    if (executeAt < nextEventTime_) {
+        nextEventTime_ = executeAt;
+    }
 
     LOG_DEBUG("EventSchedulerImpl: Scheduled event '{}' with sendId '{}' for {}ms delay in session '{}'",
               event.eventName, actualSendId, delay.count(), sessionId);
@@ -135,6 +142,7 @@ bool EventSchedulerImpl::cancelEvent(const std::string &sendId, const std::strin
         // Priority queue entry will be cleaned up during processReadyEvents()
         it->second->cancelled = true;
         sendIdIndex_.erase(it);
+        indexSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
 
         // Notify timer thread about cancellation
         timerCondition_.notify_one();
@@ -164,6 +172,7 @@ size_t EventSchedulerImpl::cancelEventsForSession(const std::string &sessionId) 
                       it->second->event.eventName, it->first, sessionId);
             it->second->cancelled = true;
             it = sendIdIndex_.erase(it);
+            indexSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
             cancelledCount++;
         } else {
             ++it;
@@ -190,6 +199,8 @@ bool EventSchedulerImpl::hasEvent(const std::string &sendId) const {
 }
 
 size_t EventSchedulerImpl::getScheduledEventCount() const {
+    // CONSISTENCY FIX: Use mutex to ensure consistency with actual container
+    // Atomic counters are kept for internal use (wait predicates), but public API must be consistent
     std::lock_guard<std::mutex> lock(schedulerMutex_);
     return sendIdIndex_.size();
 }
@@ -242,12 +253,14 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
         std::lock_guard<std::mutex> lock(schedulerMutex_);
         size_t cancelledCount = sendIdIndex_.size();
         sendIdIndex_.clear();
+        indexSize_.store(0, std::memory_order_release);  // TSAN FIX: Reset atomic counter
         // Clear the priority queue by creating a new empty one
         // CRITICAL FIX: Use shared_ptr type for memory safety
         std::priority_queue<std::shared_ptr<ScheduledEvent>, std::vector<std::shared_ptr<ScheduledEvent>>,
                             ExecutionTimeComparator>
             emptyQueue;
         executionQueue_.swap(emptyQueue);
+        queueSize_.store(0, std::memory_order_release);  // TSAN FIX: Reset atomic counter
 
         if (cancelledCount > 0) {
             LOG_DEBUG("EventSchedulerImpl: Cancelled {} pending events during shutdown", cancelledCount);
@@ -270,14 +283,23 @@ void EventSchedulerImpl::timerThreadMain() {
     while (!shutdownRequested_) {
         std::unique_lock<std::mutex> lock(schedulerMutex_);
 
-        // Calculate when we need to wake up next
-        // CRITICAL FIX: Use unlocked version to prevent deadlock (mutex already held)
-        auto nextExecutionTime = getNextExecutionTimeUnlocked();
+        // TSAN FIX: Use atomic queue size to avoid calling empty() which triggers races
+        size_t currentSize = queueSize_.load(std::memory_order_acquire);
+
+        // TSAN FIX: Use cached next event time to avoid queue access in predicate
+        // Update cache from queue (mutex already held)
+        if (currentSize > 0) {
+            nextEventTime_ = executionQueue_.top()->executeAt;
+        } else {
+            nextEventTime_ = std::chrono::steady_clock::time_point::max();
+        }
+        auto nextExecutionTime = nextEventTime_;
 
         if (nextExecutionTime == std::chrono::steady_clock::time_point::max()) {
             // No events scheduled, wait indefinitely until notified
             LOG_DEBUG("EventSchedulerImpl: No events scheduled, waiting for notification");
-            timerCondition_.wait(lock, [&] { return shutdownRequested_.load() || !executionQueue_.empty(); });
+            timerCondition_.wait(
+                lock, [&] { return shutdownRequested_.load() || queueSize_.load(std::memory_order_acquire) > 0; });
         } else {
             // Wait until next event time or notification
             auto now = std::chrono::steady_clock::now();
@@ -285,10 +307,10 @@ void EventSchedulerImpl::timerThreadMain() {
                 auto waitTime = std::chrono::duration_cast<std::chrono::milliseconds>(nextExecutionTime - now);
                 LOG_DEBUG("EventSchedulerImpl: Waiting {}ms for next event", waitTime.count());
 
-                // Include check for new events that might need earlier execution
-                // CRITICAL FIX: Use unlocked version to prevent deadlock (mutex already held by wait_until)
+                // TSAN FIX: Use cached nextEventTime_ instead of accessing queue in predicate
+                // This prevents data race when vector reallocation happens during predicate evaluation
                 timerCondition_.wait_until(lock, nextExecutionTime, [&] {
-                    return shutdownRequested_.load() || getNextExecutionTimeUnlocked() < nextExecutionTime;
+                    return shutdownRequested_.load() || nextEventTime_ < nextExecutionTime;
                 });
             }
         }
@@ -317,17 +339,21 @@ size_t EventSchedulerImpl::processReadyEvents() {
         std::lock_guard<std::mutex> lock(schedulerMutex_);
 
         // Process events from priority queue in execution time order
-        while (!executionQueue_.empty()) {
-            // CRITICAL FIX: Use shared_ptr instead of raw pointer for memory safety
+        // TSAN FIX: Use atomic size instead of empty() to avoid vector pointer races
+        while (queueSize_.load(std::memory_order_acquire) > 0) {
+            // CRITICAL BUG FIX: Copy shared_ptr BEFORE pop() to avoid dangling reference
+            // Using const reference after pop() causes use-after-free bug
             std::shared_ptr<ScheduledEvent> topEvent = executionQueue_.top();
 
             // If event is cancelled, remove from both structures atomically
             if (topEvent->cancelled) {
                 executionQueue_.pop();
+                queueSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
                 // CRITICAL FIX: Also remove from sendIdIndex_ to prevent memory leak
                 auto cancelledIt = sendIdIndex_.find(topEvent->sendId);
                 if (cancelledIt != sendIdIndex_.end()) {
                     sendIdIndex_.erase(cancelledIt);
+                    indexSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
                     LOG_DEBUG("EventSchedulerImpl: Cleaned up cancelled event from sendIdIndex_: {}", topEvent->sendId);
                 }
                 continue;
@@ -341,10 +367,12 @@ size_t EventSchedulerImpl::processReadyEvents() {
             // Event is ready - remove from both structures atomically
             // CRITICAL FIX: Ensure atomic update of dual data structures under mutex lock
             executionQueue_.pop();
+            queueSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
             auto it = sendIdIndex_.find(topEvent->sendId);
             if (it != sendIdIndex_.end()) {
                 readyEvents.push_back(it->second);
                 sendIdIndex_.erase(it);
+                indexSize_.fetch_sub(1, std::memory_order_release);  // TSAN FIX: Atomic size tracking
                 // Both structures are now consistent - event removed from queue and index
             } else {
                 // This should not happen in normal operation - log for debugging
@@ -478,15 +506,14 @@ std::chrono::steady_clock::time_point EventSchedulerImpl::getNextExecutionTime()
 std::chrono::steady_clock::time_point EventSchedulerImpl::getNextExecutionTimeUnlocked() const {
     // CRITICAL FIX: Internal method assumes mutex is already locked by caller to prevent deadlock
 
-    if (executionQueue_.empty()) {
+    // TSAN FIX: Use atomic size instead of empty() to avoid vector pointer races
+    if (queueSize_.load(std::memory_order_acquire) == 0) {
         return std::chrono::steady_clock::time_point::max();
     }
 
-    // Find first non-cancelled event without modifying the queue
-    // We cannot modify the queue in a const method, so we accept some cancelled events
-    // The actual cleanup happens in processReadyEvents()
-    // CRITICAL FIX: Use shared_ptr for memory safety
-    std::shared_ptr<ScheduledEvent> topEvent = executionQueue_.top();
+    // TSAN FIX: Access executeAt directly without copying shared_ptr to avoid data race
+    // during vector reallocation. The const reference is safe because mutex is held.
+    const std::shared_ptr<ScheduledEvent> &topEvent = executionQueue_.top();
 
     // If the top event is cancelled, we still return its time
     // This is safe because processReadyEvents() will skip cancelled events

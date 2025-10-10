@@ -2,6 +2,7 @@
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
 #include "common/JsonUtils.h"
+#include "common/TestUtils.h"
 #include "events/EventDispatcherImpl.h"
 #include "events/EventRaiserService.h"
 #include "events/EventSchedulerImpl.h"
@@ -20,13 +21,6 @@
 namespace RSM {
 
 namespace Test {
-
-/**
- * @brief Helper function to check if running in Docker TSAN environment
- */
-static bool isInDockerTsan() {
-    return std::getenv("IN_DOCKER_TSAN") != nullptr;
-}
 
 /**
  * @brief SCXML Event System Integration Tests
@@ -248,7 +242,7 @@ TEST_F(SCXMLEventTest, SendActionValidationMissingEvent) {
  */
 TEST_F(SCXMLEventTest, SendActionExternalTargetNotSupported) {
     // Skip HTTP tests in Docker TSAN environment (cpp-httplib thread creation incompatible with TSAN)
-    if (isInDockerTsan()) {
+    if (Utils::isInDockerTsan()) {
         GTEST_SKIP() << "Skipping HTTP test in Docker TSAN environment";
     }
 

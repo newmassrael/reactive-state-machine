@@ -7,6 +7,7 @@
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
+#include "common/LogUtils.h"
 #include "common/Logger.h"
 #include "parsing/ParsingCommon.h"  // ✅ Fix: Missing ParsingCommon header
 #include <algorithm>
@@ -50,6 +51,33 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
 
     // 액션 타입별로 구체적인 액션 객체 생성
     if (elementName == "script") {
+        // W3C SCXML 5.8: Check for external script source
+        auto srcAttr = actionElement->get_attribute("src");
+
+        if (srcAttr) {
+            // External script specified via 'src' attribute
+            std::string srcPath = srcAttr->get_value();
+
+            // ⚠️ LIMITATION: External script loading NOT implemented (W3C SCXML 5.8)
+            //
+            // W3C SCXML 5.8 requires: "If the script specified by the 'src' attribute cannot be
+            // downloaded within a platform-specific timeout interval, the document is considered
+            // non-conformant, and the platform MUST reject it."
+            //
+            // Current implementation: ALL external scripts are rejected for security reasons.
+            // W3C Test 301 (external script validation) is marked as "manual: True" in metadata
+            // and is automatically skipped by TestResultValidator::shouldSkipTest().
+            //
+            // Workaround: Use inline scripts instead: <script>your code here</script>
+            // Future work: Implement secure external script loading with timeout and sandboxing
+            LOG_ERROR("ActionParser: W3C SCXML 5.8 - Document rejected, cannot load external script: {}",
+                      Log::sanitize(srcPath));
+
+            // Reject document by returning nullptr (caller will handle error)
+            return nullptr;
+        }
+
+        // Inline script: read text content
         std::string content;
         auto textNode = actionElement->get_first_child_text();
         if (textNode) {

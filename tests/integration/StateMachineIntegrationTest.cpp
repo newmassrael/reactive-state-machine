@@ -493,6 +493,133 @@ TEST_F(StateMachineIntegrationTest, W3C_Test250_InvokeOnexitHandlers) {
     // or capture log output programmatically
 }
 
+// ============================================================================
+// W3C Test 301: External Script Loading Validation
+// ============================================================================
+
+TEST_F(StateMachineIntegrationTest, W3C_Test301_ExternalScriptValidation_AbsolutePath) {
+    // W3C SCXML Test 301: Verify document rejection when external script cannot be loaded
+    //
+    // W3C SCXML 5.8: "If the script specified by the 'src' attribute of a script element
+    // cannot be downloaded within a platform-specific timeout interval, the document is
+    // considered non-conformant, and the platform MUST reject it."
+    //
+    // Test Strategy:
+    // 1. Create SCXML with <script src="absolute_path"/>
+    // 2. Attempt to load the document
+    // 3. Verify loading fails (document rejected)
+
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<!-- the processor should reject this document because it can't download the script -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <script src="D:\foo"/>
+
+    <state id="s0">
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    StateMachine sm;
+    bool loadResult = sm.loadSCXMLFromString(scxmlContent);
+
+    // W3C SCXML 5.8: Document must be rejected
+    EXPECT_FALSE(loadResult) << "Document with unloadable external script should be rejected (W3C SCXML 5.8)";
+
+    // Fallback verification: if document incorrectly loads, it should not be startable
+    if (loadResult) {
+        bool startResult = sm.start();
+        EXPECT_FALSE(startResult) << "State machine with unloadable script should not start";
+    }
+}
+
+TEST_F(StateMachineIntegrationTest, W3C_Test301_ExternalScriptValidation_RelativePath) {
+    // W3C SCXML 5.8: Verify rejection with relative path external script
+
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <script src="./nonexistent.js"/>
+
+    <state id="s0">
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    StateMachine sm;
+    bool loadResult = sm.loadSCXMLFromString(scxmlContent);
+
+    EXPECT_FALSE(loadResult) << "Document with relative path external script should be rejected";
+}
+
+TEST_F(StateMachineIntegrationTest, W3C_Test301_ExternalScriptValidation_NetworkURL) {
+    // W3C SCXML 5.8: Verify rejection with HTTP URL external script
+
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <script src="http://example.com/script.js"/>
+
+    <state id="s0">
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    StateMachine sm;
+    bool loadResult = sm.loadSCXMLFromString(scxmlContent);
+
+    EXPECT_FALSE(loadResult) << "Document with HTTP URL external script should be rejected";
+}
+
+TEST_F(StateMachineIntegrationTest, W3C_Test301_ExternalScriptValidation_EmptySource) {
+    // W3C SCXML 5.8: Verify rejection with empty src attribute
+
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <script src=""/>
+
+    <state id="s0">
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    StateMachine sm;
+    bool loadResult = sm.loadSCXMLFromString(scxmlContent);
+
+    EXPECT_FALSE(loadResult) << "Document with empty src attribute should be rejected";
+}
+
+TEST_F(StateMachineIntegrationTest, W3C_Test301_ExternalScriptValidation_MultipleScripts) {
+    // W3C SCXML 5.8: Verify rejection when one of multiple scripts has external src
+
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="s0" datamodel="ecmascript">
+    <script>var validScript = true;</script>
+    <script src="/invalid/path.js"/>
+
+    <state id="s0">
+        <transition target="fail"/>
+    </state>
+
+    <final id="pass"/>
+    <final id="fail"/>
+</scxml>)";
+
+    StateMachine sm;
+    bool loadResult = sm.loadSCXMLFromString(scxmlContent);
+
+    EXPECT_FALSE(loadResult) << "Document with one invalid external script among multiple scripts should be rejected";
+}
+
 TEST_F(StateMachineIntegrationTest, ChildSessionEventProcessingCapability) {
     // **TDD TEST CASE**: Verify child session can process internal events
     // This test focuses specifically on the EventRaiser readiness issue

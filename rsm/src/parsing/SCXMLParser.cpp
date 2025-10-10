@@ -1,5 +1,6 @@
 #include "parsing/SCXMLParser.h"
 #include "GuardUtils.h"
+#include "common/LogUtils.h"
 #include "common/Logger.h"
 #include "parsing/ParsingCommon.h"
 #include <algorithm>
@@ -233,7 +234,28 @@ bool RSM::SCXMLParser::parseScxmlNode(const xmlpp::Element *scxmlNode, std::shar
                 parsedCount++;
                 LOG_DEBUG("Added top-level script #{} for document load time execution (W3C SCXML 5.8)", i + 1);
             } else {
-                LOG_WARN("Failed to parse top-level script element #{} - skipping (W3C SCXML 5.8)", i + 1);
+                // ⚠️ LIMITATION: External script loading NOT implemented (W3C SCXML 5.8)
+                //
+                // W3C SCXML 5.8: Document MUST be rejected if script cannot be loaded.
+                // This typically occurs when <script src="..."/> references external files.
+                //
+                // Current implementation: ALL external scripts are rejected for security reasons.
+                // W3C Test 301 (external script validation) is marked "manual: True" and skipped.
+                //
+                // Workaround: Use inline scripts: <script>your code here</script>
+                std::string errorDetail = "Top-level script element #" + std::to_string(i + 1) + " cannot be loaded";
+
+                // Add src attribute info if present (sanitized to prevent log injection)
+                auto srcAttr = scriptElements[i]->get_attribute("src");
+                if (srcAttr) {
+                    std::string srcValue = srcAttr->get_value();
+                    errorDetail += " (src: \"" + Log::sanitize(srcValue) + "\")";
+                }
+                errorDetail += " - document rejected per W3C SCXML 5.8";
+
+                LOG_ERROR("Failed to parse top-level script element #{} (W3C SCXML 5.8)", i + 1);
+                addError(errorDetail);
+                return false;
             }
         }
 
