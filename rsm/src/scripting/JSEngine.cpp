@@ -467,9 +467,6 @@ void JSEngine::executionWorker() {
     LOG_DEBUG("JSEngine: Worker thread initialization complete");
 
     while (!shouldStop_) {
-        LOG_DEBUG("JSEngine: Worker loop iteration - shouldStop: {}, queue size: {}", shouldStop_.load(),
-                  requestQueue_.size());
-
         std::unique_lock<std::mutex> lock(queueMutex_);
         queueCondition_.wait(lock, [this] { return !requestQueue_.empty() || shouldStop_; });
 
