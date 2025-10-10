@@ -49,6 +49,18 @@ target_link_libraries(benchmark_event_scheduler
         Threads::Threads
 )
 
+# JSEngine Benchmarks
+add_executable(benchmark_jsengine
+    JSEngineBenchmark.cpp
+)
+target_link_libraries(benchmark_jsengine
+    PRIVATE
+        rsm_unified
+        benchmark::benchmark
+        benchmark::benchmark_main
+        Threads::Threads
+)
+
 # ============================================================================
 # CTest Integration
 # ============================================================================
@@ -68,6 +80,21 @@ add_test(
     COMMAND benchmark_event_scheduler
 )
 
+# JSEngine quick benchmark test
+add_test(
+    NAME benchmark_jsengine_quick
+    COMMAND benchmark_jsengine
+        --benchmark_min_time=0.1s
+        --benchmark_filter="SessionCreation|SessionLookup|SimpleExpression"
+        --benchmark_format=console
+)
+
+# JSEngine full benchmark test
+add_test(
+    NAME benchmark_jsengine_full
+    COMMAND benchmark_jsengine
+)
+
 # Configure test properties
 # CTest executes tests with higher COST first, so quick (1000) runs before full (500)
 set_tests_properties(benchmark_event_scheduler_quick PROPERTIES
@@ -82,6 +109,19 @@ set_tests_properties(benchmark_event_scheduler_full PROPERTIES
     TIMEOUT 600
     COST 500  # Lower cost = runs after quick benchmark
     DISABLED TRUE  # Excluded from default ctest execution
+)
+
+set_tests_properties(benchmark_jsengine_quick PROPERTIES
+    LABELS "benchmark;quick;performance;jsengine"
+    TIMEOUT 300
+    COST 1000
+)
+
+set_tests_properties(benchmark_jsengine_full PROPERTIES
+    LABELS "benchmark;full;performance;jsengine;manual"
+    TIMEOUT 600
+    COST 500
+    DISABLED TRUE
 )
 
 # ============================================================================
