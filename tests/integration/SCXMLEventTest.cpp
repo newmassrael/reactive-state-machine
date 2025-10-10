@@ -22,6 +22,13 @@ namespace RSM {
 namespace Test {
 
 /**
+ * @brief Helper function to check if running in Docker TSAN environment
+ */
+static bool isInDockerTsan() {
+    return std::getenv("IN_DOCKER_TSAN") != nullptr;
+}
+
+/**
  * @brief SCXML Event System Integration Tests
  *
  * Tests for the basic event infrastructure including SendAction and CancelAction
@@ -240,6 +247,11 @@ TEST_F(SCXMLEventTest, SendActionValidationMissingEvent) {
  * @brief Test SendAction with external target (HTTP support available)
  */
 TEST_F(SCXMLEventTest, SendActionExternalTargetNotSupported) {
+    // Skip HTTP tests in Docker TSAN environment (cpp-httplib thread creation incompatible with TSAN)
+    if (isInDockerTsan()) {
+        GTEST_SKIP() << "Skipping HTTP test in Docker TSAN environment";
+    }
+
     // Create send action with external target
     auto sendAction = std::make_shared<SendAction>("external.event", "send5");
     sendAction->setTarget("http://example.com/webhook");
