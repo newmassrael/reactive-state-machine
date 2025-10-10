@@ -61,6 +61,18 @@ target_link_libraries(benchmark_jsengine
         Threads::Threads
 )
 
+# StateMachine Benchmarks
+add_executable(benchmark_statemachine
+    StateMachineBenchmark.cpp
+)
+target_link_libraries(benchmark_statemachine
+    PRIVATE
+        rsm_unified
+        benchmark::benchmark
+        benchmark::benchmark_main
+        Threads::Threads
+)
+
 # ============================================================================
 # CTest Integration
 # ============================================================================
@@ -95,6 +107,21 @@ add_test(
     COMMAND benchmark_jsengine
 )
 
+# StateMachine quick benchmark test
+add_test(
+    NAME benchmark_statemachine_quick
+    COMMAND benchmark_statemachine
+        --benchmark_min_time=0.1s
+        --benchmark_filter="EventProcessing|SimpleTransition|ParallelStateEvent"
+        --benchmark_format=console
+)
+
+# StateMachine full benchmark test
+add_test(
+    NAME benchmark_statemachine_full
+    COMMAND benchmark_statemachine
+)
+
 # Configure test properties
 # CTest executes tests with higher COST first, so quick (1000) runs before full (500)
 set_tests_properties(benchmark_event_scheduler_quick PROPERTIES
@@ -119,6 +146,19 @@ set_tests_properties(benchmark_jsengine_quick PROPERTIES
 
 set_tests_properties(benchmark_jsengine_full PROPERTIES
     LABELS "benchmark;full;performance;jsengine;manual"
+    TIMEOUT 600
+    COST 500
+    DISABLED TRUE
+)
+
+set_tests_properties(benchmark_statemachine_quick PROPERTIES
+    LABELS "benchmark;quick;performance;statemachine"
+    TIMEOUT 300
+    COST 1000
+)
+
+set_tests_properties(benchmark_statemachine_full PROPERTIES
+    LABELS "benchmark;full;performance;statemachine;manual"
     TIMEOUT 600
     COST 500
     DISABLED TRUE
