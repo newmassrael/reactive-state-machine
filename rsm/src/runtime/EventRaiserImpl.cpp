@@ -329,7 +329,8 @@ void EventRaiserImpl::processQueuedEvents() {
 bool EventRaiserImpl::processNextQueuedEvent() {
     LOG_DEBUG("EventRaiserImpl: Processing ONE queued event (W3C SCXML compliance)");
 
-    // Get the highest priority event from synchronous queue
+    // W3C SCXML 6.4: Get event from queue but DON'T remove yet
+    // Finalize handler must execute BEFORE removing event from queue
     QueuedEvent eventToProcess{"", "", EventPriority::EXTERNAL};
     bool hasEvent = false;
 
@@ -341,24 +342,32 @@ bool EventRaiserImpl::processNextQueuedEvent() {
             return false;
         }
 
-        // W3C SCXML compliance: priority_queue automatically maintains priority order
-        // Take the highest priority event (INTERNAL before EXTERNAL, FIFO within same priority)
+        // W3C SCXML compliance: Get highest priority event (INTERNAL before EXTERNAL)
         eventToProcess = synchronousQueue_.top();
-        synchronousQueue_.pop();
         hasEvent = true;
 
-        LOG_DEBUG("EventRaiserImpl: Selected event '{}' with priority {} - {} events remain in queue",
-                  eventToProcess.eventName,
-                  (eventToProcess.priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"),
-                  synchronousQueue_.size());
+        LOG_DEBUG(
+            "EventRaiserImpl: Selected event '{}' with priority {} - {} events in queue", eventToProcess.eventName,
+            (eventToProcess.priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), synchronousQueue_.size());
     }
 
     if (!hasEvent) {
         return false;
     }
 
-    // Process the selected event without holding the queue lock
-    return executeEventCallback(eventToProcess);
+    // W3C SCXML 6.4: Execute callback (including finalize) BEFORE removing from queue
+    bool success = executeEventCallback(eventToProcess);
+
+    // W3C SCXML 6.4: Only NOW remove event from queue (after finalize executed)
+    {
+        std::lock_guard<std::mutex> lock(synchronousQueueMutex_);
+        if (!synchronousQueue_.empty() && synchronousQueue_.top().eventName == eventToProcess.eventName) {
+            synchronousQueue_.pop();
+            LOG_DEBUG("EventRaiserImpl: Event '{}' removed from queue after processing", eventToProcess.eventName);
+        }
+    }
+
+    return success;
 }
 
 bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {

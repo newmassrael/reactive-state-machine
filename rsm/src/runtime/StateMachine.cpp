@@ -5,6 +5,7 @@
 
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
+#include "parsing/ActionParser.h"
 #include "parsing/SCXMLParser.h"
 #include "parsing/XIncludeProcessor.h"
 #include "runtime/ActionExecutorImpl.h"
@@ -22,6 +23,7 @@
 #include "states/ConcurrentStateNode.h"
 #include <algorithm>
 #include <fstream>
+#include <libxml++/parsers/domparser.h>
 #include <random>
 #include <regex>
 #include <set>
@@ -559,35 +561,45 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                       finalizeScript);
 
             // W3C SCXML 6.4: Parse and execute finalize as SCXML executable content
-            // Finalize contains elements like <assign>, <script>, <log>, etc.
+            // Finalize contains elements like <assign>, <script>, <log>, <raise>, <if>, <foreach> etc.
             if (actionExecutor_) {
                 try {
-                    // Parse finalize SCXML content to extract assign actions
-                    // Simple pattern: <assign location="var1" expr="_event.data.aParam"/>
-                    std::regex assign_pattern("<assign location=\"([^\"]+)\" expr=\"([^\"]+)\"/>");
-                    std::smatch match;
-                    std::string content = finalizeScript;
+                    // Parse finalize XML content using libxml++
+                    std::string xmlWrapper =
+                        "<finalize xmlns=\"http://www.w3.org/2005/07/scxml\">" + finalizeScript + "</finalize>";
 
-                    while (std::regex_search(content, match, assign_pattern)) {
-                        std::string location = match[1].str();
-                        std::string expr = match[2].str();
+                    xmlpp::DomParser parser;
+                    parser.parse_memory(xmlWrapper);
 
-                        LOG_DEBUG("StateMachine: Finalize assign - location: '{}', expr: '{}'", location, expr);
-
-                        // Execute assignment: evaluate expression and assign to variable
-                        auto exprFuture = JSEngine::instance().evaluateExpression(sessionId_, expr);
-                        auto exprResult = exprFuture.get();
-
-                        if (exprResult.isSuccess()) {
-                            // Get the actual value from JSResult
-                            const ScriptValue &value = exprResult.getInternalValue();
-                            JSEngine::instance().setVariable(sessionId_, location, value);
-                            LOG_DEBUG("StateMachine: Finalize assigned '{}' successfully", location);
+                    auto document = parser.get_document();
+                    if (!document) {
+                        LOG_ERROR("StateMachine: Failed to parse finalize XML");
+                    } else {
+                        auto root = document->get_root_node();
+                        if (!root) {
+                            LOG_ERROR("StateMachine: No root element in finalize XML");
                         } else {
-                            LOG_WARN("StateMachine: Finalize expr evaluation failed: {}", exprResult.getErrorMessage());
-                        }
+                            // Use ActionParser to parse and execute each action in finalize
+                            ActionParser actionParser(nullptr);
+                            auto children = root->get_children();
 
-                        content = match.suffix();
+                            // Create execution context
+                            auto sharedExecutor = std::static_pointer_cast<IActionExecutor>(actionExecutor_);
+                            ExecutionContextImpl context(sharedExecutor, sessionId_);
+
+                            // Execute each action in finalize
+                            for (const auto &child : children) {
+                                auto element = dynamic_cast<const xmlpp::Element *>(child);
+                                if (element) {
+                                    auto action = actionParser.parseActionNode(element);
+                                    if (action) {
+                                        bool success = action->execute(context);
+                                        LOG_DEBUG("StateMachine: Finalize action '{}' executed: {}",
+                                                  element->get_name(), success);
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     LOG_DEBUG("StateMachine: Finalize handler executed successfully for event '{}'", eventName);
