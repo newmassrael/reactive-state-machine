@@ -1283,4 +1283,119 @@ TEST_F(EventSchedulingTest, W3C_Test301_ExternalScriptRejection) {
     LOG_DEBUG("=== W3C Test 301 PASSED: Document with external script correctly rejected ===");
 }
 
+// ============================================================================
+// W3C Test 307: Late Binding Variable Access
+// ============================================================================
+
+/**
+ * @brief W3C SCXML Test 307: Verify late binding variable access behavior
+ *
+ * Specification: W3C SCXML Late Binding
+ *
+ * TXML Comments (test/w3c/txml/test307.txml):
+ * "with binding=late, in s0 we access a variable that isn't created until we get to s1.
+ * Then in s1 we access a non-existent substructure of a variable. We use log tags to
+ * report the values that both operations yield, and whether there are errors. This is
+ * a manual test, since the tester must report whether the output is the same in the
+ * two cases"
+ *
+ * Test Strategy (automated conversion from manual test):
+ * 1. State s0: Access undefined variable Var1 → check if error event raised
+ * 2. State s1: Define Var1, then access non-existent Var1.bar → check if error event raised
+ * 3. Verify consistent error handling between both cases
+ *
+ * This test converts the manual TXML test to automated by tracking error events
+ * in the data model instead of relying on log output inspection.
+ */
+TEST_F(EventSchedulingTest, W3C_Test307_LateBindingVariableAccess) {
+    LOG_DEBUG("=== W3C SCXML Test 307: Late Binding Variable Access ===");
+
+    // TXML test307.scxml structure with late binding
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<!-- with binding=late, in s0 we access a variable that isn't created until we get to s1.
+Then in s1 we access a non-existent substructure of a variable. -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
+       initial="s0" datamodel="ecmascript" binding="late">
+    
+    <datamodel>
+        <data id="s0_error" expr="false"/>
+        <data id="s1_error" expr="false"/>
+    </datamodel>
+    
+    <state id="s0">
+        <onentry>
+            <log label="entering s0 value of Var1 is: " expr="Var1"/>
+            <raise event="foo"/>
+        </onentry>
+        <transition event="error" target="s1">
+            <log label="error in state s0" expr="_event"/>
+            <assign location="s0_error" expr="true"/>
+        </transition>
+        <transition event="foo" target="s1">
+            <log label="no error in s0" expr=""/>
+        </transition>
+    </state>
+    
+    <state id="s1">
+        <datamodel>
+            <data id="Var1" expr="1"/>
+        </datamodel>
+        <onentry>
+            <log label="entering s1, value of non-existent substructure of Var1 is: " expr="Var1.bar"/>
+            <raise event="bar"/>
+        </onentry>
+        <transition event="error" target="final">
+            <log label="error in state s1" expr="_event"/>
+            <assign location="s1_error" expr="true"/>
+        </transition>
+        <transition event="bar" target="final">
+            <log label="No error in s1" expr=""/>
+        </transition>
+    </state>
+    
+    <final id="final"/>
+</scxml>)";
+
+    auto sm = std::make_shared<StateMachine>();
+
+    auto eventRaiser =
+        std::make_shared<RSM::EventRaiserImpl>([&sm](const std::string &name, const std::string &data) -> bool {
+            if (sm && sm->isRunning()) {
+                return sm->processEvent(name, data).success;
+            }
+            return false;
+        });
+
+    sm->setEventDispatcher(dispatcher_);
+    sm->setEventRaiser(eventRaiser);
+
+    ASSERT_TRUE(sm->loadSCXMLFromString(scxmlContent)) << "Failed to load SCXML";
+    ASSERT_TRUE(sm->start()) << "Failed to start StateMachine";
+
+    // Wait for test completion (final state or no active states)
+    bool completed = false;
+    std::string finalState;
+    for (int i = 0; i < 50 && !completed; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        finalState = sm->getCurrentState();
+        completed = (finalState == "final" || finalState.empty() || !sm->isRunning());
+    }
+
+    ASSERT_TRUE(completed) << "Test did not complete within timeout, state: " << finalState;
+
+    // Verify late binding behavior
+    std::string sessionId = sm->getSessionId();
+    auto s0_error = JSEngine::instance().getVariable(sessionId, "s0_error").get().getValue<bool>();
+    auto s1_error = JSEngine::instance().getVariable(sessionId, "s1_error").get().getValue<bool>();
+
+    // W3C SCXML Late Binding: Both undefined variable access and non-existent substructure
+    // access should be handled consistently
+    EXPECT_EQ(s0_error, s1_error)
+        << "W3C Test 307: Late binding should handle undefined variable and non-existent substructure consistently"
+        << " (s0_error=" << s0_error << ", s1_error=" << s1_error << ")";
+
+    sm->stop();
+    LOG_DEBUG("=== W3C Test 307 PASSED: Late binding variable access verified ===");
+}
+
 }  // namespace RSM

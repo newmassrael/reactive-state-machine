@@ -1569,13 +1569,18 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
     std::string content = item->getContent();
 
     // W3C SCXML 6.4: Check if variable was pre-initialized (e.g., by invoke namelist/param)
-    if (RSM::JSEngine::instance().isVariablePreInitialized(sessionId_, id)) {
+    // Skip this check for late binding value assignment (assignValue=true with late binding)
+    // because late binding creates variables as undefined first, then assigns values on state entry
+    bool isLateBindingAssignment = assignValue && model_ && (model_->getBinding() == "late");
+
+    if (!isLateBindingAssignment && RSM::JSEngine::instance().isVariablePreInitialized(sessionId_, id)) {
         LOG_INFO("StateMachine: Skipping initialization for '{}' - pre-initialized by invoke data", id);
         return;
     }
 
+    // W3C SCXML B.2.2: Late binding creates variables with undefined at init, assigns values on state entry
     if (!assignValue) {
-        // Late binding: Create variable but don't assign value yet (leave undefined)
+        // Create variable with undefined value (both early and late binding)
         auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, ScriptValue{});
         auto setResult = setVarFuture.get();
 
@@ -1588,7 +1593,7 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
             return;
         }
 
-        LOG_DEBUG("StateMachine: Created unbound variable '{}' for late binding", id);
+        LOG_DEBUG("StateMachine: Created unbound variable '{}' (value assignment deferred for late binding)", id);
         return;
     }
 
@@ -2799,10 +2804,14 @@ bool StateMachine::setupJSEnvironment() {
                 initializeDataItem(dataInfo.dataItem, true);  // assignValue=true
             }
         } else {
-            // Late binding: Create all variables but don't assign values yet
-            LOG_DEBUG("StateMachine: Using late binding - creating variables without values (assigned on state entry)");
+            // W3C SCXML B.2.2: Late binding - create variables with undefined at init, assign values on state entry
+            // "MUST create data model elements at initialization time"
+            // "MUST assign the specified initial values to data elements only when the state containing them is first
+            // entered"
+            LOG_DEBUG("StateMachine: Using late binding - creating variables with undefined (values assigned on state "
+                      "entry)");
             for (const auto &dataInfo : allDataItems) {
-                initializeDataItem(dataInfo.dataItem, false);  // assignValue=false (defer assignment)
+                initializeDataItem(dataInfo.dataItem, false);  // assignValue=false (defer value assignment)
             }
             // Note: Value assignment will happen in enterState() when each state is entered
         }

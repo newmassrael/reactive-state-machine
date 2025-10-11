@@ -579,6 +579,12 @@ bool ActionExecutorImpl::executeLogAction(const LogAction &action) {
         return true;
     } catch (const std::exception &e) {
         LOG_ERROR("Failed to execute log action: {}", e.what());
+
+        // W3C SCXML 5.9: Raise error.execution event for expression evaluation failure
+        if (eventRaiser_) {
+            eventRaiser_->raiseEvent("error.execution", std::string("Log action failed: ") + e.what());
+        }
+
         return false;
     }
 }
