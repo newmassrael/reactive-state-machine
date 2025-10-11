@@ -1398,4 +1398,118 @@ Then in s1 we access a non-existent substructure of a variable. -->
     LOG_DEBUG("=== W3C Test 307 PASSED: Late binding variable access verified ===");
 }
 
+// ============================================================================
+// W3C Test 313: Illegal Expression Error Handling
+// ============================================================================
+
+/**
+ * @brief W3C SCXML Test 313: Verify error.execution for illegal expressions
+ *
+ * Specification: W3C SCXML 5.9 - Error Execution Event
+ *
+ * TXML Comments (test/w3c/txml/test313.txml):
+ * "this is a manual test. The processor is allowed to reject this doc, but if it executes it
+ * with its illegal expression, it must raise an error"
+ *
+ * Metadata (resources/313/metadata.txt):
+ * - id: 313
+ * - specnum: 5.9
+ * - conformance: mandatory
+ * - description: "The SCXML processor MAY reject documents containing syntactically ill-formed
+ *                 expressions at document load time, or it MAY wait and place error.execution
+ *                 in the internal event queue at runtime when the expressions are evaluated."
+ *
+ * Test Strategy (automated conversion from manual test):
+ * 1. Load SCXML with illegal expression (expr="return")
+ * 2. If load succeeds, execute and verify error.execution event is raised
+ * 3. Verify transition to pass state on error.execution
+ *
+ * The processor has two conformant behaviors:
+ * - Option 1: Reject document at load time (loadSCXMLFromString returns false)
+ * - Option 2: Accept document, raise error.execution at runtime
+ *
+ * Both behaviors are W3C SCXML 5.9 compliant.
+ */
+TEST_F(EventSchedulingTest, W3C_Test313_IllegalExpressionErrorHandling) {
+    LOG_DEBUG("=== W3C SCXML Test 313: Illegal Expression Error Handling ===");
+
+    // TXML test313.txml structure with illegal expression
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<!-- this is a manual test. The processor is allowed to reject this doc, but if it executes it
+with its illegal expression, it must raise an error -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
+       datamodel="ecmascript" initial="s0">
+    
+    <datamodel>
+        <data id="Var1" expr="1"/>
+    </datamodel>
+    
+    <state id="s0">
+        <onentry>
+            <assign location="Var1" expr="return"/>
+            <raise event="foo"/>
+        </onentry>
+        <transition event="error.execution" target="pass"/>
+        <transition event=".*" target="fail"/>
+    </state>
+    
+    <final id="pass">
+        <onentry>
+            <log label="Outcome" expr="'pass'"/>
+        </onentry>
+    </final>
+    
+    <final id="fail">
+        <onentry>
+            <log label="Outcome" expr="'fail'"/>
+        </onentry>
+    </final>
+</scxml>)";
+
+    auto sm = std::make_shared<StateMachine>();
+
+    auto eventRaiser =
+        std::make_shared<RSM::EventRaiserImpl>([&sm](const std::string &name, const std::string &data) -> bool {
+            if (sm && sm->isRunning()) {
+                return sm->processEvent(name, data).success;
+            }
+            return false;
+        });
+
+    sm->setEventDispatcher(dispatcher_);
+    sm->setEventRaiser(eventRaiser);
+
+    // W3C SCXML 5.9: Processor MAY reject document at load time
+    bool loadResult = sm->loadSCXMLFromString(scxmlContent);
+
+    if (!loadResult) {
+        // Option 1: Document rejected at load time (conformant behavior)
+        LOG_DEBUG("W3C Test 313: Document rejected at load time (W3C SCXML 5.9 conformant)");
+        EXPECT_FALSE(loadResult) << "Document with illegal expression rejected at load time (conformant)";
+        return;
+    }
+
+    // Option 2: Document accepted, must raise error.execution at runtime
+    LOG_DEBUG("W3C Test 313: Document accepted, expecting error.execution at runtime");
+
+    ASSERT_TRUE(sm->start()) << "Failed to start StateMachine";
+
+    // Wait for test completion (final state)
+    bool completed = false;
+    std::string finalState;
+    for (int i = 0; i < 50 && !completed; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        finalState = sm->getCurrentState();
+        completed = (finalState == "pass" || finalState == "fail" || finalState.empty() || !sm->isRunning());
+    }
+
+    ASSERT_TRUE(completed) << "Test did not complete within timeout, state: " << finalState;
+
+    // W3C SCXML 5.9: Must raise error.execution for illegal expression
+    EXPECT_EQ(finalState, "pass") << "W3C Test 313: Illegal expression must raise error.execution (W3C SCXML 5.9)";
+
+    sm->stop();
+    LOG_DEBUG("=== W3C Test 313 PASSED: Illegal expression error handling verified ===");
+}
+
 }  // namespace RSM
