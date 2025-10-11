@@ -373,11 +373,17 @@ std::string SCXMLInvokeHandler::startInvokeInternal(const std::shared_ptr<IInvok
             auto future = JSEngine::instance().evaluateExpression(parentSessionId, expr);
             auto result = future.get();
 
-            if (JSEngine::isSuccess(result)) {
-                setInvokeDataVariable(childSessionId, name, result.getInternalValue(), "param");
-            } else {
-                LOG_WARN("SCXMLInvokeHandler: Failed to evaluate param expression: {}", expr);
+            if (!JSEngine::isSuccess(result)) {
+                LOG_ERROR(
+                    "SCXMLInvokeHandler: Failed to evaluate param expression '{}' in parent session: invoke cancelled",
+                    expr);
+                // W3C SCXML 6.4: If evaluation of invoke's arguments produces an error,
+                // the Processor MUST terminate processing of the element
+                JSEngine::instance().destroySession(childSessionId);
+                return "";
             }
+
+            setInvokeDataVariable(childSessionId, name, result.getInternalValue(), "param");
         }
     }
 

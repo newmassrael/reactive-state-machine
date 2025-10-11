@@ -6,6 +6,59 @@
 #include <iostream>
 
 /**
+ * @brief Find project root by searching for resources directory
+ *
+ * Searches upward from executable location to find the project root
+ * containing the resources directory. This ensures the CLI works
+ * regardless of where it's executed from.
+ *
+ * @param executablePath Absolute path to the executable
+ * @return Path to resources directory, or empty string if not found
+ */
+std::string findResourcesPath(const std::string &executablePath) {
+    namespace fs = std::filesystem;
+
+    try {
+        // Start from executable's directory
+        fs::path currentPath = fs::path(executablePath).parent_path();
+
+        // Search upward through parent directories (max 10 levels)
+        for (int level = 0; level < 10; level++) {
+            fs::path resourcesPath = currentPath / "resources";
+
+            // Check if resources directory exists and has test directories
+            if (fs::exists(resourcesPath) && fs::is_directory(resourcesPath)) {
+                // Verify it's the correct resources by checking for a test directory
+                bool hasTestDirs = false;
+                for (const auto &entry : fs::directory_iterator(resourcesPath)) {
+                    if (entry.is_directory()) {
+                        hasTestDirs = true;
+                        break;
+                    }
+                }
+
+                if (hasTestDirs) {
+                    LOG_DEBUG("W3C CLI: Found resources at: {}", resourcesPath.string());
+                    return resourcesPath.string();
+                }
+            }
+
+            // Move up one directory
+            fs::path parentPath = currentPath.parent_path();
+            if (parentPath == currentPath) {
+                // Reached filesystem root
+                break;
+            }
+            currentPath = parentPath;
+        }
+    } catch (const std::exception &e) {
+        LOG_ERROR("W3C CLI: Error searching for resources: {}", e.what());
+    }
+
+    return "";  // Not found
+}
+
+/**
  * @brief W3C SCXML Test CLI - executes all 207 test cases
  *
  * This implements the complete W3C SCXML 1.0 compliance testing using
@@ -16,9 +69,27 @@
  */
 int main(int argc, char *argv[]) {
     try {
-        // Use relative path from build/tests directory: ../../resources
-        std::string resourcePath = "../../resources";
+        // Auto-detect resources path from executable location
+        std::string executablePath;
+        try {
+            executablePath = std::filesystem::canonical("/proc/self/exe").string();
+        } catch (...) {
+            // Fallback for non-Linux systems or if /proc/self/exe is not available
+            executablePath = argv[0];
+        }
+
+        std::string resourcePath = findResourcesPath(executablePath);
         std::string outputPath = "w3c_test_results.xml";
+
+        // Validate resources path was found
+        if (resourcePath.empty()) {
+            LOG_ERROR("W3C CLI: Failed to locate resources directory");
+            fprintf(stderr, "ERROR: Could not find W3C test resources directory.\n");
+            fprintf(stderr, "       Searched upward from executable location: %s\n", executablePath.c_str());
+            fprintf(stderr, "       Please ensure resources/ directory exists in project root.\n");
+            fprintf(stderr, "       Or use --resources PATH to specify location manually.\n");
+            return 1;
+        }
 
         // Parse command line arguments
         std::vector<std::string> specificTestIds;  // empty means run all tests (supports both "403" and "403a")
