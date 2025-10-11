@@ -1512,4 +1512,134 @@ with its illegal expression, it must raise an error -->
     LOG_DEBUG("=== W3C Test 313 PASSED: Illegal expression error handling verified ===");
 }
 
+// ============================================================================
+// W3C Test 314: Error Evaluation Timing
+// ============================================================================
+
+/**
+ * @brief W3C SCXML Test 314: Verify errors are raised at expression evaluation time
+ *
+ * Specification: W3C SCXML 5.9 - Error Execution Event (Evaluation Timing)
+ *
+ * TXML Comments (test/w3c/txml/test314.txml):
+ * "this is a manual test because the processor is allowed to reject this document.
+ * But if it executes it, it should not raise an error until it gets to s03 and
+ * evaluates the illegal expr"
+ *
+ * Metadata (resources/314/metadata.txt):
+ * - id: 314
+ * - specnum: 5.9
+ * - description: "If the SCXML processor waits until it evaluates the expressions at
+ *                 runtime to raise errors, it MUST raise errors caused by expressions
+ *                 returning illegal values at the points at which Appendix A Algorithm
+ *                 for SCXML Interpretation indicates that the expressions are to be evaluated."
+ *
+ * Test Strategy (automated conversion from manual test):
+ * 1. Load SCXML with illegal expression in s03's onentry (expr="return")
+ * 2. Verify no error during s01 and s02 transitions (expression not evaluated yet)
+ * 3. Verify error.execution raised only when s03 onentry evaluates the expression
+ * 4. s0 has error.execution transition to fail (catches premature errors)
+ * 5. s03 has error.execution transition to pass (catches correct timing error)
+ *
+ * Key difference from Test 313:
+ * - Test 313: Single state, immediate evaluation
+ * - Test 314: Multi-state, delayed evaluation at specific point (s03 onentry)
+ */
+TEST_F(EventSchedulingTest, W3C_Test314_ErrorEvaluationTiming) {
+    LOG_DEBUG("=== W3C SCXML Test 314: Error Evaluation Timing ===");
+
+    // TXML test314.txml structure with delayed illegal expression evaluation
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<!-- this is a manual test because the processor is allowed to reject this document.  But if it executes it,
+it should not raise an error until it gets to s03 and evaluates the illegal expr -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
+       datamodel="ecmascript" initial="s0">
+    
+    <datamodel>
+        <data id="Var1" expr="1"/>
+    </datamodel>
+    
+    <state id="s0" initial="s01">
+        <transition event="error.execution" target="fail"/>
+        
+        <state id="s01">
+            <transition target="s02"/>
+        </state>
+        
+        <state id="s02">
+            <transition target="s03"/>
+        </state>
+        
+        <state id="s03">
+            <onentry>
+                <assign location="Var1" expr="return"/>
+                <raise event="foo"/>
+            </onentry>
+            <transition event="error.execution" target="pass"/>
+            <transition event=".*" target="fail"/>
+        </state>
+    </state>
+    
+    <final id="pass">
+        <onentry>
+            <log label="Outcome" expr="'pass'"/>
+        </onentry>
+    </final>
+    
+    <final id="fail">
+        <onentry>
+            <log label="Outcome" expr="'fail'"/>
+        </onentry>
+    </final>
+</scxml>)";
+
+    auto sm = std::make_shared<StateMachine>();
+
+    auto eventRaiser =
+        std::make_shared<RSM::EventRaiserImpl>([&sm](const std::string &name, const std::string &data) -> bool {
+            if (sm && sm->isRunning()) {
+                return sm->processEvent(name, data).success;
+            }
+            return false;
+        });
+
+    sm->setEventDispatcher(dispatcher_);
+    sm->setEventRaiser(eventRaiser);
+
+    // W3C SCXML 5.9: Processor MAY reject document at load time
+    bool loadResult = sm->loadSCXMLFromString(scxmlContent);
+
+    if (!loadResult) {
+        // Option 1: Document rejected at load time (conformant behavior)
+        LOG_DEBUG("W3C Test 314: Document rejected at load time (W3C SCXML 5.9 conformant)");
+        EXPECT_FALSE(loadResult) << "Document with illegal expression rejected at load time (conformant)";
+        return;
+    }
+
+    // Option 2: Document accepted, must raise error.execution at s03 evaluation time
+    LOG_DEBUG("W3C Test 314: Document accepted, expecting error.execution at s03 evaluation time");
+
+    ASSERT_TRUE(sm->start()) << "Failed to start StateMachine";
+
+    // Wait for test completion (final state)
+    bool completed = false;
+    std::string finalState;
+    for (int i = 0; i < 50 && !completed; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        finalState = sm->getCurrentState();
+        completed = (finalState == "pass" || finalState == "fail" || finalState.empty() || !sm->isRunning());
+    }
+
+    ASSERT_TRUE(completed) << "Test did not complete within timeout, state: " << finalState;
+
+    // W3C SCXML 5.9: Must raise error.execution at evaluation time (s03 onentry)
+    // If error raised during s01/s02, would transition to fail via s0's error.execution handler
+    // If error raised at s03 onentry (correct timing), transitions to pass via s03's error.execution handler
+    EXPECT_EQ(finalState, "pass")
+        << "W3C Test 314: Error must be raised at expression evaluation time (s03 onentry), not earlier";
+
+    sm->stop();
+    LOG_DEBUG("=== W3C Test 314 PASSED: Error evaluation timing verified ===");
+}
+
 }  // namespace RSM
