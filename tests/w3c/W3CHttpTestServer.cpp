@@ -1,6 +1,7 @@
 #include "W3CHttpTestServer.h"
 #include "common/JsonUtils.h"
 #include "common/Logger.h"
+#include "common/TestUtils.h"
 #include "events/HttpEventBridge.h"
 #include <chrono>
 #include <httplib.h>
@@ -58,7 +59,7 @@ bool W3CHttpTestServer::start() {
     });
 
     // Wait a bit for server to start
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
 
     if (!running_.load()) {
         if (serverThread_.joinable()) {
@@ -89,7 +90,7 @@ void W3CHttpTestServer::stop() {
     }
 
     // Give OS more time to release the port completely
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::this_thread::sleep_for(RSM::Test::Utils::LONG_WAIT_MS);
 
     LOG_INFO("W3CHttpTestServer: HTTP server stopped");
 }

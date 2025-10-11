@@ -88,7 +88,7 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
     // W3C SCXML compliance: Use real StateMachine with full invoke support
     class StateMachineTestExecutor : public ITestExecutor {
     private:
-        std::chrono::milliseconds timeout_{5000};  // Increased from 2000ms to 5000ms for W3C tests with delays
+        std::chrono::milliseconds timeout_{EXECUTOR_DEFAULT_TIMEOUT_MS};
 
     public:
         void setTimeout(std::chrono::milliseconds timeoutMs) override {
@@ -163,7 +163,7 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                     }
 
                     // Small sleep to avoid busy waiting
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    std::this_thread::sleep_for(POLL_INTERVAL_MS);
                 }
 
                 // Get final state - always read fresh state after loop exit
@@ -253,7 +253,7 @@ std::unique_ptr<ITestExecutor> TestComponentFactory::createExecutor() {
                         LOG_DEBUG("StateMachineTestExecutor: Reached final state: {}", currentState);
                         break;
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    std::this_thread::sleep_for(POLL_INTERVAL_MS);
                 }
 
                 // Get final state - always read fresh state after loop exit
@@ -298,7 +298,7 @@ std::unique_ptr<ITestResultValidator> TestComponentFactory::createValidator() {
                 return ValidationResult(false, TestResult::ERROR, "Execution error: " + context.errorMessage);
             }
 
-            if (context.executionTime > std::chrono::milliseconds(10000)) {
+            if (context.executionTime > VALIDATOR_TIMEOUT_MS) {
                 return ValidationResult(false, TestResult::TIMEOUT, "Test execution timed out");
             }
 
@@ -847,12 +847,12 @@ TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
         LOG_DEBUG("W3C Single Test: Converting TXML to SCXML for test {}", report.testId);
 
         // Log original TXML before conversion
-        LOG_INFO("W3C Test {}: Original TXML content:\n{}", report.testId, txml);
+        LOG_DEBUG("W3C Test {}: Original TXML content:\n{}", report.testId, txml);
 
         std::string scxml = converter_->convertTXMLToSCXML(txml);
 
         // Log converted SCXML after conversion
-        LOG_INFO("W3C Test {}: Converted SCXML content:\n{}", report.testId, scxml);
+        LOG_DEBUG("W3C Test {}: Converted SCXML content:\n{}", report.testId, scxml);
 
         // Convert all sub-TXML files in the test directory for invoke elements
         // Extract actual directory path (remove variant suffix if present)
@@ -1375,7 +1375,7 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
             // Wait for StateMachine to reach final state or timeout
             auto waitStart = std::chrono::steady_clock::now();
             std::string currentState;
-            const std::chrono::milliseconds timeout{5000};  // Increased from 2000ms to 5000ms for W3C tests with delays
+            const std::chrono::milliseconds timeout = EXECUTOR_DEFAULT_TIMEOUT_MS;
 
             while (std::chrono::steady_clock::now() - waitStart < timeout) {
                 currentState = stateMachine->getCurrentState();
@@ -1387,7 +1387,7 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
                 }
 
                 // Small sleep to avoid busy waiting
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                std::this_thread::sleep_for(POLL_INTERVAL_MS);
             }
 
             // Get final state - always read fresh state after loop exit

@@ -1,11 +1,17 @@
 #pragma once
 
+#include <chrono>
 #include <cstdlib>
 #include <string>
 
 namespace RSM {
 namespace Test {
 namespace Utils {
+
+// Common Test Timing Constants
+constexpr auto POLL_INTERVAL_MS = std::chrono::milliseconds(10);   // Polling interval for state checks
+constexpr auto STANDARD_WAIT_MS = std::chrono::milliseconds(100);  // Standard wait time for async operations
+constexpr auto LONG_WAIT_MS = std::chrono::milliseconds(200);      // Long wait time for complex operations
 
 /**
  * @brief Check if running in Docker TSAN environment

@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "common/Logger.h"
+#include "common/TestUtils.h"
 #include "runtime/EventRaiserImpl.h"
 #include "runtime/StateMachine.h"
 #include "runtime/StateMachineBuilder.h"
@@ -35,7 +36,7 @@ protected:
         smContext_.reset();
         // Clean shutdown with minimal delay
         RSM::JSEngine::instance().shutdown();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(RSM::Test::Utils::POLL_INTERVAL_MS);
     }
 
     void createTestSCXMLFile(const std::string &filename, const std::string &content) {
@@ -568,7 +569,7 @@ TEST_F(ActionIntegrationTest, IfElseIfElseExecution) {
     ASSERT_TRUE(stateMachine_->loadSCXML(filename));
     ASSERT_TRUE(stateMachine_->start());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
 
     std::string currentState = stateMachine_->getCurrentState();
 
@@ -619,7 +620,7 @@ TEST_F(ActionIntegrationTest, IfElseIfElseElseBranchExecution) {
     ASSERT_TRUE(stateMachine_->loadSCXML(filename));
     ASSERT_TRUE(stateMachine_->start());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
 
     std::string currentState = stateMachine_->getCurrentState();
 

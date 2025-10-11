@@ -18,6 +18,12 @@
 
 namespace RSM::W3C {
 
+// W3C Test Runner Configuration Constants
+constexpr auto EXECUTOR_DEFAULT_TIMEOUT_MS = std::chrono::milliseconds(5000);  // Executor timeout for test execution
+constexpr auto POLL_INTERVAL_MS = std::chrono::milliseconds(10);               // Polling interval for state checks
+constexpr auto VALIDATOR_TIMEOUT_MS = std::chrono::milliseconds(10000);        // Validator timeout threshold
+constexpr auto CLEANUP_DELAY_MS = std::chrono::milliseconds(10);               // Graceful thread termination delay
+
 // Forward declarations
 class W3CHttpTestServer;
 
@@ -57,7 +63,7 @@ struct TestResources {
             eventRaiser->shutdown();
         }
         // Small delay for graceful thread termination
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(CLEANUP_DELAY_MS);
     }
 };
 

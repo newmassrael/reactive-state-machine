@@ -1,3 +1,4 @@
+#include "../W3CTestRunner.h"
 #include "../interfaces/ITestResultValidator.h"
 #include <algorithm>
 
@@ -23,7 +24,7 @@ public:
         }
 
         // Handle timeouts
-        if (context.executionTime > std::chrono::milliseconds(10000)) {
+        if (context.executionTime > VALIDATOR_TIMEOUT_MS) {
             return ValidationResult(false, TestResult::TIMEOUT, "Test execution timed out");
         }
 

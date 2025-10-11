@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 
+#include "common/TestUtils.h"
+
 namespace RSM {
 
 class TypeRegistryThreadSafetyTest : public ::testing::Test {
@@ -335,7 +337,7 @@ TEST_F(TypeRegistryThreadSafetyTest, DeadlockDetectionTest) {
     bool allCompleted = false;
 
     while (!allCompleted && std::chrono::steady_clock::now() - startTime < std::chrono::seconds(MAX_WAIT_SECONDS)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
         allCompleted = (completedThreads.load() == NUM_DEADLOCK_THREADS);
     }
 
@@ -345,7 +347,7 @@ TEST_F(TypeRegistryThreadSafetyTest, DeadlockDetectionTest) {
 
     // Ensure all futures complete
     for (auto &future : futures) {
-        if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) {
+        if (future.wait_for(RSM::Test::Utils::STANDARD_WAIT_MS) == std::future_status::ready) {
             EXPECT_TRUE(future.get()) << "Thread completed with error";
         }
     }

@@ -271,7 +271,7 @@ TEST_F(EventSchedulingTest, EventCancellation) {
     EXPECT_TRUE(scheduler_->hasEvent("cancel_test_001"));
 
     // Wait a bit but not full delay
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
 
     // Cancel the event
     CancelAction cancelAction("cancel_test_001");
@@ -313,7 +313,7 @@ TEST_F(EventSchedulingTest, MultipleDelayedEvents) {
     }
 
     // Verify all events are scheduled (with brief delay to ensure scheduling completes)
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(RSM::Test::Utils::POLL_INTERVAL_MS);
     EXPECT_EQ(scheduler_->getScheduledEventCount(), 3);
 
     // Wait for all events to execute with polling to avoid race conditions
@@ -322,7 +322,7 @@ TEST_F(EventSchedulingTest, MultipleDelayedEvents) {
 
     size_t raisedCount = 0;
     while (raisedCount < 3 && std::chrono::steady_clock::now() - start < timeout) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(RSM::Test::Utils::POLL_INTERVAL_MS);
         {
             std::lock_guard<std::mutex> lock(eventsMutex_);
             raisedCount = raisedEvents_.size();
@@ -528,7 +528,7 @@ TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
     EXPECT_TRUE(scheduler_->hasEvent("session3_event"));
 
     // Wait 100ms, then destroy session_2 (W3C SCXML 6.2: should cancel its delayed events)
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
 
     LOG_DEBUG("Destroying session_2 - should cancel its delayed events (W3C SCXML 6.2)");
     jsEngine.destroySession("session_2");
@@ -1033,7 +1033,7 @@ TEST_F(EventSchedulingTest, W3C_Test230_AutoforwardPreservesAllEventFields) {
     // Wait for test completion (max 5 seconds)
     bool completed = false;
     for (int i = 0; i < 50 && !completed; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
         std::string state = parentStateMachine->getCurrentState();
         completed = (state == "pass" || state == "fail");
     }
@@ -1188,7 +1188,7 @@ TEST_F(EventSchedulingTest, W3C_Test250_InvokeCancellationExecutesOnexitHandlers
     // 2. Parent to send foo event
     // 3. Parent transition to final (triggering invoke cancellation)
     // 4. Child onexit handlers to execute
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::this_thread::sleep_for(RSM::Test::Utils::LONG_WAIT_MS);
 
     // Verify parent reached final state (invoke should be cancelled)
     std::string finalState = parentStateMachine->getCurrentState();
@@ -1379,7 +1379,7 @@ Then in s1 we access a non-existent substructure of a variable. -->
     bool completed = false;
     std::string finalState;
     for (int i = 0; i < 50 && !completed; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
         finalState = sm->getCurrentState();
         completed = (finalState == "final" || finalState.empty() || !sm->isRunning());
     }
@@ -1501,7 +1501,7 @@ with its illegal expression, it must raise an error -->
     bool completed = false;
     std::string finalState;
     for (int i = 0; i < 50 && !completed; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
         finalState = sm->getCurrentState();
         completed = (finalState == "pass" || finalState == "fail" || finalState.empty() || !sm->isRunning());
     }
@@ -1628,7 +1628,7 @@ it should not raise an error until it gets to s03 and evaluates the illegal expr
     bool completed = false;
     std::string finalState;
     for (int i = 0; i < 50 && !completed; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
         finalState = sm->getCurrentState();
         completed = (finalState == "pass" || finalState == "fail" || finalState.empty() || !sm->isRunning());
     }
@@ -1722,7 +1722,7 @@ processing "event1" which is raised in the final state's on-entry handler. -->
     ASSERT_TRUE(sm->start()) << "Failed to start StateMachine";
 
     // Wait briefly for final state entry and potential event processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
 
     // W3C SCXML 3.13: State machine MUST halt when entering top-level final state
     std::string currentState = sm->getCurrentState();
@@ -1805,7 +1805,7 @@ TEST_F(EventSchedulingTest, W3C_Test513_BasicHTTPEventProcessor_SuccessResponse)
     LOG_DEBUG("W3C Test 513: HTTP server started on localhost:{}{}", testPort, "/test");
 
     // Wait for server to be fully ready
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::this_thread::sleep_for(RSM::Test::Utils::LONG_WAIT_MS);
 
     // Send well-formed HTTP POST event to server
     httplib::Client client("localhost", testPort);
@@ -1837,7 +1837,7 @@ TEST_F(EventSchedulingTest, W3C_Test513_BasicHTTPEventProcessor_SuccessResponse)
     LOG_DEBUG("W3C Test 513: Response body: {}", response->body);
 
     // Wait briefly for event callback to be processed
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(RSM::Test::Utils::STANDARD_WAIT_MS);
 
     // Verify event was added to event queue (callback was invoked)
     EXPECT_TRUE(eventReceived.load()) << "W3C Test 513: Event should be added to event queue before returning response";

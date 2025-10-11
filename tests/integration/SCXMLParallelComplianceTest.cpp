@@ -6,6 +6,8 @@
 #include "states/SCXMLParallelTypes.h"
 #include <chrono>
 #include <gtest/gtest.h>
+
+#include "common/TestUtils.h"
 #include <memory>
 #include <string>
 #include <thread>
@@ -183,7 +185,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_DoneStateEvent_Generation) {
     try {
         // 병렬 상태가 완료되었는지 확인 (done.state 이벤트 자동 생성)
         // StateMachine의 다음 처리 사이클을 기다리기 위해 짧은 시간 대기
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(RSM::Test::Utils::POLL_INTERVAL_MS);
 
         // 자동 생성된 done.state 이벤트로 인한 전환이 발생했는지 확인
         auto doneEventResult =

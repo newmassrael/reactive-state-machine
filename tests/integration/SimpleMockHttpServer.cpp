@@ -9,6 +9,8 @@
 #include <chrono>
 #include <cstring>
 #include <iostream>
+
+#include "common/TestUtils.h"
 #include <sstream>
 #include <thread>
 
@@ -139,7 +141,7 @@ void SimpleMockHttpServer::serverLoop() {
         if (clientSocket < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // No connection available, wait a bit and try again
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                std::this_thread::sleep_for(RSM::Test::Utils::POLL_INTERVAL_MS);
                 continue;
             } else if (running_) {
                 LOG_WARN("SimpleMockHttpServer: Accept failed: {}", strerror(errno));
