@@ -14,10 +14,11 @@ StateMachineContext::~StateMachineContext() {
     // Only cleanup StateMachine
     // EventRaiser/EventDispatcher are owned externally (e.g., TestResources)
     if (stateMachine_) {
-        if (stateMachine_->isRunning()) {
-            LOG_DEBUG("StateMachineContext: Stopping StateMachine");
-            stateMachine_->stop();
-        }
+        // CRITICAL: Always call stop(), even if isRunning_ is false
+        // W3C Test 415: isRunning_=false may be set when entering top-level final state
+        // stop() must always execute to unregister from JSEngine and prevent race conditions
+        LOG_DEBUG("StateMachineContext: Calling StateMachine::stop() (isRunning: {})", stateMachine_->isRunning());
+        stateMachine_->stop();
 
         // With shared_ptr ownership, callbacks using weak_ptr are safe
         // No sleep needed - callbacks will check weak_ptr validity

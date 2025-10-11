@@ -124,7 +124,10 @@ TEST_F(SCXMLParallelComplianceTest, W3C_DoneStateEvent_Generation_ShouldProcessD
     ASSERT_EQ(sm.getCurrentState(), "completed")
         << "SCXML W3C compliance: parallel state should automatically transition to completed when all regions "
            "immediately reach final states";
-    ASSERT_TRUE(sm.isRunning()) << "StateMachine must be running";
+
+    // W3C SCXML 3.13: "completed" is a top-level final state, so StateMachine MUST halt
+    ASSERT_FALSE(sm.isRunning())
+        << "W3C SCXML 3.13: StateMachine MUST halt when entering top-level final state 'completed'";
 
     // Verify that done.state event was automatically processed (no manual event needed)
     // The implementation should have automatically generated and processed done.state.parallel1

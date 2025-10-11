@@ -1642,4 +1642,99 @@ it should not raise an error until it gets to s03 and evaluates the illegal expr
     LOG_DEBUG("=== W3C Test 314 PASSED: Error evaluation timing verified ===");
 }
 
+// ============================================================================
+// W3C Test 415: Top-Level Final State Halts Processing
+// ============================================================================
+
+/**
+ * @brief W3C SCXML Test 415: Verify state machine halts when entering top-level final state
+ *
+ * Specification: W3C SCXML 3.13 - Final States
+ *
+ * TXML Comments (test/w3c/txml/test415.txml):
+ * "Test that the state machine halts when it enters a top-level final state. Since
+ * the initial state is a final state, this machine should halt immediately without
+ * processing "event1" which is raised in the final state's on-entry handler. This
+ * is a manual test since there is no platform-independent way to test that event1
+ * is not processed"
+ *
+ * Metadata (resources/415/metadata.txt):
+ * - id: 415
+ * - specnum: 3.13
+ * - conformance: mandatory
+ * - description: "If it [the SCXML Processor] has entered a final state that is a child
+ *                 of scxml [during the last microstep], it MUST halt processing."
+ *
+ * Test Strategy (automated conversion from manual test):
+ * 1. Load SCXML with initial="final" (top-level final state)
+ * 2. Final state's onentry raises event1
+ * 3. Verify state machine halts immediately (isRunning() == false)
+ * 4. Verify event1 is not processed (no state transition occurs)
+ * 5. Verify current state is "final"
+ *
+ * The test verifies W3C SCXML 3.13 requirement that processing MUST halt when
+ * entering a top-level final state, even before processing events raised in
+ * the final state's onentry handler.
+ */
+TEST_F(EventSchedulingTest, W3C_Test415_TopLevelFinalStateHaltsProcessing) {
+    LOG_DEBUG("=== W3C SCXML Test 415: Top-Level Final State Halts Processing ===");
+
+    // TXML test415.txml structure with initial="final"
+    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test that the state machine halts when it enters a top-level final state. Since
+the initial state is a final state, this machine should halt immediately without
+processing "event1" which is raised in the final state's on-entry handler. -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0"
+       initial="final" datamodel="ecmascript">
+
+    <final id="final">
+        <onentry>
+            <raise event="event1"/>
+        </onentry>
+    </final>
+</scxml>)";
+
+    auto sm = std::make_shared<StateMachine>();
+
+    // Track if event1 was processed (should not happen)
+    std::atomic<bool> event1Processed{false};
+
+    auto eventRaiser = std::make_shared<RSM::EventRaiserImpl>(
+        [&sm, &event1Processed](const std::string &name, const std::string &data) -> bool {
+            if (name == "event1") {
+                event1Processed = true;
+                LOG_ERROR("W3C Test 415: event1 was processed - VIOLATION of W3C SCXML 3.13");
+            }
+
+            if (sm && sm->isRunning()) {
+                return sm->processEvent(name, data).success;
+            }
+            return false;
+        });
+
+    sm->setEventDispatcher(dispatcher_);
+    sm->setEventRaiser(eventRaiser);
+
+    ASSERT_TRUE(sm->loadSCXMLFromString(scxmlContent)) << "Failed to load SCXML";
+    ASSERT_TRUE(sm->start()) << "Failed to start StateMachine";
+
+    // Wait briefly for final state entry and potential event processing
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // W3C SCXML 3.13: State machine MUST halt when entering top-level final state
+    std::string currentState = sm->getCurrentState();
+    bool isRunning = sm->isRunning();
+
+    EXPECT_EQ(currentState, "final") << "State machine should be in final state";
+    EXPECT_FALSE(isRunning)
+        << "W3C Test 415: State machine MUST halt when entering top-level final state (W3C SCXML 3.13)";
+
+    // Verify event1 was not processed (state machine halted before processing)
+    EXPECT_FALSE(event1Processed.load())
+        << "W3C Test 415: event1 raised in final state's onentry should NOT be processed (W3C SCXML 3.13)";
+
+    sm->stop();
+    LOG_DEBUG("=== W3C Test 415 PASSED: State machine halted on top-level final state entry ===");
+}
+
 }  // namespace RSM

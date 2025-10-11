@@ -363,26 +363,27 @@ bool StateMachine::start() {
 }
 
 void StateMachine::stop() {
-    if (!isRunning_) {
-        return;
-    }
+    LOG_DEBUG("StateMachine: Stopping state machine (isRunning: {})", isRunning_);
 
-    LOG_DEBUG("StateMachine: Stopping state machine");
-
-    // W3C SCXML Test 250: Exit ALL active states with onexit handlers
+    // W3C SCXML Test 250: Exit ALL active states with onexit handlers (only if still running)
     // Must exit in reverse document order (children before parents)
-    auto activeStates = getActiveStates();
-    for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
-        exitState(*it);
+    if (isRunning_) {
+        auto activeStates = getActiveStates();
+        for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
+            exitState(*it);
+        }
+
+        isRunning_ = false;
+
+        // State management delegated to StateHierarchyManager
+        if (hierarchyManager_) {
+            hierarchyManager_->reset();
+        }
     }
 
-    isRunning_ = false;
-    // State management delegated to StateHierarchyManager
-    if (hierarchyManager_) {
-        hierarchyManager_->reset();
-    }
-
-    // Unregister from JSEngine
+    // CRITICAL: Always unregister from JSEngine, even if isRunning_ is already false
+    // Race condition prevention: JSEngine worker threads may have queued tasks accessing StateMachine
+    // W3C Test 415: isRunning_=false may be set in top-level final state before destructor calls stop()
     RSM::JSEngine::instance().setStateMachine(nullptr, sessionId_);
     LOG_DEBUG("StateMachine: Unregistered from JSEngine");
 
@@ -2131,38 +2132,36 @@ bool StateMachine::enterState(const std::string &stateId) {
 
     LOG_DEBUG("Successfully entered state using hierarchy manager: {} (current: {})", stateId, getCurrentState());
 
-    // W3C SCXML 6.5: Check for top-level final state and invoke completion callback
-    // IMPORTANT: Only for invoked child StateMachines, not for parallel regions
-    if (model_ && completionCallback_) {
+    // W3C SCXML 3.13: "If it has entered a final state that is a child of scxml, it MUST halt processing"
+    // W3C SCXML 6.5: Invoke completion callback for invoked child StateMachines
+    // IMPORTANT: ALL StateMachines must halt, but only invoked ones call completionCallback
+    // IMPORTANT: Parallel states are NOT final states, even when all regions complete
+    if (model_) {
         auto stateNode = model_->findStateById(actualCurrentState);
-        if (stateNode && stateNode->isFinalState()) {
+        if (stateNode && stateNode->isFinalState() && stateNode->getType() != RSM::Type::PARALLEL) {
             // Check if this is a top-level final state by checking parent chain
             // Top-level states have no parent or parent is the <scxml> root element
             // We need to traverse up to ensure we're not in a parallel region
             auto parent = stateNode->getParent();
             bool isTopLevel = false;
 
+            // W3C SCXML 3.13: "a final state that is a child of scxml"
+            // Top-level means parent is directly the <scxml> root element
             if (!parent) {
                 // No parent means root-level final state
                 isTopLevel = true;
-            } else {
-                // Check if parent is <scxml> root or if we're in a direct child of <scxml>
-                // Parallel regions have intermediate parent states, so we need to check the entire chain
-                auto grandparent = parent->getParent();
-                if (!grandparent || parent->getId() == "scxml") {
-                    // Parent is root or state is direct child of root
-                    isTopLevel = true;
-                } else if (grandparent->getId() == "scxml" && parent->getType() != RSM::Type::PARALLEL) {
-                    // Grandparent is root and parent is NOT a parallel state
-                    // This means we're a final state in a compound/atomic state at root level
-                    isTopLevel = true;
-                }
-                // If parent is PARALLEL or we're deeper in the hierarchy, this is NOT top-level
+            } else if (parent->getId() == "scxml") {
+                // Parent is <scxml> root - this is top-level
+                isTopLevel = true;
             }
+            // All other cases (nested in compound states, parallel regions, etc.) are NOT top-level
 
             if (isTopLevel) {
-                LOG_INFO("StateMachine: Reached top-level final state: {}, executing onexit then completion callback",
+                LOG_INFO("StateMachine: Reached top-level final state: {}, halting processing (W3C SCXML 3.13)",
                          actualCurrentState);
+
+                // W3C SCXML 3.13: MUST halt processing when entering top-level final state
+                isRunning_ = false;
 
                 // W3C SCXML: Execute onexit actions BEFORE generating done.invoke
                 // For top-level final states, onexit runs when state machine completes
@@ -2171,7 +2170,7 @@ bool StateMachine::enterState(const std::string &stateId) {
                     LOG_WARN("StateMachine: Failed to execute onexit for final state: {}", actualCurrentState);
                 }
 
-                // IMPORTANT: Callback is invoked AFTER onexit handlers execute
+                // W3C SCXML 6.5: Callback is invoked AFTER onexit handlers execute (for invoked StateMachines)
                 // This ensures correct event order: child events → done.invoke
                 if (completionCallback_) {
                     try {
