@@ -8,6 +8,7 @@
 #include "actions/CancelAction.h"
 #include "actions/SendAction.h"
 #include "common/Logger.h"
+#include "common/TestUtils.h"
 #include "events/EventDispatcherImpl.h"
 #include "events/EventSchedulerImpl.h"
 #include "events/EventTargetFactoryImpl.h"
@@ -18,6 +19,8 @@
 #include "runtime/StateMachine.h"
 #include "runtime/StateMachineContext.h"
 #include "scripting/JSEngine.h"
+#include "tests/w3c/W3CHttpTestServer.h"
+#include <httplib.h>
 
 namespace RSM {
 
@@ -1735,6 +1738,115 @@ processing "event1" which is raised in the final state's on-entry handler. -->
 
     sm->stop();
     LOG_DEBUG("=== W3C Test 415 PASSED: State machine halted on top-level final state entry ===");
+}
+
+// ============================================================================
+// W3C Test 513: BasicHTTPEventProcessor Success Response
+// ============================================================================
+
+/**
+ * @brief W3C SCXML Test 513: Verify BasicHTTPEventProcessor returns 2XX success response
+ *
+ * Specification: W3C SCXML Appendix D.2 - BasicHTTPEventProcessor
+ *
+ * TXML Comments (test/w3c/txml/test513.txt):
+ * "This is a fully manual test. You send a well formed event to the 'location' URL
+ * specified for your SCXML interpreter and check that you get a 200 response code back."
+ *
+ * Metadata (manifest.xml):
+ * - id: 513
+ * - specnum: D.2
+ * - specid: #BasicHTTPEventProcessor
+ * - conformance: optional
+ * - description: "After it adds the received message to the appropriate event queue,
+ *                 the SCXML Processor MUST then indicate the result to the external
+ *                 component via a success response code 2XX."
+ *
+ * Test Strategy (automated conversion from manual test):
+ * 1. Start W3C HTTP test server
+ * 2. Send well-formed HTTP POST event to server
+ * 3. Verify server returns 200 OK response (2XX success code)
+ * 4. Verify event was added to event queue (via callback)
+ *
+ * This test verifies W3C SCXML D.2 requirement that the processor returns
+ * a 2XX success response after receiving and queuing an HTTP event.
+ *
+ * Note: This test is skipped in Docker TSAN environment due to thread
+ * creation incompatibility with TSAN.
+ */
+TEST_F(EventSchedulingTest, W3C_Test513_BasicHTTPEventProcessor_SuccessResponse) {
+    // Skip HTTP tests in Docker TSAN environment
+    if (RSM::Test::Utils::isInDockerTsan()) {
+        GTEST_SKIP() << "Skipping HTTP test in Docker TSAN environment";
+    }
+
+    LOG_DEBUG("=== W3C SCXML Test 513: BasicHTTPEventProcessor Success Response ===");
+
+    // Track if event was received by the event queue
+    std::atomic<bool> eventReceived{false};
+    std::string receivedEventName;
+    std::string receivedEventData;
+
+    // Create W3C HTTP test server on a random port
+    int testPort = 18513;  // Port for test 513
+    auto httpServer = std::make_unique<RSM::W3C::W3CHttpTestServer>(testPort, "/test");
+
+    // Set callback to track received events
+    httpServer->setEventCallback([&eventReceived, &receivedEventName, &receivedEventData](const std::string &eventName,
+                                                                                          const std::string &data) {
+        LOG_DEBUG("W3C Test 513: HTTP server received event '{}' with data: {}", eventName, data);
+        eventReceived = true;
+        receivedEventName = eventName;
+        receivedEventData = data;
+    });
+
+    // Start HTTP server
+    ASSERT_TRUE(httpServer->start()) << "Failed to start W3C HTTP test server";
+    LOG_DEBUG("W3C Test 513: HTTP server started on localhost:{}{}", testPort, "/test");
+
+    // Wait for server to be fully ready
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // Send well-formed HTTP POST event to server
+    httplib::Client client("localhost", testPort);
+    client.set_connection_timeout(5, 0);  // 5 second timeout
+    client.set_read_timeout(5, 0);
+
+    // W3C SCXML D.2: Send event with _scxmleventname parameter
+    httplib::Params params;
+    params.emplace("_scxmleventname", "test.event");
+    params.emplace("testParam1", "value1");
+    params.emplace("testParam2", "value2");
+
+    LOG_DEBUG("W3C Test 513: Sending HTTP POST request to localhost:{}{}", testPort, "/test");
+    auto response = client.Post("/test", params);
+
+    // Verify HTTP response received
+    ASSERT_TRUE(response) << "Failed to receive HTTP response from server";
+
+    // W3C SCXML D.2: MUST return success response code 2XX
+    EXPECT_EQ(response->status, 200)
+        << "W3C Test 513: BasicHTTPEventProcessor must return 2XX success response (W3C SCXML D.2), got: "
+        << response->status;
+
+    // Verify response is 2XX range
+    EXPECT_GE(response->status, 200) << "Response code should be >= 200";
+    EXPECT_LT(response->status, 300) << "Response code should be < 300 (2XX range)";
+
+    LOG_DEBUG("W3C Test 513: Received HTTP response with status {}", response->status);
+    LOG_DEBUG("W3C Test 513: Response body: {}", response->body);
+
+    // Wait briefly for event callback to be processed
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Verify event was added to event queue (callback was invoked)
+    EXPECT_TRUE(eventReceived.load()) << "W3C Test 513: Event should be added to event queue before returning response";
+    EXPECT_EQ(receivedEventName, "test.event") << "Event name should match _scxmleventname parameter";
+
+    // Stop HTTP server
+    httpServer->stop();
+
+    LOG_DEBUG("=== W3C Test 513 PASSED: BasicHTTPEventProcessor returned 2XX success response ===");
 }
 
 }  // namespace RSM
