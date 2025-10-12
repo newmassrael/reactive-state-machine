@@ -8,6 +8,9 @@
 #include <regex>
 #include <sstream>
 
+#include "actions/AssignAction.h"
+#include "actions/LogAction.h"
+#include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
@@ -65,19 +68,48 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
 
     static const std::regex funcRegex(R"((\w+)\(\))");
 
+    std::set<std::string> processedStates;
+
     for (const auto &state : allStates) {
+        std::string stateId = state->getId();
+
+        // Skip if already processed (getAllStates may return duplicates)
+        if (processedStates.find(stateId) != processedStates.end()) {
+            continue;
+        }
+        processedStates.insert(stateId);
+
         // Create State with entry/exit actions
         State stateInfo;
-        stateInfo.name = state->getId();
+        stateInfo.name = stateId;
+        stateInfo.isFinal = state->isFinalState();
 
         // Extract entry actions
         for (const auto &actionBlock : state->getEntryActionBlocks()) {
             for (const auto &actionNode : actionBlock) {
-                if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
-                    const std::string &content = scriptAction->getContent();
-                    auto extractedFuncs = extractFunctionNames(content, funcRegex);
-                    stateInfo.entryActions.insert(stateInfo.entryActions.end(), extractedFuncs.begin(),
-                                                  extractedFuncs.end());
+                std::string actionType = actionNode->getActionType();
+
+                if (actionType == "raise") {
+                    if (auto raiseAction = std::dynamic_pointer_cast<RSM::RaiseAction>(actionNode)) {
+                        stateInfo.entryActions.push_back(Action(Action::RAISE, raiseAction->getEvent()));
+                    }
+                } else if (actionType == "script") {
+                    if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                        const std::string &content = scriptAction->getContent();
+                        auto extractedFuncs = extractFunctionNames(content, funcRegex);
+                        for (const auto &func : extractedFuncs) {
+                            stateInfo.entryActions.push_back(Action(Action::SCRIPT, func));
+                        }
+                    }
+                } else if (actionType == "assign") {
+                    if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
+                        stateInfo.entryActions.push_back(
+                            Action(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr()));
+                    }
+                } else if (actionType == "log") {
+                    if (auto logAction = std::dynamic_pointer_cast<RSM::LogAction>(actionNode)) {
+                        stateInfo.entryActions.push_back(Action(Action::LOG, logAction->getExpr()));
+                    }
                 }
             }
         }
@@ -85,11 +117,29 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         // Extract exit actions
         for (const auto &actionBlock : state->getExitActionBlocks()) {
             for (const auto &actionNode : actionBlock) {
-                if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
-                    const std::string &content = scriptAction->getContent();
-                    auto extractedFuncs = extractFunctionNames(content, funcRegex);
-                    stateInfo.exitActions.insert(stateInfo.exitActions.end(), extractedFuncs.begin(),
-                                                 extractedFuncs.end());
+                std::string actionType = actionNode->getActionType();
+
+                if (actionType == "raise") {
+                    if (auto raiseAction = std::dynamic_pointer_cast<RSM::RaiseAction>(actionNode)) {
+                        stateInfo.exitActions.push_back(Action(Action::RAISE, raiseAction->getEvent()));
+                    }
+                } else if (actionType == "script") {
+                    if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                        const std::string &content = scriptAction->getContent();
+                        auto extractedFuncs = extractFunctionNames(content, funcRegex);
+                        for (const auto &func : extractedFuncs) {
+                            stateInfo.exitActions.push_back(Action(Action::SCRIPT, func));
+                        }
+                    }
+                } else if (actionType == "assign") {
+                    if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
+                        stateInfo.exitActions.push_back(
+                            Action(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr()));
+                    }
+                } else if (actionType == "log") {
+                    if (auto logAction = std::dynamic_pointer_cast<RSM::LogAction>(actionNode)) {
+                        stateInfo.exitActions.push_back(Action(Action::LOG, logAction->getExpr()));
+                    }
                 }
             }
         }
@@ -146,7 +196,8 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     // Header guard
     ss << "#pragma once\n";
     ss << "#include <cstdint>\n";
-    ss << "#include <memory>\n\n";
+    ss << "#include <memory>\n";
+    ss << "#include \"static/StaticExecutionEngine.h\"\n\n";
 
     // Namespace
     ss << "namespace RSM::Generated {\n\n";
@@ -246,8 +297,9 @@ std::string StaticCodeGenerator::generateStrategyInterface(const std::string &cl
 std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
     std::stringstream ss;
 
-    ss << "    void processEvent(Event event) {\n";
-    ss << "        switch (currentState_) {\n";
+    ss << "        (void)engine;\n";
+    ss << "        bool transitionTaken = false;\n";
+    ss << "        switch (currentState) {\n";
 
     // Group transitions by source state
     std::map<std::string, std::vector<Transition>> transitionsByState;
@@ -304,29 +356,14 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                     indent += "    ";  // Increase indentation inside guard
                 }
 
-                // 1. Generate onexit actions of source state
-                auto sourceIt = stateMap.find(trans.sourceState);
-                if (sourceIt != stateMap.end() && !sourceIt->second->exitActions.empty()) {
-                    for (const auto &action : sourceIt->second->exitActions) {
-                        ss << indent << "derived()." << action << "();\n";
-                    }
-                }
-
-                // 2. Generate transition action calls
+                // Generate transition action calls
                 for (const auto &action : trans.actions) {
                     ss << indent << "derived()." << action << "();\n";
                 }
 
-                // 3. Generate onentry actions of target state
-                auto targetIt = stateMap.find(trans.targetState);
-                if (targetIt != stateMap.end() && !targetIt->second->entryActions.empty()) {
-                    for (const auto &action : targetIt->second->entryActions) {
-                        ss << indent << "derived()." << action << "();\n";
-                    }
-                }
-
-                // 4. Generate state transition
-                ss << indent << "currentState_ = State::" << capitalize(trans.targetState) << ";\n";
+                // Generate state transition
+                ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                ss << indent << "transitionTaken = true;\n";
 
                 // Close guard if block
                 if (hasGuard) {
@@ -340,7 +377,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
     }
 
     ss << "        }\n";
-    ss << "    }\n";
+    ss << "        return transitionTaken;\n";
 
     return ss.str();
 }
@@ -348,41 +385,114 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
 std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
 
-    ss << "template<typename Derived>\n";
-    ss << "class " << model.name << "Base {\n";
-    ss << "private:\n";
-    ss << "    State currentState_ = State::" << capitalize(model.initial) << ";\n\n";
+    ss << "#include \"static/StaticExecutionEngine.h\"\n\n";
 
-    ss << "protected:\n";
-    ss << "    Derived& derived() { return static_cast<Derived&>(*this); }\n";
-    ss << "    const Derived& derived() const { return static_cast<const Derived&>(*this); }\n\n";
+    // Generate State Policy class
+    ss << "// State policy for " << model.name << "\n";
+    ss << "struct " << model.name << "Policy {\n";
+    ss << "    using State = ::RSM::Generated::State;\n";
+    ss << "    using Event = ::RSM::Generated::Event;\n\n";
 
-    ss << "public:\n";
-    ss << "    " << model.name << "Base() = default;\n\n";
-
-    // Initialize method (call initial state's onentry actions)
-    ss << "    void initialize() {\n";
-    // Find initial state and call its entry actions
-    for (const auto &state : model.states) {
-        if (state.name == model.initial) {
-            for (const auto &action : state.entryActions) {
-                ss << "        derived()." << action << "();\n";
-            }
-            break;
-        }
-    }
+    // Initial state
+    ss << "    static State initialState() {\n";
+    ss << "        return State::" << capitalize(model.initial) << ";\n";
     ss << "    }\n\n";
 
-    // processEvent method
+    // Is final state
+    ss << "    static bool isFinalState(State state) {\n";
+    ss << "        switch (state) {\n";
+    std::set<std::string> finalStates;
+    for (const auto &state : model.states) {
+        if (state.isFinal && finalStates.find(state.name) == finalStates.end()) {
+            finalStates.insert(state.name);
+            ss << "            case State::" << capitalize(state.name) << ":\n";
+            ss << "                return true;\n";
+        }
+    }
+    ss << "            default:\n";
+    ss << "                return false;\n";
+    ss << "        }\n";
+    ss << "    }\n\n";
+
+    // Execute entry actions
+    ss << "    template<typename Engine>\n";
+    ss << "    static void executeEntryActions(State state, Engine& engine) {\n";
+    ss << "        (void)engine;\n";
+    ss << "        switch (state) {\n";
+    for (const auto &state : model.states) {
+        if (!state.entryActions.empty()) {
+            ss << "            case State::" << capitalize(state.name) << ":\n";
+            for (const auto &action : state.entryActions) {
+                generateActionCode(ss, action, "engine");
+            }
+            ss << "                break;\n";
+        }
+    }
+    ss << "            default:\n";
+    ss << "                break;\n";
+    ss << "        }\n";
+    ss << "    }\n\n";
+
+    // Execute exit actions
+    ss << "    template<typename Engine>\n";
+    ss << "    static void executeExitActions(State state, Engine& engine) {\n";
+    ss << "        (void)engine;\n";
+    ss << "        switch (state) {\n";
+    for (const auto &state : model.states) {
+        if (!state.exitActions.empty()) {
+            ss << "            case State::" << capitalize(state.name) << ":\n";
+            for (const auto &action : state.exitActions) {
+                generateActionCode(ss, action, "engine");
+            }
+            ss << "                break;\n";
+        }
+    }
+    ss << "            default:\n";
+    ss << "                break;\n";
+    ss << "        }\n";
+    ss << "    }\n\n";
+
+    // Process transition
+    ss << "    template<typename Engine>\n";
+    ss << "    static bool processTransition(State& currentState, Event event, Engine& engine) {\n";
     ss << generateProcessEvent(model);
-    ss << "\n";
+    ss << "    }\n";
 
-    // Getter
-    ss << "    State getCurrentState() const { return currentState_; }\n";
+    ss << "};\n\n";
 
+    // Generate user-facing class using StaticExecutionEngine
+    ss << "// User-facing state machine class\n";
+    ss << "class " << model.name << " : public ::RSM::Static::StaticExecutionEngine<" << model.name << "Policy> {\n";
+    ss << "public:\n";
+    ss << "    " << model.name << "() = default;\n";
     ss << "};\n";
 
     return ss.str();
+}
+
+void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action &action,
+                                             const std::string &engineVar) {
+    switch (action.type) {
+    case Action::RAISE:
+        ss << "                " << engineVar << ".raise(Event::" << capitalize(action.param1) << ");\n";
+        break;
+    case Action::SCRIPT:
+        ss << "                " << action.param1 << "();\n";
+        break;
+    case Action::ASSIGN:
+        ss << "                // TODO: assign " << action.param1 << " = " << action.param2 << "\n";
+        break;
+    case Action::LOG:
+        ss << "                // TODO: log " << action.param1 << "\n";
+        break;
+    default:
+        break;
+    }
+}
+
+std::string StaticCodeGenerator::capitalizePublic(const std::string &str) {
+    StaticCodeGenerator gen;
+    return gen.capitalize(str);
 }
 
 std::string StaticCodeGenerator::capitalize(const std::string &str) {
@@ -390,6 +500,12 @@ std::string StaticCodeGenerator::capitalize(const std::string &str) {
         return str;
     }
 
+    // Handle wildcard event
+    if (str == "*") {
+        return "Wildcard";
+    }
+
+    // Handle other special characters in event names
     std::string result = str;
     result[0] = std::toupper(static_cast<unsigned char>(result[0]));
     return result;

@@ -237,8 +237,15 @@ TEST_F(StaticCodeGenTest, GeneratesTransitionLogic) {
 
     std::string content = readFile(generatedFile);
 
-    // Should have switch statement
-    EXPECT_TRUE(content.find("switch (currentState_)") != std::string::npos)
+    // Should have Policy struct
+    EXPECT_TRUE(content.find("struct SimpleSMPolicy") != std::string::npos) << "Should generate Policy struct";
+
+    // Should have processTransition method in Policy
+    EXPECT_TRUE(content.find("static bool processTransition") != std::string::npos)
+        << "Should have processTransition in Policy";
+
+    // Should have switch statement (note: currentState is parameter, not member)
+    EXPECT_TRUE(content.find("switch (currentState)") != std::string::npos)
         << "Should generate switch statement for states";
 
     // Should have case for Idle state
@@ -253,11 +260,15 @@ TEST_F(StaticCodeGenTest, GeneratesTransitionLogic) {
     // Should have event check for Stop
     EXPECT_TRUE(content.find("event == Event::Stop") != std::string::npos) << "Should check for Stop event";
 
-    // Should have state transition
-    EXPECT_TRUE(content.find("currentState_ = State::Active") != std::string::npos)
+    // Should have state transition (note: currentState is parameter reference)
+    EXPECT_TRUE(content.find("currentState = State::Active") != std::string::npos)
         << "Should transition to Active state";
 
-    EXPECT_TRUE(content.find("currentState_ = State::Idle") != std::string::npos) << "Should transition to Idle state";
+    EXPECT_TRUE(content.find("currentState = State::Idle") != std::string::npos) << "Should transition to Idle state";
+
+    // Should inherit from StaticExecutionEngine
+    EXPECT_TRUE(content.find("StaticExecutionEngine<SimpleSMPolicy>") != std::string::npos)
+        << "Should inherit from StaticExecutionEngine";
 }
 
 // This test is obsolete with CRTP pattern - Strategy Interface is no longer generated
@@ -405,28 +416,33 @@ TEST_F(StaticCodeGenTest, GeneratesEntryExitActions) {
 
     std::string content = readFile(generatedFile);
 
-    // Should have all entry/exit action calls using derived()
-    EXPECT_TRUE(content.find("derived().onEnterIdle()") != std::string::npos) << "Should call derived().onEnterIdle()";
+    // Should have executeEntryActions and executeExitActions in Policy
+    EXPECT_TRUE(content.find("static void executeEntryActions") != std::string::npos)
+        << "Should have executeEntryActions in Policy";
 
-    EXPECT_TRUE(content.find("derived().onExitIdle()") != std::string::npos) << "Should call derived().onExitIdle()";
+    EXPECT_TRUE(content.find("static void executeExitActions") != std::string::npos)
+        << "Should have executeExitActions in Policy";
 
-    EXPECT_TRUE(content.find("derived().onEnterActive()") != std::string::npos)
-        << "Should call derived().onEnterActive()";
+    // Should have cases for Idle and Active states in entry actions
+    EXPECT_TRUE(content.find("case State::Idle:") != std::string::npos)
+        << "Should have case for Idle state in entry/exit actions";
 
-    EXPECT_TRUE(content.find("derived().onExitActive()") != std::string::npos)
-        << "Should call derived().onExitActive()";
+    EXPECT_TRUE(content.find("case State::Active:") != std::string::npos)
+        << "Should have case for Active state in entry/exit actions";
 
-    // Verify execution order for idle -> active transition
-    size_t exitIdlePos = content.find("derived().onExitIdle()");
-    size_t transitionPos = content.find("derived().doTransition()");
-    size_t enterActivePos = content.find("derived().onEnterActive()");
-    size_t stateChangePos = content.find("currentState_ = State::Active", exitIdlePos);
+    // Should have function calls (note: in Policy pattern, these are direct calls, not derived())
+    EXPECT_TRUE(content.find("onEnterIdle()") != std::string::npos) << "Should call onEnterIdle()";
 
-    EXPECT_TRUE(exitIdlePos < transitionPos) << "onexit should be called before transition action";
+    EXPECT_TRUE(content.find("onExitIdle()") != std::string::npos) << "Should call onExitIdle()";
 
-    EXPECT_TRUE(transitionPos < enterActivePos) << "Transition action should be called before onentry";
+    EXPECT_TRUE(content.find("onEnterActive()") != std::string::npos) << "Should call onEnterActive()";
 
-    EXPECT_TRUE(enterActivePos < stateChangePos) << "onentry should be called before state variable update";
+    EXPECT_TRUE(content.find("onExitActive()") != std::string::npos) << "Should call onExitActive()";
+
+    EXPECT_TRUE(content.find("doTransition()") != std::string::npos) << "Should call doTransition()";
+
+    // Note: Execution order is guaranteed by StaticExecutionEngine, not in generated code
+    // The engine ensures: executeOnExit -> transition -> executeOnEntry
 }
 
 TEST_F(StaticCodeGenTest, GeneratesInitializeMethod) {
@@ -464,24 +480,35 @@ TEST_F(StaticCodeGenTest, GeneratesInitializeMethod) {
 
     std::string content = readFile(generatedFile);
 
-    // Should have initialize method
-    EXPECT_TRUE(content.find("void initialize()") != std::string::npos) << "Should have initialize() method";
+    // Should have Policy struct
+    EXPECT_TRUE(content.find("struct InitSMPolicy") != std::string::npos) << "Should generate Policy struct";
 
-    // Should call initial state's onentry action using derived()
-    EXPECT_TRUE(content.find("derived().onEnterIdle()") != std::string::npos)
-        << "initialize() should call derived().onEnterIdle()";
+    // Should have initialState method in Policy
+    EXPECT_TRUE(content.find("static State initialState()") != std::string::npos)
+        << "Policy should have initialState() method";
 
-    // initialize() should be called before any state transitions
-    size_t initializePos = content.find("void initialize()");
-    size_t processEventPos = content.find("void processEvent(Event event)");
+    // Should return Idle as initial state
+    EXPECT_TRUE(content.find("return State::Idle") != std::string::npos) << "initialState() should return State::Idle";
 
-    EXPECT_TRUE(initializePos < processEventPos) << "initialize() should be defined before processEvent()";
+    // Should have executeEntryActions in Policy
+    EXPECT_TRUE(content.find("static void executeEntryActions") != std::string::npos)
+        << "Policy should have executeEntryActions";
+
+    // Should handle entry action for Idle state
+    EXPECT_TRUE(content.find("case State::Idle:") != std::string::npos)
+        << "executeEntryActions should have case for Idle state";
+
+    EXPECT_TRUE(content.find("onEnterIdle()") != std::string::npos) << "Should call onEnterIdle() for Idle state entry";
+
+    // Should inherit from StaticExecutionEngine (which provides initialize())
+    EXPECT_TRUE(content.find("StaticExecutionEngine<InitSMPolicy>") != std::string::npos)
+        << "Should inherit from StaticExecutionEngine";
 }
 
-TEST_F(StaticCodeGenTest, GeneratesCRTPPattern) {
+TEST_F(StaticCodeGenTest, GeneratesPolicyPattern) {
     // Arrange: SCXML with guards and actions
     std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
-<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="CRTPSM" initial="idle">
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="PolicySM" initial="idle">
   <state id="idle">
     <onentry>
       <script>onEnter()</script>
@@ -493,7 +520,7 @@ TEST_F(StaticCodeGenTest, GeneratesCRTPPattern) {
   <state id="active"/>
 </scxml>)XML";
 
-    std::string scxmlPath = (testDir_ / "crtp_test.scxml").string();
+    std::string scxmlPath = (testDir_ / "policy_test.scxml").string();
     std::ofstream file(scxmlPath);
     ASSERT_TRUE(file.is_open());
     file << scxmlContent;
@@ -505,33 +532,38 @@ TEST_F(StaticCodeGenTest, GeneratesCRTPPattern) {
     StaticCodeGenerator generator;
     ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
 
-    // Assert: Verify CRTP pattern is generated
-    std::string generatedFile = (testDir_ / "CRTPSM_sm.h").string();
+    // Assert: Verify Policy pattern is generated
+    std::string generatedFile = (testDir_ / "PolicySM_sm.h").string();
     ASSERT_TRUE(fs::exists(generatedFile));
 
     std::string content = readFile(generatedFile);
 
-    // Should use CRTP template parameter
-    EXPECT_TRUE(content.find("template<typename Derived>") != std::string::npos)
-        << "Should use template<typename Derived>";
+    // Should generate Policy struct
+    EXPECT_TRUE(content.find("struct PolicySMPolicy") != std::string::npos) << "Should generate Policy struct";
 
-    // Should have derived() helper method
-    EXPECT_TRUE(content.find("Derived& derived()") != std::string::npos) << "Should have derived() helper";
+    // Should have static methods in Policy
+    EXPECT_TRUE(content.find("static bool processTransition") != std::string::npos)
+        << "Policy should have processTransition method";
 
-    // Should call derived().action() instead of logic_->action()
-    EXPECT_TRUE(content.find("derived().isReady()") != std::string::npos)
-        << "Should call derived().isReady() for guards";
+    EXPECT_TRUE(content.find("static void executeEntryActions") != std::string::npos)
+        << "Policy should have executeEntryActions method";
 
-    EXPECT_TRUE(content.find("derived().doAction()") != std::string::npos)
-        << "Should call derived().doAction() for actions";
+    // Should call guards/actions directly (without derived() prefix)
+    EXPECT_TRUE(content.find("isReady()") != std::string::npos) << "Should call isReady() guard";
 
-    EXPECT_TRUE(content.find("derived().onEnter()") != std::string::npos)
-        << "Should call derived().onEnter() for entry actions";
+    EXPECT_TRUE(content.find("doAction()") != std::string::npos) << "Should call doAction() action";
 
-    // Should NOT have logic_ member
-    EXPECT_TRUE(content.find("std::unique_ptr<") == std::string::npos) << "Should NOT have logic_ unique_ptr member";
+    EXPECT_TRUE(content.find("onEnter()") != std::string::npos) << "Should call onEnter() entry action";
 
-    EXPECT_TRUE(content.find("void setLogic(") == std::string::npos) << "Should NOT have setLogic() method";
+    // Should inherit from StaticExecutionEngine
+    EXPECT_TRUE(content.find("StaticExecutionEngine<PolicySMPolicy>") != std::string::npos)
+        << "Should inherit from StaticExecutionEngine with Policy";
+
+    // Should NOT have CRTP patterns
+    EXPECT_TRUE(content.find("template<typename Derived>") == std::string::npos)
+        << "Should NOT use CRTP template parameter";
+
+    EXPECT_TRUE(content.find("Derived& derived()") == std::string::npos) << "Should NOT have derived() helper method";
 }
 
 int main(int argc, char **argv) {

@@ -14,8 +14,9 @@ class SCXMLModel;
 
 namespace RSM::Codegen {
 
-// Forward declaration
+// Forward declarations
 class SCXMLModel;
+struct Action;
 
 /**
  * @brief SCXML to C++ static code generator
@@ -46,6 +47,8 @@ public:
                                           const std::set<std::string> &actions);
     std::string generateProcessEvent(const SCXMLModel &model);
     std::string generateClass(const SCXMLModel &model);
+    void generateActionCode(std::stringstream &ss, const Action &action, const std::string &engineVar);
+    static std::string capitalizePublic(const std::string &str);
 
     // Extract Guard and Action functions from SCXML
     std::set<std::string> extractGuards(const std::string &scxmlPath);
@@ -81,10 +84,30 @@ struct Transition {
     std::vector<std::string> actions;  // Action function names from transition scripts
 };
 
+// Executable content action representation
+struct Action {
+    enum Type {
+        RAISE,   // <raise event="name"/>
+        SCRIPT,  // <script>code</script>
+        ASSIGN,  // <assign location="var" expr="value"/>
+        LOG,     // <log expr="message"/>
+        SEND,    // <send event="name"/>
+        IF,      // <if cond="expr">...</if>
+        FOREACH  // <foreach>...</foreach>
+    };
+
+    Type type;
+    std::string param1;  // event name for RAISE, script content for SCRIPT, etc.
+    std::string param2;  // additional parameter (e.g., assign location)
+
+    Action(Type t, const std::string &p1 = "", const std::string &p2 = "") : type(t), param1(p1), param2(p2) {}
+};
+
 struct State {
     std::string name;
-    std::vector<std::string> entryActions;  // Actions from <onentry>
-    std::vector<std::string> exitActions;   // Actions from <onexit>
+    bool isFinal = false;
+    std::vector<Action> entryActions;  // Actions from <onentry>
+    std::vector<Action> exitActions;   // Actions from <onexit>
 };
 
 class SCXMLModel {

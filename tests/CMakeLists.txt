@@ -67,6 +67,7 @@ set(RSM_TEST_TARGETS
     concurrency_tests
     txml_converter_tests
     w3c_test_cli
+    w3c_static_test_cli
     w3c_full_runner
     w3c_simple_tests
     static_codegen_tests
@@ -506,6 +507,7 @@ add_test(NAME IntegrationTests COMMAND integration_tests)
 
 # Phase 4: W3C 표준 준수 검증 (종합 검증, ~40초)
 add_test(NAME W3CFullComplianceTests COMMAND w3c_test_cli)
+add_test(NAME W3CStaticTests COMMAND w3c_static_test_cli --all)
 
 # ============================================================================
 # CTest 실행 순서 제어: COST 속성으로 우선순위 설정
@@ -532,8 +534,43 @@ set_tests_properties(IntegrationTests PROPERTIES COST 3000)
 
 # Phase 4: COST 2000 (벤치마크보다 높음)
 set_tests_properties(W3CFullComplianceTests PROPERTIES COST 2500)
+set_tests_properties(W3CStaticTests PROPERTIES COST 2400)
 
 # Phase 5: 벤치마크는 COST 1000으로 마지막에 실행됨 (benchmarks/CMakeLists.txt에 정의)
+
+# ============================================================================
+# W3C Static Code Generation Tests
+# ============================================================================
+include(${CMAKE_SOURCE_DIR}/cmake/RSMStaticW3CTest.cmake)
+
+# Output directory for generated static W3C test code
+set(STATIC_W3C_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/w3c_static_generated")
+
+# Generate C++ code for W3C tests
+rsm_generate_static_w3c_test(144 ${STATIC_W3C_OUTPUT_DIR})
+# Add more tests as StaticCodeGenerator gains features:
+# rsm_generate_static_w3c_test(147 ${STATIC_W3C_OUTPUT_DIR})
+# rsm_generate_static_w3c_test(148 ${STATIC_W3C_OUTPUT_DIR})
+
+# Create the CLI executable
+add_executable(w3c_static_test_cli
+    w3c_static_cli/main.cpp
+    ${GENERATED_W3C_HEADERS}  # Trigger generation
+)
+
+target_include_directories(w3c_static_test_cli
+    PRIVATE
+        ${STATIC_W3C_OUTPUT_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+)
+
+target_link_libraries(w3c_static_test_cli
+    PRIVATE
+        rsm_unified
+)
+
+# Apply RSM policies
+apply_rsm_test_policies(w3c_static_test_cli)
 
 # Phase 5: 성능 벤치마크 (기능 검증 후 성능 측정, 마지막 실행)
 # Benchmark subdirectory must be included AFTER all main tests to ensure proper execution order
@@ -559,6 +596,7 @@ set_tests_properties(ConcurrencyTests PROPERTIES DEPENDS "StateMachineTests;Stat
 # W3C 테스트는 모든 기본 기능이 검증된 후 실행
 set_tests_properties(TXMLConverterTests PROPERTIES DEPENDS "CoreParserTests")
 set_tests_properties(W3CFullComplianceTests PROPERTIES DEPENDS "IntegrationTests;TXMLConverterTests")
+set_tests_properties(W3CStaticTests PROPERTIES DEPENDS "StaticCodegenTests;TXMLConverterTests")
 
 # 테스트 타임아웃 설정 (초 단위)
 set_tests_properties(RSMSCXMLTests PROPERTIES TIMEOUT 30)
@@ -569,6 +607,7 @@ set_tests_properties(ActionTests HistoryTests StatesTests PROPERTIES TIMEOUT 90)
 set_tests_properties(IntegrationTests ConcurrencyTests PROPERTIES TIMEOUT 180)
 set_tests_properties(TXMLConverterTests PROPERTIES TIMEOUT 120)
 set_tests_properties(W3CFullComplianceTests PROPERTIES TIMEOUT 300)
+set_tests_properties(W3CStaticTests PROPERTIES TIMEOUT 60)
 
 # 병렬 실행 제한 (리소스 집약적 테스트)
 set_tests_properties(W3CFullComplianceTests PROPERTIES RUN_SERIAL TRUE)

@@ -1,0 +1,171 @@
+#pragma once
+
+#include <cstdint>
+#include <deque>
+
+namespace RSM::Static {
+
+/**
+ * @brief Template-based SCXML execution engine for static code generation
+ *
+ * This engine implements the core SCXML execution semantics (event queue management,
+ * entry/exit actions, transitions) while delegating state-specific logic to the
+ * StatePolicy template parameter.
+ *
+ * Key SCXML standards implemented:
+ * - Internal event queue with FIFO ordering (W3C SCXML 3.12.1)
+ * - Entry/exit action execution (W3C SCXML 3.7, 3.8)
+ * - Event processing loop (W3C SCXML D.1)
+ *
+ * @tparam StatePolicy Policy class providing state-specific implementations
+ *         Must provide: State, Event enums, transition logic, action execution
+ */
+template <typename StatePolicy> class StaticExecutionEngine {
+    friend StatePolicy;
+
+public:
+    using State = typename StatePolicy::State;
+    using Event = typename StatePolicy::Event;
+
+private:
+    State currentState_;
+    std::deque<Event> internalEventQueue_;
+    bool isRunning_ = false;
+
+protected:
+    /**
+     * @brief Raise an internal event (W3C SCXML 3.14.1)
+     *
+     * Internal events are placed at the back of the internal event queue.
+     * They are processed before external events but after currently queued
+     * internal events (FIFO ordering).
+     *
+     * @param event Event to raise internally
+     */
+    void raise(Event event) {
+        internalEventQueue_.push_back(event);
+    }
+
+    /**
+     * @brief Execute entry actions for a state (W3C SCXML 3.7)
+     *
+     * Entry actions are executable content that runs when entering a state.
+     * This includes <onentry> blocks which may contain <raise>, <assign>, etc.
+     *
+     * @param state State being entered
+     */
+    void executeOnEntry(State state) {
+        StatePolicy::executeEntryActions(state, *this);
+    }
+
+    /**
+     * @brief Execute exit actions for a state (W3C SCXML 3.8)
+     *
+     * Exit actions are executable content that runs when exiting a state.
+     * This includes <onexit> blocks.
+     *
+     * @param state State being exited
+     */
+    void executeOnExit(State state) {
+        StatePolicy::executeExitActions(state, *this);
+    }
+
+    /**
+     * @brief Process internal event queue (W3C SCXML D.1 Algorithm)
+     *
+     * Processes all queued internal events in FIFO order. This implements
+     * the macrostep completion logic where all internal events generated
+     * during state entry are processed before external events.
+     */
+    void processInternalQueue() {
+        while (!internalEventQueue_.empty()) {
+            Event event = internalEventQueue_.front();
+            internalEventQueue_.pop_front();
+
+            // Process event through transition logic
+            State oldState = currentState_;
+            if (StatePolicy::processTransition(currentState_, event, *this)) {
+                // Transition occurred: execute exit/entry actions
+                if (oldState != currentState_) {
+                    executeOnExit(oldState);
+                    executeOnEntry(currentState_);
+                }
+            }
+        }
+    }
+
+public:
+    StaticExecutionEngine() : currentState_(StatePolicy::initialState()) {}
+
+    /**
+     * @brief Initialize state machine (W3C SCXML 3.2)
+     *
+     * Performs the initial configuration:
+     * 1. Enter initial state
+     * 2. Execute entry actions (may raise internal events)
+     * 3. Process internal event queue
+     * 4. Check for eventless transitions
+     */
+    void initialize() {
+        isRunning_ = true;
+        executeOnEntry(currentState_);
+        processInternalQueue();
+        // TODO: checkEventlessTransitions() for Phase 2
+    }
+
+    /**
+     * @brief Process an external event (W3C SCXML 3.12)
+     *
+     * External events are processed after all internal events have been
+     * consumed. Each external event triggers a macrostep.
+     *
+     * @param event External event to process
+     */
+    void processEvent(Event event) {
+        if (!isRunning_) {
+            return;
+        }
+
+        State oldState = currentState_;
+        if (StatePolicy::processTransition(currentState_, event, *this)) {
+            if (oldState != currentState_) {
+                executeOnExit(oldState);
+                executeOnEntry(currentState_);
+                processInternalQueue();
+            }
+        }
+    }
+
+    /**
+     * @brief Get current state
+     * @return Current active state
+     */
+    State getCurrentState() const {
+        return currentState_;
+    }
+
+    /**
+     * @brief Check if in a final state (W3C SCXML 3.3)
+     * @return true if current state is final
+     */
+    bool isInFinalState() const {
+        return StatePolicy::isFinalState(currentState_);
+    }
+
+    /**
+     * @brief Check if state machine is running
+     * @return true if running (not stopped or completed)
+     */
+    bool isRunning() const {
+        return isRunning_;
+    }
+
+    /**
+     * @brief Stop state machine execution
+     */
+    void stop() {
+        isRunning_ = false;
+    }
+};
+
+}  // namespace RSM::Static
