@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <deque>
+#include <map>
+#include <stdexcept>
+#include <string>
 
 namespace RSM::Static {
 
@@ -33,6 +36,9 @@ private:
     bool isRunning_ = false;
 
 protected:
+    StatePolicy policy_;  // Policy instance for stateful policies
+
+protected:
     /**
      * @brief Raise an internal event (W3C SCXML 3.14.1)
      *
@@ -52,10 +58,14 @@ protected:
      * Entry actions are executable content that runs when entering a state.
      * This includes <onentry> blocks which may contain <raise>, <assign>, etc.
      *
+     * Supports both static (stateless) and non-static (stateful) policies.
+     * Static methods can also be called through an instance in C++.
+     *
      * @param state State being entered
      */
     void executeOnEntry(State state) {
-        StatePolicy::executeEntryActions(state, *this);
+        // Call through policy instance (works for both static and non-static)
+        policy_.executeEntryActions(state, *this);
     }
 
     /**
@@ -64,10 +74,14 @@ protected:
      * Exit actions are executable content that runs when exiting a state.
      * This includes <onexit> blocks.
      *
+     * Supports both static (stateless) and non-static (stateful) policies.
+     * Static methods can also be called through an instance in C++.
+     *
      * @param state State being exited
      */
     void executeOnExit(State state) {
-        StatePolicy::executeExitActions(state, *this);
+        // Call through policy instance (works for both static and non-static)
+        policy_.executeExitActions(state, *this);
     }
 
     /**
@@ -76,6 +90,9 @@ protected:
      * Processes all queued internal events in FIFO order. This implements
      * the macrostep completion logic where all internal events generated
      * during state entry are processed before external events.
+     *
+     * Supports both static (stateless) and non-static (stateful) policies.
+     * Static methods can also be called through an instance in C++.
      */
     void processInternalQueue() {
         while (!internalEventQueue_.empty()) {
@@ -84,7 +101,8 @@ protected:
 
             // Process event through transition logic
             State oldState = currentState_;
-            if (StatePolicy::processTransition(currentState_, event, *this)) {
+            // Call through policy instance (works for both static and non-static)
+            if (policy_.processTransition(currentState_, event, *this)) {
                 // Transition occurred: execute exit/entry actions
                 if (oldState != currentState_) {
                     executeOnExit(oldState);
@@ -119,6 +137,9 @@ public:
      * External events are processed after all internal events have been
      * consumed. Each external event triggers a macrostep.
      *
+     * Supports both static (stateless) and non-static (stateful) policies.
+     * Static methods can also be called through an instance in C++.
+     *
      * @param event External event to process
      */
     void processEvent(Event event) {
@@ -127,7 +148,8 @@ public:
         }
 
         State oldState = currentState_;
-        if (StatePolicy::processTransition(currentState_, event, *this)) {
+        // Call through policy instance (works for both static and non-static)
+        if (policy_.processTransition(currentState_, event, *this)) {
             if (oldState != currentState_) {
                 executeOnExit(oldState);
                 executeOnEntry(currentState_);

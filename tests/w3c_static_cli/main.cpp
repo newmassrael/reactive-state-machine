@@ -8,8 +8,9 @@
 
 // Include all generated state machine headers
 #include "test144_sm.h"
+#include "test147_sm.h"
 
-// Add more as needed: #include "test147_sm.h"
+// Add more as needed: #include "test148_sm.h"
 
 // Test registry structure
 struct StaticTest {
@@ -22,9 +23,7 @@ struct StaticTest {
 namespace TestRunners {
 
 bool test144() {
-    using namespace RSM::Generated;
-
-    RSM::Generated::test144 sm;
+    RSM::Generated::test144::test144 sm;
     sm.initialize();
 
     // Test 144: Verify SCXML event queue ordering (foo before bar)
@@ -32,7 +31,19 @@ bool test144() {
     // Internal queue should have processed foo first (transition s0->s1)
     // Then processed bar (transition s1->pass)
     // Verify we're in the Pass final state
-    return sm.isInFinalState() && sm.getCurrentState() == State::Pass;
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test144::State::Pass;
+}
+
+bool test147() {
+    RSM::Generated::test147::test147 sm;
+    sm.initialize();
+
+    // Test 147: Verify SCXML if/elseif/else and datamodel
+    // After initialize(), onentry of s0 should execute elseif(true) branch:
+    // - Raise bar event, increment Var1 to 1
+    // - Then raise bat event
+    // Internal queue processes bar with guard Var1==1, transition to Pass
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test147::State::Pass;
 }
 
 // Add more test runners as needed
@@ -42,6 +53,7 @@ bool test144() {
 // Test registry
 static const StaticTest STATIC_TESTS[] = {
     {144, "Event queue ordering", TestRunners::test144},
+    {147, "If/elseif/else conditionals with datamodel", TestRunners::test147},
     // Add more tests here
 };
 

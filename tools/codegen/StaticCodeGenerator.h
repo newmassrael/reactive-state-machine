@@ -10,7 +10,8 @@
 // Forward declarations from RSM namespace
 namespace RSM {
 class SCXMLModel;
-}
+class IActionNode;
+}  // namespace RSM
 
 namespace RSM::Codegen {
 
@@ -71,6 +72,9 @@ private:
     // Helper for regex-based function name extraction
     std::set<std::string> extractFunctionNames(const std::string &text, const std::regex &pattern);
 
+    // Helper to process actions recursively (for if/elseif/else)
+    std::vector<Action> processActions(const std::vector<std::shared_ptr<RSM::IActionNode>> &actionNodes);
+
     // File writing
     bool writeToFile(const std::string &path, const std::string &content);
 };
@@ -82,6 +86,20 @@ struct Transition {
     std::string targetState;
     std::string guard;                 // Guard condition expression (e.g., "isReady()")
     std::vector<std::string> actions;  // Action function names from transition scripts
+};
+
+// Forward declaration for nested actions
+struct Action;
+
+// Conditional branch for if/elseif/else
+struct ConditionalBranch {
+    std::string condition;        // Boolean expression (empty for else)
+    std::vector<Action> actions;  // Actions to execute in this branch
+    bool isElseBranch = false;    // true for else branch
+
+    ConditionalBranch() = default;
+
+    ConditionalBranch(const std::string &cond, bool isElse = false) : condition(cond), isElseBranch(isElse) {}
 };
 
 // Executable content action representation
@@ -97,8 +115,9 @@ struct Action {
     };
 
     Type type;
-    std::string param1;  // event name for RAISE, script content for SCRIPT, etc.
-    std::string param2;  // additional parameter (e.g., assign location)
+    std::string param1;                       // event name for RAISE, script content for SCRIPT, condition for IF, etc.
+    std::string param2;                       // additional parameter (e.g., assign location)
+    std::vector<ConditionalBranch> branches;  // For IF action: if/elseif/else branches
 
     Action(Type t, const std::string &p1 = "", const std::string &p2 = "") : type(t), param1(p1), param2(p2) {}
 };
@@ -110,12 +129,19 @@ struct State {
     std::vector<Action> exitActions;   // Actions from <onexit>
 };
 
+struct DataModelVariable {
+    std::string name;
+    std::string initialValue;  // Initial expression (e.g., "0", "'hello'")
+    std::string type;          // Variable type hint (optional)
+};
+
 class SCXMLModel {
 public:
     std::string name;
     std::string initial;
-    std::vector<State> states;  // Changed from vector<string> to vector<State>
+    std::vector<State> states;
     std::vector<Transition> transitions;
+    std::vector<DataModelVariable> dataModel;  // Data model variables
 };
 
 }  // namespace RSM::Codegen

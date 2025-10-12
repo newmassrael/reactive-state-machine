@@ -4,11 +4,13 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <regex>
 #include <sstream>
 
 #include "actions/AssignAction.h"
+#include "actions/IfAction.h"
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
@@ -59,6 +61,14 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         return false;
     }
 
+    // Extract datamodel variables
+    for (const auto &dataItem : rsmModel->getDataModelItems()) {
+        DataModelVariable var;
+        var.name = dataItem->getId();
+        var.initialValue = dataItem->getExpr();
+        model.dataModel.push_back(var);
+    }
+
     // Extract all states
     auto allStates = rsmModel->getAllStates();
     if (allStates.empty()) {
@@ -86,62 +96,14 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
 
         // Extract entry actions
         for (const auto &actionBlock : state->getEntryActionBlocks()) {
-            for (const auto &actionNode : actionBlock) {
-                std::string actionType = actionNode->getActionType();
-
-                if (actionType == "raise") {
-                    if (auto raiseAction = std::dynamic_pointer_cast<RSM::RaiseAction>(actionNode)) {
-                        stateInfo.entryActions.push_back(Action(Action::RAISE, raiseAction->getEvent()));
-                    }
-                } else if (actionType == "script") {
-                    if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
-                        const std::string &content = scriptAction->getContent();
-                        auto extractedFuncs = extractFunctionNames(content, funcRegex);
-                        for (const auto &func : extractedFuncs) {
-                            stateInfo.entryActions.push_back(Action(Action::SCRIPT, func));
-                        }
-                    }
-                } else if (actionType == "assign") {
-                    if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
-                        stateInfo.entryActions.push_back(
-                            Action(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr()));
-                    }
-                } else if (actionType == "log") {
-                    if (auto logAction = std::dynamic_pointer_cast<RSM::LogAction>(actionNode)) {
-                        stateInfo.entryActions.push_back(Action(Action::LOG, logAction->getExpr()));
-                    }
-                }
-            }
+            auto actions = processActions(actionBlock);
+            stateInfo.entryActions.insert(stateInfo.entryActions.end(), actions.begin(), actions.end());
         }
 
         // Extract exit actions
         for (const auto &actionBlock : state->getExitActionBlocks()) {
-            for (const auto &actionNode : actionBlock) {
-                std::string actionType = actionNode->getActionType();
-
-                if (actionType == "raise") {
-                    if (auto raiseAction = std::dynamic_pointer_cast<RSM::RaiseAction>(actionNode)) {
-                        stateInfo.exitActions.push_back(Action(Action::RAISE, raiseAction->getEvent()));
-                    }
-                } else if (actionType == "script") {
-                    if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
-                        const std::string &content = scriptAction->getContent();
-                        auto extractedFuncs = extractFunctionNames(content, funcRegex);
-                        for (const auto &func : extractedFuncs) {
-                            stateInfo.exitActions.push_back(Action(Action::SCRIPT, func));
-                        }
-                    }
-                } else if (actionType == "assign") {
-                    if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
-                        stateInfo.exitActions.push_back(
-                            Action(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr()));
-                    }
-                } else if (actionType == "log") {
-                    if (auto logAction = std::dynamic_pointer_cast<RSM::LogAction>(actionNode)) {
-                        stateInfo.exitActions.push_back(Action(Action::LOG, logAction->getExpr()));
-                    }
-                }
-            }
+            auto actions = processActions(actionBlock);
+            stateInfo.exitActions.insert(stateInfo.exitActions.end(), actions.begin(), actions.end());
         }
 
         model.states.push_back(stateInfo);
@@ -199,8 +161,8 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#include <memory>\n";
     ss << "#include \"static/StaticExecutionEngine.h\"\n\n";
 
-    // Namespace
-    ss << "namespace RSM::Generated {\n\n";
+    // Namespace - each test gets its own nested namespace to avoid conflicts
+    ss << "namespace RSM::Generated::" << model.name << " {\n\n";
 
     // Generate State enum
     ss << generateStateEnum(states);
@@ -213,7 +175,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     // Generate base class template
     ss << generateClass(model);
 
-    ss << "\n} // namespace RSM::Generated\n";
+    ss << "\n} // namespace RSM::Generated::" << model.name << "\n";
 
     // Step 7: Validate output directory and write to file
     if (outputDir.empty()) {
@@ -340,19 +302,30 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
 
                 // Generate guard condition if present
                 if (hasGuard) {
-                    // Extract function name from guard expression (e.g., "isReady()" -> "isReady")
-                    std::string guardFunc = trans.guard;
-                    // Remove () and any negation or logical operators
-                    size_t parenPos = guardFunc.find('(');
-                    if (parenPos != std::string::npos) {
-                        guardFunc = guardFunc.substr(0, parenPos);
-                    }
-                    // Remove leading ! if present
-                    if (!guardFunc.empty() && guardFunc[0] == '!') {
-                        guardFunc = guardFunc.substr(1);
+                    std::string guardExpr = trans.guard;
+
+                    // Check if guard is a function call (contains "()") vs datamodel expression
+                    // Function call: isReady() -> derived().isReady()
+                    // Datamodel expr: Var1 == 1 -> Var1 == 1 (direct use)
+                    bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
+
+                    if (isFunctionCall) {
+                        // Extract function name from guard expression (e.g., "isReady()" -> "isReady")
+                        std::string guardFunc = guardExpr;
+                        size_t parenPos = guardFunc.find('(');
+                        if (parenPos != std::string::npos) {
+                            guardFunc = guardFunc.substr(0, parenPos);
+                        }
+                        // Remove leading ! if present
+                        if (!guardFunc.empty() && guardFunc[0] == '!') {
+                            guardFunc = guardFunc.substr(1);
+                        }
+                        ss << indent << "if (derived()." << guardFunc << "()) {\n";
+                    } else {
+                        // Datamodel expression - use directly
+                        ss << indent << "if (" << guardExpr << ") {\n";
                     }
 
-                    ss << indent << "if (derived()." << guardFunc << "()) {\n";
                     indent += "    ";  // Increase indentation inside guard
                 }
 
@@ -382,16 +355,75 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
     return ss.str();
 }
 
+std::vector<Action>
+StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActionNode>> &actionNodes) {
+    std::vector<Action> result;
+    static const std::regex funcRegex(R"((\w+)\(\))");
+
+    for (const auto &actionNode : actionNodes) {
+        std::string actionType = actionNode->getActionType();
+
+        if (actionType == "raise") {
+            if (auto raiseAction = std::dynamic_pointer_cast<RSM::RaiseAction>(actionNode)) {
+                result.push_back(Action(Action::RAISE, raiseAction->getEvent()));
+            }
+        } else if (actionType == "script") {
+            if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                const std::string &content = scriptAction->getContent();
+                auto extractedFuncs = extractFunctionNames(content, funcRegex);
+                for (const auto &func : extractedFuncs) {
+                    result.push_back(Action(Action::SCRIPT, func));
+                }
+            }
+        } else if (actionType == "assign") {
+            if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
+                result.push_back(Action(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr()));
+            }
+        } else if (actionType == "log") {
+            if (auto logAction = std::dynamic_pointer_cast<RSM::LogAction>(actionNode)) {
+                result.push_back(Action(Action::LOG, logAction->getExpr()));
+            }
+        } else if (actionType == "if") {
+            if (auto ifAction = std::dynamic_pointer_cast<RSM::IfAction>(actionNode)) {
+                Action ifActionResult(Action::IF);
+
+                // Process each branch
+                for (const auto &branch : ifAction->getBranches()) {
+                    ConditionalBranch condBranch(branch.condition, branch.isElseBranch);
+                    condBranch.actions = processActions(branch.actions);
+                    ifActionResult.branches.push_back(condBranch);
+                }
+
+                result.push_back(ifActionResult);
+            }
+        }
+    }
+
+    return result;
+}
+
 std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
 
     ss << "#include \"static/StaticExecutionEngine.h\"\n\n";
 
+    // Determine if we need non-static (stateful) policy
+    bool hasDataModel = !model.dataModel.empty();
+
     // Generate State Policy class
     ss << "// State policy for " << model.name << "\n";
     ss << "struct " << model.name << "Policy {\n";
-    ss << "    using State = ::RSM::Generated::State;\n";
-    ss << "    using Event = ::RSM::Generated::Event;\n\n";
+    ss << "    using State = ::RSM::Generated::" << model.name << "::State;\n";
+    ss << "    using Event = ::RSM::Generated::" << model.name << "::Event;\n\n";
+
+    // Generate datamodel member variables (for stateful policies)
+    if (hasDataModel) {
+        ss << "    // Datamodel variables\n";
+        for (const auto &var : model.dataModel) {
+            ss << "    int " << var.name << " = " << var.initialValue << ";\n";
+        }
+        ss << "\n";
+    }
 
     // Initial state
     ss << "    static State initialState() {\n";
@@ -416,7 +448,11 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
     // Execute entry actions
     ss << "    template<typename Engine>\n";
-    ss << "    static void executeEntryActions(State state, Engine& engine) {\n";
+    if (hasDataModel) {
+        ss << "    void executeEntryActions(State state, Engine& engine) {\n";  // non-static for stateful
+    } else {
+        ss << "    static void executeEntryActions(State state, Engine& engine) {\n";  // static for stateless
+    }
     ss << "        (void)engine;\n";
     ss << "        switch (state) {\n";
     for (const auto &state : model.states) {
@@ -435,7 +471,11 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
     // Execute exit actions
     ss << "    template<typename Engine>\n";
-    ss << "    static void executeExitActions(State state, Engine& engine) {\n";
+    if (hasDataModel) {
+        ss << "    void executeExitActions(State state, Engine& engine) {\n";  // non-static for stateful
+    } else {
+        ss << "    static void executeExitActions(State state, Engine& engine) {\n";  // static for stateless
+    }
     ss << "        (void)engine;\n";
     ss << "        switch (state) {\n";
     for (const auto &state : model.states) {
@@ -454,7 +494,13 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
     // Process transition
     ss << "    template<typename Engine>\n";
-    ss << "    static bool processTransition(State& currentState, Event event, Engine& engine) {\n";
+    if (hasDataModel) {
+        ss << "    bool processTransition(State& currentState, Event event, Engine& engine) {\n";  // non-static for
+                                                                                                   // stateful
+    } else {
+        ss << "    static bool processTransition(State& currentState, Event event, Engine& engine) {\n";  // static for
+                                                                                                          // stateless
+    }
     ss << generateProcessEvent(model);
     ss << "    }\n";
 
@@ -480,10 +526,36 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         ss << "                " << action.param1 << "();\n";
         break;
     case Action::ASSIGN:
-        ss << "                // TODO: assign " << action.param1 << " = " << action.param2 << "\n";
+        ss << "                " << action.param1 << " = " << action.param2 << ";\n";
         break;
     case Action::LOG:
         ss << "                // TODO: log " << action.param1 << "\n";
+        break;
+    case Action::IF:
+        // Generate if/elseif/else branches
+        for (size_t i = 0; i < action.branches.size(); ++i) {
+            const auto &branch = action.branches[i];
+
+            if (i == 0) {
+                // First branch is if
+                ss << "                if (" << branch.condition << ") {\n";
+            } else if (branch.isElseBranch) {
+                // Else branch
+                ss << "                } else {\n";
+            } else {
+                // Elseif branches
+                ss << "                } else if (" << branch.condition << ") {\n";
+            }
+
+            // Generate actions in this branch
+            for (const auto &branchAction : branch.actions) {
+                generateActionCode(ss, branchAction, engineVar);
+            }
+        }
+
+        if (!action.branches.empty()) {
+            ss << "                }\n";
+        }
         break;
     default:
         break;
@@ -521,11 +593,35 @@ std::set<std::string> StaticCodeGenerator::extractStates(const SCXMLModel &model
 
 std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model) {
     std::set<std::string> events;
+
+    // Extract events from transitions
     for (const auto &transition : model.transitions) {
         if (!transition.event.empty()) {
             events.insert(transition.event);
         }
     }
+
+    // Helper lambda to recursively extract events from actions
+    std::function<void(const std::vector<Action> &)> extractFromActions;
+    extractFromActions = [&](const std::vector<Action> &actions) {
+        for (const auto &action : actions) {
+            if (action.type == Action::RAISE && !action.param1.empty()) {
+                events.insert(action.param1);
+            } else if (action.type == Action::IF) {
+                // Recursively process if/elseif/else branches
+                for (const auto &branch : action.branches) {
+                    extractFromActions(branch.actions);
+                }
+            }
+        }
+    };
+
+    // Extract events from entry/exit actions
+    for (const auto &state : model.states) {
+        extractFromActions(state.entryActions);
+        extractFromActions(state.exitActions);
+    }
+
     return events;
 }
 
