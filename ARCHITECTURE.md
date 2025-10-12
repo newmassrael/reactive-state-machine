@@ -122,7 +122,19 @@ Generated code works for ALL SCXML (W3C 100%)
 
 ## Code Generator Design
 
+### Core Reuse Architecture
+
+**Critical Principle**: Zero duplication - Static and dynamic engines share W3C SCXML core.
+
 ```cpp
+// Shared Core Components (rsm/include/core/)
+namespace RSM::Core {
+    class EventQueueManager<EventType>;  // W3C 3.12.1: Internal event queue
+    class StateExecutor;                 // W3C 3.7/3.8: Entry/Exit actions
+    class TransitionProcessor;           // W3C 3.13: Transition logic
+}
+
+// Static Code Generator uses Core
 class StaticCodeGenerator {
 public:
     std::string generate(const SCXMLModel& model) {
@@ -132,6 +144,10 @@ public:
         generateStateEnum(model, code);
         generateEventEnum(model, code);
         generatePolicy(model, code);
+        
+        // Generated code USES shared core components
+        code << "    RSM::Core::EventQueueManager<Event> eventQueue_;
+";
         
         // Detect and include dynamic components if needed
         if (model.hasParallelStates()) {
@@ -161,9 +177,55 @@ public:
 ```
 
 **Key Design**: Generator never fails, always produces code that:
-1. Handles simple features statically (fast path)
+1. Handles simple features statically (fast path) using core components
 2. Includes dynamic handlers only if needed (lazy-init)
 3. Supports all W3C SCXML features (100% compliance)
+
+## Core Components (No Duplication)
+
+### RSM::Core::EventQueueManager
+
+**Purpose**: W3C SCXML 3.12.1 Internal Event Queue implementation
+
+**Location**: `rsm/include/core/EventQueueManager.h`
+
+**Used By**:
+- StaticExecutionEngine (static generated code)
+- StateMachine (dynamic runtime)
+
+**Interface**:
+```cpp
+template <typename EventType>
+class EventQueueManager {
+    void raise(const EventType& event);      // Add to queue
+    EventType pop();                         // Remove from queue (FIFO)
+    bool hasEvents() const;                  // Check if queue has events
+    void clear();                            // Clear queue
+    
+    template<typename Handler>
+    void processAll(Handler handler);        // W3C D.1: Process all internal events
+};
+```
+
+**Benefits**:
+- Single source of truth for event queue logic
+- Bug fixes automatically benefit both static and dynamic
+- Zero overhead (template-based, fully inlinable)
+- W3C SCXML compliance guaranteed
+
+### Future Core Components (Planned)
+
+**RSM::Core::StateExecutor**:
+- W3C SCXML 3.7/3.8: Entry/Exit action execution
+- Shared between static and dynamic
+
+**RSM::Core::TransitionProcessor**:
+- W3C SCXML 3.13: Transition selection and execution
+- Microstep processing logic
+
+**RSM::Core::DatamodelManager**:
+- W3C SCXML 5.3: Data model variable management
+- Shared datamodel semantics
 
 ## Implementation Phases
 

@@ -9,8 +9,9 @@
 // Include all generated state machine headers
 #include "test144_sm.h"
 #include "test147_sm.h"
+#include "test148_sm.h"
 
-// Add more as needed: #include "test148_sm.h"
+// Add more as needed: #include "test149_sm.h"
 
 // Test registry structure
 struct StaticTest {
@@ -46,6 +47,19 @@ bool test147() {
     return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test147::State::Pass;
 }
 
+bool test148() {
+    RSM::Generated::test148::test148 sm;
+    sm.initialize();
+
+    // Test 148: Verify SCXML else clause execution
+    // After initialize(), onentry of s0 should execute else branch:
+    // - if(false) and elseif(false) both skip
+    // - else branch executes: raise baz, increment Var1 to 1
+    // - Then raise bat event
+    // Internal queue processes baz with guard Var1==1, transition to Pass
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test148::State::Pass;
+}
+
 // Add more test runners as needed
 
 }  // namespace TestRunners
@@ -54,6 +68,7 @@ bool test147() {
 static const StaticTest STATIC_TESTS[] = {
     {144, "Event queue ordering", TestRunners::test144},
     {147, "If/elseif/else conditionals with datamodel", TestRunners::test147},
+    {148, "Else clause execution with datamodel", TestRunners::test148},
     // Add more tests here
 };
 

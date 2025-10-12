@@ -1,7 +1,7 @@
 #pragma once
 
+#include "core/EventQueueManager.h"
 #include <cstdint>
-#include <deque>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -32,7 +32,7 @@ public:
 
 private:
     State currentState_;
-    std::deque<Event> internalEventQueue_;
+    RSM::Core::EventQueueManager<Event> eventQueue_;  // Shared core component
     bool isRunning_ = false;
 
 protected:
@@ -46,10 +46,12 @@ protected:
      * They are processed before external events but after currently queued
      * internal events (FIFO ordering).
      *
+     * Delegates to Core::EventQueueManager for W3C compliance.
+     *
      * @param event Event to raise internally
      */
     void raise(Event event) {
-        internalEventQueue_.push_back(event);
+        eventQueue_.raise(event);  // Use shared core implementation
     }
 
     /**
@@ -91,14 +93,13 @@ protected:
      * the macrostep completion logic where all internal events generated
      * during state entry are processed before external events.
      *
+     * Delegates to Core::EventQueueManager for W3C-compliant queue processing.
+     *
      * Supports both static (stateless) and non-static (stateful) policies.
      * Static methods can also be called through an instance in C++.
      */
     void processInternalQueue() {
-        while (!internalEventQueue_.empty()) {
-            Event event = internalEventQueue_.front();
-            internalEventQueue_.pop_front();
-
+        eventQueue_.processAll([this](Event event) {
             // Process event through transition logic
             State oldState = currentState_;
             // Call through policy instance (works for both static and non-static)
@@ -109,7 +110,8 @@ protected:
                     executeOnEntry(currentState_);
                 }
             }
-        }
+            return false;  // Return value not used in current implementation
+        });
     }
 
 public:
