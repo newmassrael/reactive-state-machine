@@ -1,4 +1,4 @@
-// Minimal static code generator - TDD RED phase
+// SCXML to C++ static code generator
 #pragma once
 
 #include <memory>
@@ -14,10 +14,11 @@ class SCXMLModel;
 /**
  * @brief SCXML to C++ static code generator
  *
- * TDD approach:
- * 1. Start with minimal features (State/Event enums only)
- * 2. Add features progressively
- * 3. Pass tests at each stage
+ * Generates compile-time optimized C++ state machines from SCXML files.
+ * Features:
+ * - Type-safe State and Event enums
+ * - Template-based state machine with zero overhead
+ * - Strategy pattern support for user logic injection
  */
 class StaticCodeGenerator {
 public:
@@ -36,7 +37,7 @@ public:
     std::string generateStateEnum(const std::set<std::string> &states);
     std::string generateEventEnum(const std::set<std::string> &events);
     std::string generateProcessEvent(const std::string &className);
-    std::string generateClass(const std::string &className);
+    std::string generateClass(const std::string &className, const std::string &initialState);
 
 private:
     // Template method to generate enums (DRY principle)
@@ -53,13 +54,13 @@ private:
     bool writeToFile(const std::string &path, const std::string &content);
 };
 
-// Temporary model class (before connecting actual SCXMLParser)
+// Simplified model for code generation (extracted from RSM::SCXMLModel)
 class SCXMLModel {
 public:
     std::string name;
     std::string initial;
     std::vector<std::string> states;
-    std::vector<std::pair<std::string, std::string>> transitions;  // event, target
+    std::vector<std::pair<std::string, std::string>> transitions;  // (event, target)
 };
 
 }  // namespace RSM::Codegen

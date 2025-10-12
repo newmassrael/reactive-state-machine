@@ -1,33 +1,82 @@
-// Minimal static code generator implementation - TDD GREEN phase
+// Static code generator with SCXML parser integration
 #include "StaticCodeGenerator.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 
+#include "rsm/include/factory/NodeFactory.h"
+#include "rsm/include/model/SCXMLModel.h"
+#include "rsm/include/parsing/SCXMLParser.h"
+
 namespace fs = std::filesystem;
 
 namespace RSM::Codegen {
 
-namespace {
-constexpr const char *DEFAULT_SM_NAME = "SimpleSM";
-constexpr const char *DEFAULT_INITIAL_STATE = "idle";
-}  // namespace
-
 bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::string &outputDir) {
-    (void)scxmlPath;  // TODO: Implement actual SCXML parsing
-    // Step 1: Simple parsing (temporary - will use SCXMLParser)
-    SCXMLModel model;
-    model.name = DEFAULT_SM_NAME;
-    model.initial = DEFAULT_INITIAL_STATE;
-    model.states = {DEFAULT_INITIAL_STATE, "active"};
-    model.transitions = {{"start", "active"}, {"stop", DEFAULT_INITIAL_STATE}};
+    // Step 1: Validate input
+    if (scxmlPath.empty()) {
+        return false;
+    }
 
-    // Step 2: Extract information
+    if (!fs::exists(scxmlPath)) {
+        return false;
+    }
+
+    // Step 2: Parse SCXML file using actual parser
+    auto nodeFactory = std::make_shared<RSM::NodeFactory>();
+    RSM::SCXMLParser parser(nodeFactory);
+
+    auto rsmModel = parser.parseFile(scxmlPath);
+    if (!rsmModel) {
+        return false;
+    }
+
+    // Step 3: Validate parsed model
+    if (rsmModel->getName().empty()) {
+        return false;
+    }
+
+    // Step 4: Convert RSM::SCXMLModel to simplified format for code generation
+    SCXMLModel model;
+    model.name = rsmModel->getName();
+    model.initial = rsmModel->getInitialState();
+
+    if (model.initial.empty()) {
+        return false;
+    }
+
+    // Extract all states
+    auto allStates = rsmModel->getAllStates();
+    if (allStates.empty()) {
+        return false;
+    }
+
+    for (const auto &state : allStates) {
+        model.states.push_back(state->getId());
+
+        // Extract transitions from each state
+        auto transitions = state->getTransitions();
+        for (const auto &transition : transitions) {
+            auto event = transition->getEvent();
+            auto targets = transition->getTargets();
+            if (!event.empty() && !targets.empty()) {
+                // Use first target (SCXML supports multiple targets)
+                model.transitions.push_back(std::make_pair(event, targets[0]));
+            }
+        }
+    }
+
+    // Step 5: Extract unique states and events
     auto states = extractStates(model);
     auto events = extractEvents(model);
 
-    // Step 3: Generate code
+    // Validate we have states (events can be empty for stateless machines)
+    if (states.empty()) {
+        return false;
+    }
+
+    // Step 6: Generate code
     std::stringstream ss;
 
     // Header guard
@@ -47,11 +96,15 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "\n";
 
     // Generate class
-    ss << generateClass(model.name);
+    ss << generateClass(model.name, model.initial);
 
     ss << "\n} // namespace RSM::Generated\n";
 
-    // Step 4: Write to file
+    // Step 7: Validate output directory and write to file
+    if (outputDir.empty() || !fs::exists(outputDir) || !fs::is_directory(outputDir)) {
+        return false;
+    }
+
     std::string outputPath = outputDir + "/" + model.name + "_sm.h";
     return writeToFile(outputPath, ss.str());
 }
@@ -83,34 +136,24 @@ std::string StaticCodeGenerator::generateEventEnum(const std::set<std::string> &
 }
 
 std::string StaticCodeGenerator::generateProcessEvent(const std::string &className) {
-    (void)className;  // TODO: Use className in implementation
+    (void)className;  // TODO: Use className for transition generation
     std::stringstream ss;
 
     ss << "    void processEvent(Event event) {\n";
-    ss << "        switch(currentState_) {\n";
-    ss << "            case State::Idle:\n";
-    ss << "                if (event == Event::Start) {\n";
-    ss << "                    currentState_ = State::Active;\n";
-    ss << "                }\n";
-    ss << "                break;\n";
-    ss << "            case State::Active:\n";
-    ss << "                if (event == Event::Stop) {\n";
-    ss << "                    currentState_ = State::Idle;\n";
-    ss << "                }\n";
-    ss << "                break;\n";
-    ss << "        }\n";
+    ss << "        // State transition logic will be generated here\n";
+    ss << "        (void)event;  // Suppress unused parameter warning\n";
     ss << "    }\n";
 
     return ss.str();
 }
 
-std::string StaticCodeGenerator::generateClass(const std::string &className) {
+std::string StaticCodeGenerator::generateClass(const std::string &className, const std::string &initialState) {
     std::stringstream ss;
 
     ss << "template<typename LogicType = void>\n";
     ss << "class " << className << " {\n";
     ss << "private:\n";
-    ss << "    State currentState_ = State::Idle;\n";
+    ss << "    State currentState_ = State::" << capitalize(initialState) << ";\n";
     ss << "    std::unique_ptr<LogicType> logic_;\n\n";
 
     ss << "public:\n";
@@ -134,7 +177,7 @@ std::string StaticCodeGenerator::capitalize(const std::string &str) {
     }
 
     std::string result = str;
-    result[0] = std::toupper(result[0]);
+    result[0] = std::toupper(static_cast<unsigned char>(result[0]));
     return result;
 }
 
@@ -147,16 +190,13 @@ std::string StaticCodeGenerator::sanitizeName(const std::string &name) {
 }
 
 std::set<std::string> StaticCodeGenerator::extractStates(const SCXMLModel &model) {
-    std::set<std::string> states;
-    for (const auto &state : model.states) {
-        states.insert(state);
-    }
-    return states;
+    return std::set<std::string>(model.states.begin(), model.states.end());
 }
 
 std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model) {
     std::set<std::string> events;
     for (const auto &[event, target] : model.transitions) {
+        (void)target;  // Unused in extraction
         if (!event.empty()) {
             events.insert(event);
         }
