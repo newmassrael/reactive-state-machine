@@ -159,13 +159,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << generateEventEnum(events);
     ss << "\n";
 
-    // Generate Strategy interface (if there are guards or actions)
-    if (!guards.empty() || !actions.empty()) {
-        ss << generateStrategyInterface(model.name, guards, actions);
-        ss << "\n";
-    }
-
-    // Generate class
+    // Generate class (CRTP pattern)
     ss << generateClass(model);
 
     ss << "\n} // namespace RSM::Generated\n";
@@ -306,7 +300,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                         guardFunc = guardFunc.substr(1);
                     }
 
-                    ss << indent << "if (logic_->" << guardFunc << "()) {\n";
+                    ss << indent << "if (derived()." << guardFunc << "()) {\n";
                     indent += "    ";  // Increase indentation inside guard
                 }
 
@@ -314,20 +308,20 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                 auto sourceIt = stateMap.find(trans.sourceState);
                 if (sourceIt != stateMap.end() && !sourceIt->second->exitActions.empty()) {
                     for (const auto &action : sourceIt->second->exitActions) {
-                        ss << indent << "logic_->" << action << "();\n";
+                        ss << indent << "derived()." << action << "();\n";
                     }
                 }
 
                 // 2. Generate transition action calls
                 for (const auto &action : trans.actions) {
-                    ss << indent << "logic_->" << action << "();\n";
+                    ss << indent << "derived()." << action << "();\n";
                 }
 
                 // 3. Generate onentry actions of target state
                 auto targetIt = stateMap.find(trans.targetState);
                 if (targetIt != stateMap.end() && !targetIt->second->entryActions.empty()) {
                     for (const auto &action : targetIt->second->entryActions) {
-                        ss << indent << "logic_->" << action << "();\n";
+                        ss << indent << "derived()." << action << "();\n";
                     }
                 }
 
@@ -354,23 +348,34 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
 std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
 
-    ss << "template<typename LogicType = void>\n";
-    ss << "class " << model.name << " {\n";
+    ss << "template<typename Derived>\n";
+    ss << "class " << model.name << "Base {\n";
     ss << "private:\n";
-    ss << "    State currentState_ = State::" << capitalize(model.initial) << ";\n";
-    ss << "    std::unique_ptr<LogicType> logic_;\n\n";
+    ss << "    State currentState_ = State::" << capitalize(model.initial) << ";\n\n";
+
+    ss << "protected:\n";
+    ss << "    Derived& derived() { return static_cast<Derived&>(*this); }\n";
+    ss << "    const Derived& derived() const { return static_cast<const Derived&>(*this); }\n\n";
 
     ss << "public:\n";
-    ss << "    " << model.name << "() = default;\n\n";
+    ss << "    " << model.name << "Base() = default;\n\n";
+
+    // Initialize method (call initial state's onentry actions)
+    ss << "    void initialize() {\n";
+    // Find initial state and call its entry actions
+    for (const auto &state : model.states) {
+        if (state.name == model.initial) {
+            for (const auto &action : state.entryActions) {
+                ss << "        derived()." << action << "();\n";
+            }
+            break;
+        }
+    }
+    ss << "    }\n\n";
 
     // processEvent method
     ss << generateProcessEvent(model);
     ss << "\n";
-
-    // Logic injection
-    ss << "    void setLogic(std::unique_ptr<LogicType> logic) {\n";
-    ss << "        logic_ = std::move(logic);\n";
-    ss << "    }\n\n";
 
     // Getter
     ss << "    State getCurrentState() const { return currentState_; }\n";
