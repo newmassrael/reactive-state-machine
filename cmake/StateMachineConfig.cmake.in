@@ -1,4 +1,5 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/StateMachineTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/RSMCodegen.cmake")
 check_required_components(StateMachine)

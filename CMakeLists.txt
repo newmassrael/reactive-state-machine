@@ -98,6 +98,9 @@ endif()
 # Include GNUInstallDirs for installation paths
 include(GNUInstallDirs)
 
+# Include RSM code generation utilities
+include(cmake/RSMCodegen.cmake)
+
 # Position independent code generation (for shared libraries)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -128,6 +131,12 @@ option(BUILD_TESTS "Build the tests" ON)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Example build option (disabled by default)
+option(BUILD_EXAMPLES "Build the examples" OFF)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples/cmake_function)
 endif()
 
 # Installation configuration (using GNUInstallDirs variables)
@@ -164,5 +173,6 @@ install(
     FILES
         "${CMAKE_CURRENT_BINARY_DIR}/StateMachineConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/StateMachineConfigVersion.cmake"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RSMCodegen.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/StateMachine
 )

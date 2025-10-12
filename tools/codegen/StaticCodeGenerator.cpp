@@ -1,6 +1,6 @@
 // Static code generator with SCXML parser integration
 #include "StaticCodeGenerator.h"
-#include "rsm/include/common/Logger.h"
+#include "common/Logger.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -8,10 +8,10 @@
 #include <regex>
 #include <sstream>
 
-#include "rsm/include/actions/ScriptAction.h"
-#include "rsm/include/factory/NodeFactory.h"
-#include "rsm/include/model/SCXMLModel.h"
-#include "rsm/include/parsing/SCXMLParser.h"
+#include "actions/ScriptAction.h"
+#include "factory/NodeFactory.h"
+#include "model/SCXMLModel.h"
+#include "parsing/SCXMLParser.h"
 
 namespace fs = std::filesystem;
 
@@ -159,7 +159,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << generateEventEnum(events);
     ss << "\n";
 
-    // Generate class (CRTP pattern)
+    // Generate base class template
     ss << generateClass(model);
 
     ss << "\n} // namespace RSM::Generated\n";

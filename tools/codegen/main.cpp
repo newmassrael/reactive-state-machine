@@ -1,39 +1,40 @@
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <spdlog/fmt/fmt.h>
 #include <string>
 
-// Include parsing components
+#include "StaticCodeGenerator.h"
 #include "common/Logger.h"
-#include "factory/NodeFactory.h"
-#include "model/SCXMLModel.h"
-#include "parsing/SCXMLParser.h"
 
 namespace fs = std::filesystem;
 
 void printUsage(const char *programName) {
-    RSM::Logger::info("SCXML Code Generator\n");
-    RSM::Logger::info(fmt::format("Usage: {} [options] <input.scxml>\n", programName));
-    RSM::Logger::info("Options:");
-    RSM::Logger::info("  -o, --output <file>    Output file path (default: generated.cpp)");
-    RSM::Logger::info("  -h, --help            Show this help message");
-    RSM::Logger::info("  -v, --verbose         Enable verbose logging\n");
-    RSM::Logger::info("Examples:");
-    RSM::Logger::info(fmt::format("  {} state_machine.scxml", programName));
-    RSM::Logger::info(fmt::format("  {} -o my_sm.cpp input.scxml", programName));
-    RSM::Logger::info(fmt::format("  {} --verbose --output=generated.hpp input.scxml", programName));
+    LOG_INFO("SCXML Static Code Generator");
+    LOG_INFO("Generates zero-overhead C++ state machine code from SCXML\n");
+    LOG_INFO("Usage: {} [options] <input.scxml>", programName);
+    LOG_INFO("\nOptions:");
+    LOG_INFO("  -o, --output <dir>     Output directory (default: current directory)");
+    LOG_INFO("  -h, --help             Show this help message");
+    LOG_INFO("  -v, --verbose          Enable verbose logging");
+    LOG_INFO("  --version              Show version information\n");
+    LOG_INFO("Examples:");
+    LOG_INFO("  {} thermostat.scxml", programName);
+    LOG_INFO("  {} -o generated/ robot.scxml", programName);
+    LOG_INFO("  {} --output=include/ state_machine.scxml", programName);
+    LOG_INFO("\nOutput:");
+    LOG_INFO("  Generates <StateMachineName>_sm.h in the output directory");
+    LOG_INFO("  Inherit from generated base class to implement your logic");
 }
 
 void printVersion() {
-    RSM::Logger::info("scxml-codegen version 1.0.0");
-    RSM::Logger::info("SCXML-to-C++ Code Generator");
+    LOG_INFO("scxml-codegen version 1.0.0");
+    LOG_INFO("Static SCXML-to-C++ Code Generator");
+    LOG_INFO("Zero-overhead compile-time state machines");
 }
 
 int main(int argc, char *argv[]) {
     std::string inputFile;
-    std::string outputFile = "generated.cpp";
+    std::string outputDir = ".";
     bool verbose = false;
 
     // Parse command line arguments
@@ -50,22 +51,22 @@ int main(int argc, char *argv[]) {
             return 0;
         } else if (arg == "-o" || arg == "--output") {
             if (i + 1 < argc) {
-                outputFile = argv[++i];
+                outputDir = argv[++i];
             } else {
-                RSM::Logger::error("Error: --output requires a file path");
+                LOG_ERROR("Error: --output requires a directory path");
                 return 1;
             }
         } else if (arg.starts_with("--output=")) {
-            outputFile = arg.substr(9);
+            outputDir = arg.substr(9);
         } else if (arg.starts_with("-")) {
-            RSM::Logger::error(fmt::format("Error: Unknown option {}", arg));
+            LOG_ERROR("Error: Unknown option {}", arg);
             printUsage(argv[0]);
             return 1;
         } else {
             if (inputFile.empty()) {
                 inputFile = arg;
             } else {
-                RSM::Logger::error("Error: Multiple input files specified");
+                LOG_ERROR("Error: Multiple input files specified");
                 return 1;
             }
         }
@@ -73,94 +74,72 @@ int main(int argc, char *argv[]) {
 
     // Validate arguments
     if (inputFile.empty()) {
-        RSM::Logger::error("Error: No input file specified");
+        LOG_ERROR("Error: No input file specified");
         printUsage(argv[0]);
         return 1;
     }
 
     if (!fs::exists(inputFile)) {
-        RSM::Logger::error(fmt::format("Error: Input file '{}' does not exist", inputFile));
+        LOG_ERROR("Error: Input file '{}' does not exist", inputFile);
         return 1;
     }
 
-    // Set logging level
+    // Create output directory if it doesn't exist
+    if (!fs::exists(outputDir)) {
+        try {
+            fs::create_directories(outputDir);
+            if (verbose) {
+                LOG_INFO("Created output directory: {}", outputDir);
+            }
+        } catch (const std::exception &e) {
+            LOG_ERROR("Error: Cannot create output directory '{}': {}", outputDir, e.what());
+            return 1;
+        }
+    }
+
+    if (!fs::is_directory(outputDir)) {
+        LOG_ERROR("Error: Output path '{}' is not a directory", outputDir);
+        return 1;
+    }
+
     if (verbose) {
-        // Logger는 정적 레벨 설정이 없으므로 현재는 무시
-        RSM::Logger::info("Verbose mode enabled");
+        LOG_INFO("Verbose mode enabled");
     }
 
     try {
-        RSM::Logger::info("Starting SCXML code generation...");
-        RSM::Logger::info(fmt::format("Input file: {}", inputFile));
-        RSM::Logger::info(fmt::format("Output file: {}", outputFile));
+        LOG_INFO("Starting SCXML static code generation...");
+        LOG_INFO("Input file: {}", inputFile);
+        LOG_INFO("Output directory: {}", outputDir);
 
-        // Parse SCXML file
-        auto nodeFactory = std::make_shared<RSM::NodeFactory>();
-        RSM::SCXMLParser parser(nodeFactory);
-        auto model = parser.parseFile(inputFile);
+        // Generate code using StaticCodeGenerator
+        RSM::Codegen::StaticCodeGenerator generator;
+        bool success = generator.generate(inputFile, outputDir);
 
-        if (!model) {
-            RSM::Logger::error("Error: Failed to parse SCXML file");
+        if (!success) {
+            LOG_ERROR("Error: Code generation failed");
             return 1;
         }
 
-        RSM::Logger::info("SCXML parsing completed successfully");
+        LOG_INFO("Code generation completed successfully");
 
-        // Generate C++ code
-        std::ofstream outFile(outputFile);
-        if (!outFile.is_open()) {
-            RSM::Logger::error(fmt::format("Error: Cannot create output file '{}'", outputFile));
-            return 1;
+        // Get the expected output file name
+        auto scxmlPath = fs::path(inputFile);
+        std::string baseName = scxmlPath.stem().string();
+        std::string outputFile = (fs::path(outputDir) / (baseName + "_sm.h")).string();
+
+        if (fs::exists(outputFile)) {
+            LOG_INFO("Generated: {}", outputFile);
+            LOG_INFO("\nNext steps:");
+            LOG_INFO("  1. Include the generated header: #include \"{}\"", fs::path(outputFile).filename().string());
+            LOG_INFO("  2. Inherit from base class: class MyLogic : public {}Base<MyLogic> {{}}", baseName);
+            LOG_INFO("  3. Implement required guard/action methods");
+            LOG_INFO("  4. Call sm.initialize() to start the state machine");
         }
-
-        // Generate header
-        outFile << "// Generated by scxml-codegen from " << inputFile << "\n";
-        outFile << "// Do not edit this file manually\n\n";
-        outFile << "#include \"scxml/SCXMLEngine.h\"\n";
-        outFile << "#include \"scxml/SCXMLTypes.h\"\n\n";
-
-        // Generate state machine class
-        std::string className = fs::path(inputFile).stem().string() + "StateMachine";
-        outFile << "class " << className << " {\n";
-        outFile << "public:\n";
-        outFile << "    " << className << "() {\n";
-        outFile << "        engine = SCXML::createSCXMLEngine();\n";
-        outFile << "        engine->initialize();\n";
-        outFile << "        engine->createSession(\"main\");\n";
-        outFile << "    }\n\n";
-        outFile << "    ~" << className << "() {\n";
-        outFile << "        if (engine) {\n";
-        outFile << "            engine->destroySession(\"main\");\n";
-        outFile << "            engine->shutdown();\n";
-        outFile << "        }\n";
-        outFile << "    }\n\n";
-        outFile << "    void start() {\n";
-        outFile << "        // TODO: Generate state machine logic based on SCXML\n";
-        outFile << "        // This is a placeholder implementation\n";
-        outFile << "    }\n\n";
-        outFile << "    void processEvent(const std::string& eventName) {\n";
-        outFile << "        auto event = std::make_shared<SCXML::Event>(eventName);\n";
-        outFile << "        engine->setCurrentEvent(\"main\", event);\n";
-        outFile << "    }\n\n";
-        outFile << "private:\n";
-        outFile << "    std::unique_ptr<SCXML::SCXMLEngine> engine;\n";
-        outFile << "};\n\n";
-
-        // Generate usage example
-        outFile << "// Usage example:\n";
-        outFile << "// " << className << " sm;\n";
-        outFile << "// sm.start();\n";
-        outFile << "// sm.processEvent(\"user_input\");\n";
-
-        outFile.close();
-
-        RSM::Logger::info("Code generation completed successfully");
-        RSM::Logger::info(fmt::format("Generated: {}", outputFile));
 
         return 0;
 
     } catch (const std::exception &e) {
-        RSM::Logger::error(fmt::format("Error: {}", e.what()));
+        LOG_ERROR("Error: {}", e.what());
         return 1;
     }
 }

@@ -342,6 +342,7 @@ add_executable(integration_tests
     integration/ConcurrentCompletionMonitoringTest.cpp
     integration/SCXMLForeachIntegrationTest.cpp
     integration/HistoryStateIntegrationTest.cpp
+    integration/StaticCodegenIntegrationTest.cpp
     w3c/W3CHttpTestServer.cpp
     mocks/MockActionExecutor.cpp
     mocks/MockEventRaiser.cpp

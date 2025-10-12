@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="SimpleLight" initial="off">
+  <state id="off">
+    <onentry>
+      <script>onLightOff()</script>
+    </onentry>
+    <transition event="switch_on" target="on">
+      <script>turnOn()</script>
+    </transition>
+  </state>
+
+  <state id="on">
+    <onentry>
+      <script>onLightOn()</script>
+    </onentry>
+    <transition event="switch_off" target="off">
+      <script>turnOff()</script>
+    </transition>
+  </state>
+</scxml>

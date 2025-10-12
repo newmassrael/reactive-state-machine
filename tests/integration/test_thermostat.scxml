@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="Thermostat" initial="idle">
+  <state id="idle">
+    <onentry>
+      <script>onEnterIdle()</script>
+    </onentry>
+    <transition event="temp_high" cond="shouldCool()" target="cooling">
+      <script>startCooling()</script>
+    </transition>
+  </state>
+
+  <state id="cooling">
+    <onentry>
+      <script>onEnterCooling()</script>
+    </onentry>
+    <onexit>
+      <script>onExitCooling()</script>
+    </onexit>
+    <transition event="temp_normal" target="idle">
+      <script>stopCooling()</script>
+    </transition>
+  </state>
+</scxml>
