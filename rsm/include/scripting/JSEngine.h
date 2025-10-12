@@ -608,6 +608,10 @@ private:
     static JSValue consoleFunctionWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
     static JSValue queueErrorEventWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
 
+    // Global function wrapper for C++ registered functions
+    static JSValue globalFunctionWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv, int magic,
+                                         JSValue *func_data);
+
     // SCXML W3C Compliance - Read-only system variables
     void queueInternalEvent(const std::string &sessionId, const std::string &eventName);
 

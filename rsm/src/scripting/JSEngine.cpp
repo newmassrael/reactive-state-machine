@@ -759,6 +759,18 @@ void JSEngine::setupSCXMLBuiltins(JSContext *ctx, [[maybe_unused]] const std::st
 
     // W3C SCXML 5.10: _event is bound lazily on first event (see JSEngineImpl::setCurrentEventInternal)
 
+    // Bind all registered global functions
+    {
+        std::lock_guard<std::mutex> lock(globalFunctionsMutex_);
+        for (const auto &[name, callback] : globalFunctions_) {
+            ::JSValue funcName = JS_NewString(ctx, name.c_str());
+            ::JSValue func = JS_NewCFunctionData(ctx, globalFunctionWrapper, -1, 0, 1, &funcName);
+            JS_SetPropertyStr(ctx, global, name.c_str(), func);
+            JS_FreeValue(ctx, funcName);  // Free the string after using it
+            LOG_DEBUG("JSEngine: Bound registered global function '{}' to JavaScript context", name);
+        }
+    }
+
     JS_FreeValue(ctx, global);
 }
 
@@ -979,6 +991,56 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
     return JS_UNDEFINED;
 }
 
+::JSValue JSEngine::globalFunctionWrapper(JSContext *ctx, JSValue this_val, int argc, JSValue *argv, int magic,
+                                          JSValue *func_data) {
+    (void)this_val;  // Unused parameter
+    (void)magic;     // Unused parameter
+
+    // 1. Extract function name from func_data[0]
+    const char *funcName = JS_ToCString(ctx, func_data[0]);
+    if (!funcName) {
+        return JS_ThrowTypeError(ctx, "Invalid function data");
+    }
+
+    // 2. Get JSEngine instance and find callback in globalFunctions_ map
+    JSEngine *engine = static_cast<JSEngine *>(JS_GetContextOpaque(ctx));
+    if (!engine) {
+        JS_FreeCString(ctx, funcName);
+        return JS_ThrowInternalError(ctx, "Engine instance not found in context");
+    }
+
+    std::function<ScriptValue(const std::vector<ScriptValue> &)> callback;
+    {
+        std::lock_guard<std::mutex> lock(engine->globalFunctionsMutex_);
+        auto it = engine->globalFunctions_.find(funcName);
+        if (it == engine->globalFunctions_.end()) {
+            JS_FreeCString(ctx, funcName);
+            return JS_ThrowReferenceError(ctx, "Function not found: %s", funcName);
+        }
+        callback = it->second;
+    }
+
+    LOG_DEBUG("JSEngine: Calling registered global function: {}", funcName);
+    JS_FreeCString(ctx, funcName);
+
+    // 3. Convert JSValue arguments to ScriptValue vector
+    std::vector<ScriptValue> args;
+    args.reserve(argc);
+    for (int i = 0; i < argc; ++i) {
+        args.push_back(engine->quickJSToJSValue(ctx, argv[i]));
+    }
+
+    // 4. Call C++ callback
+    try {
+        ScriptValue result = callback(args);
+
+        // 5. Convert ScriptValue result back to JSValue
+        return engine->jsValueToQuickJS(ctx, result);
+    } catch (const std::exception &e) {
+        return JS_ThrowInternalError(ctx, "Global function execution failed: %s", e.what());
+    }
+}
+
 bool JSEngine::checkStateActive(const std::string &stateName) const {
     std::lock_guard<std::mutex> lock(stateMachinesMutex_);
 
@@ -990,6 +1052,20 @@ bool JSEngine::checkStateActive(const std::string &stateName) const {
         }
     }
     return false;
+}
+
+bool JSEngine::registerGlobalFunction(const std::string &functionName,
+                                      std::function<ScriptValue(const std::vector<ScriptValue> &)> callback) {
+    if (functionName.empty() || !callback) {
+        LOG_ERROR("JSEngine: Invalid function name or callback for global function registration");
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(globalFunctionsMutex_);
+    globalFunctions_[functionName] = std::move(callback);
+
+    LOG_DEBUG("JSEngine: Registered global function: {}", functionName);
+    return true;
 }
 
 void JSEngine::queueInternalEvent(const std::string &sessionId, const std::string &eventName) {

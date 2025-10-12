@@ -709,3 +709,158 @@ TEST_F(JSEngineBasicTest, W3C_ForeachVariableCreationAndExistenceCheck) {
     ASSERT_TRUE(verifyIndex5Result.isSuccess()) << "Verifying index variable '5' should succeed";
     EXPECT_TRUE(verifyIndex5Result.getValue<bool>()) << "Index variable '5' should exist";
 }
+
+// ============================================================================
+// C++ Function Binding Tests
+// ============================================================================
+
+TEST_F(JSEngineBasicTest, CppBinding_RegisterGlobalFunction_SimpleCall) {
+    // Register function BEFORE creating session
+    bool functionCalled = false;
+    engine_->registerGlobalFunction("testFunc", [&functionCalled](const std::vector<ScriptValue> &) {
+        functionCalled = true;
+        return ScriptValue(42);
+    });
+
+    // Recreate session to bind the registered function
+    engine_->destroySession(sessionId_);
+    engine_->createSession(sessionId_, "");
+
+    auto result = engine_->evaluateExpression(sessionId_, "testFunc()").get();
+
+    ASSERT_TRUE(result.isSuccess()) << "Registered function should be callable from JavaScript";
+    EXPECT_TRUE(functionCalled) << "C++ callback should have been invoked";
+    EXPECT_EQ(result.getValue<int64_t>(), 42) << "Return value should be 42";
+}
+
+TEST_F(JSEngineBasicTest, CppBinding_RegisterGlobalFunction_WithArguments) {
+    // Register function BEFORE creating session
+    engine_->registerGlobalFunction("add", [](const std::vector<ScriptValue> &args) {
+        if (args.size() != 2) {
+            return ScriptValue(0);
+        }
+        int a = std::get<int64_t>(args[0]);
+        int b = std::get<int64_t>(args[1]);
+        return ScriptValue(static_cast<int64_t>(a + b));
+    });
+
+    // Recreate session to bind the registered function
+    engine_->destroySession(sessionId_);
+    engine_->createSession(sessionId_, "");
+
+    auto result = engine_->evaluateExpression(sessionId_, "add(2, 3)").get();
+
+    ASSERT_TRUE(result.isSuccess()) << "Function with arguments should work";
+    EXPECT_EQ(result.getValue<int64_t>(), 5) << "add(2, 3) should return 5";
+}
+
+TEST_F(JSEngineBasicTest, CppBinding_RegisterGlobalFunction_StringArguments) {
+    // Register function BEFORE creating session
+    engine_->registerGlobalFunction("concat", [](const std::vector<ScriptValue> &args) {
+        if (args.size() != 2) {
+            return ScriptValue(std::string(""));
+        }
+        std::string a = std::get<std::string>(args[0]);
+        std::string b = std::get<std::string>(args[1]);
+        return ScriptValue(a + b);
+    });
+
+    // Recreate session to bind the registered function
+    engine_->destroySession(sessionId_);
+    engine_->createSession(sessionId_, "");
+
+    auto result = engine_->evaluateExpression(sessionId_, "concat('Hello', 'World')").get();
+
+    ASSERT_TRUE(result.isSuccess()) << "String function should work";
+    EXPECT_EQ(result.getValue<std::string>(), "HelloWorld") << "concat should join strings";
+}
+
+TEST_F(JSEngineBasicTest, CppBinding_RegisterGlobalFunction_BooleanReturn) {
+    // Register function BEFORE creating session
+    engine_->registerGlobalFunction("isEven", [](const std::vector<ScriptValue> &args) {
+        if (args.empty()) {
+            return ScriptValue(false);
+        }
+        int64_t num = std::get<int64_t>(args[0]);
+        return ScriptValue(num % 2 == 0);
+    });
+
+    // Recreate session to bind the registered function
+    engine_->destroySession(sessionId_);
+    engine_->createSession(sessionId_, "");
+
+    auto result1 = engine_->evaluateExpression(sessionId_, "isEven(4)").get();
+    ASSERT_TRUE(result1.isSuccess());
+    EXPECT_TRUE(result1.getValue<bool>()) << "isEven(4) should be true";
+
+    auto result2 = engine_->evaluateExpression(sessionId_, "isEven(3)").get();
+    ASSERT_TRUE(result2.isSuccess());
+    EXPECT_FALSE(result2.getValue<bool>()) << "isEven(3) should be false";
+}
+
+TEST_F(JSEngineBasicTest, CppBinding_RegisterGlobalFunction_DoubleArithmetic) {
+    // Register function BEFORE creating session
+    engine_->registerGlobalFunction("multiply", [](const std::vector<ScriptValue> &args) {
+        if (args.size() != 2) {
+            return ScriptValue(0.0);
+        }
+        // Handle both int64_t and double (JS whole numbers become int64_t)
+        auto getDouble = [](const ScriptValue &v) -> double {
+            if (std::holds_alternative<int64_t>(v)) {
+                return static_cast<double>(std::get<int64_t>(v));
+            }
+            return std::get<double>(v);
+        };
+        double a = getDouble(args[0]);
+        double b = getDouble(args[1]);
+        return ScriptValue(a * b);
+    });
+
+    // Recreate session to bind the registered function
+    engine_->destroySession(sessionId_);
+    engine_->createSession(sessionId_, "");
+
+    auto result = engine_->evaluateExpression(sessionId_, "multiply(2.5, 4.0)").get();
+
+    ASSERT_TRUE(result.isSuccess()) << "Double arithmetic should work";
+    EXPECT_DOUBLE_EQ(result.getValue<double>(), 10.0) << "2.5 * 4.0 should be 10.0";
+}
+
+TEST_F(JSEngineBasicTest, CppBinding_RegisterGlobalFunction_MultipleRegistrations) {
+    // Register all functions BEFORE creating session
+    engine_->registerGlobalFunction("func1", [](const std::vector<ScriptValue> &) { return ScriptValue(1); });
+
+    engine_->registerGlobalFunction("func2", [](const std::vector<ScriptValue> &) { return ScriptValue(2); });
+
+    engine_->registerGlobalFunction("func3", [](const std::vector<ScriptValue> &) { return ScriptValue(3); });
+
+    // Recreate session to bind all registered functions
+    engine_->destroySession(sessionId_);
+    engine_->createSession(sessionId_, "");
+
+    auto result1 = engine_->evaluateExpression(sessionId_, "func1()").get();
+    auto result2 = engine_->evaluateExpression(sessionId_, "func2()").get();
+    auto result3 = engine_->evaluateExpression(sessionId_, "func3()").get();
+
+    ASSERT_TRUE(result1.isSuccess() && result2.isSuccess() && result3.isSuccess());
+    EXPECT_EQ(result1.getValue<int64_t>(), 1);
+    EXPECT_EQ(result2.getValue<int64_t>(), 2);
+    EXPECT_EQ(result3.getValue<int64_t>(), 3);
+}
+
+TEST_F(JSEngineBasicTest, CppBinding_RegisterGlobalFunction_UsedInConditions) {
+    // Register function BEFORE creating session
+    engine_->registerGlobalFunction("checkTemperature", [](const std::vector<ScriptValue> &) {
+        return ScriptValue(true);  // Simulate high temperature
+    });
+
+    // Recreate session to bind the registered function
+    engine_->destroySession(sessionId_);
+    engine_->createSession(sessionId_, "");
+
+    // Simulate SCXML condition evaluation
+    auto condResult = engine_->evaluateExpression(sessionId_, "checkTemperature() ? 'cooling' : 'idle'").get();
+
+    ASSERT_TRUE(condResult.isSuccess());
+    EXPECT_EQ(condResult.getValue<std::string>(), "cooling") << "Function should work in conditional expressions";
+}

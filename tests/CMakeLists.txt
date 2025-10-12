@@ -69,6 +69,7 @@ set(RSM_TEST_TARGETS
     w3c_test_cli
     w3c_full_runner
     w3c_simple_tests
+    static_codegen_tests
     # simple_scxml_engine_tests  # Temporarily disabled
 )
 
@@ -452,6 +453,35 @@ target_include_directories(w3c_test_cli
 add_dependencies(w3c_test_cli libxmlxx_external rsm_unified)
 
 # ============================================================================
+# 9. Static Code Generation Tests (TDD for Static Compiler)
+# ============================================================================
+add_executable(static_codegen_tests
+    codegen/test_static_codegen.cpp
+    ../tools/codegen/StaticCodeGenerator.cpp
+)
+
+target_include_directories(static_codegen_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/rsm/include
+        ${CMAKE_SOURCE_DIR}/tools/codegen
+        ${CMAKE_SOURCE_DIR}/tests
+        ${LIBXMLXX_INCLUDE_DIRS}
+        /usr/include/libxml2
+)
+
+target_link_libraries(static_codegen_tests
+    PRIVATE
+        rsm_unified
+        GTest::gtest_main
+        ${LIBXMLXX_LIBRARIES}
+        xml2
+        pthread
+)
+
+add_dependencies(static_codegen_tests libxmlxx_external rsm_unified)
+
+# ============================================================================
 # CTest 실행 순서 최적화 (빠른 피드백 → 종합 검증 → 성능 측정)
 # ============================================================================
 
@@ -465,6 +495,7 @@ add_test(NAME StateMachineTests COMMAND state_machine_tests)
 add_test(NAME JSEngineTests COMMAND js_engine_tests)
 add_test(NAME ActionTests COMMAND action_tests)
 add_test(NAME RSMSCXMLTests COMMAND rsm_scxml_tests)
+add_test(NAME StaticCodegenTests COMMAND static_codegen_tests)
 # add_test(NAME ReadySCXMLEngineTests COMMAND simple_scxml_engine_tests)  # Temporarily disabled
 
 # Phase 3: 통합 및 동시성 테스트 (시스템 레벨 검증, ~5-15초)
@@ -491,6 +522,7 @@ set_tests_properties(StateMachineTests PROPERTIES COST 4000)
 set_tests_properties(JSEngineTests PROPERTIES COST 4000)
 set_tests_properties(ActionTests PROPERTIES COST 4000)
 set_tests_properties(RSMSCXMLTests PROPERTIES COST 4000)
+set_tests_properties(StaticCodegenTests PROPERTIES COST 4000)
 
 # Phase 3: COST 3000
 set_tests_properties(TXMLConverterTests PROPERTIES COST 3000)
@@ -529,6 +561,7 @@ set_tests_properties(W3CFullComplianceTests PROPERTIES DEPENDS "IntegrationTests
 
 # 테스트 타임아웃 설정 (초 단위)
 set_tests_properties(RSMSCXMLTests PROPERTIES TIMEOUT 30)
+set_tests_properties(StaticCodegenTests PROPERTIES TIMEOUT 30)
 # set_tests_properties(ReadySCXMLEngineTests PROPERTIES TIMEOUT 30)  # Temporarily disabled
 set_tests_properties(JSEngineTests CoreParserTests StateMachineTests PROPERTIES TIMEOUT 60)
 set_tests_properties(ActionTests HistoryTests StatesTests PROPERTIES TIMEOUT 90)
