@@ -42,8 +42,10 @@ public:
     // Individual generation methods (public for testability)
     std::string generateStateEnum(const std::set<std::string> &states);
     std::string generateEventEnum(const std::set<std::string> &events);
-    std::string generateProcessEvent(const std::string &className);
-    std::string generateClass(const std::string &className, const std::string &initialState);
+    std::string generateStrategyInterface(const std::string &className, const std::set<std::string> &guards,
+                                          const std::set<std::string> &actions);
+    std::string generateProcessEvent(const SCXMLModel &model);
+    std::string generateClass(const SCXMLModel &model);
 
     // Extract Guard and Action functions from SCXML
     std::set<std::string> extractGuards(const std::string &scxmlPath);
@@ -71,12 +73,26 @@ private:
 };
 
 // Simplified model for code generation (extracted from RSM::SCXMLModel)
+struct Transition {
+    std::string sourceState;
+    std::string event;
+    std::string targetState;
+    std::string guard;                 // Guard condition expression (e.g., "isReady()")
+    std::vector<std::string> actions;  // Action function names from transition scripts
+};
+
+struct State {
+    std::string name;
+    std::vector<std::string> entryActions;  // Actions from <onentry>
+    std::vector<std::string> exitActions;   // Actions from <onexit>
+};
+
 class SCXMLModel {
 public:
     std::string name;
     std::string initial;
-    std::vector<std::string> states;
-    std::vector<std::pair<std::string, std::string>> transitions;  // (event, target)
+    std::vector<State> states;  // Changed from vector<string> to vector<State>
+    std::vector<Transition> transitions;
 };
 
 }  // namespace RSM::Codegen

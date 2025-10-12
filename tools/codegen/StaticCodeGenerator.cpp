@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <regex>
 #include <sstream>
 
@@ -62,8 +63,38 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         return false;
     }
 
+    static const std::regex funcRegex(R"((\w+)\(\))");
+
     for (const auto &state : allStates) {
-        model.states.push_back(state->getId());
+        // Create State with entry/exit actions
+        State stateInfo;
+        stateInfo.name = state->getId();
+
+        // Extract entry actions
+        for (const auto &actionBlock : state->getEntryActionBlocks()) {
+            for (const auto &actionNode : actionBlock) {
+                if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                    const std::string &content = scriptAction->getContent();
+                    auto extractedFuncs = extractFunctionNames(content, funcRegex);
+                    stateInfo.entryActions.insert(stateInfo.entryActions.end(), extractedFuncs.begin(),
+                                                  extractedFuncs.end());
+                }
+            }
+        }
+
+        // Extract exit actions
+        for (const auto &actionBlock : state->getExitActionBlocks()) {
+            for (const auto &actionNode : actionBlock) {
+                if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                    const std::string &content = scriptAction->getContent();
+                    auto extractedFuncs = extractFunctionNames(content, funcRegex);
+                    stateInfo.exitActions.insert(stateInfo.exitActions.end(), extractedFuncs.begin(),
+                                                 extractedFuncs.end());
+                }
+            }
+        }
+
+        model.states.push_back(stateInfo);
 
         // Extract transitions from each state
         auto transitions = state->getTransitions();
@@ -72,7 +103,22 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
             auto targets = transition->getTargets();
             if (!event.empty() && !targets.empty()) {
                 // Use first target (SCXML supports multiple targets)
-                model.transitions.push_back(std::make_pair(event, targets[0]));
+                Transition trans;
+                trans.sourceState = state->getId();
+                trans.event = event;
+                trans.targetState = targets[0];
+                trans.guard = transition->getGuard();  // Extract guard condition
+
+                // Extract actions from transition
+                for (const auto &actionNode : transition->getActionNodes()) {
+                    if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                        const std::string &content = scriptAction->getContent();
+                        auto extractedFuncs = extractFunctionNames(content, funcRegex);
+                        trans.actions.insert(trans.actions.end(), extractedFuncs.begin(), extractedFuncs.end());
+                    }
+                }
+
+                model.transitions.push_back(trans);
             }
         }
     }
@@ -87,8 +133,12 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         return false;
     }
 
-    LOG_INFO("StaticCodeGenerator: Generating code for '{}' with {} states and {} events", model.name, states.size(),
-             events.size());
+    // Step 5b: Extract guards and actions
+    auto guards = extractGuardsInternal(rsmModel);
+    auto actions = extractActionsInternal(rsmModel);
+
+    LOG_INFO("StaticCodeGenerator: Generating code for '{}' with {} states, {} events, {} guards, {} actions",
+             model.name, states.size(), events.size(), guards.size(), actions.size());
 
     // Step 6: Generate code
     std::stringstream ss;
@@ -109,8 +159,14 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << generateEventEnum(events);
     ss << "\n";
 
+    // Generate Strategy interface (if there are guards or actions)
+    if (!guards.empty() || !actions.empty()) {
+        ss << generateStrategyInterface(model.name, guards, actions);
+        ss << "\n";
+    }
+
     // Generate class
-    ss << generateClass(model.name, model.initial);
+    ss << generateClass(model);
 
     ss << "\n} // namespace RSM::Generated\n";
 
@@ -161,33 +217,160 @@ std::string StaticCodeGenerator::generateEventEnum(const std::set<std::string> &
     return generateEnum("Event", events);
 }
 
-std::string StaticCodeGenerator::generateProcessEvent(const std::string &className) {
-    (void)className;  // TODO: Use className for transition generation
+std::string StaticCodeGenerator::generateStrategyInterface(const std::string &className,
+                                                           const std::set<std::string> &guards,
+                                                           const std::set<std::string> &actions) {
+    std::stringstream ss;
+
+    ss << "class I" << className << "Logic {\n";
+    ss << "public:\n";
+    ss << "    virtual ~I" << className << "Logic() = default;\n";
+
+    // Generate Guard methods
+    if (!guards.empty()) {
+        ss << "\n";
+        ss << "    // Guards\n";
+        for (const auto &guard : guards) {
+            ss << "    virtual bool " << guard << "() = 0;\n";
+        }
+    }
+
+    // Generate Action methods
+    if (!actions.empty()) {
+        ss << "\n";
+        ss << "    // Actions\n";
+        for (const auto &action : actions) {
+            ss << "    virtual void " << action << "() = 0;\n";
+        }
+    }
+
+    ss << "};\n";
+
+    return ss.str();
+}
+
+std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
     std::stringstream ss;
 
     ss << "    void processEvent(Event event) {\n";
-    ss << "        // State transition logic will be generated here\n";
-    ss << "        (void)event;  // Suppress unused parameter warning\n";
+    ss << "        switch (currentState_) {\n";
+
+    // Group transitions by source state
+    std::map<std::string, std::vector<Transition>> transitionsByState;
+    for (const auto &trans : model.transitions) {
+        transitionsByState[trans.sourceState].push_back(trans);
+    }
+
+    // Build map from state name to State for quick lookup
+    std::map<std::string, const State *> stateMap;
+    for (const auto &state : model.states) {
+        stateMap[state.name] = &state;
+    }
+
+    // Generate case for each state (sorted for consistent output)
+    std::set<std::string> stateNames;
+    for (const auto &state : model.states) {
+        stateNames.insert(state.name);
+    }
+
+    for (const auto &stateName : stateNames) {
+        ss << "            case State::" << capitalize(stateName) << ":\n";
+
+        // Generate if-else chain for events in this state
+        auto it = transitionsByState.find(stateName);
+        if (it != transitionsByState.end() && !it->second.empty()) {
+            bool isFirst = true;
+            for (const auto &trans : it->second) {
+                if (isFirst) {
+                    ss << "                if (event == Event::" << capitalize(trans.event) << ") {\n";
+                    isFirst = false;
+                } else {
+                    ss << "                } else if (event == Event::" << capitalize(trans.event) << ") {\n";
+                }
+
+                // Determine indentation level based on guard presence
+                std::string indent = "                    ";
+                bool hasGuard = !trans.guard.empty();
+
+                // Generate guard condition if present
+                if (hasGuard) {
+                    // Extract function name from guard expression (e.g., "isReady()" -> "isReady")
+                    std::string guardFunc = trans.guard;
+                    // Remove () and any negation or logical operators
+                    size_t parenPos = guardFunc.find('(');
+                    if (parenPos != std::string::npos) {
+                        guardFunc = guardFunc.substr(0, parenPos);
+                    }
+                    // Remove leading ! if present
+                    if (!guardFunc.empty() && guardFunc[0] == '!') {
+                        guardFunc = guardFunc.substr(1);
+                    }
+
+                    ss << indent << "if (logic_->" << guardFunc << "()) {\n";
+                    indent += "    ";  // Increase indentation inside guard
+                }
+
+                // 1. Generate onexit actions of source state
+                auto sourceIt = stateMap.find(trans.sourceState);
+                if (sourceIt != stateMap.end() && !sourceIt->second->exitActions.empty()) {
+                    for (const auto &action : sourceIt->second->exitActions) {
+                        ss << indent << "logic_->" << action << "();\n";
+                    }
+                }
+
+                // 2. Generate transition action calls
+                for (const auto &action : trans.actions) {
+                    ss << indent << "logic_->" << action << "();\n";
+                }
+
+                // 3. Generate onentry actions of target state
+                auto targetIt = stateMap.find(trans.targetState);
+                if (targetIt != stateMap.end() && !targetIt->second->entryActions.empty()) {
+                    for (const auto &action : targetIt->second->entryActions) {
+                        ss << indent << "logic_->" << action << "();\n";
+                    }
+                }
+
+                // 4. Generate state transition
+                ss << indent << "currentState_ = State::" << capitalize(trans.targetState) << ";\n";
+
+                // Close guard if block
+                if (hasGuard) {
+                    ss << "                    }\n";
+                }
+            }
+            ss << "                }\n";
+        }
+
+        ss << "                break;\n";
+    }
+
+    ss << "        }\n";
     ss << "    }\n";
 
     return ss.str();
 }
 
-std::string StaticCodeGenerator::generateClass(const std::string &className, const std::string &initialState) {
+std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
 
     ss << "template<typename LogicType = void>\n";
-    ss << "class " << className << " {\n";
+    ss << "class " << model.name << " {\n";
     ss << "private:\n";
-    ss << "    State currentState_ = State::" << capitalize(initialState) << ";\n";
+    ss << "    State currentState_ = State::" << capitalize(model.initial) << ";\n";
     ss << "    std::unique_ptr<LogicType> logic_;\n\n";
 
     ss << "public:\n";
-    ss << "    " << className << "() = default;\n\n";
+    ss << "    " << model.name << "() = default;\n\n";
 
     // processEvent method
-    ss << generateProcessEvent(className);
+    ss << generateProcessEvent(model);
     ss << "\n";
+
+    // Logic injection
+    ss << "    void setLogic(std::unique_ptr<LogicType> logic) {\n";
+    ss << "        logic_ = std::move(logic);\n";
+    ss << "    }\n\n";
 
     // Getter
     ss << "    State getCurrentState() const { return currentState_; }\n";
@@ -208,15 +391,18 @@ std::string StaticCodeGenerator::capitalize(const std::string &str) {
 }
 
 std::set<std::string> StaticCodeGenerator::extractStates(const SCXMLModel &model) {
-    return std::set<std::string>(model.states.begin(), model.states.end());
+    std::set<std::string> stateNames;
+    for (const auto &state : model.states) {
+        stateNames.insert(state.name);
+    }
+    return stateNames;
 }
 
 std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model) {
     std::set<std::string> events;
-    for (const auto &[event, target] : model.transitions) {
-        (void)target;  // Unused in extraction
-        if (!event.empty()) {
-            events.insert(event);
+    for (const auto &transition : model.transitions) {
+        if (!transition.event.empty()) {
+            events.insert(transition.event);
         }
     }
     return events;

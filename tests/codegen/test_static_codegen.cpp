@@ -222,6 +222,267 @@ TEST_F(StaticCodeGenTest, ExtractsActionFunctions) {
     EXPECT_TRUE(actions.count("deactivate") > 0) << "Should extract deactivate action";
 }
 
+TEST_F(StaticCodeGenTest, GeneratesTransitionLogic) {
+    // Arrange: Simple SCXML with 2 states and 2 transitions
+    std::string scxmlPath = createSimpleSCXML("transition.scxml");
+    std::string outputDir = testDir_.string();
+
+    // Act: Generate code
+    StaticCodeGenerator generator;
+    ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
+
+    // Assert: Verify transition logic in processEvent
+    std::string generatedFile = (testDir_ / "SimpleSM_sm.h").string();
+    ASSERT_TRUE(fs::exists(generatedFile));
+
+    std::string content = readFile(generatedFile);
+
+    // Should have switch statement
+    EXPECT_TRUE(content.find("switch (currentState_)") != std::string::npos)
+        << "Should generate switch statement for states";
+
+    // Should have case for Idle state
+    EXPECT_TRUE(content.find("case State::Idle:") != std::string::npos) << "Should have case for Idle state";
+
+    // Should have case for Active state
+    EXPECT_TRUE(content.find("case State::Active:") != std::string::npos) << "Should have case for Active state";
+
+    // Should have event check for Start
+    EXPECT_TRUE(content.find("event == Event::Start") != std::string::npos) << "Should check for Start event";
+
+    // Should have event check for Stop
+    EXPECT_TRUE(content.find("event == Event::Stop") != std::string::npos) << "Should check for Stop event";
+
+    // Should have state transition
+    EXPECT_TRUE(content.find("currentState_ = State::Active") != std::string::npos)
+        << "Should transition to Active state";
+
+    EXPECT_TRUE(content.find("currentState_ = State::Idle") != std::string::npos) << "Should transition to Idle state";
+}
+
+TEST_F(StaticCodeGenTest, GeneratesStrategyInterface) {
+    // Arrange: SCXML with Guards and Actions
+    std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="GuardedSM" initial="idle">
+  <state id="idle">
+    <transition event="start" cond="isReady()" target="active">
+      <script>initialize()</script>
+    </transition>
+  </state>
+  <state id="active">
+    <onentry>
+      <script>activate()</script>
+    </onentry>
+    <onexit>
+      <script>deactivate()</script>
+    </onexit>
+    <transition event="stop" cond="isValid()" target="idle"/>
+  </state>
+</scxml>)XML";
+
+    std::string scxmlPath = (testDir_ / "guarded.scxml").string();
+    std::ofstream file(scxmlPath);
+    ASSERT_TRUE(file.is_open());
+    file << scxmlContent;
+    file.close();
+
+    std::string outputDir = testDir_.string();
+
+    // Act: Generate code
+    StaticCodeGenerator generator;
+    ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
+
+    // Assert: Verify strategy interface is generated
+    std::string generatedFile = (testDir_ / "GuardedSM_sm.h").string();
+    ASSERT_TRUE(fs::exists(generatedFile));
+
+    std::string content = readFile(generatedFile);
+
+    // Should have interface class declaration
+    EXPECT_TRUE(content.find("class IGuardedSMLogic") != std::string::npos)
+        << "Should generate interface class IGuardedSMLogic";
+
+    // Should have virtual destructor
+    EXPECT_TRUE(content.find("virtual ~IGuardedSMLogic()") != std::string::npos) << "Should have virtual destructor";
+
+    // Should have Guard methods
+    EXPECT_TRUE(content.find("virtual bool isReady()") != std::string::npos) << "Should have isReady guard method";
+
+    EXPECT_TRUE(content.find("virtual bool isValid()") != std::string::npos) << "Should have isValid guard method";
+
+    // Should have Action methods
+    EXPECT_TRUE(content.find("virtual void initialize()") != std::string::npos)
+        << "Should have initialize action method";
+
+    EXPECT_TRUE(content.find("virtual void activate()") != std::string::npos) << "Should have activate action method";
+
+    EXPECT_TRUE(content.find("virtual void deactivate()") != std::string::npos)
+        << "Should have deactivate action method";
+
+    // Should have pure virtual (= 0)
+    EXPECT_TRUE(content.find("= 0") != std::string::npos) << "Should have pure virtual methods";
+}
+
+TEST_F(StaticCodeGenTest, GeneratesGuardConditions) {
+    // Arrange: SCXML with Guard conditions
+    std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="GuardedSM" initial="idle">
+  <state id="idle">
+    <transition event="start" cond="isReady()" target="active"/>
+  </state>
+  <state id="active">
+    <transition event="stop" cond="isValid()" target="idle"/>
+  </state>
+</scxml>)XML";
+
+    std::string scxmlPath = (testDir_ / "guarded_cond.scxml").string();
+    std::ofstream file(scxmlPath);
+    ASSERT_TRUE(file.is_open());
+    file << scxmlContent;
+    file.close();
+
+    std::string outputDir = testDir_.string();
+
+    // Act: Generate code
+    StaticCodeGenerator generator;
+    ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
+
+    // Assert: Verify guard conditions are generated in processEvent
+    std::string generatedFile = (testDir_ / "GuardedSM_sm.h").string();
+    ASSERT_TRUE(fs::exists(generatedFile));
+
+    std::string content = readFile(generatedFile);
+
+    // Should have logic_ pointer check
+    EXPECT_TRUE(content.find("logic_->isReady()") != std::string::npos)
+        << "Should call logic_->isReady() for guard check";
+
+    EXPECT_TRUE(content.find("logic_->isValid()") != std::string::npos)
+        << "Should call logic_->isValid() for guard check";
+
+    // Should have nested if structure (event check, then guard check)
+    EXPECT_TRUE(content.find("if (event == Event::Start)") != std::string::npos) << "Should check for Start event";
+
+    // Verify the guard is inside the event check
+    size_t startPos = content.find("if (event == Event::Start)");
+    size_t guardPos = content.find("logic_->isReady()", startPos);
+    size_t nextCasePos = content.find("case State::", startPos + 1);
+
+    EXPECT_TRUE(guardPos < nextCasePos) << "Guard check should be inside the event check, before next case";
+}
+
+TEST_F(StaticCodeGenTest, GeneratesTransitionActions) {
+    // Arrange: SCXML with transition actions
+    std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="ActionSM" initial="idle">
+  <state id="idle">
+    <transition event="start" target="active">
+      <script>initialize()</script>
+    </transition>
+  </state>
+  <state id="active">
+    <transition event="stop" target="idle">
+      <script>cleanup()</script>
+    </transition>
+  </state>
+</scxml>)XML";
+
+    std::string scxmlPath = (testDir_ / "action_transition.scxml").string();
+    std::ofstream file(scxmlPath);
+    ASSERT_TRUE(file.is_open());
+    file << scxmlContent;
+    file.close();
+
+    std::string outputDir = testDir_.string();
+
+    // Act: Generate code
+    StaticCodeGenerator generator;
+    ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
+
+    // Assert: Verify transition actions are generated
+    std::string generatedFile = (testDir_ / "ActionSM_sm.h").string();
+    ASSERT_TRUE(fs::exists(generatedFile));
+
+    std::string content = readFile(generatedFile);
+
+    // Should have action calls
+    EXPECT_TRUE(content.find("logic_->initialize()") != std::string::npos) << "Should call logic_->initialize() action";
+
+    EXPECT_TRUE(content.find("logic_->cleanup()") != std::string::npos) << "Should call logic_->cleanup() action";
+
+    // Verify action is called before state transition
+    size_t initializePos = content.find("logic_->initialize()");
+    size_t transitionPos = content.find("currentState_ = State::Active", initializePos);
+
+    EXPECT_TRUE(initializePos < transitionPos) << "Action should be called before state transition";
+}
+
+TEST_F(StaticCodeGenTest, GeneratesEntryExitActions) {
+    // Arrange: SCXML with onentry/onexit actions
+    std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="EntrySM" initial="idle">
+  <state id="idle">
+    <onentry>
+      <script>onEnterIdle()</script>
+    </onentry>
+    <onexit>
+      <script>onExitIdle()</script>
+    </onexit>
+    <transition event="start" target="active">
+      <script>doTransition()</script>
+    </transition>
+  </state>
+  <state id="active">
+    <onentry>
+      <script>onEnterActive()</script>
+    </onentry>
+    <onexit>
+      <script>onExitActive()</script>
+    </onexit>
+    <transition event="stop" target="idle"/>
+  </state>
+</scxml>)XML";
+
+    std::string scxmlPath = (testDir_ / "entry_exit.scxml").string();
+    std::ofstream file(scxmlPath);
+    ASSERT_TRUE(file.is_open());
+    file << scxmlContent;
+    file.close();
+
+    std::string outputDir = testDir_.string();
+
+    // Act: Generate code
+    StaticCodeGenerator generator;
+    ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
+
+    // Assert: Verify entry/exit actions are generated
+    std::string generatedFile = (testDir_ / "EntrySM_sm.h").string();
+    ASSERT_TRUE(fs::exists(generatedFile));
+
+    std::string content = readFile(generatedFile);
+
+    // Should have all entry/exit action calls
+    EXPECT_TRUE(content.find("logic_->onEnterIdle()") != std::string::npos) << "Should call logic_->onEnterIdle()";
+
+    EXPECT_TRUE(content.find("logic_->onExitIdle()") != std::string::npos) << "Should call logic_->onExitIdle()";
+
+    EXPECT_TRUE(content.find("logic_->onEnterActive()") != std::string::npos) << "Should call logic_->onEnterActive()";
+
+    EXPECT_TRUE(content.find("logic_->onExitActive()") != std::string::npos) << "Should call logic_->onExitActive()";
+
+    // Verify execution order for idle -> active transition
+    size_t exitIdlePos = content.find("logic_->onExitIdle()");
+    size_t transitionPos = content.find("logic_->doTransition()");
+    size_t enterActivePos = content.find("logic_->onEnterActive()");
+    size_t stateChangePos = content.find("currentState_ = State::Active", exitIdlePos);
+
+    EXPECT_TRUE(exitIdlePos < transitionPos) << "onexit should be called before transition action";
+
+    EXPECT_TRUE(transitionPos < enterActivePos) << "Transition action should be called before onentry";
+
+    EXPECT_TRUE(enterActivePos < stateChangePos) << "onentry should be called before state variable update";
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
