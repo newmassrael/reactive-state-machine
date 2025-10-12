@@ -83,10 +83,6 @@ protected:
     fs::path testDir_;
 };
 
-// ============================================================================
-// TEST 1: Verify basic enum generation
-// ============================================================================
-
 TEST_F(StaticCodeGenTest, GeneratesStateEnum) {
     // Arrange: Prepare simple SCXML
     std::string scxmlPath = createSimpleSCXML("simple.scxml");
@@ -108,10 +104,6 @@ TEST_F(StaticCodeGenTest, GeneratesStateEnum) {
     EXPECT_TRUE(content.find("Active") != std::string::npos) << "Active state should be included";
 }
 
-// ============================================================================
-// TEST 2: Verify Event enum generation
-// ============================================================================
-
 TEST_F(StaticCodeGenTest, GeneratesEventEnum) {
     // Arrange
     std::string scxmlPath = createSimpleSCXML("simple.scxml");
@@ -131,10 +123,6 @@ TEST_F(StaticCodeGenTest, GeneratesEventEnum) {
     EXPECT_TRUE(content.find("Start") != std::string::npos) << "start event should be transformed to Start";
     EXPECT_TRUE(content.find("Stop") != std::string::npos) << "stop event should be transformed to Stop";
 }
-
-// ============================================================================
-// TEST 3: Parse actual SCXML file (TDD RED - Phase B)
-// ============================================================================
 
 TEST_F(StaticCodeGenTest, ParsesActualSCXMLFile) {
     // Arrange: Create custom SCXML with different name and states
@@ -165,132 +153,40 @@ TEST_F(StaticCodeGenTest, ParsesActualSCXMLFile) {
     EXPECT_FALSE(content.find("Active") != std::string::npos) << "Should NOT have hardcoded 'active' state";
 }
 
-// ============================================================================
-// TEST 4: processEvent method and switch-case generation
-// Status: DISABLED - Waiting for Phase C implementation
-// Will be enabled when transition logic generation is implemented
-// ============================================================================
-
-TEST_F(StaticCodeGenTest, DISABLED_GeneratesProcessEventMethod) {
-    // Arrange
-    std::string scxmlPath = createSimpleSCXML("simple.scxml");
-    std::string outputDir = testDir_.string();
-
-    // Act
-    // StaticCodeGenerator generator;
-    // generator.generate(scxmlPath, outputDir);
-
-    // Assert: Verify processEvent method structure
-    std::string expectedCode = R"(
-void processEvent(Event event) {
-    switch(currentState_) {
-        case State::Idle:
-            if (event == Event::Start) {
-                currentState_ = State::Active;
-            }
-            break;
-        case State::Active:
-            if (event == Event::Stop) {
-                currentState_ = State::Idle;
-            }
-            break;
-    }
-})";
-
-    // Compare with actual generated code
-    // std::string content = readFile((testDir_ / "SimpleSM_sm.h").string());
-    // EXPECT_TRUE(content.find("void processEvent(Event event)") != std::string::npos);
-    // EXPECT_TRUE(content.find("switch(currentState_)") != std::string::npos);
-}
-
-// ============================================================================
-// TEST 5: Class basic structure generation
-// Status: DISABLED - Waiting for Phase C implementation
-// Will be enabled when full class generation is implemented
-// ============================================================================
-
-TEST_F(StaticCodeGenTest, DISABLED_GeneratesClassStructure) {
-    // Arrange
-    std::string scxmlPath = createSimpleSCXML("simple.scxml");
-
-    // Act
-    // StaticCodeGenerator generator;
-    // std::string generated = generator.generateClass(scxmlPath);
-
-    // Assert: Expected class structure
-    std::string expectedStructure = R"(
-template<typename LogicType>
-class SimpleSM {
-private:
-    State currentState_ = State::Idle;
-    std::unique_ptr<LogicType> logic_;
-    
-public:
-    void processEvent(Event event);
-    State getCurrentState() const { return currentState_; }
-};
-)";
-
-    // Verify (after actual implementation)
-    // EXPECT_TRUE(generated.find("class SimpleSM") != std::string::npos);
-    // EXPECT_TRUE(generated.find("State currentState_") != std::string::npos);
-    // EXPECT_TRUE(generated.find("getCurrentState()") != std::string::npos);
-}
-
-// ============================================================================
-// TEST 6: SCXML with Guard conditions
-// Status: DISABLED - Phase C-1 task
-// Will be enabled when Guard condition extraction and interface generation is implemented
-// ============================================================================
-
-TEST_F(StaticCodeGenTest, DISABLED_GeneratesGuardConditions) {
+TEST_F(StaticCodeGenTest, ExtractsGuardFunctions) {
     // Arrange: SCXML with Guard conditions
     std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="GuardedSM" initial="idle">
   <state id="idle">
     <transition event="check" cond="isReady()" target="active"/>
+    <transition event="verify" cond="isValid()" target="active"/>
   </state>
   <state id="active">
     <transition event="check" cond="!isReady()" target="idle"/>
   </state>
 </scxml>)XML";
 
-    std::string guardedScxmlPath = (testDir_ / "guarded.scxml").string();
-    std::ofstream file(guardedScxmlPath);
+    std::string scxmlPath = (testDir_ / "guarded.scxml").string();
+    std::ofstream file(scxmlPath);
     if (!file) {
-        throw std::runtime_error("Failed to create test SCXML file: " + guardedScxmlPath);
+        throw std::runtime_error("Failed to create test SCXML file: " + scxmlPath);
     }
     file << scxmlContent;
+    file.close();  // Ensure file is flushed to disk
 
     // Act
-    // StaticCodeGenerator generator;
-    // generator.generate(guardedScxmlPath, testDir_.string());
+    StaticCodeGenerator generator;
+    auto guards = generator.extractGuards(scxmlPath);
 
-    // Assert: Verify Guard interface generation
-    std::string interfaceFile = (testDir_ / "GuardedSM_interface.h").string();
-
-    // Expected interface
-    std::string expectedInterface = R"(
-struct IGuardedSMLogic {
-    virtual ~IGuardedSMLogic() = default;
-    virtual bool isReady() const = 0;
-};
-)";
-
-    // Verify after actual implementation
-    // std::string content = readFile(interfaceFile);
-    // EXPECT_TRUE(content.find("virtual bool isReady() const = 0") != std::string::npos);
+    // Assert: Should extract unique guard function names
+    ASSERT_EQ(guards.size(), 2) << "Should extract 2 unique guard functions";
+    EXPECT_TRUE(guards.count("isReady") > 0) << "Should extract isReady guard";
+    EXPECT_TRUE(guards.count("isValid") > 0) << "Should extract isValid guard";
 }
 
-// ============================================================================
-// TEST 7: SCXML with Actions
-// Status: DISABLED - Phase C-2 task
-// Will be enabled when Action extraction and interface generation is implemented
-// ============================================================================
-
-TEST_F(StaticCodeGenTest, DISABLED_GeneratesActions) {
+TEST_F(StaticCodeGenTest, ExtractsActionFunctions) {
     // Arrange: SCXML with Actions
-    std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
+    std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="ActionSM" initial="idle">
   <state id="idle">
     <transition event="start" target="active">
@@ -305,7 +201,7 @@ TEST_F(StaticCodeGenTest, DISABLED_GeneratesActions) {
       <script>deactivate()</script>
     </onexit>
   </state>
-</scxml>)";
+</scxml>)XML";
 
     std::string scxmlPath = (testDir_ / "action.scxml").string();
     std::ofstream file(scxmlPath);
@@ -313,59 +209,18 @@ TEST_F(StaticCodeGenTest, DISABLED_GeneratesActions) {
         throw std::runtime_error("Failed to create test SCXML file: " + scxmlPath);
     }
     file << scxmlContent;
+    file.close();  // Ensure file is flushed to disk
 
     // Act
-    // StaticCodeGenerator generator;
-    // generator.generate(scxmlPath, testDir_.string());
+    StaticCodeGenerator generator;
+    auto actions = generator.extractActions(scxmlPath);
 
-    // Assert: Verify Action interface generation
-    std::string expectedInterface = R"(
-struct IActionSMLogic {
-    virtual void initialize() = 0;
-    virtual void activate() = 0;
-    virtual void deactivate() = 0;
-};
-)";
-
-    // Verify after actual implementation
+    // Assert: Should extract unique action function names
+    ASSERT_EQ(actions.size(), 3) << "Should extract 3 unique action functions";
+    EXPECT_TRUE(actions.count("initialize") > 0) << "Should extract initialize action";
+    EXPECT_TRUE(actions.count("activate") > 0) << "Should extract activate action";
+    EXPECT_TRUE(actions.count("deactivate") > 0) << "Should extract deactivate action";
 }
-
-// ============================================================================
-// TEST 8: End-to-end compilation test
-// Status: DISABLED - Phase D task
-// Will be enabled when full code generation pipeline is complete
-// ============================================================================
-
-TEST_F(StaticCodeGenTest, DISABLED_EndToEndCompilation) {
-    // This test will be activated when full implementation is complete
-
-    // 1. Create SCXML
-    std::string scxmlPath = createSimpleSCXML("e2e.scxml");
-
-    // 2. Generate code
-    // StaticCodeGenerator generator;
-    // generator.generate(scxmlPath, testDir_.string());
-
-    // 3. Test compilation of generated code
-    std::string testProgram = R"(
-#include "SimpleSM_sm.h"
-
-struct TestLogic {};
-
-int main() {
-    SimpleSM<TestLogic> sm;
-    sm.processEvent(Event::Start);
-    return sm.getCurrentState() == State::Active ? 0 : 1;
-}
-)";
-
-    // 4. Compile and execute
-    // Actually compile with g++ and verify execution result
-}
-
-// ============================================================================
-// Main function
-// ============================================================================
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

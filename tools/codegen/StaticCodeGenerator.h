@@ -2,9 +2,15 @@
 #pragma once
 
 #include <memory>
+#include <regex>
 #include <set>
 #include <string>
 #include <vector>
+
+// Forward declarations from RSM namespace
+namespace RSM {
+class SCXMLModel;
+}
 
 namespace RSM::Codegen {
 
@@ -39,16 +45,26 @@ public:
     std::string generateProcessEvent(const std::string &className);
     std::string generateClass(const std::string &className, const std::string &initialState);
 
+    // Extract Guard and Action functions from SCXML
+    std::set<std::string> extractGuards(const std::string &scxmlPath);
+    std::set<std::string> extractActions(const std::string &scxmlPath);
+
 private:
     // Template method to generate enums (DRY principle)
     std::string generateEnum(const std::string &enumName, const std::set<std::string> &values);
     // Helper methods
     std::string capitalize(const std::string &str);
-    std::string sanitizeName(const std::string &name);
 
     // Extract SCXML parsing results
     std::set<std::string> extractStates(const SCXMLModel &model);
     std::set<std::string> extractEvents(const SCXMLModel &model);
+
+    // Internal overloads for extraction (avoid duplicate parsing)
+    std::set<std::string> extractGuardsInternal(const std::shared_ptr<RSM::SCXMLModel> &rsmModel);
+    std::set<std::string> extractActionsInternal(const std::shared_ptr<RSM::SCXMLModel> &rsmModel);
+
+    // Helper for regex-based function name extraction
+    std::set<std::string> extractFunctionNames(const std::string &text, const std::regex &pattern);
 
     // File writing
     bool writeToFile(const std::string &path, const std::string &content);

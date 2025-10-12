@@ -1,10 +1,13 @@
 // Static code generator with SCXML parser integration
 #include "StaticCodeGenerator.h"
+#include "rsm/include/common/Logger.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 
+#include "rsm/include/actions/ScriptAction.h"
 #include "rsm/include/factory/NodeFactory.h"
 #include "rsm/include/model/SCXMLModel.h"
 #include "rsm/include/parsing/SCXMLParser.h"
@@ -16,10 +19,12 @@ namespace RSM::Codegen {
 bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::string &outputDir) {
     // Step 1: Validate input
     if (scxmlPath.empty()) {
+        LOG_ERROR("StaticCodeGenerator: SCXML path is empty");
         return false;
     }
 
     if (!fs::exists(scxmlPath)) {
+        LOG_ERROR("StaticCodeGenerator: SCXML file does not exist: {}", scxmlPath);
         return false;
     }
 
@@ -27,13 +32,16 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     auto nodeFactory = std::make_shared<RSM::NodeFactory>();
     RSM::SCXMLParser parser(nodeFactory);
 
+    LOG_DEBUG("StaticCodeGenerator: Parsing SCXML file: {}", scxmlPath);
     auto rsmModel = parser.parseFile(scxmlPath);
     if (!rsmModel) {
+        LOG_ERROR("StaticCodeGenerator: Failed to parse SCXML file: {}", scxmlPath);
         return false;
     }
 
     // Step 3: Validate parsed model
     if (rsmModel->getName().empty()) {
+        LOG_ERROR("StaticCodeGenerator: SCXML model has no name");
         return false;
     }
 
@@ -43,12 +51,14 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     model.initial = rsmModel->getInitialState();
 
     if (model.initial.empty()) {
+        LOG_ERROR("StaticCodeGenerator: SCXML model '{}' has no initial state", model.name);
         return false;
     }
 
     // Extract all states
     auto allStates = rsmModel->getAllStates();
     if (allStates.empty()) {
+        LOG_ERROR("StaticCodeGenerator: SCXML model '{}' has no states", model.name);
         return false;
     }
 
@@ -73,8 +83,12 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
 
     // Validate we have states (events can be empty for stateless machines)
     if (states.empty()) {
+        LOG_ERROR("StaticCodeGenerator: No states extracted from model '{}'", model.name);
         return false;
     }
+
+    LOG_INFO("StaticCodeGenerator: Generating code for '{}' with {} states and {} events", model.name, states.size(),
+             events.size());
 
     // Step 6: Generate code
     std::stringstream ss;
@@ -101,11 +115,23 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "\n} // namespace RSM::Generated\n";
 
     // Step 7: Validate output directory and write to file
-    if (outputDir.empty() || !fs::exists(outputDir) || !fs::is_directory(outputDir)) {
+    if (outputDir.empty()) {
+        LOG_ERROR("StaticCodeGenerator: Output directory is empty");
+        return false;
+    }
+
+    if (!fs::exists(outputDir)) {
+        LOG_ERROR("StaticCodeGenerator: Output directory does not exist: {}", outputDir);
+        return false;
+    }
+
+    if (!fs::is_directory(outputDir)) {
+        LOG_ERROR("StaticCodeGenerator: Output path is not a directory: {}", outputDir);
         return false;
     }
 
     std::string outputPath = outputDir + "/" + model.name + "_sm.h";
+    LOG_INFO("StaticCodeGenerator: Writing generated code to: {}", outputPath);
     return writeToFile(outputPath, ss.str());
 }
 
@@ -181,14 +207,6 @@ std::string StaticCodeGenerator::capitalize(const std::string &str) {
     return result;
 }
 
-std::string StaticCodeGenerator::sanitizeName(const std::string &name) {
-    std::string result = name;
-    // Replace special characters with underscores
-    std::replace(result.begin(), result.end(), '-', '_');
-    std::replace(result.begin(), result.end(), '.', '_');
-    return result;
-}
-
 std::set<std::string> StaticCodeGenerator::extractStates(const SCXMLModel &model) {
     return std::set<std::string>(model.states.begin(), model.states.end());
 }
@@ -204,6 +222,115 @@ std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model
     return events;
 }
 
+std::set<std::string> StaticCodeGenerator::extractFunctionNames(const std::string &text, const std::regex &pattern) {
+    std::set<std::string> functions;
+    std::smatch match;
+    std::string searchStr = text;
+
+    while (std::regex_search(searchStr, match, pattern)) {
+        functions.insert(match[1].str());  // Capture group 1 contains the function name
+        searchStr = match.suffix();
+    }
+
+    return functions;
+}
+
+std::set<std::string> StaticCodeGenerator::extractGuardsInternal(const std::shared_ptr<RSM::SCXMLModel> &rsmModel) {
+    std::set<std::string> guards;
+
+    if (!rsmModel) {
+        LOG_WARN("StaticCodeGenerator::extractGuardsInternal: rsmModel is null");
+        return guards;
+    }
+
+    // Regex for extracting function names from guard expressions (e.g., "isReady()" or "!isReady()")
+    static const std::regex funcRegex(R"((\w+)\(\))");
+
+    // Extract guards from transitions using API
+    auto allStates = rsmModel->getAllStates();
+    for (const auto &state : allStates) {
+        auto transitions = state->getTransitions();
+        for (const auto &transition : transitions) {
+            auto guardExpr = transition->getGuard();
+            if (!guardExpr.empty()) {
+                auto extracted = extractFunctionNames(guardExpr, funcRegex);
+                guards.insert(extracted.begin(), extracted.end());
+            }
+        }
+    }
+
+    return guards;
+}
+
+std::set<std::string> StaticCodeGenerator::extractGuards(const std::string &scxmlPath) {
+    // Parse SCXML file
+    auto nodeFactory = std::make_shared<RSM::NodeFactory>();
+    RSM::SCXMLParser parser(nodeFactory);
+    auto rsmModel = parser.parseFile(scxmlPath);
+
+    return extractGuardsInternal(rsmModel);
+}
+
+std::set<std::string> StaticCodeGenerator::extractActionsInternal(const std::shared_ptr<RSM::SCXMLModel> &rsmModel) {
+    std::set<std::string> actions;
+
+    if (!rsmModel) {
+        LOG_WARN("StaticCodeGenerator::extractActionsInternal: rsmModel is null");
+        return actions;
+    }
+
+    // Regex for extracting function names from script content
+    static const std::regex funcRegex(R"((\w+)\(\))");
+
+    auto allStates = rsmModel->getAllStates();
+    for (const auto &state : allStates) {
+        // Extract from entry action blocks
+        for (const auto &actionBlock : state->getEntryActionBlocks()) {
+            for (const auto &actionNode : actionBlock) {
+                // Check if this is a ScriptAction
+                if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                    const std::string &content = scriptAction->getContent();
+                    auto extracted = extractFunctionNames(content, funcRegex);
+                    actions.insert(extracted.begin(), extracted.end());
+                }
+            }
+        }
+
+        // Extract from exit action blocks
+        for (const auto &actionBlock : state->getExitActionBlocks()) {
+            for (const auto &actionNode : actionBlock) {
+                if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                    const std::string &content = scriptAction->getContent();
+                    auto extracted = extractFunctionNames(content, funcRegex);
+                    actions.insert(extracted.begin(), extracted.end());
+                }
+            }
+        }
+
+        // Extract from transition actions
+        for (const auto &transition : state->getTransitions()) {
+            for (const auto &actionNode : transition->getActionNodes()) {
+                if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                    const std::string &content = scriptAction->getContent();
+                    auto extracted = extractFunctionNames(content, funcRegex);
+                    actions.insert(extracted.begin(), extracted.end());
+                }
+            }
+        }
+    }
+
+    return actions;
+}
+
+std::set<std::string> StaticCodeGenerator::extractActions(const std::string &scxmlPath) {
+    // Parse SCXML file
+    auto nodeFactory = std::make_shared<RSM::NodeFactory>();
+    RSM::SCXMLParser parser(nodeFactory);
+    auto rsmModel = parser.parseFile(scxmlPath);
+
+    return extractActionsInternal(rsmModel);
+}
+
 bool StaticCodeGenerator::writeToFile(const std::string &path, const std::string &content) {
     // Create directory
     fs::path filePath(path);
@@ -211,11 +338,14 @@ bool StaticCodeGenerator::writeToFile(const std::string &path, const std::string
 
     std::ofstream file(path);
     if (!file.is_open()) {
+        LOG_ERROR("StaticCodeGenerator: Failed to open file for writing: {}", path);
         return false;
     }
 
     file << content;
     file.close();
+
+    LOG_DEBUG("StaticCodeGenerator: Successfully wrote {} bytes to {}", content.size(), path);
     return true;
 }
 
