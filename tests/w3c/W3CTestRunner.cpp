@@ -18,6 +18,16 @@
 #include <optional>
 #include <thread>
 
+// Include generated static test headers for hybrid engine
+#include "test144_sm.h"
+#include "test147_sm.h"
+#include "test148_sm.h"
+#include "test149_sm.h"
+#include "test150_sm.h"
+#include "test151_sm.h"
+#include "test152_sm.h"
+#include "test153_sm.h"
+
 namespace RSM::W3C {
 
 // Forward declaration for implementations
@@ -610,6 +620,7 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
                 for (const auto &report : allReports_) {
                     xmlFile << "  <testcase classname=\"W3C\" "
                             << "name=\"Test_" << report.testId << "\" "
+                            << "engineType=\"" << report.engineType << "\" "
                             << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
 
                     if (report.validationResult.finalResult != TestResult::PASS) {
@@ -634,6 +645,10 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
 
         std::string getOutputDestination() const override {
             return outputPath_;
+        }
+
+        std::vector<TestReport> getAllReports() const override {
+            return allReports_;
         }
     };
 
@@ -677,6 +692,11 @@ TestComponentFactory::createCompositeReporter(std::unique_ptr<ITestReporter> con
         std::string getOutputDestination() const override {
             // Return XML reporter's destination as the primary output
             return xmlReporter_->getOutputDestination();
+        }
+
+        std::vector<TestReport> getAllReports() const override {
+            // Get reports from XML reporter which stores all reports
+            return xmlReporter_->getAllReports();
         }
     };
 
@@ -811,6 +831,7 @@ TestRunSummary W3CTestRunner::runAllTests() {
 TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
+    report.engineType = "dynamic";  // Dynamic engine execution
 
     try {
         // Parse metadata
@@ -964,6 +985,7 @@ std::optional<TestReport> W3CTestRunner::shouldSkipHttpTestInDockerTsan(const st
 
     TestReport report;
     report.testId = std::to_string(testId);
+    report.engineType = "dynamic";
     report.metadata.id = testId;
     report.validationResult = ValidationResult(true, TestResult::PASS, "Skipped: HTTP test in Docker TSAN environment");
 
@@ -982,6 +1004,7 @@ std::optional<TestReport> W3CTestRunner::shouldSkipHttpTestInDockerTsan(const st
 
     TestReport report;
     report.testId = testId;
+    report.engineType = "dynamic";
     report.validationResult = ValidationResult(true, TestResult::PASS, "Skipped: HTTP test in Docker TSAN environment");
 
     return report;
@@ -1245,6 +1268,20 @@ std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
         }
     }
 
+    // Run hybrid engine test if supported (tests 144-153)
+    if (testId >= 144 && testId <= 153) {
+        try {
+            LOG_INFO("W3C Test {}: Running hybrid engine test (static generated code)", testId);
+            TestReport hybridReport = runHybridTest(testId);
+            matchingReports.push_back(hybridReport);
+            reporter_->reportTestResult(hybridReport);
+            LOG_INFO("W3C Test {}: Hybrid engine test completed", testId);
+        } catch (const std::exception &e) {
+            LOG_ERROR("W3C Test {}: Hybrid engine test failed: {}", testId, e.what());
+            // Don't throw - continue with dynamic engine results
+        }
+    }
+
     if (matchingReports.empty()) {
         throw std::runtime_error("Test " + std::to_string(testId) + " not found");
     }
@@ -1281,6 +1318,7 @@ TestRunSummary W3CTestRunner::runFilteredTests(const std::string &conformanceLev
 TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDirectory, W3CHttpTestServer *httpServer) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
+    report.engineType = "dynamic";  // Dynamic engine execution
 
     try {
         // Parse metadata
@@ -1427,6 +1465,133 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
     } catch (const std::exception &e) {
         LOG_ERROR("W3C Single Test (HTTP): Exception in test {}: {}", testDirectory, e.what());
         throw;  // Re-throw to be caught by runSpecificTest
+    }
+}
+
+TestReport W3CTestRunner::runHybridTest(int testId) {
+    TestReport report;
+    report.timestamp = std::chrono::system_clock::now();
+    report.testId = std::to_string(testId);
+    report.engineType = "hybrid";  // Hybrid engine execution (static generated code)
+
+    auto startTime = std::chrono::steady_clock::now();
+
+    try {
+        bool testPassed = false;
+        std::string testDescription;
+
+        // Execute the appropriate generated static test based on testId
+        switch (testId) {
+        case 144:
+            testPassed = []() {
+                RSM::Generated::test144::test144 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test144::State::Pass;
+            }();
+            testDescription = "Event queue ordering";
+            break;
+
+        case 147:
+            testPassed = []() {
+                RSM::Generated::test147::test147 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test147::State::Pass;
+            }();
+            testDescription = "If/elseif/else conditionals with datamodel";
+            break;
+
+        case 148:
+            testPassed = []() {
+                RSM::Generated::test148::test148 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test148::State::Pass;
+            }();
+            testDescription = "Else clause execution with datamodel";
+            break;
+
+        case 149:
+            testPassed = []() {
+                RSM::Generated::test149::test149 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test149::State::Pass;
+            }();
+            testDescription = "Neither if nor elseif executes";
+            break;
+
+        case 150:
+            testPassed = []() {
+                RSM::Generated::test150::test150 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test150::State::Pass;
+            }();
+            testDescription = "Foreach with dynamic variables (Hybrid JSEngine)";
+            break;
+
+        case 151:
+            testPassed = []() {
+                RSM::Generated::test151::test151 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test151::State::Pass;
+            }();
+            testDescription = "Foreach declares new variables (Hybrid JSEngine)";
+            break;
+
+        case 152:
+            testPassed = []() {
+                RSM::Generated::test152::test152 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test152::State::Pass;
+            }();
+            testDescription = "Foreach error handling (Hybrid JSEngine)";
+            break;
+
+        case 153:
+            testPassed = []() {
+                RSM::Generated::test153::test153 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test153::State::Pass;
+            }();
+            testDescription = "Foreach array iteration order (Hybrid JSEngine)";
+            break;
+
+        default:
+            LOG_WARN("W3C Hybrid Test: Test {} not supported by hybrid engine", testId);
+            report.validationResult = ValidationResult(
+                false, TestResult::ERROR, "Test not available in hybrid engine (only tests 144-153 are supported)");
+            return report;
+        }
+
+        auto endTime = std::chrono::steady_clock::now();
+        report.executionContext.executionTime =
+            std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+        // Set metadata
+        report.metadata.id = testId;
+        report.metadata.description = testDescription;
+
+        // Set validation result
+        if (testPassed) {
+            report.validationResult = ValidationResult(true, TestResult::PASS, "Hybrid engine test passed");
+            report.executionContext.finalState = "pass";
+            LOG_DEBUG("W3C Hybrid Test: Test {} PASS ({}ms)", testId, report.executionContext.executionTime.count());
+        } else {
+            report.validationResult = ValidationResult(true, TestResult::FAIL, "Hybrid engine test failed");
+            report.executionContext.finalState = "fail";
+            LOG_DEBUG("W3C Hybrid Test: Test {} FAIL ({}ms)", testId, report.executionContext.executionTime.count());
+        }
+
+        return report;
+
+    } catch (const std::exception &e) {
+        auto endTime = std::chrono::steady_clock::now();
+        report.executionContext.executionTime =
+            std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        report.validationResult =
+            ValidationResult(false, TestResult::ERROR, "Hybrid engine exception: " + std::string(e.what()));
+        report.executionContext.finalState = "error";
+        report.executionContext.errorMessage = e.what();
+        LOG_ERROR("W3C Hybrid Test: Exception in test {}: {}", testId, e.what());
+        return report;
     }
 }
 

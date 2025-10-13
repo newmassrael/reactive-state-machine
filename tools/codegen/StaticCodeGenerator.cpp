@@ -46,15 +46,18 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         return false;
     }
 
-    // Step 3: Validate parsed model
-    if (rsmModel->getName().empty()) {
-        LOG_ERROR("StaticCodeGenerator: SCXML model has no name");
-        return false;
+    // Step 3: Validate parsed model and extract name
+    std::string modelName = rsmModel->getName();
+    if (modelName.empty()) {
+        // Fallback: Use filename without extension as model name
+        fs::path scxmlFilePath(scxmlPath);
+        modelName = scxmlFilePath.stem().string();
+        LOG_WARN("StaticCodeGenerator: SCXML model has no name attribute, using filename: {}", modelName);
     }
 
     // Step 4: Convert RSM::SCXMLModel to simplified format for code generation
     SCXMLModel model;
-    model.name = rsmModel->getName();
+    model.name = modelName;
     model.initial = rsmModel->getInitialState();
 
     if (model.initial.empty()) {
@@ -105,6 +108,18 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         stateInfo.name = stateId;
         stateInfo.isFinal = state->isFinalState();
 
+        // W3C SCXML 3.4: Detect parallel states using existing API
+        if (state->getType() == RSM::Type::PARALLEL) {
+            stateInfo.isParallel = true;
+            // Collect child region state IDs
+            for (const auto &child : state->getChildren()) {
+                stateInfo.childRegions.push_back(child->getId());
+                LOG_DEBUG("StaticCodeGenerator: Parallel state '{}' has child region '{}'", stateId, child->getId());
+            }
+            LOG_DEBUG("StaticCodeGenerator: Detected parallel state '{}' with {} regions", stateId,
+                      stateInfo.childRegions.size());
+        }
+
         // Extract entry actions
         for (const auto &actionBlock : state->getEntryActionBlocks()) {
             auto actions = processActions(actionBlock);
@@ -125,21 +140,25 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
             auto event = transition->getEvent();
             auto targets = transition->getTargets();
 
-            // Accept transitions with targets (event-based or eventless)
-            if (!targets.empty()) {
-                // Use first target (SCXML supports multiple targets)
+            // W3C SCXML: Accept transitions with targets OR with actions (internal transitions)
+            bool hasActions = !transition->getActionNodes().empty();
+            if (!targets.empty() || hasActions) {
                 Transition trans;
                 trans.sourceState = state->getId();
-                trans.event = event;  // May be empty for eventless transitions
-                trans.targetState = targets[0];
-                trans.guard = transition->getGuard();  // Extract guard condition
+                trans.event = event;                                    // May be empty for eventless transitions
+                trans.targetState = targets.empty() ? "" : targets[0];  // Empty for internal transitions
+                trans.guard = transition->getGuard();                   // Extract guard condition
 
-                // Extract actions from transition
+                // Extract actions from transition (including AssignAction for internal transitions)
                 for (const auto &actionNode : transition->getActionNodes()) {
                     if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
                         const std::string &content = scriptAction->getContent();
                         auto extractedFuncs = extractFunctionNames(content, funcRegex);
                         trans.actions.insert(trans.actions.end(), extractedFuncs.begin(), extractedFuncs.end());
+                    } else if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
+                        // Extract assign actions (for internal transitions like p0's event1)
+                        Action act(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr());
+                        trans.transitionActions.push_back(act);
                     }
                 }
 
@@ -324,7 +343,7 @@ std::string StaticCodeGenerator::generateStrategyInterface(const std::string &cl
     return ss.str();
 }
 
-std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
+std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events) {
     std::stringstream ss;
 
     ss << "        (void)engine;\n";
@@ -340,8 +359,10 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
 
     // Generate case for each state (sorted for consistent output)
     std::set<std::string> stateNames;
+    std::map<std::string, const State *> stateByName;
     for (const auto &state : model.states) {
         stateNames.insert(state.name);
+        stateByName[state.name] = &state;
     }
 
     for (const auto &stateName : stateNames) {
@@ -363,69 +384,119 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
 
             // Generate event-based transitions first
             if (!eventTransitions.empty()) {
-                bool isFirst = true;
-                for (const auto &trans : eventTransitions) {
-                    if (isFirst) {
-                        ss << "                if (event == Event::" << capitalize(trans.event) << ") {\n";
-                        isFirst = false;
+                // W3C SCXML 3.5.1: Group transitions by event while preserving document order
+                auto transitionsByEvent = groupTransitionsByEventPreservingOrder(eventTransitions);
+
+                // Generate event-based transition checks
+                bool firstEvent = true;
+                const std::string baseIndent = "                ";
+
+                for (const auto &[eventName, transitions] : transitionsByEvent) {
+                    // Start event check block
+                    if (firstEvent) {
+                        ss << baseIndent << "if (event == Event::" << capitalize(eventName) << ") {\n";
+                        firstEvent = false;
                     } else {
-                        ss << "                } else if (event == Event::" << capitalize(trans.event) << ") {\n";
+                        ss << baseIndent << "} else if (event == Event::" << capitalize(eventName) << ") {\n";
                     }
 
-                    // Determine indentation level based on guard presence
-                    std::string indent = "                    ";
-                    bool hasGuard = !trans.guard.empty();
+                    const std::string eventIndent = baseIndent + "    ";
 
-                    // Generate guard condition if present
-                    if (hasGuard) {
-                        std::string guardExpr = trans.guard;
+                    // Generate guard-based transition chain for this event
+                    bool firstGuard = true;
+                    for (const auto &trans : transitions) {
+                        bool hasGuard = !trans.guard.empty();
+                        std::string guardIndent = eventIndent;
 
-                        // Pure Dynamic: ALL guards use JSEngine evaluation
-                        // Pure Static: Only typeof guards use JSEngine, others use C++ direct evaluation
-                        bool needsJSEngine = model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
-                        bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
+                        if (hasGuard) {
+                            // Guarded transition
+                            std::string guardExpr = trans.guard;
+                            bool needsJSEngine =
+                                model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
+                            bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
-                        if (needsJSEngine) {
-                            // Pure Dynamic or complex guard → JSEngine evaluation using GuardHelper
-                            ss << indent << "this->ensureJSEngine();\n";
-                            ss << indent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
-                            ss << indent << "if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
-                               << escapeStringLiteral(guardExpr) << "\")) {\n";
-                        } else if (isFunctionCall) {
-                            // Pure Static: Extract function name from guard expression
-                            std::string guardFunc = guardExpr;
-                            size_t parenPos = guardFunc.find('(');
-                            if (parenPos != std::string::npos) {
-                                guardFunc = guardFunc.substr(0, parenPos);
+                            if (firstGuard) {
+                                // First guard uses if
+                                if (needsJSEngine) {
+                                    ss << eventIndent << "this->ensureJSEngine();\n";
+                                    ss << eventIndent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                    ss << eventIndent
+                                       << "if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
+                                       << escapeStringLiteral(guardExpr) << "\")) {\n";
+                                } else if (isFunctionCall) {
+                                    std::string guardFunc = guardExpr;
+                                    size_t parenPos = guardFunc.find('(');
+                                    if (parenPos != std::string::npos) {
+                                        guardFunc = guardFunc.substr(0, parenPos);
+                                    }
+                                    if (!guardFunc.empty() && guardFunc[0] == '!') {
+                                        guardFunc = guardFunc.substr(1);
+                                    }
+                                    ss << eventIndent << "if (derived()." << guardFunc << "()) {\n";
+                                } else {
+                                    ss << eventIndent << "if (" << guardExpr << ") {\n";
+                                }
+                                firstGuard = false;
+                            } else {
+                                // Subsequent guards use else if
+                                if (needsJSEngine) {
+                                    ss << eventIndent << "} else {\n";
+                                    guardIndent = eventIndent + "    ";
+                                    ss << guardIndent << "this->ensureJSEngine();\n";
+                                    ss << guardIndent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                    ss << guardIndent
+                                       << "if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
+                                       << escapeStringLiteral(guardExpr) << "\")) {\n";
+                                } else if (isFunctionCall) {
+                                    std::string guardFunc = guardExpr;
+                                    size_t parenPos = guardFunc.find('(');
+                                    if (parenPos != std::string::npos) {
+                                        guardFunc = guardFunc.substr(0, parenPos);
+                                    }
+                                    if (!guardFunc.empty() && guardFunc[0] == '!') {
+                                        guardFunc = guardFunc.substr(1);
+                                    }
+                                    ss << eventIndent << "} else if (derived()." << guardFunc << "()) {\n";
+                                } else {
+                                    ss << eventIndent << "} else if (" << guardExpr << ") {\n";
+                                }
                             }
-                            // Remove leading ! if present
-                            if (!guardFunc.empty() && guardFunc[0] == '!') {
-                                guardFunc = guardFunc.substr(1);
-                            }
-                            ss << indent << "if (derived()." << guardFunc << "()) {\n";
+                            guardIndent += "    ";
                         } else {
-                            // Pure Static: Simple datamodel expression - use C++ direct evaluation
-                            ss << indent << "if (" << guardExpr << ") {\n";
+                            // Unguarded transition (fallback else clause)
+                            if (!firstGuard) {
+                                ss << eventIndent << "} else {\n";
+                                guardIndent += "    ";
+                            }
                         }
 
-                        indent += "    ";  // Increase indentation inside guard
+                        // Generate transition action calls
+                        for (const auto &action : trans.actions) {
+                            ss << guardIndent << "derived()." << action << "();\n";
+                        }
+
+                        // W3C SCXML: Execute transition actions (e.g., assign for internal transitions)
+                        for (const auto &action : trans.transitionActions) {
+                            generateActionCode(ss, action, "engine", events);
+                        }
+
+                        // W3C SCXML: Only change state if targetState exists (not an internal transition)
+                        if (!trans.targetState.empty()) {
+                            ss << guardIndent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                        }
+                        ss << guardIndent << "transitionTaken = true;\n";
                     }
 
-                    // Generate transition action calls
-                    for (const auto &action : trans.actions) {
-                        ss << indent << "derived()." << action << "();\n";
-                    }
-
-                    // Generate state transition
-                    ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
-                    ss << indent << "transitionTaken = true;\n";
-
-                    // Close guard if block
-                    if (hasGuard) {
-                        ss << "                    }\n";
+                    // Close guard chain if we had any guards
+                    if (!firstGuard) {
+                        ss << eventIndent << "}\n";
                     }
                 }
-                ss << "                }\n";
+
+                // Close event chain
+                if (!firstEvent) {
+                    ss << baseIndent << "}\n";
+                }
             }
 
             // Generate eventless transitions (checked regardless of event)
@@ -504,8 +575,15 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                         ss << indent << "derived()." << action << "();\n";
                     }
 
-                    // Generate state transition
-                    ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                    // W3C SCXML: Execute transition actions (e.g., assign for internal transitions)
+                    for (const auto &action : trans.transitionActions) {
+                        generateActionCode(ss, action, "engine", events);
+                    }
+
+                    // W3C SCXML: Only change state if targetState exists (not an internal transition)
+                    if (!trans.targetState.empty()) {
+                        ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                    }
                     ss << indent << "transitionTaken = true;\n";
 
                     // Close blocks only at the end of all transitions
@@ -530,13 +608,113 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                     }
                 }
             }
+
+            // W3C SCXML 3.4: Propagate events to parallel region children
+            auto stateIt = stateByName.find(stateName);
+            if (stateIt != stateByName.end() && stateIt->second->isParallel && !stateIt->second->childRegions.empty()) {
+                ss << "\n";
+                ss << "                // W3C SCXML 3.4: Check transitions in parallel region children\n";
+                for (size_t i = 0; i < stateIt->second->childRegions.size(); ++i) {
+                    const auto &regionName = stateIt->second->childRegions[i];
+                    ss << "                if (parallel_" << stateName << "_region" << i
+                       << "State_ == State::" << capitalize(regionName) << ") {\n";
+
+                    // Check transitions for this region state
+                    auto regionIt = transitionsByState.find(regionName);
+                    if (regionIt != transitionsByState.end() && !regionIt->second.empty()) {
+                        // W3C SCXML 3.5.1: Group transitions by event while preserving document order
+                        auto transitionsByEvent = groupTransitionsByEventPreservingOrder(regionIt->second);
+
+                        // Generate event-based transition checks
+                        bool firstEvent = true;
+                        const std::string baseIndent = "                    ";
+
+                        for (const auto &[eventName, transitions] : transitionsByEvent) {
+                            // Start event check block
+                            if (firstEvent) {
+                                ss << baseIndent << "if (event == Event::" << capitalize(eventName) << ") {\n";
+                                firstEvent = false;
+                            } else {
+                                ss << baseIndent << "} else if (event == Event::" << capitalize(eventName) << ") {\n";
+                            }
+
+                            const std::string eventIndent = baseIndent + "    ";
+
+                            // Generate guard-based transition chain for this event
+                            bool firstGuard = true;
+                            for (const auto &trans : transitions) {
+                                bool hasGuard = !trans.guard.empty();
+                                std::string guardIndent = eventIndent;
+
+                                if (hasGuard) {
+                                    // Guarded transition
+                                    if (firstGuard) {
+                                        ss << eventIndent << "if (" << trans.guard << ") {\n";
+                                        firstGuard = false;
+                                    } else {
+                                        ss << eventIndent << "} else if (" << trans.guard << ") {\n";
+                                    }
+                                    guardIndent += "    ";
+                                } else {
+                                    // Unguarded transition (fallback else clause)
+                                    if (!firstGuard) {
+                                        ss << eventIndent << "} else {\n";
+                                        guardIndent += "    ";
+                                    }
+                                    // If firstGuard is true and no guard, execute unconditionally
+                                }
+
+                                // Execute transition actions
+                                for (const auto &action : trans.transitionActions) {
+                                    std::stringstream actionSS;
+                                    generateActionCode(actionSS, action, "engine", events);
+                                    std::string actionCode = actionSS.str();
+                                    // Add proper indentation to action code
+                                    std::istringstream iss(actionCode);
+                                    std::string line;
+                                    while (std::getline(iss, line)) {
+                                        if (!line.empty()) {
+                                            ss << guardIndent << line << "\n";
+                                        }
+                                    }
+                                }
+
+                                // Update region state if target exists
+                                if (!trans.targetState.empty()) {
+                                    ss << guardIndent << "parallel_" << stateName << "_region" << i
+                                       << "State_ = State::" << capitalize(trans.targetState) << ";\n";
+                                }
+
+                                ss << guardIndent << "transitionTaken = true;\n";
+                            }
+
+                            // Close guard chain if we had any guards
+                            if (!firstGuard) {
+                                ss << eventIndent << "}\n";
+                            }
+                        }
+
+                        // Close event chain
+                        if (!firstEvent) {
+                            ss << baseIndent << "}\n";
+                        }
+                    }
+
+                    ss << "                }\n";
+                }
+            }
+
+            ss << "                break;\n";
+        } else {
+            // States without transitions (e.g., final states) must explicitly break
+            ss << "                break;\n";
         }
-
-        ss << "                break;\n";
     }
-
+    ss << "            default:\n";
+    ss << "                break;\n";
     ss << "        }\n";
     ss << "        return transitionTaken;\n";
+    ss << "    }\n";
 
     return ss.str();
 }
@@ -598,11 +776,7 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
 
 std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
-
-    // Extract events for error handling decisions
-    auto events = extractEvents(model);
-
-    // Determine if we need non-static (stateful) policy
+    std::set<std::string> events = extractEvents(model);
     bool hasDataModel = !model.dataModel.empty() || model.needsJSEngine();
 
     // Generate State Policy class
@@ -614,28 +788,43 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     // Generate datamodel member variables (for stateful policies)
     if (hasDataModel) {
         ss << "    // Datamodel variables\n";
-
-        // Pure Dynamic: When JSEngine is needed, ALL variables are managed by JSEngine (no C++ members)
-        if (model.needsJSEngine()) {
-            // List all variables in comments only (Pure Dynamic architecture)
-            for (const auto &var : model.dataModel) {
-                if (!var.initialValue.empty()) {
-                    ss << "    // JSEngine variable: " << var.name << " = " << var.initialValue << "\n";
-                } else {
-                    ss << "    // JSEngine variable: " << var.name << "\n";
-                }
-            }
-        } else {
-            // Pure Static: Generate C++ member variables
-            for (const auto &var : model.dataModel) {
+        for (const auto &var : model.dataModel) {
+            // Detect variable type from initial value
+            if (var.initialValue.find('[') != std::string::npos) {
+                ss << "    // Array variable (handled by JSEngine): " << var.name << " = " << var.initialValue << "\n";
+            } else if (var.initialValue.empty()) {
+                ss << "    // Dynamic variable (handled by JSEngine): " << var.name << "\n";
+            } else {
                 ss << "    int " << var.name << " = " << var.initialValue << ";\n";
             }
         }
 
-        // Add JSEngine session ID for dynamic generation (lazy-initialized)
+        // Add JSEngine session ID for hybrid generation (lazy-initialized)
         if (model.needsJSEngine()) {
             ss << "\n    // JSEngine session for dynamic features (lazy-initialized)\n";
             ss << "    mutable ::std::optional<::std::string> sessionId_;\n";
+        }
+        ss << "\n";
+    }
+
+    // W3C SCXML 3.4: Generate parallel region state variables
+    std::map<std::string, std::vector<std::string>> parallelStateRegions;
+    bool hasParallelStates = false;
+    for (const auto &state : model.states) {
+        if (state.isParallel && !state.childRegions.empty()) {
+            parallelStateRegions[state.name] = state.childRegions;
+            hasParallelStates = true;
+        }
+    }
+
+    if (hasParallelStates) {
+        ss << "    // Parallel region state variables (8 bytes per region)\n";
+        for (const auto &[parallelState, regions] : parallelStateRegions) {
+            for (size_t i = 0; i < regions.size(); ++i) {
+                const auto &regionName = regions[i];
+                ss << "    State parallel_" << parallelState << "_region" << i
+                   << "State_ = State::" << capitalize(regionName) << ";\n";
+            }
         }
         ss << "\n";
     }
@@ -694,11 +883,27 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     ss << "        (void)engine;\n";
     ss << "        switch (state) {\n";
     for (const auto &state : model.states) {
-        if (!state.entryActions.empty()) {
+        bool hasEntryActions = !state.entryActions.empty();
+        bool needsParallelInit = state.isParallel && !state.childRegions.empty();
+
+        if (hasEntryActions || needsParallelInit) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
+
+            // W3C SCXML 3.4: Initialize parallel region states first (before entry actions)
+            if (needsParallelInit) {
+                ss << "                // W3C SCXML 3.4: Initialize parallel region states\n";
+                for (size_t i = 0; i < state.childRegions.size(); ++i) {
+                    const auto &regionName = state.childRegions[i];
+                    ss << "                parallel_" << state.name << "_region" << i
+                       << "State_ = State::" << capitalize(regionName) << ";\n";
+                }
+            }
+
+            // Then execute entry actions
             for (const auto &action : state.entryActions) {
                 generateActionCode(ss, action, "engine", events);
             }
+
             ss << "                break;\n";
         }
     }
@@ -739,8 +944,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         ss << "    static bool processTransition(State& currentState, Event event, Engine& engine) {\n";  // static for
                                                                                                           // stateless
     }
-    ss << generateProcessEvent(model);
-    ss << "    }\n\n";
+    ss << generateProcessEvent(model, events);
 
     // Generate private helper methods for JSEngine operations
     if (model.needsJSEngine()) {
@@ -923,10 +1127,46 @@ std::string StaticCodeGenerator::capitalize(const std::string &str) {
     return result;
 }
 
+// W3C SCXML 3.5.1: Group transitions by event while preserving document order
+std::vector<std::pair<std::string, std::vector<Transition>>>
+StaticCodeGenerator::groupTransitionsByEventPreservingOrder(const std::vector<Transition> &transitions) {
+    std::vector<std::pair<std::string, std::vector<Transition>>> result;
+
+    for (const auto &trans : transitions) {
+        if (trans.event.empty()) {
+            continue;  // Skip eventless transitions
+        }
+
+        // Find existing group for this event
+        bool found = false;
+        for (auto &[eventName, group] : result) {
+            if (eventName == trans.event) {
+                group.push_back(trans);
+                found = true;
+                break;
+            }
+        }
+
+        // Create new group if this is the first occurrence (preserves document order)
+        if (!found) {
+            result.push_back({trans.event, {trans}});
+        }
+    }
+
+    return result;
+}
+
 std::set<std::string> StaticCodeGenerator::extractStates(const SCXMLModel &model) {
     std::set<std::string> stateNames;
     for (const auto &state : model.states) {
         stateNames.insert(state.name);
+        // W3C SCXML 3.4: Include child region states for parallel states
+        if (state.isParallel) {
+            for (const auto &region : state.childRegions) {
+                stateNames.insert(region);
+                LOG_DEBUG("StaticCodeGenerator: Including parallel region '{}' in State enum", region);
+            }
+        }
     }
     return stateNames;
 }

@@ -196,6 +196,7 @@ int main(int argc, char *argv[]) {
         auto startTime = std::chrono::steady_clock::now();
 
         RSM::W3C::TestRunSummary summary;
+        std::vector<RSM::W3C::TestReport> allReports;  // Store all reports for engine-specific stats
         if (runUpToMode) {
             // Generate test IDs from 150 up to the specified number
             std::vector<int> upToTestIds;
@@ -215,6 +216,7 @@ int main(int argc, char *argv[]) {
                     LOG_INFO("W3C CLI: Running test {} (including variants if any)", testId);
                     std::vector<RSM::W3C::TestReport> testReports = runner.runAllMatchingTests(testId);
                     reports.insert(reports.end(), testReports.begin(), testReports.end());
+                    allReports.insert(allReports.end(), testReports.begin(), testReports.end());
 
                     // Show results for all variants
                     for (const auto &report : testReports) {
@@ -314,6 +316,7 @@ int main(int argc, char *argv[]) {
                     }
 
                     reports.insert(reports.end(), testReports.begin(), testReports.end());
+                    allReports.insert(allReports.end(), testReports.begin(), testReports.end());
 
                     // Show results for all variants
                     for (const auto &report : testReports) {
@@ -382,23 +385,128 @@ int main(int argc, char *argv[]) {
 
         } else {
             RSM::Logger::info("W3C CLI: Running all W3C SCXML compliance tests...");
+
+            // Run all tests with dynamic engine (runAllTests handles beginTestRun/endTestRun)
             summary = runner.runAllTests();
+
+            // Get all dynamic engine reports from reporter
+            allReports = runner.getReporter()->getAllReports();
+
+            // Additionally run hybrid engine tests for supported tests (144-153)
+            LOG_INFO("W3C CLI: Running hybrid engine tests for supported tests (144-153)");
+            std::vector<int> hybridTestIds = {144, 147, 148, 149, 150, 151, 152, 153};
+
+            for (int testId : hybridTestIds) {
+                try {
+                    RSM::W3C::TestReport hybridReport = runner.runHybridTest(testId);
+                    allReports.push_back(hybridReport);
+                    runner.getReporter()->reportTestResult(hybridReport);
+
+                    // Update summary with hybrid results
+                    summary.totalTests++;
+                    switch (hybridReport.validationResult.finalResult) {
+                    case RSM::W3C::TestResult::PASS:
+                        summary.passedTests++;
+                        break;
+                    case RSM::W3C::TestResult::FAIL:
+                        summary.failedTests++;
+                        summary.failedTestIds.push_back(hybridReport.testId);
+                        break;
+                    case RSM::W3C::TestResult::ERROR:
+                    case RSM::W3C::TestResult::TIMEOUT:
+                        summary.errorTests++;
+                        summary.errorTestIds.push_back(hybridReport.testId);
+                        break;
+                    }
+                    summary.totalExecutionTime += hybridReport.executionContext.executionTime;
+                } catch (const std::exception &e) {
+                    LOG_ERROR("W3C CLI: Hybrid engine test {} failed: {}", testId, e.what());
+                }
+            }
+
+            // Recalculate pass rate
+            if (summary.totalTests > 0) {
+                summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
+            }
         }
 
         auto endTime = std::chrono::steady_clock::now();
         auto totalTime = std::chrono::duration_cast<std::chrono::seconds>(endTime - startTime);
+
+        // Get all reports from reporter (includes all test runs)
+        if (allReports.empty()) {
+            allReports = runner.getReporter()->getAllReports();
+        }
+
+        // Calculate engine-specific statistics from collected reports
+        struct EngineStats {
+            size_t total = 0;
+            size_t passed = 0;
+            size_t failed = 0;
+            size_t errors = 0;
+        };
+
+        EngineStats dynamicStats, hybridStats;
+
+        for (const auto &report : allReports) {
+            EngineStats *engineStats = nullptr;
+            if (report.engineType == "dynamic") {
+                engineStats = &dynamicStats;
+            } else if (report.engineType == "hybrid") {
+                engineStats = &hybridStats;
+            }
+
+            if (engineStats) {
+                engineStats->total++;
+                switch (report.validationResult.finalResult) {
+                case RSM::W3C::TestResult::PASS:
+                    engineStats->passed++;
+                    break;
+                case RSM::W3C::TestResult::FAIL:
+                    engineStats->failed++;
+                    break;
+                case RSM::W3C::TestResult::ERROR:
+                case RSM::W3C::TestResult::TIMEOUT:
+                    engineStats->errors++;
+                    break;
+                }
+            }
+        }
+
+        bool hasEngineStats = !allReports.empty();
 
         // Final results
         printf("\n");
         printf("🎉 W3C SCXML Compliance Test Complete!\n");
         printf("⏱️  Total execution time: %ld seconds\n", totalTime.count());
         printf("📊 Test Results Summary:\n");
-        printf("   Total Tests: %zu\n", summary.totalTests);
-        printf("   ✅ Passed: %zu\n", summary.passedTests);
-        printf("   ❌ Failed: %zu\n", summary.failedTests);
-        printf("   🚨 Errors: %zu\n", summary.errorTests);
-        printf("   ⏭️  Skipped: %zu\n", summary.skippedTests);
-        printf("   📈 Pass Rate: %.1f%%\n", summary.passRate);
+
+        // If we have engine stats, show table format
+        if (hasEngineStats && summary.totalTests > 0) {
+            printf("\n");
+            printf("┌──────────────┬─────────┬────────┬────────┬────────┐\n");
+            printf("│ Engine       │ Total   │ Passed │ Failed │ Errors │\n");
+            printf("├──────────────┼─────────┼────────┼────────┼────────┤\n");
+            printf("│ Dynamic      │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", dynamicStats.total, dynamicStats.passed,
+                   dynamicStats.failed, dynamicStats.errors);
+            if (hybridStats.total > 0) {
+                printf("│ Hybrid       │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", hybridStats.total, hybridStats.passed,
+                       hybridStats.failed, hybridStats.errors);
+            }
+            printf("├──────────────┼─────────┼────────┼────────┼────────┤\n");
+            printf("│ Total        │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", summary.totalTests, summary.passedTests,
+                   summary.failedTests, summary.errorTests);
+            printf("└──────────────┴─────────┴────────┴────────┴────────┘\n");
+            printf("   📈 Pass Rate: %.1f%%\n", summary.passRate);
+        } else {
+            // Simple format for full test runs without engine breakdown
+            printf("   Total Tests: %zu\n", summary.totalTests);
+            printf("   ✅ Passed: %zu\n", summary.passedTests);
+            printf("   ❌ Failed: %zu\n", summary.failedTests);
+            printf("   🚨 Errors: %zu\n", summary.errorTests);
+            printf("   ⏭️  Skipped: %zu\n", summary.skippedTests);
+            printf("   📈 Pass Rate: %.1f%%\n", summary.passRate);
+        }
 
         // Show specific failed test IDs
         if (!summary.failedTestIds.empty()) {

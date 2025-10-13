@@ -201,6 +201,13 @@ public:
     std::vector<TestReport> runAllMatchingTests(int testId);
 
     /**
+     * @brief Run a single test with hybrid engine (static generated code)
+     * @param testId Test ID number (e.g., 144, 147)
+     * @return TestReport with engineType="hybrid"
+     */
+    TestReport runHybridTest(int testId);
+
+    /**
      * @brief Run filtered tests
      * @param conformanceLevel Filter by conformance level
      * @param specSection Filter by spec section

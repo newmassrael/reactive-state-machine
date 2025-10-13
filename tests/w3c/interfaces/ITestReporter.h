@@ -29,6 +29,7 @@ struct TestRunSummary {
  */
 struct TestReport {
     std::string testId;
+    std::string engineType;  // "dynamic" or "hybrid" - indicates which engine executed the test
     TestMetadata metadata;
     TestExecutionContext executionContext;
     ValidationResult validationResult;
@@ -77,6 +78,16 @@ public:
      * @return Description of where results are being written
      */
     virtual std::string getOutputDestination() const = 0;
+
+    /**
+     * @brief Get all collected test reports (optional, returns empty if not supported)
+     * @return Vector of all test reports collected during the test run
+     */
+    virtual std::vector<TestReport> getAllReports() const {
+        return {};
+    }
 };
+
+;
 
 }  // namespace RSM::W3C

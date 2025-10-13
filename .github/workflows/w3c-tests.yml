@@ -182,10 +182,26 @@ jobs:
           passed=$((total - failures - errors))
           pass_rate=$(awk "BEGIN {printf \"%.1f\", ($passed / $total) * 100}")
 
-          echo "- **Total Tests:** $total" >> $GITHUB_STEP_SUMMARY
-          echo "- **✅ Passed:** $passed" >> $GITHUB_STEP_SUMMARY
-          echo "- **❌ Failed:** $failures" >> $GITHUB_STEP_SUMMARY
-          echo "- **🚨 Errors:** $errors" >> $GITHUB_STEP_SUMMARY
+          # Count tests by engine type
+          dynamic_total=$(grep -oP 'engineType="dynamic"' w3c_test_results.xml | wc -l)
+          hybrid_total=$(grep -oP 'engineType="hybrid"' w3c_test_results.xml | wc -l)
+
+          # Count passed tests by engine type (no failure tags)
+          dynamic_passed=$(grep 'engineType="dynamic"' w3c_test_results.xml | grep -v '<failure' | wc -l)
+          hybrid_passed=$(grep 'engineType="hybrid"' w3c_test_results.xml | grep -v '<failure' | wc -l)
+
+          dynamic_failed=$((dynamic_total - dynamic_passed))
+          hybrid_failed=$((hybrid_total - hybrid_passed))
+
+          # Display engine-specific statistics
+          echo "| Engine | Total | Passed | Failed |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Dynamic | $dynamic_total | $dynamic_passed | $dynamic_failed |" >> $GITHUB_STEP_SUMMARY
+          if [ $hybrid_total -gt 0 ]; then
+            echo "| Hybrid | $hybrid_total | $hybrid_passed | $hybrid_failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "| **Total** | **$total** | **$passed** | **$((failures + errors))** |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **📈 Pass Rate:** ${pass_rate}%" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 

@@ -18,6 +18,7 @@ namespace RSM::Codegen {
 // Forward declarations
 class SCXMLModel;
 struct Action;
+struct Transition;
 
 /**
  * @brief SCXML to C++ static code generator
@@ -46,7 +47,7 @@ public:
     std::string generateEventEnum(const std::set<std::string> &events);
     std::string generateStrategyInterface(const std::string &className, const std::set<std::string> &guards,
                                           const std::set<std::string> &actions);
-    std::string generateProcessEvent(const SCXMLModel &model);
+    std::string generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events);
     std::string generateClass(const SCXMLModel &model);
     void generateActionCode(std::stringstream &ss, const Action &action, const std::string &engineVar,
                             const std::set<std::string> &events);
@@ -61,6 +62,11 @@ private:
     std::string generateEnum(const std::string &enumName, const std::set<std::string> &values);
     // Helper methods
     std::string capitalize(const std::string &str);
+
+    // W3C SCXML 3.5.1: Group transitions by event while preserving document order
+    // This ensures the first occurrence of each event determines its position in output
+    static std::vector<std::pair<std::string, std::vector<Transition>>>
+    groupTransitionsByEventPreservingOrder(const std::vector<Transition> &transitions);
 
     // Extract SCXML parsing results
     // Convert Action to JavaScript code (for foreach iteration content)
@@ -91,9 +97,12 @@ struct Transition {
     std::string sourceState;
     std::string event;
     std::string targetState;
-    std::string guard;                 // Guard condition expression (e.g., "isReady()")
-    std::vector<std::string> actions;  // Action function names from transition scripts
+    std::string guard;                      // Guard condition expression (e.g., "isReady()")
+    std::vector<std::string> actions;       // Action function names from transition scripts
+    std::vector<Action> transitionActions;  // W3C SCXML: Transition actions (e.g., assign for internal transitions)
 };
+
+;
 
 // Forward declaration for nested actions
 struct Action;
@@ -135,8 +144,10 @@ struct Action {
 struct State {
     std::string name;
     bool isFinal = false;
-    std::vector<Action> entryActions;  // Actions from <onentry>
-    std::vector<Action> exitActions;   // Actions from <onexit>
+    bool isParallel = false;                // W3C SCXML 3.4: Parallel state flag
+    std::vector<std::string> childRegions;  // W3C SCXML 3.4: Child region state IDs for parallel states
+    std::vector<Action> entryActions;       // Actions from <onentry>
+    std::vector<Action> exitActions;        // Actions from <onexit>
 };
 
 struct DataModelVariable {
