@@ -16,6 +16,7 @@
 #include "test150_sm.h"
 #include "test151_sm.h"
 #include "test152_sm.h"
+#include "test153_sm.h"
 
 // Test registry structure
 struct StaticTest {
@@ -105,6 +106,15 @@ bool test152() {
     return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test152::State::Pass;
 }
 
+bool test153() {
+    RSM::Generated::test153::test153 sm;
+    sm.initialize();
+
+    // Test 153: Verify foreach goes over array in correct order
+    // Hybrid generation: foreach with array [1,2,3] checking Var1 < Var2 ordering
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test153::State::Pass;
+}
+
 }  // namespace TestRunners
 
 // Test registry
@@ -116,6 +126,7 @@ static const StaticTest STATIC_TESTS[] = {
     {150, "Foreach with dynamic variables (Hybrid JSEngine)", TestRunners::test150},
     {151, "Foreach declares new variables (Hybrid JSEngine)", TestRunners::test151},
     {152, "Foreach error handling (Hybrid JSEngine)", TestRunners::test152},
+    {153, "Foreach array iteration order (Hybrid JSEngine)", TestRunners::test153},
     // Add more tests here
 };
 

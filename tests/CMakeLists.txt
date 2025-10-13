@@ -554,6 +554,7 @@ rsm_generate_static_w3c_test(149 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(150 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(151 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(152 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(153 ${STATIC_W3C_OUTPUT_DIR})
 # Add more tests as StaticCodeGenerator gains features:
 
 # Create the CLI executable

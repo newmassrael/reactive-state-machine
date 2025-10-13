@@ -154,12 +154,16 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         for (const auto &action : actions) {
             if (action.type == Action::FOREACH) {
                 model.hasForEach = true;
+                // If foreach has iteration actions (assign, if, etc.), entire datamodel must be JSEngine
+                if (!action.iterationActions.empty()) {
+                    model.hasComplexDatamodel = true;
+                }
+                // Recursively check iteration actions
+                detectFeatures(action.iterationActions);
             } else if (action.type == Action::IF) {
                 for (const auto &branch : action.branches) {
                     detectFeatures(branch.actions);
                 }
-            } else if (action.type == Action::FOREACH) {
-                detectFeatures(action.iterationActions);
             }
         }
     };
@@ -324,6 +328,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
     std::stringstream ss;
 
     ss << "        (void)engine;\n";
+    ss << "        (void)event;\n";
     ss << "        bool transitionTaken = false;\n";
     ss << "        switch (currentState) {\n";
 
@@ -375,18 +380,19 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                     if (hasGuard) {
                         std::string guardExpr = trans.guard;
 
-                        // Check if guard needs JSEngine (typeof, complex ECMAScript)
-                        bool needsJSEngine = (guardExpr.find("typeof") != std::string::npos);
+                        // Pure Dynamic: ALL guards use JSEngine evaluation
+                        // Pure Static: Only typeof guards use JSEngine, others use C++ direct evaluation
+                        bool needsJSEngine = model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
                         bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
                         if (needsJSEngine) {
-                            // Complex guard → JSEngine evaluation using GuardHelper
-                            ss << indent << "ensureJSEngine();\n";
+                            // Pure Dynamic or complex guard → JSEngine evaluation using GuardHelper
+                            ss << indent << "this->ensureJSEngine();\n";
                             ss << indent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
                             ss << indent << "if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
                                << escapeStringLiteral(guardExpr) << "\")) {\n";
                         } else if (isFunctionCall) {
-                            // Extract function name from guard expression
+                            // Pure Static: Extract function name from guard expression
                             std::string guardFunc = guardExpr;
                             size_t parenPos = guardFunc.find('(');
                             if (parenPos != std::string::npos) {
@@ -398,7 +404,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                             }
                             ss << indent << "if (derived()." << guardFunc << "()) {\n";
                         } else {
-                            // Simple datamodel expression - use directly
+                            // Pure Static: Simple datamodel expression - use C++ direct evaluation
                             ss << indent << "if (" << guardExpr << ") {\n";
                         }
 
@@ -436,8 +442,9 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                     if (hasGuard) {
                         std::string guardExpr = trans.guard;
 
-                        // Check if guard needs JSEngine
-                        bool needsJSEngine = (guardExpr.find("typeof") != std::string::npos);
+                        // Pure Dynamic: ALL guards use JSEngine evaluation
+                        // Pure Static: Only typeof guards use JSEngine, others use C++ direct evaluation
+                        bool needsJSEngine = model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
                         bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
                         // Add else if this is not the first guarded transition
@@ -446,16 +453,17 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                         }
 
                         if (needsJSEngine) {
-                            // Complex guard → JSEngine evaluation using GuardHelper
+                            // Pure Dynamic or complex guard → JSEngine evaluation using GuardHelper
                             if (firstTransition) {
                                 ss << indent << "{\n";  // Open scope for JSEngine variables
                             }
-                            ss << indent << "    ensureJSEngine();\n";
+                            ss << indent << "    this->ensureJSEngine();\n";
                             ss << indent << "    auto& jsEngine = ::RSM::JSEngine::instance();\n";
                             ss << indent << "    if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
                                << escapeStringLiteral(guardExpr) << "\")) {\n";
                             indent += "        ";  // Indent for code inside the if block
                         } else if (isFunctionCall) {
+                            // Pure Static: Extract function name from guard expression
                             if (firstTransition) {
                                 ss << indent;
                             }
@@ -470,6 +478,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                             ss << "if (derived()." << guardFunc << "()) {\n";
                             indent += "    ";
                         } else {
+                            // Pure Static: Simple datamodel expression - use C++ direct evaluation
                             if (firstTransition) {
                                 ss << indent;
                             }
@@ -504,12 +513,14 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                         // Check if first transition had JSEngine guard
                         bool firstHasJSEngine = false;
                         if (!eventlessTransitions.empty() && !eventlessTransitions[0].guard.empty()) {
-                            firstHasJSEngine = (eventlessTransitions[0].guard.find("typeof") != std::string::npos);
+                            std::string firstGuard = eventlessTransitions[0].guard;
+                            firstHasJSEngine =
+                                model.needsJSEngine() || (firstGuard.find("typeof") != std::string::npos);
                         }
 
                         if (firstHasJSEngine) {
                             // Close the inner if/else chain (align with the 'if' statement)
-                            ss << "                }\n";
+                            ss << "                    }\n";
                             // Close the outer scope block
                             ss << "                }\n";
                         } else if (!firstTransition) {
@@ -603,18 +614,25 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     // Generate datamodel member variables (for stateful policies)
     if (hasDataModel) {
         ss << "    // Datamodel variables\n";
-        for (const auto &var : model.dataModel) {
-            // Detect variable type from initial value
-            if (var.initialValue.find('[') != std::string::npos) {
-                ss << "    // Array variable (handled by JSEngine): " << var.name << " = " << var.initialValue << "\n";
-            } else if (var.initialValue.empty()) {
-                ss << "    // Dynamic variable (handled by JSEngine): " << var.name << "\n";
-            } else {
+
+        // Pure Dynamic: When JSEngine is needed, ALL variables are managed by JSEngine (no C++ members)
+        if (model.needsJSEngine()) {
+            // List all variables in comments only (Pure Dynamic architecture)
+            for (const auto &var : model.dataModel) {
+                if (!var.initialValue.empty()) {
+                    ss << "    // JSEngine variable: " << var.name << " = " << var.initialValue << "\n";
+                } else {
+                    ss << "    // JSEngine variable: " << var.name << "\n";
+                }
+            }
+        } else {
+            // Pure Static: Generate C++ member variables
+            for (const auto &var : model.dataModel) {
                 ss << "    int " << var.name << " = " << var.initialValue << ";\n";
             }
         }
 
-        // Add JSEngine session ID for hybrid generation (lazy-initialized)
+        // Add JSEngine session ID for dynamic generation (lazy-initialized)
         if (model.needsJSEngine()) {
             ss << "\n    // JSEngine session for dynamic features (lazy-initialized)\n";
             ss << "    mutable ::std::optional<::std::string> sessionId_;\n";
@@ -734,20 +752,22 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         ss << "            sessionId_ = jsEngine.generateSessionIdString(\"" << model.name << "_\");\n";
         ss << "            jsEngine.createSession(sessionId_.value());\n";
 
-        // Initialize datamodel variables in JSEngine with error checking
+        // Initialize ALL datamodel variables in JSEngine (Pure Dynamic architecture)
         for (const auto &var : model.dataModel) {
-            if (var.initialValue.find('[') != std::string::npos) {
-                // Array initialization with error handling
-                ss << "            auto initResult_" << var.name
-                   << " = jsEngine.executeScript(sessionId_.value(), \"var " << var.name << " = " << var.initialValue
-                   << ";\").get();\n";
-                ss << "            if (!::RSM::JSEngine::isSuccess(initResult_" << var.name << ")) {\n";
-                ss << "                LOG_ERROR(\"Failed to initialize datamodel variable: " << var.name << "\");\n";
-                ss << "                throw std::runtime_error(\"Datamodel initialization failed\");\n";
-                ss << "            }\n";
-            } else if (!var.initialValue.empty()) {
-                // Simple variable initialization - skip for now
+            // Generate initialization script
+            std::string initScript = "var " + var.name;
+            if (!var.initialValue.empty()) {
+                initScript += " = " + var.initialValue;
             }
+            initScript += ";";
+
+            // Execute with error handling
+            ss << "            auto initResult_" << var.name << " = jsEngine.executeScript(sessionId_.value(), \""
+               << initScript << "\").get();\n";
+            ss << "            if (!::RSM::JSEngine::isSuccess(initResult_" << var.name << ")) {\n";
+            ss << "                LOG_ERROR(\"Failed to initialize datamodel variable: " << var.name << "\");\n";
+            ss << "                throw std::runtime_error(\"Datamodel initialization failed\");\n";
+            ss << "            }\n";
         }
 
         ss << "        }\n";
@@ -839,11 +859,11 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 ss << "                    executeForeachLoop(\"" << action.param1 << "\", \"" << action.param2
                    << "\", \"" << action.param3 << "\");\n";
             } else {
-                // Complex case: has iteration actions, generate inline
+                // Complex case: has iteration actions, transpile to JavaScript and execute via JSEngine
                 ss << "                    {\n";
                 ss << "                        // Execute foreach: array=" << action.param1
                    << ", item=" << action.param2 << ", index=" << action.param3 << "\n";
-                ss << "                        ensureJSEngine();\n";
+                ss << "                        this->ensureJSEngine();\n";
                 ss << "                        auto& jsEngine = ::RSM::JSEngine::instance();\n";
                 ss << "                        auto arrayValues = ::RSM::ForeachHelper::evaluateForeachArray(jsEngine, "
                       "sessionId_.value(), \""
@@ -852,10 +872,18 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 ss << "                            ::RSM::ForeachHelper::setForeachIterationVariables(jsEngine, "
                       "sessionId_.value(), \""
                    << action.param2 << "\", arrayValues[i], \"" << action.param3 << "\", i);\n";
-                // Generate iteration actions
-                for (const auto &iterAction : action.iterationActions) {
-                    generateActionCode(ss, iterAction, engineVar, events);
+
+                // Transpile iteration actions to JavaScript and execute
+                std::string jsCode = actionToJavaScript(action.iterationActions);
+                if (!jsCode.empty()) {
+                    ss << "                            auto iterResult = jsEngine.executeScript(sessionId_.value(), \""
+                       << escapeStringLiteral(jsCode) << "\").get();\n";
+                    ss << "                            if (!::RSM::JSEngine::isSuccess(iterResult)) {\n";
+                    ss << "                                LOG_ERROR(\"Foreach iteration script failed\");\n";
+                    ss << "                                throw std::runtime_error(\"Foreach iteration failed\");\n";
+                    ss << "                            }\n";
                 }
+
                 ss << "                        }\n";
                 ss << "                    }\n";
             }
@@ -1074,6 +1102,38 @@ std::string StaticCodeGenerator::escapeStringLiteral(const std::string &str) {
     }
 
     return result;
+}
+
+std::string StaticCodeGenerator::actionToJavaScript(const std::vector<Action> &actions) {
+    std::stringstream js;
+    for (const auto &action : actions) {
+        if (action.type == Action::ASSIGN) {
+            // Assignment: location = expr;
+            js << action.param1 << " = " << action.param2 << ";\n";
+        } else if (action.type == Action::IF) {
+            // IF: if (cond) { ... } else { ... }
+            for (size_t i = 0; i < action.branches.size(); ++i) {
+                const auto &branch = action.branches[i];
+                if (i == 0) {
+                    // First branch is if
+                    js << "if (" << branch.condition << ") {\n";
+                } else if (branch.isElseBranch) {
+                    // Else branch
+                    js << "} else {\n";
+                } else {
+                    // Elseif branches
+                    js << "} else if (" << branch.condition << ") {\n";
+                }
+                // Recursively transpile branch actions
+                js << actionToJavaScript(branch.actions);
+            }
+            if (!action.branches.empty()) {
+                js << "}\n";
+            }
+        }
+        // Add more action types as needed
+    }
+    return js.str();
 }
 
 bool StaticCodeGenerator::writeToFile(const std::string &path, const std::string &content) {

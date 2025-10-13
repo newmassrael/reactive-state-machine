@@ -20,9 +20,8 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
     add_custom_command(
         OUTPUT "${SCXML_FILE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
-        COMMAND txml-converter "${TXML_FILE}" "${SCXML_FILE}.tmp"
-        COMMAND sed "s/<scxml /<scxml name=\"test${TEST_NUM}\" /" "${SCXML_FILE}.tmp" > "${SCXML_FILE}"
-        COMMAND ${CMAKE_COMMAND} -E rm -f "${SCXML_FILE}.tmp"
+        COMMAND txml-converter "${TXML_FILE}" "${SCXML_FILE}"
+        COMMAND sed -i "s/<scxml /<scxml name=\\\"test${TEST_NUM}\\\" /" "${SCXML_FILE}"
         DEPENDS txml-converter "${TXML_FILE}"
         COMMENT "Converting TXML to SCXML: test${TEST_NUM}.txml"
         VERBATIM

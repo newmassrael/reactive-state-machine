@@ -166,10 +166,14 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
         auto children = actionElement->get_children();
         RSM::IfAction::ConditionalBranch *currentBranch = nullptr;
 
+        LOG_DEBUG("IF action: found {} children, condition='{}'", children.size(), condition);
+
         // Process children sequentially to maintain branch context
+        int childIndex = 0;
         for (auto child : children) {
             auto element = dynamic_cast<const xmlpp::Element *>(child);
             if (!element) {
+                LOG_DEBUG("  Child {}: not an element (text node)", childIndex++);
                 continue;
             }
 
@@ -180,26 +184,40 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
                 childName = childName.substr(colonPos + 1);
             }
 
+            LOG_DEBUG("  Child {}: name='{}', currentBranch={}", childIndex, childName,
+                      currentBranch ? "else/elseif" : "if");
+
             if (childName == "elseif") {
                 auto elseifCondAttr = element->get_attribute("cond");
                 std::string elseifCondition = elseifCondAttr ? elseifCondAttr->get_value() : "";
                 currentBranch = &ifAction->addElseIfBranch(elseifCondition);
+                LOG_DEBUG("    Added elseif branch with condition='{}'", elseifCondition);
             } else if (childName == "else") {
                 currentBranch = &ifAction->addElseBranch();
+                LOG_DEBUG("    Added else branch");
             } else if (isActionNode(element)) {
                 auto childAction = parseActionNode(element);
                 if (childAction) {
                     if (currentBranch) {
                         // Add to current elseif/else branch
                         currentBranch->actions.push_back(childAction);
+                        LOG_DEBUG("    Added {} action to current branch (size now: {})", childName,
+                                  currentBranch->actions.size());
                     } else {
                         // Add to main if branch (before any elseif/else)
                         ifAction->addIfAction(childAction);
+                        LOG_DEBUG("    Added {} action to main if branch", childName);
                     }
+                } else {
+                    LOG_WARN("    parseActionNode returned nullptr for '{}'", childName);
                 }
+            } else {
+                LOG_DEBUG("    Skipping non-action element '{}'", childName);
             }
+            childIndex++;
         }
 
+        LOG_DEBUG("IF action complete: {} branches", ifAction->getBranchCount());
         return ifAction;
 
     } else if (elementName == "send") {
@@ -480,54 +498,20 @@ void RSM::ActionParser::parseSpecialExecutableContent(const xmlpp::Element *elem
     std::string nodeName = element->get_name();
     LOG_DEBUG("Parsing special content: {}", nodeName);
 
-    // 특수 요소에 대한 액션 노드 생성 (if 액션으로 처리)
+    // Special elements should use parseActionNode for proper parsing
     std::string localName = getLocalName(nodeName);
-    std::shared_ptr<RSM::IActionNode> specialAction;
 
-    if (localName == "if") {
-        auto condAttr = element->get_attribute("cond");
-        std::string condition = condAttr ? condAttr->get_value() : "";
-        specialAction = std::make_shared<RSM::IfAction>(condition);
+    if (localName == "if" || localName == "foreach") {
+        // Use parseActionNode for proper IF/foreach parsing with all child actions
+        auto specialAction = parseActionNode(element);
+        if (specialAction) {
+            actions.push_back(specialAction);
+        }
     } else {
-        // 기타 특수 요소는 ScriptAction으로 처리
-        specialAction = std::make_shared<RSM::ScriptAction>("", localName);
+        // Other special elements treated as script actions
+        auto specialAction = std::make_shared<RSM::ScriptAction>("", localName);
+        actions.push_back(specialAction);
     }
-
-    // 추가 속성 처리 (무시)
-    auto attributes = element->get_attributes();
-    for (auto attr : attributes) {
-        auto xmlAttr = dynamic_cast<const xmlpp::Attribute *>(attr);
-        if (xmlAttr) {
-            std::string name = xmlAttr->get_name();
-            std::string value = xmlAttr->get_value();
-            LOG_DEBUG("ActionParser: Special content attribute {} = {}", name, value);
-        }
-    }
-
-    // if/elseif/else 또는 foreach 내의 자식 요소 처리
-    std::vector<std::shared_ptr<RSM::IActionNode>> childActions;
-    auto children = element->get_children();
-
-    for (auto child : children) {
-        auto elementNode = dynamic_cast<const xmlpp::Element *>(child);
-        if (elementNode) {
-            // 자식 요소가 액션 노드인 경우 파싱
-            if (isActionNode(elementNode) || isSpecialExecutableContent(elementNode)) {
-                auto childAction = parseActionNode(elementNode);
-                if (childAction) {
-                    childActions.push_back(childAction);
-                }
-            }
-        }
-    }
-
-    // 자식 액션 노드 처리 (현재 구현에서는 무시)
-    if (!childActions.empty()) {
-        LOG_DEBUG("Ignored {} child actions for {}", childActions.size(), nodeName);
-    }
-
-    // 생성된 특수 액션 추가
-    actions.push_back(specialAction);
 }
 
 bool RSM::ActionParser::isActionNode(const xmlpp::Element *element) const {

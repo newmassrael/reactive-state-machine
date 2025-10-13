@@ -63,6 +63,9 @@ private:
     std::string capitalize(const std::string &str);
 
     // Extract SCXML parsing results
+    // Convert Action to JavaScript code (for foreach iteration content)
+    std::string actionToJavaScript(const std::vector<Action> &actions);
+
     std::set<std::string> extractStates(const SCXMLModel &model);
     std::set<std::string> extractEvents(const SCXMLModel &model);
 
