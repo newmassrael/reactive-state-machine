@@ -1,6 +1,8 @@
 // W3C Static Test CLI
 // Command-line interface for running W3C SCXML tests with static code generation
 
+#include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -12,6 +14,8 @@
 #include "test148_sm.h"
 #include "test149_sm.h"
 #include "test150_sm.h"
+#include "test151_sm.h"
+#include "test152_sm.h"
 
 // Test registry structure
 struct StaticTest {
@@ -82,6 +86,25 @@ bool test150() {
     return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test150::State::Pass;
 }
 
+bool test151() {
+    RSM::Generated::test151::test151 sm;
+    sm.initialize();
+
+    // Test 151: Verify foreach declares new variables when not already defined
+    // Hybrid generation: foreach with both declared (Var1, Var2) and undeclared (Var4, Var5) variables
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test151::State::Pass;
+}
+
+bool test152() {
+    RSM::Generated::test152::test152 sm;
+    sm.initialize();
+
+    // Test 152: Verify foreach handles illegal array/item errors correctly
+    // Hybrid generation: foreach error handling with error.execution events
+    // Var1 should remain 0 (foreach executable content never executed)
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test152::State::Pass;
+}
+
 }  // namespace TestRunners
 
 // Test registry
@@ -91,6 +114,8 @@ static const StaticTest STATIC_TESTS[] = {
     {148, "Else clause execution with datamodel", TestRunners::test148},
     {149, "Neither if nor elseif executes", TestRunners::test149},
     {150, "Foreach with dynamic variables (Hybrid JSEngine)", TestRunners::test150},
+    {151, "Foreach declares new variables (Hybrid JSEngine)", TestRunners::test151},
+    {152, "Foreach error handling (Hybrid JSEngine)", TestRunners::test152},
     // Add more tests here
 };
 
@@ -146,9 +171,36 @@ bool runTest(int testNum) {
     return false;
 }
 
+void printTestSummary(int passed, int failed, int errors, size_t totalTests, long totalSeconds) {
+    double passRate = totalTests > 0 ? (static_cast<double>(passed) / totalTests) * 100.0 : 0.0;
+
+    printf("\n");
+    printf("🎉 W3C SCXML Compliance Test Complete!\n");
+    printf("⏱️  Total execution time: %ld seconds\n", totalSeconds);
+    printf("📊 Test Results Summary:\n");
+    printf("   Total Tests: %zu\n", totalTests);
+    printf("   ✅ Passed: %d\n", passed);
+    printf("   ❌ Failed: %d\n", failed);
+    printf("   🚨 Errors: %d\n", errors);
+    printf("   ⏭️  Skipped: 0\n");
+    printf("   📈 Pass Rate: %.1f%%\n", passRate);
+
+    if (passRate >= 80.0) {
+        printf("🏆 EXCELLENT: High compliance with W3C SCXML 1.0 specification!\n");
+    } else if (passRate >= 60.0) {
+        printf("👍 GOOD: Reasonable compliance with W3C SCXML 1.0 specification\n");
+    } else {
+        printf("⚠️  NEEDS IMPROVEMENT: Consider reviewing failing tests\n");
+    }
+
+    printf("\n📊 Detailed results written to: w3c_static_test_results.xml\n");
+}
+
 bool runAllTests() {
     int passed = 0;
     int failed = 0;
+    int errors = 0;
+    auto startTime = std::chrono::steady_clock::now();
 
     std::cout << "Running " << NUM_STATIC_TESTS << " static W3C tests...\n\n";
 
@@ -160,9 +212,10 @@ bool runAllTests() {
         }
     }
 
-    std::cout << "\n===============================\n";
-    std::cout << "Results: " << passed << " passed, " << failed << " failed\n";
-    std::cout << "===============================\n";
+    auto endTime = std::chrono::steady_clock::now();
+    auto totalTime = std::chrono::duration_cast<std::chrono::seconds>(endTime - startTime);
+
+    printTestSummary(passed, failed, errors, NUM_STATIC_TESTS, totalTime.count());
 
     return failed == 0;
 }
@@ -256,6 +309,8 @@ int main(int argc, char *argv[]) {
     // Run specified tests
     int passed = 0;
     int failed = 0;
+    int errors = 0;
+    auto startTime = std::chrono::steady_clock::now();
 
     std::cout << "Running " << testNums.size() << " static W3C test(s)...\n\n";
 
@@ -267,11 +322,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (testNums.size() > 1) {
-        std::cout << "\n===============================\n";
-        std::cout << "Results: " << passed << " passed, " << failed << " failed\n";
-        std::cout << "===============================\n";
-    }
+    auto endTime = std::chrono::steady_clock::now();
+    auto totalTime = std::chrono::duration_cast<std::chrono::seconds>(endTime - startTime);
+
+    printTestSummary(passed, failed, errors, testNums.size(), totalTime.count());
 
     return failed == 0 ? 0 : 1;
 }

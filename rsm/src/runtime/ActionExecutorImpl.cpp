@@ -8,6 +8,8 @@
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
 #include "common/Constants.h"
+#include "common/ForeachHelper.h"
+#include "common/ForeachValidator.h"
 #include "common/Logger.h"
 #include "common/StringUtils.h"
 #include "common/TypeRegistry.h"
@@ -1060,11 +1062,14 @@ bool ActionExecutorImpl::executeForeachAction(const ForeachAction &action) {
         std::string itemVar = action.getItem();
         std::string indexVar = action.getIndex();
 
-        if (arrayExpr.empty() || itemVar.empty()) {
-            LOG_ERROR("Foreach action missing required array or item attributes");
+        // W3C SCXML 4.6: Validate array and item attributes using common validation function
+        try {
+            RSM::Validation::validateForeachAttributes(arrayExpr, itemVar);
+        } catch (const std::runtime_error &e) {
+            LOG_ERROR("Foreach validation failed: {}", e.what());
             // Generate error.execution event for SCXML W3C compliance
             if (eventRaiser_ && eventRaiser_->isReady()) {
-                eventRaiser_->raiseEvent("error.execution", "Missing required array or item attributes");
+                eventRaiser_->raiseEvent("error.execution", e.what());
             }
             return false;
         }

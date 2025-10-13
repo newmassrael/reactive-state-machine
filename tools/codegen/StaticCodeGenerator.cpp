@@ -219,6 +219,9 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         ss << "#include <optional>\n";
         ss << "#include \"common/Logger.h\"\n";
         ss << "#include \"scripting/JSEngine.h\"\n";
+        ss << "#include \"common/ForeachValidator.h\"\n";
+        ss << "#include \"common/ForeachHelper.h\"\n";
+        ss << "#include \"common/GuardHelper.h\"\n";
     }
     ss << "\n";
 
@@ -377,18 +380,11 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                         bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
                         if (needsJSEngine) {
-                            // Complex guard → JSEngine evaluation (escape for safety)
-                            ss << indent << "ensureJSEngine();  // Lazy initialization\n";
+                            // Complex guard → JSEngine evaluation using GuardHelper
+                            ss << indent << "ensureJSEngine();\n";
                             ss << indent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
-                            ss << indent << "auto guardResult = jsEngine.evaluateExpression(sessionId_.value(), \""
-                               << escapeStringLiteral(guardExpr) << "\").get();\n";
-                            ss << indent << "if (!::RSM::JSEngine::isSuccess(guardResult)) {\n";
-                            ss << indent
-                               << "    LOG_ERROR(\"Guard evaluation failed: " << escapeStringLiteral(guardExpr)
-                               << "\");\n";
-                            ss << indent << "    throw std::runtime_error(\"Guard evaluation failed\");\n";
-                            ss << indent << "}\n";
-                            ss << indent << "if (::RSM::JSEngine::resultToBool(guardResult)) {\n";
+                            ss << indent << "if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
+                               << escapeStringLiteral(guardExpr) << "\")) {\n";
                         } else if (isFunctionCall) {
                             // Extract function name from guard expression
                             std::string guardFunc = guardExpr;
@@ -450,21 +446,14 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
                         }
 
                         if (needsJSEngine) {
-                            // Complex guard → JSEngine evaluation (escape for safety)
+                            // Complex guard → JSEngine evaluation using GuardHelper
                             if (firstTransition) {
                                 ss << indent << "{\n";  // Open scope for JSEngine variables
                             }
-                            ss << indent << "    ensureJSEngine();  // Lazy initialization\n";
+                            ss << indent << "    ensureJSEngine();\n";
                             ss << indent << "    auto& jsEngine = ::RSM::JSEngine::instance();\n";
-                            ss << indent << "    auto guardResult = jsEngine.evaluateExpression(sessionId_.value(), \""
-                               << escapeStringLiteral(guardExpr) << "\").get();\n";
-                            ss << indent << "    if (!::RSM::JSEngine::isSuccess(guardResult)) {\n";
-                            ss << indent
-                               << "        LOG_ERROR(\"Guard evaluation failed: " << escapeStringLiteral(guardExpr)
-                               << "\");\n";
-                            ss << indent << "        throw std::runtime_error(\"Guard evaluation failed\");\n";
-                            ss << indent << "    }\n";
-                            ss << indent << "    if (::RSM::JSEngine::resultToBool(guardResult)) {\n";
+                            ss << indent << "    if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
+                               << escapeStringLiteral(guardExpr) << "\")) {\n";
                             indent += "        ";  // Indent for code inside the if block
                         } else if (isFunctionCall) {
                             if (firstTransition) {
@@ -599,6 +588,9 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
 std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
 
+    // Extract events for error handling decisions
+    auto events = extractEvents(model);
+
     // Determine if we need non-static (stateful) policy
     bool hasDataModel = !model.dataModel.empty() || model.needsJSEngine();
 
@@ -687,7 +679,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         if (!state.entryActions.empty()) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
             for (const auto &action : state.entryActions) {
-                generateActionCode(ss, action, "engine");
+                generateActionCode(ss, action, "engine", events);
             }
             ss << "                break;\n";
         }
@@ -710,7 +702,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         if (!state.exitActions.empty()) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
             for (const auto &action : state.exitActions) {
-                generateActionCode(ss, action, "engine");
+                generateActionCode(ss, action, "engine", events);
             }
             ss << "                break;\n";
         }
@@ -764,31 +756,13 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         ss << "    // Helper: Execute foreach loop with JSEngine\n";
         ss << "    void executeForeachLoop(const ::std::string& arrayName, const ::std::string& itemVar, const "
               "::std::string& indexVar) {\n";
-        ss << "        ensureJSEngine();  // Lazy initialization\n";
+        ss << "        ensureJSEngine();\n";
         ss << "        auto& jsEngine = ::RSM::JSEngine::instance();\n";
-        ss << "        auto arrayExpr = ::std::string(arrayName);\n";
-        ss << "        auto arrayResult = jsEngine.evaluateExpression(sessionId_.value(), arrayExpr).get();\n";
-        ss << "        if (!::RSM::JSEngine::isSuccess(arrayResult)) {\n";
-        ss << "            LOG_ERROR(\"Failed to evaluate array expression: {}\", arrayExpr);\n";
-        ss << "            throw std::runtime_error(\"Foreach array evaluation failed\");\n";
-        ss << "        }\n";
-        ss << "        auto arrayValues = ::RSM::JSEngine::resultToStringArray(arrayResult, sessionId_.value(), "
-              "arrayExpr);\n";
+        ss << "        auto arrayValues = ::RSM::ForeachHelper::evaluateForeachArray(jsEngine, sessionId_.value(), "
+              "arrayName);\n";
         ss << "        for (size_t i = 0; i < arrayValues.size(); ++i) {\n";
-        ss << "            auto setResult = jsEngine.setVariable(sessionId_.value(), itemVar, "
-              "::ScriptValue(arrayValues[i])).get();\n";
-        ss << "            if (!::RSM::JSEngine::isSuccess(setResult)) {\n";
-        ss << "                LOG_ERROR(\"Failed to set foreach item variable: {}\", itemVar);\n";
-        ss << "                throw std::runtime_error(\"Foreach setVariable failed\");\n";
-        ss << "            }\n";
-        ss << "            if (!indexVar.empty()) {\n";
-        ss << "                auto indexResult = jsEngine.setVariable(sessionId_.value(), indexVar, "
-              "::ScriptValue(static_cast<int64_t>(i))).get();\n";
-        ss << "                if (!::RSM::JSEngine::isSuccess(indexResult)) {\n";
-        ss << "                    LOG_ERROR(\"Failed to set foreach index variable: {}\", indexVar);\n";
-        ss << "                    throw std::runtime_error(\"Foreach setVariable failed\");\n";
-        ss << "                }\n";
-        ss << "            }\n";
+        ss << "            ::RSM::ForeachHelper::setForeachIterationVariables(jsEngine, sessionId_.value(), itemVar, "
+              "arrayValues[i], indexVar, i);\n";
         ss << "        }\n";
         ss << "    }\n";
     }
@@ -805,8 +779,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     return ss.str();
 }
 
-void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action &action,
-                                             const std::string &engineVar) {
+void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action &action, const std::string &engineVar,
+                                             const std::set<std::string> &events) {
     switch (action.type) {
     case Action::RAISE:
         ss << "                " << engineVar << ".raise(Event::" << capitalize(action.param1) << ");\n";
@@ -838,7 +812,7 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
             // Generate actions in this branch
             for (const auto &branchAction : branch.actions) {
-                generateActionCode(ss, branchAction, engineVar);
+                generateActionCode(ss, branchAction, engineVar, events);
             }
         }
 
@@ -847,53 +821,50 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         }
         break;
     case Action::FOREACH:
-        // Hybrid generation: foreach → JSEngine
-        ss << "                // Foreach loop (hybrid: delegated to JSEngine)\n";
+        // Hybrid generation: foreach → JSEngine with error handling
+        {
+            bool hasErrorExecution = (events.find("error.execution") != events.end());
+            ss << "                // Foreach loop (hybrid: delegated to JSEngine)\n";
 
-        if (action.iterationActions.empty()) {
-            // Simple case: no iteration actions, use helper method (DRY)
-            ss << "                executeForeachLoop(\"" << action.param1 << "\", \"" << action.param2 << "\", \""
-               << action.param3 << "\");\n";
-        } else {
-            // Complex case: has iteration actions, generate inline
-            ss << "                {\n";
-            ss << "                    // Execute foreach: array=" << action.param1 << ", item=" << action.param2
-               << ", index=" << action.param3 << "\n";
-            ss << "                    ensureJSEngine();  // Lazy initialization\n";
-            ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
-            ss << "                    auto arrayExpr = ::std::string(\"" << action.param1 << "\");\n";
-            ss << "                    auto arrayResult = jsEngine.evaluateExpression(sessionId_.value(), "
-                  "arrayExpr).get();\n";
-            ss << "                    if (!::RSM::JSEngine::isSuccess(arrayResult)) {\n";
-            ss << "                        LOG_ERROR(\"Failed to evaluate array expression: {}\", arrayExpr);\n";
-            ss << "                        throw std::runtime_error(\"Foreach array evaluation failed\");\n";
-            ss << "                    }\n";
-            ss << "                    auto arrayValues = ::RSM::JSEngine::resultToStringArray(arrayResult, "
-                  "sessionId_.value(), arrayExpr);\n";
-            ss << "                    for (size_t i = 0; i < arrayValues.size(); ++i) {\n";
-            ss << "                        // Safe: Use setVariable to prevent code injection\n";
-            ss << "                        auto setResult = jsEngine.setVariable(sessionId_.value(), \""
-               << action.param2 << "\", ::ScriptValue(arrayValues[i])).get();\n";
-            ss << "                        if (!::RSM::JSEngine::isSuccess(setResult)) {\n";
-            ss << "                            LOG_ERROR(\"Failed to set foreach item variable: " << action.param2
-               << "\");\n";
-            ss << "                            throw std::runtime_error(\"Foreach setVariable failed\");\n";
-            ss << "                        }\n";
-            if (!action.param3.empty()) {
-                ss << "                        auto indexResult = jsEngine.setVariable(sessionId_.value(), \""
-                   << action.param3 << "\", ::ScriptValue(static_cast<int64_t>(i))).get();\n";
-                ss << "                        if (!::RSM::JSEngine::isSuccess(indexResult)) {\n";
-                ss << "                            LOG_ERROR(\"Failed to set foreach index variable: " << action.param3
-                   << "\");\n";
-                ss << "                            throw std::runtime_error(\"Foreach setVariable failed\");\n";
+            if (hasErrorExecution) {
+                ss << "                try {\n";
+            }
+
+            // W3C SCXML 4.6: Validate array and item attributes using common validation function
+            ss << "                    ::RSM::Validation::validateForeachAttributes(\"" << action.param1 << "\", \""
+               << action.param2 << "\");\n";
+
+            if (action.iterationActions.empty()) {
+                // Simple case: no iteration actions, use helper method (DRY)
+                ss << "                    executeForeachLoop(\"" << action.param1 << "\", \"" << action.param2
+                   << "\", \"" << action.param3 << "\");\n";
+            } else {
+                // Complex case: has iteration actions, generate inline
+                ss << "                    {\n";
+                ss << "                        // Execute foreach: array=" << action.param1
+                   << ", item=" << action.param2 << ", index=" << action.param3 << "\n";
+                ss << "                        ensureJSEngine();\n";
+                ss << "                        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                ss << "                        auto arrayValues = ::RSM::ForeachHelper::evaluateForeachArray(jsEngine, "
+                      "sessionId_.value(), \""
+                   << action.param1 << "\");\n";
+                ss << "                        for (size_t i = 0; i < arrayValues.size(); ++i) {\n";
+                ss << "                            ::RSM::ForeachHelper::setForeachIterationVariables(jsEngine, "
+                      "sessionId_.value(), \""
+                   << action.param2 << "\", arrayValues[i], \"" << action.param3 << "\", i);\n";
+                // Generate iteration actions
+                for (const auto &iterAction : action.iterationActions) {
+                    generateActionCode(ss, iterAction, engineVar, events);
+                }
                 ss << "                        }\n";
+                ss << "                    }\n";
             }
-            // Generate iteration actions
-            for (const auto &iterAction : action.iterationActions) {
-                generateActionCode(ss, iterAction, engineVar);
+
+            if (hasErrorExecution) {
+                ss << "                } catch (const std::runtime_error&) {\n";
+                ss << "                    " << engineVar << ".raise(Event::Error_execution);\n";
+                ss << "                }\n";
             }
-            ss << "                    }\n";
-            ss << "                }\n";
         }
         break;
     default:
@@ -917,7 +888,9 @@ std::string StaticCodeGenerator::capitalize(const std::string &str) {
     }
 
     // Handle other special characters in event names
+    // Replace dots with underscores (e.g., "error.execution" -> "Error_execution")
     std::string result = str;
+    std::replace(result.begin(), result.end(), '.', '_');
     result[0] = std::toupper(static_cast<unsigned char>(result[0]));
     return result;
 }

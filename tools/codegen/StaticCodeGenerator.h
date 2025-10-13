@@ -48,7 +48,8 @@ public:
                                           const std::set<std::string> &actions);
     std::string generateProcessEvent(const SCXMLModel &model);
     std::string generateClass(const SCXMLModel &model);
-    void generateActionCode(std::stringstream &ss, const Action &action, const std::string &engineVar);
+    void generateActionCode(std::stringstream &ss, const Action &action, const std::string &engineVar,
+                            const std::set<std::string> &events);
     static std::string capitalizePublic(const std::string &str);
 
     // Extract Guard and Action functions from SCXML
