@@ -239,6 +239,18 @@ class EventQueueManager {
 - Used in: Main state transitions, parallel region transitions
 - Benefits: Compliance guarantee, zero code duplication
 
+**RSM::ForeachHelper::setLoopVariable()**:
+- W3C SCXML 4.6: Foreach variable declaration and type preservation
+- Single Source of Truth for foreach variable setting logic
+- Location: `rsm/include/common/ForeachHelper.h`
+- Used by: Dynamic engine (ActionExecutorImpl), Hybrid engine (generated code)
+- Features:
+  - Variable existence check (`'var' in this`)
+  - Automatic declaration with `var` keyword for new variables
+  - Type preservation via `executeScript()` (not `setVariable()`)
+  - Fallback to string literal handling
+- Benefits: Zero code duplication, guaranteed consistency between engines
+
 ### Future Core Components (Planned)
 
 **RSM::Core::StateExecutor**:
@@ -268,8 +280,12 @@ class EventQueueManager {
 
 ### Phase 3: W3C SCXML Compliance (Complete ✅)
 - test144: W3C SCXML 3.5.1 document order preservation
-- test150-153: Hybrid JSEngine integration (foreach, dynamic datamodel)
-- Shared helper functions with dynamic engine
+- test150-155: Hybrid JSEngine integration (foreach, dynamic datamodel)
+- test155: Fixed type preservation in foreach loops (numeric addition vs string concatenation)
+  - Root cause: `ScriptValue(string)` created STRING type → JavaScript performed string concatenation
+  - Solution: Use `executeScript("var = value;")` to let JavaScript evaluate types
+  - ForeachHelper refactored as Single Source of Truth (used by both Dynamic and Hybrid engines)
+- Shared helper functions with dynamic engine (ForeachHelper::setLoopVariable)
 - Final state transition logic (no fall-through)
 - **Result**: 8/8 W3C Static Tests PASSED
 
@@ -328,5 +344,5 @@ class EventQueueManager {
 ---
 
 **Status**: Phase 3 Complete ✅ - W3C SCXML compliance achieved (8/8 tests)
-**Last Updated**: 2025-10-13
-**Version**: 3.1 (Logic Commonization + W3C Compliance)
+**Last Updated**: 2025-10-14
+**Version**: 3.2 (ForeachHelper Refactoring + Type Preservation Fix)

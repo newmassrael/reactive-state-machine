@@ -958,20 +958,18 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
         // Initialize ALL datamodel variables in JSEngine (Pure Dynamic architecture)
         for (const auto &var : model.dataModel) {
-            // Generate initialization script
-            std::string initScript = "var " + var.name;
-            if (!var.initialValue.empty()) {
-                initScript += " = " + var.initialValue;
-            }
-            initScript += ";";
+            // Generate initialization expression (use "undefined" if no initial value)
+            std::string initExpr = var.initialValue.empty() ? "undefined" : var.initialValue;
 
-            // Execute with error handling
-            ss << "            auto initResult_" << var.name << " = jsEngine.executeScript(sessionId_.value(), \""
-               << initScript << "\").get();\n";
-            ss << "            if (!::RSM::JSEngine::isSuccess(initResult_" << var.name << ")) {\n";
-            ss << "                LOG_ERROR(\"Failed to initialize datamodel variable: " << var.name << "\");\n";
+            // Evaluate expression and set variable using evaluateExpression + setVariable pattern
+            ss << "            auto initExpr_" << var.name << " = jsEngine.evaluateExpression(sessionId_.value(), \""
+               << escapeStringLiteral(initExpr) << "\").get();\n";
+            ss << "            if (!::RSM::JSEngine::isSuccess(initExpr_" << var.name << ")) {\n";
+            ss << "                LOG_ERROR(\"Failed to evaluate expression for variable: " << var.name << "\");\n";
             ss << "                throw std::runtime_error(\"Datamodel initialization failed\");\n";
             ss << "            }\n";
+            ss << "            jsEngine.setVariable(sessionId_.value(), \"" << var.name << "\", initExpr_" << var.name
+               << ".getInternalValue());\n";
         }
 
         ss << "        }\n";
@@ -1077,15 +1075,22 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                       "sessionId_.value(), \""
                    << action.param2 << "\", arrayValues[i], \"" << action.param3 << "\", i);\n";
 
-                // Transpile iteration actions to JavaScript and execute
-                std::string jsCode = actionToJavaScript(action.iterationActions);
-                if (!jsCode.empty()) {
-                    ss << "                            auto iterResult = jsEngine.executeScript(sessionId_.value(), \""
-                       << escapeStringLiteral(jsCode) << "\").get();\n";
-                    ss << "                            if (!::RSM::JSEngine::isSuccess(iterResult)) {\n";
-                    ss << "                                LOG_ERROR(\"Foreach iteration script failed\");\n";
-                    ss << "                                throw std::runtime_error(\"Foreach iteration failed\");\n";
-                    ss << "                            }\n";
+                // Execute iteration actions using same logic as ActionExecutor::assignVariable()
+                for (const auto &iterAction : action.iterationActions) {
+                    if (iterAction.type == Action::ASSIGN) {
+                        // Use evaluateExpression + setVariable (same as ActionExecutor)
+                        ss << "                            auto exprResult = "
+                              "jsEngine.evaluateExpression(sessionId_.value(), \""
+                           << escapeStringLiteral(iterAction.param2) << "\").get();\n";
+                        ss << "                            if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
+                        ss << "                                LOG_ERROR(\"Failed to evaluate expression in foreach: "
+                           << escapeStringLiteral(iterAction.param2) << "\");\n";
+                        ss << "                                throw std::runtime_error(\"Expression evaluation "
+                              "failed\");\n";
+                        ss << "                            }\n";
+                        ss << "                            jsEngine.setVariable(sessionId_.value(), \""
+                           << iterAction.param1 << "\", exprResult.getInternalValue());\n";
+                    }
                 }
 
                 ss << "                        }\n";

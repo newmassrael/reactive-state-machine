@@ -1255,59 +1255,22 @@ bool ActionExecutorImpl::executeForeachAction(const ForeachAction &action) {
 }
 
 bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::string &value, size_t iteration) {
+    // ARCHITECTURE.md: Logic Commonization - Use shared ForeachHelper
+    // Single Source of Truth for foreach variable setting logic
     try {
         // Transform numeric variable names to JavaScript-compatible identifiers
         std::string jsVarName = transformVariableName(varName);
 
-        // SCXML W3C Compliance: Preserve JavaScript type information for foreach variables
-        // Parse the value as JSON to maintain type (null, undefined, number, string, object)
+        // Use shared ForeachHelper logic (eliminates code duplication with Hybrid engine)
+        bool success = ForeachHelper::setLoopVariable(JSEngine::instance(), sessionId_, jsVarName, value);
 
-        // SCXML W3C Compliance: Declare and bind new variable during foreach execution
-        // W3C SCXML 4.6: "the foreach element declares a new variable if 'item' doesn't already exist"
-
-        // Check if variable already exists
-        // W3C SCXML 5.3: Variables with undefined values should be considered as "existing" (test 445, 150)
-        // Therefore, use `'var' in this` check instead of `typeof var !== 'undefined'`
-        std::string checkExpression = "'" + jsVarName + "' in this";
-        auto checkResult = JSEngine::instance().evaluateExpression(sessionId_, checkExpression).get();
-
-        bool variableExists = false;
-        if (checkResult.isSuccess() && std::holds_alternative<bool>(checkResult.getInternalValue())) {
-            variableExists = checkResult.getValue<bool>();
-        }
-
-        std::string script;
-        if (!variableExists) {
-            // Declare and assign new variable - W3C compliance
-            script = "var " + jsVarName + " = " + value + ";";
-            LOG_INFO("W3C FOREACH: Creating NEW variable '{}' (JS: '{}') = {}", varName, jsVarName, value);
+        if (success) {
+            LOG_DEBUG("Set foreach variable: {} = {} (JS: {}, iteration {})", varName, value, jsVarName, iteration);
         } else {
-            // Assign value to existing variable
-            script = jsVarName + " = " + value + ";";
-            LOG_INFO("W3C FOREACH: Updating EXISTING variable '{}' (JS: '{}') = {}", varName, jsVarName, value);
+            LOG_ERROR("Failed to set foreach variable {} = {} at iteration {}", varName, value, iteration);
         }
 
-        auto setResult = JSEngine::instance().executeScript(sessionId_, script).get();
-
-        if (!setResult.isSuccess()) {
-            // Fallback: Treat as string literal
-            std::string stringLiteral = "\"" + value + "\"";
-            std::string fallbackScript;
-            if (!variableExists) {
-                fallbackScript = "var " + jsVarName + " = " + stringLiteral + ";";
-            } else {
-                fallbackScript = jsVarName + " = " + stringLiteral + ";";
-            }
-
-            auto fallbackResult = JSEngine::instance().executeScript(sessionId_, fallbackScript).get();
-            if (!fallbackResult.isSuccess()) {
-                LOG_ERROR("Failed to set foreach variable {} = {} at iteration {}", varName, value, iteration);
-                return false;
-            }
-        }
-
-        LOG_DEBUG("Set foreach variable: {} = {} (JS: {}, iteration {})", varName, value, jsVarName, iteration);
-        return true;
+        return success;
 
     } catch (const std::exception &e) {
         LOG_ERROR("Exception setting foreach variable {} at iteration {}: {}", varName, iteration, e.what());
