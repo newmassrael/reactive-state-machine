@@ -1261,24 +1261,26 @@ std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
                     matchingReports.push_back(report);
                     reporter_->reportTestResult(report);
                 }
+
+                // Run hybrid engine test for each variant (unsupported tests will return FAIL)
+                try {
+                    LOG_INFO("W3C Test {}: Running hybrid engine test for variant", testId);
+                    TestReport hybridReport = runHybridTest(testId);
+                    // Preserve the variant suffix from dynamic test report (last added report)
+                    if (!matchingReports.empty()) {
+                        hybridReport.testId = matchingReports.back().testId;
+                    }
+                    matchingReports.push_back(hybridReport);
+                    reporter_->reportTestResult(hybridReport);
+                    LOG_INFO("W3C Test {}: Hybrid engine test completed for variant", testId);
+                } catch (const std::exception &e) {
+                    LOG_ERROR("W3C Test {}: Hybrid engine test failed for variant: {}", testId, e.what());
+                    // Don't throw - continue with other variants
+                }
             } catch (const std::exception &e) {
                 LOG_ERROR("W3C Test Execution: Failed to run test in {}: {}", testDir, e.what());
                 // Continue with other variants even if one fails
             }
-        }
-    }
-
-    // Run hybrid engine test if supported (tests 144-153)
-    if (testId >= 144 && testId <= 153) {
-        try {
-            LOG_INFO("W3C Test {}: Running hybrid engine test (static generated code)", testId);
-            TestReport hybridReport = runHybridTest(testId);
-            matchingReports.push_back(hybridReport);
-            reporter_->reportTestResult(hybridReport);
-            LOG_INFO("W3C Test {}: Hybrid engine test completed", testId);
-        } catch (const std::exception &e) {
-            LOG_ERROR("W3C Test {}: Hybrid engine test failed: {}", testId, e.what());
-            // Don't throw - continue with dynamic engine results
         }
     }
 
@@ -1555,9 +1557,11 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
             break;
 
         default:
-            LOG_WARN("W3C Hybrid Test: Test {} not supported by hybrid engine", testId);
+            LOG_WARN("W3C Hybrid Test: Test {} not yet implemented in hybrid engine", testId);
             report.validationResult = ValidationResult(
-                false, TestResult::ERROR, "Test not available in hybrid engine (only tests 144-153 are supported)");
+                false, TestResult::FAIL,
+                "Test not yet implemented in hybrid engine (currently only tests 144-153 are supported)");
+            report.executionContext.finalState = "fail";
             return report;
         }
 

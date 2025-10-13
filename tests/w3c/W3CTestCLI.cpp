@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <set>
 
 /**
  * @brief Find project root by searching for resources directory
@@ -316,7 +317,6 @@ int main(int argc, char *argv[]) {
                     }
 
                     reports.insert(reports.end(), testReports.begin(), testReports.end());
-                    allReports.insert(allReports.end(), testReports.begin(), testReports.end());
 
                     // Show results for all variants
                     for (const auto &report : testReports) {
@@ -379,6 +379,9 @@ int main(int argc, char *argv[]) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
 
+            // Get all reports from reporter (includes dynamic and hybrid)
+            allReports = runner.getReporter()->getAllReports();
+
             // Complete test run reporting
             runner.getReporter()->generateSummary(summary);
             runner.getReporter()->endTestRun();
@@ -392,13 +395,36 @@ int main(int argc, char *argv[]) {
             // Get all dynamic engine reports from reporter
             allReports = runner.getReporter()->getAllReports();
 
-            // Additionally run hybrid engine tests for supported tests (144-153)
-            LOG_INFO("W3C CLI: Running hybrid engine tests for supported tests (144-153)");
-            std::vector<int> hybridTestIds = {144, 147, 148, 149, 150, 151, 152, 153};
+            // Extract all test IDs (including variants) from dynamic engine reports
+            std::vector<std::string> allTestIds;
+            for (const auto &report : allReports) {
+                if (report.engineType == "dynamic") {
+                    allTestIds.push_back(report.testId);
+                }
+            }
 
-            for (int testId : hybridTestIds) {
+            // Run hybrid engine tests for all test IDs (including variants)
+            LOG_INFO("W3C CLI: Running hybrid engine tests for all {} tests (including variants)", allTestIds.size());
+            for (const std::string &testIdStr : allTestIds) {
                 try {
+                    // Extract numeric portion from testId (e.g., "403a" -> 403)
+                    std::string numericPart;
+                    for (char c : testIdStr) {
+                        if (std::isdigit(c)) {
+                            numericPart += c;
+                        } else {
+                            break;  // Stop at first non-digit
+                        }
+                    }
+
+                    if (numericPart.empty()) {
+                        continue;
+                    }
+
+                    int testId = std::stoi(numericPart);
                     RSM::W3C::TestReport hybridReport = runner.runHybridTest(testId);
+                    // Preserve the original testId (with variant suffix if present)
+                    hybridReport.testId = testIdStr;
                     allReports.push_back(hybridReport);
                     runner.getReporter()->reportTestResult(hybridReport);
 
@@ -420,7 +446,7 @@ int main(int argc, char *argv[]) {
                     }
                     summary.totalExecutionTime += hybridReport.executionContext.executionTime;
                 } catch (const std::exception &e) {
-                    LOG_ERROR("W3C CLI: Hybrid engine test {} failed: {}", testId, e.what());
+                    LOG_ERROR("W3C CLI: Hybrid engine test {} failed: {}", testIdStr, e.what());
                 }
             }
 
@@ -444,6 +470,8 @@ int main(int argc, char *argv[]) {
             size_t passed = 0;
             size_t failed = 0;
             size_t errors = 0;
+            std::vector<std::string> failedTestIds;
+            std::vector<std::string> errorTestIds;
         };
 
         EngineStats dynamicStats, hybridStats;
@@ -464,10 +492,12 @@ int main(int argc, char *argv[]) {
                     break;
                 case RSM::W3C::TestResult::FAIL:
                     engineStats->failed++;
+                    engineStats->failedTestIds.push_back(report.testId);
                     break;
                 case RSM::W3C::TestResult::ERROR:
                 case RSM::W3C::TestResult::TIMEOUT:
                     engineStats->errors++;
+                    engineStats->errorTestIds.push_back(report.testId);
                     break;
                 }
             }
@@ -508,29 +538,80 @@ int main(int argc, char *argv[]) {
             printf("   📈 Pass Rate: %.1f%%\n", summary.passRate);
         }
 
-        // Show specific failed test IDs
-        if (!summary.failedTestIds.empty()) {
-            printf("\n");
-            printf("❌ Failed Tests: ");
-            for (size_t i = 0; i < summary.failedTestIds.size(); ++i) {
-                printf("%s", summary.failedTestIds[i].c_str());
-                if (i < summary.failedTestIds.size() - 1) {
-                    printf(", ");
+        // Show specific failed test IDs by engine
+        if (hasEngineStats) {
+            // Show Dynamic engine failures
+            if (!dynamicStats.failedTestIds.empty()) {
+                printf("\n");
+                printf("❌ Failed Tests (Dynamic): ");
+                for (size_t i = 0; i < dynamicStats.failedTestIds.size(); ++i) {
+                    printf("%s", dynamicStats.failedTestIds[i].c_str());
+                    if (i < dynamicStats.failedTestIds.size() - 1) {
+                        printf(", ");
+                    }
                 }
+                printf("\n");
             }
-            printf("\n");
-        }
 
-        // Show specific error test IDs
-        if (!summary.errorTestIds.empty()) {
-            printf("🚨 Error Tests: ");
-            for (size_t i = 0; i < summary.errorTestIds.size(); ++i) {
-                printf("%s", summary.errorTestIds[i].c_str());
-                if (i < summary.errorTestIds.size() - 1) {
-                    printf(", ");
+            // Show Hybrid engine failures
+            if (!hybridStats.failedTestIds.empty()) {
+                printf("❌ Failed Tests (Hybrid): ");
+                for (size_t i = 0; i < hybridStats.failedTestIds.size(); ++i) {
+                    printf("%s", hybridStats.failedTestIds[i].c_str());
+                    if (i < hybridStats.failedTestIds.size() - 1) {
+                        printf(", ");
+                    }
                 }
+                printf("\n");
             }
-            printf("\n");
+
+            // Show Dynamic engine errors
+            if (!dynamicStats.errorTestIds.empty()) {
+                printf("🚨 Error Tests (Dynamic): ");
+                for (size_t i = 0; i < dynamicStats.errorTestIds.size(); ++i) {
+                    printf("%s", dynamicStats.errorTestIds[i].c_str());
+                    if (i < dynamicStats.errorTestIds.size() - 1) {
+                        printf(", ");
+                    }
+                }
+                printf("\n");
+            }
+
+            // Show Hybrid engine errors
+            if (!hybridStats.errorTestIds.empty()) {
+                printf("🚨 Error Tests (Hybrid): ");
+                for (size_t i = 0; i < hybridStats.errorTestIds.size(); ++i) {
+                    printf("%s", hybridStats.errorTestIds[i].c_str());
+                    if (i < hybridStats.errorTestIds.size() - 1) {
+                        printf(", ");
+                    }
+                }
+                printf("\n");
+            }
+        } else {
+            // Fallback for when we don't have engine-specific stats
+            if (!summary.failedTestIds.empty()) {
+                printf("\n");
+                printf("❌ Failed Tests: ");
+                for (size_t i = 0; i < summary.failedTestIds.size(); ++i) {
+                    printf("%s", summary.failedTestIds[i].c_str());
+                    if (i < summary.failedTestIds.size() - 1) {
+                        printf(", ");
+                    }
+                }
+                printf("\n");
+            }
+
+            if (!summary.errorTestIds.empty()) {
+                printf("🚨 Error Tests: ");
+                for (size_t i = 0; i < summary.errorTestIds.size(); ++i) {
+                    printf("%s", summary.errorTestIds[i].c_str());
+                    if (i < summary.errorTestIds.size() - 1) {
+                        printf(", ");
+                    }
+                }
+                printf("\n");
+            }
         }
 
         if (summary.passRate >= 80.0) {
