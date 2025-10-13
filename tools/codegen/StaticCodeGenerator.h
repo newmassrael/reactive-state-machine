@@ -75,6 +75,9 @@ private:
     // Helper to process actions recursively (for if/elseif/else)
     std::vector<Action> processActions(const std::vector<std::shared_ptr<RSM::IActionNode>> &actionNodes);
 
+    // Security: Escape string for safe code generation
+    std::string escapeStringLiteral(const std::string &str);
+
     // File writing
     bool writeToFile(const std::string &path, const std::string &content);
 };
@@ -111,15 +114,18 @@ struct Action {
         LOG,     // <log expr="message"/>
         SEND,    // <send event="name"/>
         IF,      // <if cond="expr">...</if>
-        FOREACH  // <foreach>...</foreach>
+        FOREACH  // <foreach array="arr" item="item" index="idx">...</foreach>
     };
 
     Type type;
-    std::string param1;                       // event name for RAISE, script content for SCRIPT, condition for IF, etc.
-    std::string param2;                       // additional parameter (e.g., assign location)
+    std::string param1;  // event name for RAISE, array for FOREACH, script content for SCRIPT, condition for IF, etc.
+    std::string param2;  // additional parameter (e.g., assign location, item var for FOREACH)
+    std::string param3;  // third parameter (e.g., index var for FOREACH)
     std::vector<ConditionalBranch> branches;  // For IF action: if/elseif/else branches
+    std::vector<Action> iterationActions;     // For FOREACH: actions to execute in loop
 
-    Action(Type t, const std::string &p1 = "", const std::string &p2 = "") : type(t), param1(p1), param2(p2) {}
+    Action(Type t, const std::string &p1 = "", const std::string &p2 = "", const std::string &p3 = "")
+        : type(t), param1(p1), param2(p2), param3(p3) {}
 };
 
 struct State {
@@ -142,6 +148,16 @@ public:
     std::vector<State> states;
     std::vector<Transition> transitions;
     std::vector<DataModelVariable> dataModel;  // Data model variables
+
+    // Feature detection flags for hybrid generation
+    bool hasForEach = false;            // Uses <foreach> action
+    bool hasComplexDatamodel = false;   // Uses arrays, typeof, dynamic variables
+    bool hasComplexECMAScript = false;  // Needs JSEngine for evaluation
+
+    // Helper: Determine if JSEngine is needed
+    bool needsJSEngine() const {
+        return hasForEach || hasComplexDatamodel || hasComplexECMAScript;
+    }
 };
 
 }  // namespace RSM::Codegen

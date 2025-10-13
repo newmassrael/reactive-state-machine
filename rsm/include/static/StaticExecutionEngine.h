@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/Logger.h"
 #include "core/EventQueueManager.h"
 #include <cstdint>
 #include <map>
@@ -114,6 +115,49 @@ protected:
         });
     }
 
+    /**
+     * @brief Check for eventless transitions (W3C SCXML 3.13)
+     *
+     * Eventless transitions have no event attribute and are evaluated
+     * immediately after entering a state. They are checked after all
+     * internal events have been processed.
+     *
+     * Uses iteration instead of recursion to prevent stack overflow
+     * and includes loop detection to prevent infinite cycles.
+     */
+    void checkEventlessTransitions() {
+        static const int MAX_ITERATIONS = 100;  // Safety limit
+        int iterations = 0;
+
+        while (iterations++ < MAX_ITERATIONS) {
+            State oldState = currentState_;
+            // Call processTransition with default event for eventless transitions
+            if (policy_.processTransition(currentState_, Event(), *this)) {
+                if (oldState != currentState_) {
+                    executeOnExit(oldState);
+                    executeOnEntry(currentState_);
+                    // Process any new internal events
+                    processInternalQueue();
+                    // Continue loop to check for more eventless transitions
+                } else {
+                    // Transition taken but state didn't change - stop
+                    break;
+                }
+            } else {
+                // No eventless transition available - stop
+                break;
+            }
+        }
+
+        if (iterations >= MAX_ITERATIONS) {
+            // Eventless transition loop detected
+            LOG_ERROR("StaticExecutionEngine: Eventless transition loop detected after {} iterations - stopping state "
+                      "machine",
+                      MAX_ITERATIONS);
+            stop();
+        }
+    }
+
 public:
     StaticExecutionEngine() : currentState_(StatePolicy::initialState()) {}
 
@@ -130,7 +174,7 @@ public:
         isRunning_ = true;
         executeOnEntry(currentState_);
         processInternalQueue();
-        // TODO: checkEventlessTransitions() for Phase 2
+        checkEventlessTransitions();
     }
 
     /**
@@ -156,6 +200,7 @@ public:
                 executeOnExit(oldState);
                 executeOnEntry(currentState_);
                 processInternalQueue();
+                checkEventlessTransitions();
             }
         }
     }

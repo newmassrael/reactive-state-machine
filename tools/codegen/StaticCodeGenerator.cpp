@@ -10,6 +10,7 @@
 #include <sstream>
 
 #include "actions/AssignAction.h"
+#include "actions/ForeachAction.h"
 #include "actions/IfAction.h"
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
@@ -65,7 +66,17 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     for (const auto &dataItem : rsmModel->getDataModelItems()) {
         DataModelVariable var;
         var.name = dataItem->getId();
+        // Try expr attribute first, fallback to content (text between tags)
         var.initialValue = dataItem->getExpr();
+        if (var.initialValue.empty()) {
+            var.initialValue = dataItem->getContent();
+            // Trim whitespace from content (important for inline array/object literals)
+            auto start = var.initialValue.find_first_not_of(" \t\n\r");
+            auto end = var.initialValue.find_last_not_of(" \t\n\r");
+            if (start != std::string::npos && end != std::string::npos) {
+                var.initialValue = var.initialValue.substr(start, end - start + 1);
+            }
+        }
         model.dataModel.push_back(var);
     }
 
@@ -113,11 +124,13 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         for (const auto &transition : transitions) {
             auto event = transition->getEvent();
             auto targets = transition->getTargets();
-            if (!event.empty() && !targets.empty()) {
+
+            // Accept transitions with targets (event-based or eventless)
+            if (!targets.empty()) {
                 // Use first target (SCXML supports multiple targets)
                 Transition trans;
                 trans.sourceState = state->getId();
-                trans.event = event;
+                trans.event = event;  // May be empty for eventless transitions
                 trans.targetState = targets[0];
                 trans.guard = transition->getGuard();  // Extract guard condition
 
@@ -135,7 +148,46 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         }
     }
 
-    // Step 5: Extract unique states and events
+    // Step 5: Feature detection for hybrid generation
+    std::function<void(const std::vector<Action> &)> detectFeatures;
+    detectFeatures = [&](const std::vector<Action> &actions) {
+        for (const auto &action : actions) {
+            if (action.type == Action::FOREACH) {
+                model.hasForEach = true;
+            } else if (action.type == Action::IF) {
+                for (const auto &branch : action.branches) {
+                    detectFeatures(branch.actions);
+                }
+            } else if (action.type == Action::FOREACH) {
+                detectFeatures(action.iterationActions);
+            }
+        }
+    };
+
+    // Detect features in all states
+    for (const auto &state : model.states) {
+        detectFeatures(state.entryActions);
+        detectFeatures(state.exitActions);
+    }
+
+    // Detect complex datamodel (arrays, typeof)
+    for (const auto &var : model.dataModel) {
+        if (var.initialValue.find('[') != std::string::npos || var.initialValue.find('{') != std::string::npos) {
+            model.hasComplexDatamodel = true;
+        }
+    }
+
+    // Detect typeof in guards
+    for (const auto &trans : model.transitions) {
+        if (trans.guard.find("typeof") != std::string::npos) {
+            model.hasComplexDatamodel = true;
+        }
+    }
+
+    LOG_INFO("StaticCodeGenerator: Feature detection - forEach: {}, complexDatamodel: {}, needsJSEngine: {}",
+             model.hasForEach, model.hasComplexDatamodel, model.needsJSEngine());
+
+    // Step 6: Extract unique states and events
     auto states = extractStates(model);
     auto events = extractEvents(model);
 
@@ -159,7 +211,16 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#pragma once\n";
     ss << "#include <cstdint>\n";
     ss << "#include <memory>\n";
-    ss << "#include \"static/StaticExecutionEngine.h\"\n\n";
+    ss << "#include <stdexcept>\n";
+    ss << "#include \"static/StaticExecutionEngine.h\"\n";
+
+    // Add JSEngine and Logger includes if needed for hybrid generation (OUTSIDE namespace)
+    if (model.needsJSEngine()) {
+        ss << "#include <optional>\n";
+        ss << "#include \"common/Logger.h\"\n";
+        ss << "#include \"scripting/JSEngine.h\"\n";
+    }
+    ss << "\n";
 
     // Namespace - each test gets its own nested namespace to avoid conflicts
     ss << "namespace RSM::Generated::" << model.name << " {\n\n";
@@ -269,12 +330,6 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
         transitionsByState[trans.sourceState].push_back(trans);
     }
 
-    // Build map from state name to State for quick lookup
-    std::map<std::string, const State *> stateMap;
-    for (const auto &state : model.states) {
-        stateMap[state.name] = &state;
-    }
-
     // Generate case for each state (sorted for consistent output)
     std::set<std::string> stateNames;
     for (const auto &state : model.states) {
@@ -284,66 +339,197 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model) {
     for (const auto &stateName : stateNames) {
         ss << "            case State::" << capitalize(stateName) << ":\n";
 
-        // Generate if-else chain for events in this state
         auto it = transitionsByState.find(stateName);
         if (it != transitionsByState.end() && !it->second.empty()) {
-            bool isFirst = true;
+            // Separate event-based and eventless transitions
+            std::vector<Transition> eventTransitions;
+            std::vector<Transition> eventlessTransitions;
+
             for (const auto &trans : it->second) {
-                if (isFirst) {
-                    ss << "                if (event == Event::" << capitalize(trans.event) << ") {\n";
-                    isFirst = false;
+                if (trans.event.empty()) {
+                    eventlessTransitions.push_back(trans);
                 } else {
-                    ss << "                } else if (event == Event::" << capitalize(trans.event) << ") {\n";
-                }
-
-                // Determine indentation level based on guard presence
-                std::string indent = "                    ";
-                bool hasGuard = !trans.guard.empty();
-
-                // Generate guard condition if present
-                if (hasGuard) {
-                    std::string guardExpr = trans.guard;
-
-                    // Check if guard is a function call (contains "()") vs datamodel expression
-                    // Function call: isReady() -> derived().isReady()
-                    // Datamodel expr: Var1 == 1 -> Var1 == 1 (direct use)
-                    bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
-
-                    if (isFunctionCall) {
-                        // Extract function name from guard expression (e.g., "isReady()" -> "isReady")
-                        std::string guardFunc = guardExpr;
-                        size_t parenPos = guardFunc.find('(');
-                        if (parenPos != std::string::npos) {
-                            guardFunc = guardFunc.substr(0, parenPos);
-                        }
-                        // Remove leading ! if present
-                        if (!guardFunc.empty() && guardFunc[0] == '!') {
-                            guardFunc = guardFunc.substr(1);
-                        }
-                        ss << indent << "if (derived()." << guardFunc << "()) {\n";
-                    } else {
-                        // Datamodel expression - use directly
-                        ss << indent << "if (" << guardExpr << ") {\n";
-                    }
-
-                    indent += "    ";  // Increase indentation inside guard
-                }
-
-                // Generate transition action calls
-                for (const auto &action : trans.actions) {
-                    ss << indent << "derived()." << action << "();\n";
-                }
-
-                // Generate state transition
-                ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
-                ss << indent << "transitionTaken = true;\n";
-
-                // Close guard if block
-                if (hasGuard) {
-                    ss << "                    }\n";
+                    eventTransitions.push_back(trans);
                 }
             }
-            ss << "                }\n";
+
+            // Generate event-based transitions first
+            if (!eventTransitions.empty()) {
+                bool isFirst = true;
+                for (const auto &trans : eventTransitions) {
+                    if (isFirst) {
+                        ss << "                if (event == Event::" << capitalize(trans.event) << ") {\n";
+                        isFirst = false;
+                    } else {
+                        ss << "                } else if (event == Event::" << capitalize(trans.event) << ") {\n";
+                    }
+
+                    // Determine indentation level based on guard presence
+                    std::string indent = "                    ";
+                    bool hasGuard = !trans.guard.empty();
+
+                    // Generate guard condition if present
+                    if (hasGuard) {
+                        std::string guardExpr = trans.guard;
+
+                        // Check if guard needs JSEngine (typeof, complex ECMAScript)
+                        bool needsJSEngine = (guardExpr.find("typeof") != std::string::npos);
+                        bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
+
+                        if (needsJSEngine) {
+                            // Complex guard → JSEngine evaluation (escape for safety)
+                            ss << indent << "ensureJSEngine();  // Lazy initialization\n";
+                            ss << indent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                            ss << indent << "auto guardResult = jsEngine.evaluateExpression(sessionId_.value(), \""
+                               << escapeStringLiteral(guardExpr) << "\").get();\n";
+                            ss << indent << "if (!::RSM::JSEngine::isSuccess(guardResult)) {\n";
+                            ss << indent
+                               << "    LOG_ERROR(\"Guard evaluation failed: " << escapeStringLiteral(guardExpr)
+                               << "\");\n";
+                            ss << indent << "    throw std::runtime_error(\"Guard evaluation failed\");\n";
+                            ss << indent << "}\n";
+                            ss << indent << "if (::RSM::JSEngine::resultToBool(guardResult)) {\n";
+                        } else if (isFunctionCall) {
+                            // Extract function name from guard expression
+                            std::string guardFunc = guardExpr;
+                            size_t parenPos = guardFunc.find('(');
+                            if (parenPos != std::string::npos) {
+                                guardFunc = guardFunc.substr(0, parenPos);
+                            }
+                            // Remove leading ! if present
+                            if (!guardFunc.empty() && guardFunc[0] == '!') {
+                                guardFunc = guardFunc.substr(1);
+                            }
+                            ss << indent << "if (derived()." << guardFunc << "()) {\n";
+                        } else {
+                            // Simple datamodel expression - use directly
+                            ss << indent << "if (" << guardExpr << ") {\n";
+                        }
+
+                        indent += "    ";  // Increase indentation inside guard
+                    }
+
+                    // Generate transition action calls
+                    for (const auto &action : trans.actions) {
+                        ss << indent << "derived()." << action << "();\n";
+                    }
+
+                    // Generate state transition
+                    ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                    ss << indent << "transitionTaken = true;\n";
+
+                    // Close guard if block
+                    if (hasGuard) {
+                        ss << "                    }\n";
+                    }
+                }
+                ss << "                }\n";
+            }
+
+            // Generate eventless transitions (checked regardless of event)
+            if (!eventlessTransitions.empty()) {
+                bool firstTransition = true;
+
+                for (size_t i = 0; i < eventlessTransitions.size(); ++i) {
+                    const auto &trans = eventlessTransitions[i];
+                    std::string indent = "                ";
+                    bool hasGuard = !trans.guard.empty();
+                    bool isLastTransition = (i == eventlessTransitions.size() - 1);
+
+                    // Generate guard condition if present
+                    if (hasGuard) {
+                        std::string guardExpr = trans.guard;
+
+                        // Check if guard needs JSEngine
+                        bool needsJSEngine = (guardExpr.find("typeof") != std::string::npos);
+                        bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
+
+                        // Add else if this is not the first guarded transition
+                        if (!firstTransition) {
+                            ss << "                } else {\n";
+                        }
+
+                        if (needsJSEngine) {
+                            // Complex guard → JSEngine evaluation (escape for safety)
+                            if (firstTransition) {
+                                ss << indent << "{\n";  // Open scope for JSEngine variables
+                            }
+                            ss << indent << "    ensureJSEngine();  // Lazy initialization\n";
+                            ss << indent << "    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                            ss << indent << "    auto guardResult = jsEngine.evaluateExpression(sessionId_.value(), \""
+                               << escapeStringLiteral(guardExpr) << "\").get();\n";
+                            ss << indent << "    if (!::RSM::JSEngine::isSuccess(guardResult)) {\n";
+                            ss << indent
+                               << "        LOG_ERROR(\"Guard evaluation failed: " << escapeStringLiteral(guardExpr)
+                               << "\");\n";
+                            ss << indent << "        throw std::runtime_error(\"Guard evaluation failed\");\n";
+                            ss << indent << "    }\n";
+                            ss << indent << "    if (::RSM::JSEngine::resultToBool(guardResult)) {\n";
+                            indent += "        ";  // Indent for code inside the if block
+                        } else if (isFunctionCall) {
+                            if (firstTransition) {
+                                ss << indent;
+                            }
+                            std::string guardFunc = guardExpr;
+                            size_t parenPos = guardFunc.find('(');
+                            if (parenPos != std::string::npos) {
+                                guardFunc = guardFunc.substr(0, parenPos);
+                            }
+                            if (!guardFunc.empty() && guardFunc[0] == '!') {
+                                guardFunc = guardFunc.substr(1);
+                            }
+                            ss << "if (derived()." << guardFunc << "()) {\n";
+                            indent += "    ";
+                        } else {
+                            if (firstTransition) {
+                                ss << indent;
+                            }
+                            ss << "if (" << guardExpr << ") {\n";
+                            indent += "    ";
+                        }
+
+                        firstTransition = false;
+                    } else {
+                        // No guard - this is a fallback transition
+                        if (!firstTransition) {
+                            // Previous transitions had guards, so this is the else clause
+                            ss << "                } else {\n";
+                            indent += "    ";
+                        } else {
+                            // No previous guards, just execute unconditionally
+                            ss << indent;
+                        }
+                    }
+
+                    // Generate transition action calls
+                    for (const auto &action : trans.actions) {
+                        ss << indent << "derived()." << action << "();\n";
+                    }
+
+                    // Generate state transition
+                    ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                    ss << indent << "transitionTaken = true;\n";
+
+                    // Close blocks only at the end of all transitions
+                    if (isLastTransition) {
+                        // Check if first transition had JSEngine guard
+                        bool firstHasJSEngine = false;
+                        if (!eventlessTransitions.empty() && !eventlessTransitions[0].guard.empty()) {
+                            firstHasJSEngine = (eventlessTransitions[0].guard.find("typeof") != std::string::npos);
+                        }
+
+                        if (firstHasJSEngine) {
+                            // Close the inner if/else chain (align with the 'if' statement)
+                            ss << "                }\n";
+                            // Close the outer scope block
+                            ss << "                }\n";
+                        } else if (!firstTransition) {
+                            // No JSEngine, just close the if/else chain
+                            ss << "                }\n";
+                        }
+                    }
+                }
+            }
         }
 
         ss << "                break;\n";
@@ -396,6 +582,14 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
 
                 result.push_back(ifActionResult);
             }
+        } else if (actionType == "foreach") {
+            if (auto foreachAction = std::dynamic_pointer_cast<RSM::ForeachAction>(actionNode)) {
+                Action foreachResult(Action::FOREACH, foreachAction->getArray(), foreachAction->getItem(),
+                                     foreachAction->getIndex());
+                // Process iteration actions
+                foreachResult.iterationActions = processActions(foreachAction->getIterationActions());
+                result.push_back(foreachResult);
+            }
         }
     }
 
@@ -405,10 +599,8 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
 std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
 
-    ss << "#include \"static/StaticExecutionEngine.h\"\n\n";
-
     // Determine if we need non-static (stateful) policy
-    bool hasDataModel = !model.dataModel.empty();
+    bool hasDataModel = !model.dataModel.empty() || model.needsJSEngine();
 
     // Generate State Policy class
     ss << "// State policy for " << model.name << "\n";
@@ -420,9 +612,45 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     if (hasDataModel) {
         ss << "    // Datamodel variables\n";
         for (const auto &var : model.dataModel) {
-            ss << "    int " << var.name << " = " << var.initialValue << ";\n";
+            // Detect variable type from initial value
+            if (var.initialValue.find('[') != std::string::npos) {
+                ss << "    // Array variable (handled by JSEngine): " << var.name << " = " << var.initialValue << "\n";
+            } else if (var.initialValue.empty()) {
+                ss << "    // Dynamic variable (handled by JSEngine): " << var.name << "\n";
+            } else {
+                ss << "    int " << var.name << " = " << var.initialValue << ";\n";
+            }
+        }
+
+        // Add JSEngine session ID for hybrid generation (lazy-initialized)
+        if (model.needsJSEngine()) {
+            ss << "\n    // JSEngine session for dynamic features (lazy-initialized)\n";
+            ss << "    mutable ::std::optional<::std::string> sessionId_;\n";
         }
         ss << "\n";
+    }
+
+    // JSEngine lazy initialization and cleanup (RAII + Lazy Init pattern)
+    if (model.needsJSEngine()) {
+        // Default constructor (required when copy/move are deleted)
+        ss << "    // Default constructor (lazy initialization, no immediate resource allocation)\n";
+        ss << "    " << model.name << "Policy() = default;\n\n";
+
+        // Destructor: Clean up JSEngine session if initialized (RAII pattern)
+        ss << "    // Destructor: Clean up JSEngine session if initialized (RAII pattern)\n";
+        ss << "    ~" << model.name << "Policy() {\n";
+        ss << "        if (sessionId_.has_value()) {\n";
+        ss << "            auto& jsEngine = ::RSM::JSEngine::instance();\n";
+        ss << "            jsEngine.destroySession(sessionId_.value());\n";
+        ss << "        }\n";
+        ss << "    }\n\n";
+
+        // Prevent copying/moving to avoid session ownership issues
+        ss << "    // Prevent copy/move to maintain session ownership\n";
+        ss << "    " << model.name << "Policy(const " << model.name << "Policy&) = delete;\n";
+        ss << "    " << model.name << "Policy& operator=(const " << model.name << "Policy&) = delete;\n";
+        ss << "    " << model.name << "Policy(" << model.name << "Policy&&) = delete;\n";
+        ss << "    " << model.name << "Policy& operator=(" << model.name << "Policy&&) = delete;\n\n";
     }
 
     // Initial state
@@ -502,7 +730,68 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
                                                                                                           // stateless
     }
     ss << generateProcessEvent(model);
-    ss << "    }\n";
+    ss << "    }\n\n";
+
+    // Generate private helper methods for JSEngine operations
+    if (model.needsJSEngine()) {
+        ss << "private:\n";
+        ss << "    // Helper: Ensure JSEngine is initialized (lazy initialization)\n";
+        ss << "    void ensureJSEngine() const {\n";
+        ss << "        if (!sessionId_.has_value()) {\n";
+        ss << "            auto& jsEngine = ::RSM::JSEngine::instance();\n";
+        ss << "            sessionId_ = jsEngine.generateSessionIdString(\"" << model.name << "_\");\n";
+        ss << "            jsEngine.createSession(sessionId_.value());\n";
+
+        // Initialize datamodel variables in JSEngine with error checking
+        for (const auto &var : model.dataModel) {
+            if (var.initialValue.find('[') != std::string::npos) {
+                // Array initialization with error handling
+                ss << "            auto initResult_" << var.name
+                   << " = jsEngine.executeScript(sessionId_.value(), \"var " << var.name << " = " << var.initialValue
+                   << ";\").get();\n";
+                ss << "            if (!::RSM::JSEngine::isSuccess(initResult_" << var.name << ")) {\n";
+                ss << "                LOG_ERROR(\"Failed to initialize datamodel variable: " << var.name << "\");\n";
+                ss << "                throw std::runtime_error(\"Datamodel initialization failed\");\n";
+                ss << "            }\n";
+            } else if (!var.initialValue.empty()) {
+                // Simple variable initialization - skip for now
+            }
+        }
+
+        ss << "        }\n";
+        ss << "    }\n\n";
+
+        ss << "    // Helper: Execute foreach loop with JSEngine\n";
+        ss << "    void executeForeachLoop(const ::std::string& arrayName, const ::std::string& itemVar, const "
+              "::std::string& indexVar) {\n";
+        ss << "        ensureJSEngine();  // Lazy initialization\n";
+        ss << "        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+        ss << "        auto arrayExpr = ::std::string(arrayName);\n";
+        ss << "        auto arrayResult = jsEngine.evaluateExpression(sessionId_.value(), arrayExpr).get();\n";
+        ss << "        if (!::RSM::JSEngine::isSuccess(arrayResult)) {\n";
+        ss << "            LOG_ERROR(\"Failed to evaluate array expression: {}\", arrayExpr);\n";
+        ss << "            throw std::runtime_error(\"Foreach array evaluation failed\");\n";
+        ss << "        }\n";
+        ss << "        auto arrayValues = ::RSM::JSEngine::resultToStringArray(arrayResult, sessionId_.value(), "
+              "arrayExpr);\n";
+        ss << "        for (size_t i = 0; i < arrayValues.size(); ++i) {\n";
+        ss << "            auto setResult = jsEngine.setVariable(sessionId_.value(), itemVar, "
+              "::ScriptValue(arrayValues[i])).get();\n";
+        ss << "            if (!::RSM::JSEngine::isSuccess(setResult)) {\n";
+        ss << "                LOG_ERROR(\"Failed to set foreach item variable: {}\", itemVar);\n";
+        ss << "                throw std::runtime_error(\"Foreach setVariable failed\");\n";
+        ss << "            }\n";
+        ss << "            if (!indexVar.empty()) {\n";
+        ss << "                auto indexResult = jsEngine.setVariable(sessionId_.value(), indexVar, "
+              "::ScriptValue(static_cast<int64_t>(i))).get();\n";
+        ss << "                if (!::RSM::JSEngine::isSuccess(indexResult)) {\n";
+        ss << "                    LOG_ERROR(\"Failed to set foreach index variable: {}\", indexVar);\n";
+        ss << "                    throw std::runtime_error(\"Foreach setVariable failed\");\n";
+        ss << "                }\n";
+        ss << "            }\n";
+        ss << "        }\n";
+        ss << "    }\n";
+    }
 
     ss << "};\n\n";
 
@@ -554,6 +843,56 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         }
 
         if (!action.branches.empty()) {
+            ss << "                }\n";
+        }
+        break;
+    case Action::FOREACH:
+        // Hybrid generation: foreach → JSEngine
+        ss << "                // Foreach loop (hybrid: delegated to JSEngine)\n";
+
+        if (action.iterationActions.empty()) {
+            // Simple case: no iteration actions, use helper method (DRY)
+            ss << "                executeForeachLoop(\"" << action.param1 << "\", \"" << action.param2 << "\", \""
+               << action.param3 << "\");\n";
+        } else {
+            // Complex case: has iteration actions, generate inline
+            ss << "                {\n";
+            ss << "                    // Execute foreach: array=" << action.param1 << ", item=" << action.param2
+               << ", index=" << action.param3 << "\n";
+            ss << "                    ensureJSEngine();  // Lazy initialization\n";
+            ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+            ss << "                    auto arrayExpr = ::std::string(\"" << action.param1 << "\");\n";
+            ss << "                    auto arrayResult = jsEngine.evaluateExpression(sessionId_.value(), "
+                  "arrayExpr).get();\n";
+            ss << "                    if (!::RSM::JSEngine::isSuccess(arrayResult)) {\n";
+            ss << "                        LOG_ERROR(\"Failed to evaluate array expression: {}\", arrayExpr);\n";
+            ss << "                        throw std::runtime_error(\"Foreach array evaluation failed\");\n";
+            ss << "                    }\n";
+            ss << "                    auto arrayValues = ::RSM::JSEngine::resultToStringArray(arrayResult, "
+                  "sessionId_.value(), arrayExpr);\n";
+            ss << "                    for (size_t i = 0; i < arrayValues.size(); ++i) {\n";
+            ss << "                        // Safe: Use setVariable to prevent code injection\n";
+            ss << "                        auto setResult = jsEngine.setVariable(sessionId_.value(), \""
+               << action.param2 << "\", ::ScriptValue(arrayValues[i])).get();\n";
+            ss << "                        if (!::RSM::JSEngine::isSuccess(setResult)) {\n";
+            ss << "                            LOG_ERROR(\"Failed to set foreach item variable: " << action.param2
+               << "\");\n";
+            ss << "                            throw std::runtime_error(\"Foreach setVariable failed\");\n";
+            ss << "                        }\n";
+            if (!action.param3.empty()) {
+                ss << "                        auto indexResult = jsEngine.setVariable(sessionId_.value(), \""
+                   << action.param3 << "\", ::ScriptValue(static_cast<int64_t>(i))).get();\n";
+                ss << "                        if (!::RSM::JSEngine::isSuccess(indexResult)) {\n";
+                ss << "                            LOG_ERROR(\"Failed to set foreach index variable: " << action.param3
+                   << "\");\n";
+                ss << "                            throw std::runtime_error(\"Foreach setVariable failed\");\n";
+                ss << "                        }\n";
+            }
+            // Generate iteration actions
+            for (const auto &iterAction : action.iterationActions) {
+                generateActionCode(ss, iterAction, engineVar);
+            }
+            ss << "                    }\n";
             ss << "                }\n";
         }
         break;
@@ -732,6 +1071,36 @@ std::set<std::string> StaticCodeGenerator::extractActions(const std::string &scx
     auto rsmModel = parser.parseFile(scxmlPath);
 
     return extractActionsInternal(rsmModel);
+}
+
+std::string StaticCodeGenerator::escapeStringLiteral(const std::string &str) {
+    std::string result;
+    result.reserve(str.size() * 1.2);  // Reserve extra space for escapes
+
+    for (char c : str) {
+        switch (c) {
+        case '"':
+            result += "\\\"";
+            break;
+        case '\\':
+            result += "\\\\";
+            break;
+        case '\n':
+            result += "\\n";
+            break;
+        case '\r':
+            result += "\\r";
+            break;
+        case '\t':
+            result += "\\t";
+            break;
+        default:
+            result += c;
+            break;
+        }
+    }
+
+    return result;
 }
 
 bool StaticCodeGenerator::writeToFile(const std::string &path, const std::string &content) {

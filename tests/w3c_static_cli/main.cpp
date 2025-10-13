@@ -10,8 +10,8 @@
 #include "test144_sm.h"
 #include "test147_sm.h"
 #include "test148_sm.h"
-
-// Add more as needed: #include "test149_sm.h"
+#include "test149_sm.h"
+#include "test150_sm.h"
 
 // Test registry structure
 struct StaticTest {
@@ -60,7 +60,27 @@ bool test148() {
     return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test148::State::Pass;
 }
 
-// Add more test runners as needed
+bool test149() {
+    RSM::Generated::test149::test149 sm;
+    sm.initialize();
+
+    // Test 149: Verify that neither if nor elseif executes
+    // After initialize(), onentry of s0 should:
+    // - if(false) skips, elseif(false) skips
+    // - Only raise bat executes
+    // - Var1 remains 0 (no assignments execute)
+    // Internal queue processes bat with guard Var1==0, transition to Pass
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test149::State::Pass;
+}
+
+bool test150() {
+    RSM::Generated::test150::test150 sm;
+    sm.initialize();
+
+    // Test 150: Verify foreach creates dynamic variables (Var4, Var5)
+    // Hybrid generation: foreach and typeof handled by JSEngine
+    return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test150::State::Pass;
+}
 
 }  // namespace TestRunners
 
@@ -69,6 +89,8 @@ static const StaticTest STATIC_TESTS[] = {
     {144, "Event queue ordering", TestRunners::test144},
     {147, "If/elseif/else conditionals with datamodel", TestRunners::test147},
     {148, "Else clause execution with datamodel", TestRunners::test148},
+    {149, "Neither if nor elseif executes", TestRunners::test149},
+    {150, "Foreach with dynamic variables (Hybrid JSEngine)", TestRunners::test150},
     // Add more tests here
 };
 

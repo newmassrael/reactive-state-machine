@@ -550,8 +550,9 @@ set(STATIC_W3C_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/w3c_static_generated")
 rsm_generate_static_w3c_test(144 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(147 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(148 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(149 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(150 ${STATIC_W3C_OUTPUT_DIR})
 # Add more tests as StaticCodeGenerator gains features:
-# rsm_generate_static_w3c_test(149 ${STATIC_W3C_OUTPUT_DIR})
 
 # Create the CLI executable
 add_executable(w3c_static_test_cli
