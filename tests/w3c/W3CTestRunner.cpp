@@ -609,32 +609,95 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
         }
 
         void generateSummary(const TestRunSummary &summary) override {
-            // Write XML report file
+            // Write XML report file with separate testsuites for each engine
             std::ofstream xmlFile(outputPath_);
             if (xmlFile) {
+                // Separate reports by engine type
+                std::vector<TestReport> dynamicReports;
+                std::vector<TestReport> hybridReports;
+                
+                for (const auto &report : allReports_) {
+                    if (report.engineType == "dynamic") {
+                        dynamicReports.push_back(report);
+                    } else if (report.engineType == "hybrid") {
+                        hybridReports.push_back(report);
+                    }
+                }
+                
+                // Calculate statistics per engine
+                auto calculateEngineStats = [](const std::vector<TestReport> &reports) {
+                    size_t failures = 0, errors = 0;
+                    double totalTime = 0.0;
+                    for (const auto &r : reports) {
+                        if (r.validationResult.finalResult == TestResult::FAIL) failures++;
+                        if (r.validationResult.finalResult == TestResult::ERROR || 
+                            r.validationResult.finalResult == TestResult::TIMEOUT) errors++;
+                        totalTime += r.executionContext.executionTime.count() / 1000.0;
+                    }
+                    return std::make_tuple(failures, errors, totalTime);
+                };
+                
+                auto [dynFailures, dynErrors, dynTime] = calculateEngineStats(dynamicReports);
+                auto [hybFailures, hybErrors, hybTime] = calculateEngineStats(hybridReports);
+                
+                // Write XML with separate testsuites
                 xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" << std::endl;
-                xmlFile << "<testsuite name=\"W3C_SCXML_Tests\" "
-                        << "tests=\"" << summary.totalTests << "\" "
+                xmlFile << "<testsuites tests=\"" << summary.totalTests << "\" "
                         << "failures=\"" << summary.failedTests << "\" "
                         << "errors=\"" << summary.errorTests << "\" "
                         << "time=\"" << (summary.totalExecutionTime.count() / 1000.0) << "\">" << std::endl;
-
-                for (const auto &report : allReports_) {
-                    xmlFile << "  <testcase classname=\"W3C\" "
-                            << "name=\"Test_" << report.testId << "\" "
-                            << "engineType=\"" << report.engineType << "\" "
-                            << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
-
-                    if (report.validationResult.finalResult != TestResult::PASS) {
-                        xmlFile << ">" << std::endl;
-                        xmlFile << "    <failure message=\"" << report.validationResult.reason << "\"/>" << std::endl;
-                        xmlFile << "  </testcase>" << std::endl;
-                    } else {
-                        xmlFile << "/>" << std::endl;
+                
+                // Dynamic engine testsuite
+                if (!dynamicReports.empty()) {
+                    xmlFile << "  <testsuite name=\"W3C_SCXML_Dynamic\" "
+                            << "tests=\"" << dynamicReports.size() << "\" "
+                            << "failures=\"" << dynFailures << "\" "
+                            << "errors=\"" << dynErrors << "\" "
+                            << "time=\"" << dynTime << "\">" << std::endl;
+                    
+                    for (const auto &report : dynamicReports) {
+                        xmlFile << "    <testcase classname=\"W3C_Dynamic\" "
+                                << "name=\"Test_" << report.testId << "\" "
+                                << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
+                        
+                        if (report.validationResult.finalResult != TestResult::PASS) {
+                            xmlFile << ">" << std::endl;
+                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>" << std::endl;
+                            xmlFile << "    </testcase>" << std::endl;
+                        } else {
+                            xmlFile << "/>" << std::endl;
+                        }
                     }
+                    
+                    xmlFile << "  </testsuite>" << std::endl;
                 }
-
-                xmlFile << "</testsuite>" << std::endl;
+                
+                // Hybrid engine testsuite
+                if (!hybridReports.empty()) {
+                    xmlFile << "  <testsuite name=\"W3C_SCXML_Hybrid\" "
+                            << "tests=\"" << hybridReports.size() << "\" "
+                            << "failures=\"" << hybFailures << "\" "
+                            << "errors=\"" << hybErrors << "\" "
+                            << "time=\"" << hybTime << "\">" << std::endl;
+                    
+                    for (const auto &report : hybridReports) {
+                        xmlFile << "    <testcase classname=\"W3C_Hybrid\" "
+                                << "name=\"Test_" << report.testId << "\" "
+                                << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
+                        
+                        if (report.validationResult.finalResult != TestResult::PASS) {
+                            xmlFile << ">" << std::endl;
+                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>" << std::endl;
+                            xmlFile << "    </testcase>" << std::endl;
+                        } else {
+                            xmlFile << "/>" << std::endl;
+                        }
+                    }
+                    
+                    xmlFile << "  </testsuite>" << std::endl;
+                }
+                
+                xmlFile << "</testsuites>" << std::endl;
                 xmlFile.close();
             }
 
@@ -749,7 +812,7 @@ W3CTestRunner::W3CTestRunner(std::unique_ptr<ITestConverter> converter,
     : converter_(std::move(converter)), metadataParser_(std::move(metadataParser)), executor_(std::move(executor)),
       validator_(std::move(validator)), testSuite_(std::move(testSuite)), reporter_(std::move(reporter)) {}
 
-TestRunSummary W3CTestRunner::runAllTests() {
+TestRunSummary W3CTestRunner::runAllTests(bool skipReporting) {
     auto testSuiteInfo = testSuite_->getInfo();
     reporter_->beginTestRun(testSuiteInfo.name);
 
@@ -824,8 +887,11 @@ TestRunSummary W3CTestRunner::runAllTests() {
     LOG_INFO("W3C Test Execution: Completed {} tests total", reports.size());
 
     TestRunSummary summary = calculateSummary(reports);
-    reporter_->generateSummary(summary);
-    reporter_->endTestRun();
+    
+    if (!skipReporting) {
+        reporter_->generateSummary(summary);
+        reporter_->endTestRun();
+    }
 
     return summary;
 }
@@ -1580,7 +1646,7 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
             LOG_WARN("W3C Hybrid Test: Test {} not yet implemented in hybrid engine", testId);
             report.validationResult = ValidationResult(
                 false, TestResult::FAIL,
-                "Test not yet implemented in hybrid engine (currently only tests 144-153 are supported)");
+                "Test not yet implemented in hybrid engine");
             report.executionContext.finalState = "fail";
             return report;
         }

@@ -1,6 +1,12 @@
 # reactive-state-machine
 
-SCXML 기반 C++ 상태 머신 라이브러리로, W3C SCXML 명세를 따르는 파서와 QuickJS 기반 스크립팅 엔진을 제공합니다. **SCXML과 C++ 코드 간의 양방향 연동**을 통해 상태 머신 로직과 비즈니스 로직을 효과적으로 분리할 수 있습니다.
+SCXML 기반 C++ 상태 머신 라이브러리로, W3C SCXML 명세를 따르는 파서와 QuickJS 기반 스크립팅 엔진을 제공합니다.
+
+## W3C SCXML 준수 현황
+
+![W3C Tests](https://github.com/newmassrael/reactive-state-machine/actions/workflows/w3c-tests.yml/badge.svg)
+
+📊 **[상세 테스트 결과 보기](https://newmassrael.github.io/reactive-state-machine/test-results.html)** - 202개 W3C SCXML 표준 테스트 실행 결과 **SCXML과 C++ 코드 간의 양방향 연동**을 통해 상태 머신 로직과 비즈니스 로직을 효과적으로 분리할 수 있습니다.
 
 ## 핵심 특징
 

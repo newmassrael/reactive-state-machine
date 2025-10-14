@@ -175,9 +175,10 @@ public:
 
     /**
      * @brief Run all W3C tests
+     * @param skipReporting If true, skip generateSummary() and endTestRun() calls
      * @return Test run summary
      */
-    TestRunSummary runAllTests();
+    TestRunSummary runAllTests(bool skipReporting = false);
 
     /**
      * @brief Run specific test by ID

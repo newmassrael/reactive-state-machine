@@ -389,8 +389,8 @@ int main(int argc, char *argv[]) {
         } else {
             RSM::Logger::info("W3C CLI: Running all W3C SCXML compliance tests...");
 
-            // Run all tests with dynamic engine (runAllTests handles beginTestRun/endTestRun)
-            summary = runner.runAllTests();
+            // Run all tests with dynamic engine (skip reporting to avoid duplicate XML write)
+            summary = runner.runAllTests(/* skipReporting = */ true);
 
             // Get all dynamic engine reports from reporter
             allReports = runner.getReporter()->getAllReports();
@@ -447,6 +447,22 @@ int main(int argc, char *argv[]) {
                     summary.totalExecutionTime += hybridReport.executionContext.executionTime;
                 } catch (const std::exception &e) {
                     LOG_ERROR("W3C CLI: Hybrid engine test {} failed: {}", testIdStr, e.what());
+                    
+                    // Create error report for failed hybrid test
+                    RSM::W3C::TestReport errorReport;
+                    errorReport.testId = testIdStr;
+                    errorReport.engineType = "hybrid";
+                    errorReport.validationResult.finalResult = RSM::W3C::TestResult::ERROR;
+                    errorReport.validationResult.reason = std::string("Hybrid engine error: ") + e.what();
+                    errorReport.executionContext.executionTime = std::chrono::milliseconds(0);
+                    
+                    allReports.push_back(errorReport);
+                    runner.getReporter()->reportTestResult(errorReport);
+                    
+                    // Update summary
+                    summary.totalTests++;
+                    summary.errorTests++;
+                    summary.errorTestIds.push_back(testIdStr);
                 }
             }
 
@@ -454,6 +470,10 @@ int main(int argc, char *argv[]) {
             if (summary.totalTests > 0) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
+            
+            // Generate final report with both dynamic and hybrid results
+            runner.getReporter()->generateSummary(summary);
+            runner.getReporter()->endTestRun();
         }
 
         auto endTime = std::chrono::steady_clock::now();

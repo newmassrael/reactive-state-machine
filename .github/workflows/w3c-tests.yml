@@ -35,7 +35,7 @@ jobs:
     permissions:
       checks: write
       pull-requests: write
-      contents: read
+      contents: write
 
     steps:
     - name: Checkout Repository
@@ -147,7 +147,8 @@ jobs:
         include_passed: true
         fail_on_failure: false
         check_name: 'W3C SCXML Test Results'
-        summary: true
+        summary: '📊 [View Detailed HTML Report](https://newmassrael.github.io/reactive-state-machine/test-results.html)'
+        group_suite: true
         annotate_only: false
 
     - name: Upload Test Results Artifact
@@ -157,6 +158,28 @@ jobs:
         name: w3c-test-results
         path: build/tests/w3c_test_results.xml
         retention-days: 30
+
+    - name: Generate HTML Report
+      if: always()
+      run: |
+        python3 .github/scripts/generate-html-report.py \
+          build/tests/w3c_test_results.xml \
+          build/tests/test-results.html
+        
+        # Create a clean directory with only HTML files for GitHub Pages
+        mkdir -p gh-pages
+        cp build/tests/test-results.html gh-pages/
+        cp build/tests/w3c_test_results.xml gh-pages/
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      if: always() && github.ref == 'refs/heads/main'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./gh-pages
+        destination_dir: .
+        keep_files: false
+        force_orphan: true
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
@@ -174,6 +197,8 @@ jobs:
         cd build/tests
         echo "## 📊 W3C SCXML Test Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 [View Detailed HTML Report](https://newmassrael.github.io/reactive-state-machine/test-results.html)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
 
         if [ -f w3c_test_results.xml ]; then
           total=$(grep -oP 'tests="\K[0-9]+' w3c_test_results.xml | head -1)
@@ -182,13 +207,13 @@ jobs:
           passed=$((total - failures - errors))
           pass_rate=$(awk "BEGIN {printf \"%.1f\", ($passed / $total) * 100}")
 
-          # Count tests by engine type
-          dynamic_total=$(grep -oP 'engineType="dynamic"' w3c_test_results.xml | wc -l)
-          hybrid_total=$(grep -oP 'engineType="hybrid"' w3c_test_results.xml | wc -l)
+          # Count tests by engine type (using classname)
+          dynamic_total=$(grep -oP 'classname="W3C_Dynamic"' w3c_test_results.xml | wc -l)
+          hybrid_total=$(grep -oP 'classname="W3C_Hybrid"' w3c_test_results.xml | wc -l)
 
           # Count passed tests by engine type (no failure tags)
-          dynamic_passed=$(grep 'engineType="dynamic"' w3c_test_results.xml | grep -v '<failure' | wc -l)
-          hybrid_passed=$(grep 'engineType="hybrid"' w3c_test_results.xml | grep -v '<failure' | wc -l)
+          dynamic_passed=$(grep 'classname="W3C_Dynamic"' w3c_test_results.xml | grep -v '<failure' | wc -l)
+          hybrid_passed=$(grep 'classname="W3C_Hybrid"' w3c_test_results.xml | grep -v '<failure' | wc -l)
 
           dynamic_failed=$((dynamic_total - dynamic_passed))
           hybrid_failed=$((hybrid_total - hybrid_passed))
