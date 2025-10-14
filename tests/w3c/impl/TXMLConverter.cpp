@@ -140,6 +140,12 @@ const std::regex TXMLConverter::CONF_QUOTE_EXPR_ATTR{R"abc(conf:quoteExpr="([^"]
 
 const std::regex TXMLConverter::CONF_EVENT_EXPR_ATTR{R"def(conf:eventExpr="([^"]*)")def", std::regex::optimize};
 
+// conf:targetExpr="1" -> targetexpr="Var1" (numeric IDs for Test 173)
+const std::regex TXMLConverter::CONF_TARGETEXPR_NUMERIC_ATTR{R"tge(conf:targetExpr="([0-9]+)")tge",
+                                                             std::regex::optimize};
+// conf:targetExpr="varname" -> targetexpr="varname" (general)
+const std::regex TXMLConverter::CONF_TARGETEXPR_ATTR{R"tge(conf:targetExpr="([^"]*)")tge", std::regex::optimize};
+
 // W3C SCXML 5.10: Event field access pattern (test 342)
 // <assign conf:location="X" conf:eventField="Y"/> converts to <assign location="varX" expr="_event.Y"/>
 const std::regex TXMLConverter::CONF_EVENTFIELD_ATTR{R"evf(conf:eventField="([^"]*)")evf", std::regex::optimize};
@@ -488,6 +494,12 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, eventexpr_numeric_pattern, R"(eventexpr="Var$1")");
     // Convert remaining conf:eventExpr attributes to standard eventexpr
     result = std::regex_replace(result, CONF_EVENT_EXPR_ATTR, R"(eventexpr="$1")");
+
+    // Convert conf:targetExpr to targetexpr for send elements (Test 173)
+    // Handle numeric variables: conf:targetExpr="1" -> targetexpr="Var1"
+    result = std::regex_replace(result, CONF_TARGETEXPR_NUMERIC_ATTR, R"(targetexpr="Var$1")");
+    // Convert remaining conf:targetExpr attributes to standard targetexpr
+    result = std::regex_replace(result, CONF_TARGETEXPR_ATTR, R"(targetexpr="$1")");
 
     // W3C SCXML 5.10: Convert event field access to _event expression (test 342)
     // conf:eventField="name" -> expr="_event.name"

@@ -1043,15 +1043,30 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         {
             std::string event = action.param1;
             std::string target = action.param2;
+            std::string targetExpr = action.param3;
             std::string eventExpr = action.param4;
 
-            // W3C SCXML 6.2 (tests 159, 194): Use SendHelper for validation (Single Source of Truth)
-            ss << "                // W3C SCXML 6.2: Validate send target using SendHelper\n";
-            ss << "                if (::RSM::SendHelper::isInvalidTarget(\"" << target << "\")) {\n";
-            ss << "                    // W3C SCXML 5.10: Invalid target stops subsequent executable content\n";
-            ss << "                    return;  // Stop execution of subsequent actions in this "
-                  "entry/exit/transition\n";
-            ss << "                }\n";
+            // W3C SCXML 6.2: Handle targetexpr (dynamic target evaluation) - Test 173
+            if (!targetExpr.empty()) {
+                // Dynamic target: evaluate targetExpr directly (variable reference in static code)
+                ss << "                // W3C SCXML 6.2 (test 173): Validate dynamic target from targetexpr\n";
+                ss << "                {\n";
+                ss << "                    std::string dynamicTarget = " << targetExpr << ";\n";
+                ss << "                    if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {\n";
+                ss << "                        // W3C SCXML 6.2: Invalid target stops execution\n";
+                ss << "                        return;\n";
+                ss << "                    }\n";
+                ss << "                    // Target is valid (including #_internal for internal events)\n";
+                ss << "                }\n";
+            } else if (!target.empty()) {
+                // Static target validation (only when targetExpr is not present)
+                ss << "                // W3C SCXML 6.2 (tests 159, 194): Validate send target using SendHelper\n";
+                ss << "                if (::RSM::SendHelper::isInvalidTarget(\"" << target << "\")) {\n";
+                ss << "                    // W3C SCXML 5.10: Invalid target stops subsequent executable content\n";
+                ss << "                    return;  // Stop execution of subsequent actions in this "
+                      "entry/exit/transition\n";
+                ss << "                }\n";
+            }
 
             // W3C SCXML: Handle eventexpr (dynamic event name evaluation)
             if (!eventExpr.empty()) {

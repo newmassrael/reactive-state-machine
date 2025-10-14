@@ -193,6 +193,10 @@ private:
     static const std::regex CONF_EVENT_NAMED_PARAM_HAS_VALUE_ATTR;
     static const std::regex CONF_QUOTE_EXPR_ATTR;
     static const std::regex CONF_EVENT_EXPR_ATTR;
+    // conf:targetExpr="1" -> targetexpr="Var1" (numeric IDs for Test 173)
+    static const std::regex CONF_TARGETEXPR_NUMERIC_ATTR;
+    // conf:targetExpr="varname" -> targetexpr="varname" (general)
+    static const std::regex CONF_TARGETEXPR_ATTR;
 
     // W3C SCXML 5.10: Event field access pattern (test 342)
     static const std::regex CONF_EVENTFIELD_ATTR;

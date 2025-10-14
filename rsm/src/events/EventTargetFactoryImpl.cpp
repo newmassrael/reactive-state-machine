@@ -60,6 +60,12 @@ std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createTarget(const std::st
         return createParentTarget(targetUri);
     }
 
+    // W3C SCXML C.1 (test 190, 350): #_scxml_sessionid → external queue
+    if (targetUri.starts_with("#_scxml_")) {
+        LOG_DEBUG("EventTargetFactoryImpl::createTarget() - #_scxml_sessionid → external queue");
+        return createExternalTarget(sessionId);
+    }
+
     // Handle invoke ID target URI (#_invokeId)
     if (targetUri.starts_with("#_") && targetUri != "#_internal" && targetUri != "#_parent") {
         std::string invokeId = targetUri.substr(2);  // Remove "#_" prefix
