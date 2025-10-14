@@ -239,6 +239,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#include <cstdint>\n";
     ss << "#include <memory>\n";
     ss << "#include <stdexcept>\n";
+    ss << "#include <string>\n";
     ss << "#include \"static/StaticExecutionEngine.h\"\n";
 
     // Add SendHelper include if needed
@@ -779,11 +780,12 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
             }
         } else if (actionType == "send") {
             if (auto sendAction = std::dynamic_pointer_cast<RSM::SendAction>(actionNode)) {
-                // Store event, target, and targetExpr for send action
+                // Store event, target, targetExpr, and eventExpr for send action
                 std::string event = sendAction->getEvent();
                 std::string target = sendAction->getTarget();
                 std::string targetExpr = sendAction->getTargetExpr();
-                result.push_back(Action(Action::SEND, event, target, targetExpr));
+                std::string eventExpr = sendAction->getEventExpr();
+                result.push_back(Action(Action::SEND, event, target, targetExpr, eventExpr));
             }
         }
     }
@@ -811,6 +813,13 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
                 ss << "    // Array variable (handled by JSEngine): " << var.name << " = " << var.initialValue << "\n";
             } else if (var.initialValue.empty()) {
                 ss << "    // Runtime-evaluated variable (handled by JSEngine): " << var.name << "\n";
+            } else if (var.initialValue.size() >= 2 && var.initialValue.front() == '\'' &&
+                       var.initialValue.back() == '\'') {
+                // JavaScript string literal: 'value' → C++ string: "value"
+                std::string strValue = var.initialValue.substr(1, var.initialValue.size() - 2);
+                // Escape special characters for safe C++ generation
+                std::string escapedValue = escapeStringLiteral(strValue);
+                ss << "    std::string " << var.name << " = \"" << escapedValue << "\";\n";
             } else {
                 ss << "    int " << var.name << " = " << var.initialValue << ";\n";
             }
@@ -1014,17 +1023,27 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
     case Action::SCRIPT:
         ss << "                " << action.param1 << "();\n";
         break;
-    case Action::ASSIGN:
-        ss << "                " << action.param1 << " = " << action.param2 << ";\n";
-        break;
+    case Action::ASSIGN: {
+        std::string expr = action.param2;
+        // Convert JavaScript string literal 'value' to C++ string literal "value"
+        if (expr.size() >= 2 && expr.front() == '\'' && expr.back() == '\'') {
+            // Extract string content and escape special characters
+            std::string strValue = expr.substr(1, expr.size() - 2);
+            std::string escapedValue = escapeStringLiteral(strValue);
+            expr = "\"" + escapedValue + "\"";
+        }
+        ss << "                " << action.param1 << " = " << expr << ";\n";
+    } break;
     case Action::LOG:
         ss << "                // TODO: log " << action.param1 << "\n";
         break;
     case Action::SEND:
         // W3C SCXML 6.2: send with target validation using shared SendHelper
-        // param1: event, param2: target, param3: targetExpr
+        // param1: event, param2: target, param3: targetExpr, param4: eventExpr
         {
+            std::string event = action.param1;
             std::string target = action.param2;
+            std::string eventExpr = action.param4;
 
             // W3C SCXML 6.2 (tests 159, 194): Use SendHelper for validation (Single Source of Truth)
             ss << "                // W3C SCXML 6.2: Validate send target using SendHelper\n";
@@ -1033,7 +1052,41 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             ss << "                    return;  // Stop execution of subsequent actions in this "
                   "entry/exit/transition\n";
             ss << "                }\n";
-            ss << "                // TODO: send event=" << action.param1 << " target=" << target << "\n";
+
+            // W3C SCXML: Handle eventexpr (dynamic event name evaluation)
+            if (!eventExpr.empty()) {
+                // Dynamic event: evaluate eventExpr and raise the result
+                ss << "                // W3C SCXML 6.2 (test172): Evaluate eventexpr and raise as event\n";
+                ss << "                {\n";
+                ss << "                    std::string eventName = " << eventExpr << ";\n";
+                ss << "                    // Convert event name string to Event enum\n";
+
+                // Generate if-else chain to map string to Event enum
+                bool firstEvent = true;
+                for (const auto &eventName : events) {
+                    std::string eventEnum = capitalize(eventName);
+                    if (firstEvent) {
+                        ss << "                    if (eventName == \"" << eventName << "\") {\n";
+                        ss << "                        " << engineVar << ".raise(Event::" << eventEnum << ");\n";
+                        firstEvent = false;
+                    } else {
+                        ss << "                    } else if (eventName == \"" << eventName << "\") {\n";
+                        ss << "                        " << engineVar << ".raise(Event::" << eventEnum << ");\n";
+                    }
+                }
+                if (!firstEvent) {
+                    ss << "                    }\n";
+                }
+                ss << "                }\n";
+            } else if (!event.empty()) {
+                // Static event: only raise if event exists in Event enum
+                if (events.find(event) != events.end()) {
+                    ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ");\n";
+                } else {
+                    // Event not in enum, likely unreachable - just comment
+                    ss << "                // Event '" << event << "' not defined in Event enum (unreachable)\n";
+                }
+            }
         }
         break;
     case Action::IF:

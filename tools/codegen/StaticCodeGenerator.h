@@ -133,12 +133,14 @@ struct Action {
     Type type;
     std::string param1;  // event name for RAISE, array for FOREACH, script content for SCRIPT, condition for IF, etc.
     std::string param2;  // additional parameter (e.g., assign location, item var for FOREACH)
-    std::string param3;  // third parameter (e.g., index var for FOREACH)
+    std::string param3;  // third parameter (e.g., index var for FOREACH, targetExpr for SEND)
+    std::string param4;  // fourth parameter (e.g., eventExpr for SEND)
     std::vector<ConditionalBranch> branches;  // For IF action: if/elseif/else branches
     std::vector<Action> iterationActions;     // For FOREACH: actions to execute in loop
 
-    Action(Type t, const std::string &p1 = "", const std::string &p2 = "", const std::string &p3 = "")
-        : type(t), param1(p1), param2(p2), param3(p3) {}
+    Action(Type t, const std::string &p1 = "", const std::string &p2 = "", const std::string &p3 = "",
+           const std::string &p4 = "")
+        : type(t), param1(p1), param2(p2), param3(p3), param4(p4) {}
 };
 
 struct State {

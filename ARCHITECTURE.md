@@ -48,7 +48,7 @@ class GeneratedStateMachine {
 - **Use Case**: Complex workflows, parallel states, invoke, runtime SCXML loading
 
 ### Static Code Generator (scxml-codegen)
-- **W3C Compliance**: 12/12 Static Tests PASSED ✅ (test144-159) - W3C SCXML 3.5.1 document order + send action compliant
+- **W3C Compliance**: 13/13 Static Tests PASSED ✅ (test144-159, 172) - W3C SCXML 3.5.1 document order + send action + eventexpr compliant
 - **Role**: Automatic optimization - generates hybrid static+dynamic code
 - **Performance**: Pure static parts run 100x faster than dynamic
 - **Memory**: 8 bytes (pure static) to ~100KB (full dynamic features)
@@ -300,9 +300,13 @@ class EventQueueManager {
   - SendHelper refactored as Single Source of Truth for target validation
   - W3C SCXML 6.2: Invalid send targets (starting with "!") detected
   - W3C SCXML 5.10: Invalid targets stop subsequent executable content
+- test172: Dynamic event name evaluation (eventexpr attribute)
+  - JavaScript string literal handling ('value' → C++ "value")
+  - Runtime string-to-enum conversion for dynamic event raising
+  - Proper escape handling using escapeStringLiteral()
 - Shared helper functions with interpreter engine (ForeachHelper, SendHelper)
 - Final state transition logic (no fall-through)
-- **Result**: 12/12 W3C Static Tests PASSED
+- **Result**: 13/13 W3C Static Tests PASSED
 
 ### Phase 4: Dynamic Component Integration (Planned)
 - ParallelStateHandler for parallel states
@@ -318,14 +322,14 @@ class EventQueueManager {
 
 | Category | Static Generator | Interpreter Engine | Combined |
 |----------|------------------|----------------|----------|
-| **W3C Static Tests** | **12/12 (100%)** ✅ | N/A | **12/12 (100%)** |
+| **W3C Static Tests** | **13/13 (100%)** ✅ | N/A | **13/13 (100%)** |
 | **Basic Tests** | 12/60 (20%) | 60/60 (100%) | 60/60 (100%) |
 | **Datamodel Tests** | 4/30 (13%) | 30/30 (100%) | 30/30 (100%) |
 | **Complex Tests** | 0/112 (0%) | 112/112 (100%) | 112/112 (100%) |
 | **Total** | **12/202 (6%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144, 147-153, 155-156, 158-159): Validates W3C SCXML compliance including document order (3.5.1), JIT JSEngine integration
+- W3C Static Tests (144, 147-153, 155-156, 158-159, 172): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, JIT JSEngine integration
 - Interpreter engine provides 100% W3C compliance baseline
 - Static generator produces hybrid code with shared semantics from interpreter engine
 
@@ -333,7 +337,7 @@ class EventQueueManager {
 
 ### Must Have
 - [x] Interpreter engine: 202/202 W3C tests
-- [x] Static generator: W3C Static Tests 12/12 (100%) ✅
+- [x] Static generator: W3C Static Tests 13/13 (100%) ✅
 - [x] Static generator: Hybrid code generation (static + dynamic)
 - [x] Logic commonization: Shared helpers with interpreter engine
 - [ ] Static generator: 60+ tests (basic features)
@@ -358,6 +362,6 @@ class EventQueueManager {
 
 ---
 
-**Status**: Phase 3 Complete ✅ - W3C SCXML compliance achieved (12/12 tests)
+**Status**: Phase 3 Complete ✅ - W3C SCXML compliance achieved (13/13 tests)
 **Last Updated**: 2025-10-14
-**Version**: 3.3 (SendHelper Refactoring + Send Action Support)
+**Version**: 3.4 (EventExpr Support + String Literal Safety)
