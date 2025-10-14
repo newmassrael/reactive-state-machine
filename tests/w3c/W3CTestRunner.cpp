@@ -29,6 +29,7 @@
 #include "test153_sm.h"
 #include "test155_sm.h"
 #include "test156_sm.h"
+#include "test158_sm.h"
 
 namespace RSM::W3C {
 
@@ -1556,97 +1557,42 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         bool testPassed = false;
         std::string testDescription;
 
+        // Macro to define a JIT test case with automatic state machine initialization
+        // Usage: JIT_TEST_CASE(test_number, "description")
+        // Requires: Corresponding testXXX_sm.h include and CMake test generation
+#define JIT_TEST_CASE(num, desc)                                                                                       \
+    case num:                                                                                                          \
+        testPassed = []() {                                                                                            \
+            RSM::Generated::test##num::test##num sm;                                                                   \
+            sm.initialize();                                                                                           \
+            return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test##num::State::Pass;              \
+        }();                                                                                                           \
+        testDescription = desc;                                                                                        \
+        break;
+
         // Execute the appropriate generated static test based on testId
         switch (testId) {
-        case 144:
-            testPassed = []() {
-                RSM::Generated::test144::test144 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test144::State::Pass;
-            }();
-            testDescription = "Event queue ordering";
-            break;
+            JIT_TEST_CASE(144, "Event queue ordering")
 
-        case 147:
-            testPassed = []() {
-                RSM::Generated::test147::test147 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test147::State::Pass;
-            }();
-            testDescription = "If/elseif/else conditionals with datamodel";
-            break;
+            JIT_TEST_CASE(147, "If/elseif/else conditionals with datamodel")
 
-        case 148:
-            testPassed = []() {
-                RSM::Generated::test148::test148 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test148::State::Pass;
-            }();
-            testDescription = "Else clause execution with datamodel";
-            break;
+            JIT_TEST_CASE(148, "Else clause execution with datamodel")
 
-        case 149:
-            testPassed = []() {
-                RSM::Generated::test149::test149 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test149::State::Pass;
-            }();
-            testDescription = "Neither if nor elseif executes";
-            break;
+            JIT_TEST_CASE(149, "Neither if nor elseif executes")
 
-        case 150:
-            testPassed = []() {
-                RSM::Generated::test150::test150 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test150::State::Pass;
-            }();
-            testDescription = "Foreach with dynamic variables (JIT JSEngine)";
-            break;
+            JIT_TEST_CASE(150, "Foreach with dynamic variables (JIT JSEngine)")
 
-        case 151:
-            testPassed = []() {
-                RSM::Generated::test151::test151 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test151::State::Pass;
-            }();
-            testDescription = "Foreach declares new variables (JIT JSEngine)";
-            break;
+            JIT_TEST_CASE(151, "Foreach declares new variables (JIT JSEngine)")
 
-        case 152:
-            testPassed = []() {
-                RSM::Generated::test152::test152 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test152::State::Pass;
-            }();
-            testDescription = "Foreach error handling (JIT JSEngine)";
-            break;
+            JIT_TEST_CASE(152, "Foreach error handling (JIT JSEngine)")
 
-        case 153:
-            testPassed = []() {
-                RSM::Generated::test153::test153 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test153::State::Pass;
-            }();
-            testDescription = "Foreach array iteration order (JIT JSEngine)";
-            break;
+            JIT_TEST_CASE(153, "Foreach array iteration order (JIT JSEngine)")
 
-        case 155:
-            testPassed = []() {
-                RSM::Generated::test155::test155 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test155::State::Pass;
-            }();
-            testDescription = "Foreach sums array items into variable (JIT JSEngine)";
-            break;
+            JIT_TEST_CASE(155, "Foreach sums array items into variable (JIT JSEngine)")
 
-        case 156:
-            testPassed = []() {
-                RSM::Generated::test156::test156 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test156::State::Pass;
-            }();
-            testDescription = "Foreach error handling stops loop (JIT JSEngine)";
-            break;
+            JIT_TEST_CASE(156, "Foreach error handling stops loop (JIT JSEngine)")
+
+            JIT_TEST_CASE(158, "Executable content document order (JIT)")
 
         default:
             LOG_WARN("W3C JIT Test: Test {} not yet implemented in jit engine", testId);
@@ -1655,6 +1601,8 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             report.executionContext.finalState = "fail";
             return report;
         }
+
+#undef JIT_TEST_CASE  // Clean up macro after use
 
         auto endTime = std::chrono::steady_clock::now();
         report.executionContext.executionTime =

@@ -303,14 +303,14 @@ class EventQueueManager {
 
 | Category | Static Generator | Interpreter Engine | Combined |
 |----------|------------------|----------------|----------|
-| **W3C Static Tests** | **8/8 (100%)** ✅ | N/A | **8/8 (100%)** |
-| **Basic Tests** | 8/60 (13%) | 60/60 (100%) | 60/60 (100%) |
+| **W3C Static Tests** | **11/11 (100%)** ✅ | N/A | **11/11 (100%)** |
+| **Basic Tests** | 11/60 (18%) | 60/60 (100%) | 60/60 (100%) |
 | **Datamodel Tests** | 4/30 (13%) | 30/30 (100%) | 30/30 (100%) |
 | **Complex Tests** | 0/112 (0%) | 112/112 (100%) | 112/112 (100%) |
-| **Total** | **8/202 (4%)** | **202/202 (100%)** | **202/202 (100%)** |
+| **Total** | **11/202 (5%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144-153): Validates W3C SCXML compliance including document order (3.5.1), JIT JSEngine integration
+- W3C Static Tests (144, 147-153, 155-156, 158): Validates W3C SCXML compliance including document order (3.5.1), JIT JSEngine integration
 - Interpreter engine provides 100% W3C compliance baseline
 - Static generator produces hybrid code with shared semantics from interpreter engine
 
