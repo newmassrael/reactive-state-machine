@@ -11,6 +11,7 @@
 #include "common/ForeachHelper.h"
 #include "common/ForeachValidator.h"
 #include "common/Logger.h"
+#include "common/SendHelper.h"
 #include "common/StringUtils.h"
 #include "common/TypeRegistry.h"
 #include "common/UniqueIdGenerator.h"
@@ -795,12 +796,13 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             target = evaluateExpression(action.getTargetExpr());
         }
 
-        // W3C SCXML 6.2 (tests 159, 194): Validate target format
+        // W3C SCXML 6.2 (tests 159, 194): Validate target format using shared helper
         // Invalid target values (e.g., starting with "!") must raise error.execution
-        if (!target.empty() && target[0] == '!') {
-            LOG_ERROR("ActionExecutorImpl: Invalid target value: '{}'", target);
+        std::string targetErrorMsg;
+        if (!SendHelper::validateTarget(target, targetErrorMsg)) {
+            LOG_ERROR("ActionExecutorImpl: {}", targetErrorMsg);
             if (eventRaiser_) {
-                eventRaiser_->raiseEvent("error.execution", "Invalid target value: " + target, sendId,
+                eventRaiser_->raiseEvent("error.execution", targetErrorMsg, sendId,
                                          false /* overload discriminator for sendId variant */);
             }
             return false;

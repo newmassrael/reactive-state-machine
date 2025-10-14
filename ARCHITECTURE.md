@@ -48,7 +48,7 @@ class GeneratedStateMachine {
 - **Use Case**: Complex workflows, parallel states, invoke, runtime SCXML loading
 
 ### Static Code Generator (scxml-codegen)
-- **W3C Compliance**: 8/8 Static Tests PASSED ✅ (test144-153) - W3C SCXML 3.5.1 document order compliant
+- **W3C Compliance**: 12/12 Static Tests PASSED ✅ (test144-159) - W3C SCXML 3.5.1 document order + send action compliant
 - **Role**: Automatic optimization - generates hybrid static+dynamic code
 - **Performance**: Pure static parts run 100x faster than dynamic
 - **Memory**: 8 bytes (pure static) to ~100KB (full dynamic features)
@@ -251,6 +251,17 @@ class EventQueueManager {
   - Fallback to string literal handling
 - Benefits: Zero code duplication, guaranteed consistency between engines
 
+**RSM::SendHelper::validateTarget() / isInvalidTarget()**:
+- W3C SCXML 6.2: Send element target validation logic
+- Single Source of Truth for send action validation shared between engines
+- Location: `rsm/include/common/SendHelper.h`
+- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
+- Features:
+  - Target format validation (rejects targets starting with "!")
+  - W3C SCXML 5.10: Invalid targets stop subsequent executable content
+  - Two APIs: validateTarget() with error message, isInvalidTarget() for boolean check
+- Benefits: Zero code duplication, consistent error handling across engines
+
 ### Future Core Components (Planned)
 
 **RSM::Core::StateExecutor**:
@@ -285,9 +296,13 @@ class EventQueueManager {
   - Root cause: `ScriptValue(string)` created STRING type → JavaScript performed string concatenation
   - Solution: Use `executeScript("var = value;")` to let JavaScript evaluate types
   - ForeachHelper refactored as Single Source of Truth (used by both Interpreter and JIT engines)
-- Shared helper functions with interpreter engine (ForeachHelper::setLoopVariable)
+- test158-159: Send action support with error handling
+  - SendHelper refactored as Single Source of Truth for target validation
+  - W3C SCXML 6.2: Invalid send targets (starting with "!") detected
+  - W3C SCXML 5.10: Invalid targets stop subsequent executable content
+- Shared helper functions with interpreter engine (ForeachHelper, SendHelper)
 - Final state transition logic (no fall-through)
-- **Result**: 8/8 W3C Static Tests PASSED
+- **Result**: 12/12 W3C Static Tests PASSED
 
 ### Phase 4: Dynamic Component Integration (Planned)
 - ParallelStateHandler for parallel states
@@ -303,14 +318,14 @@ class EventQueueManager {
 
 | Category | Static Generator | Interpreter Engine | Combined |
 |----------|------------------|----------------|----------|
-| **W3C Static Tests** | **11/11 (100%)** ✅ | N/A | **11/11 (100%)** |
-| **Basic Tests** | 11/60 (18%) | 60/60 (100%) | 60/60 (100%) |
+| **W3C Static Tests** | **12/12 (100%)** ✅ | N/A | **12/12 (100%)** |
+| **Basic Tests** | 12/60 (20%) | 60/60 (100%) | 60/60 (100%) |
 | **Datamodel Tests** | 4/30 (13%) | 30/30 (100%) | 30/30 (100%) |
 | **Complex Tests** | 0/112 (0%) | 112/112 (100%) | 112/112 (100%) |
-| **Total** | **11/202 (5%)** | **202/202 (100%)** | **202/202 (100%)** |
+| **Total** | **12/202 (6%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144, 147-153, 155-156, 158): Validates W3C SCXML compliance including document order (3.5.1), JIT JSEngine integration
+- W3C Static Tests (144, 147-153, 155-156, 158-159): Validates W3C SCXML compliance including document order (3.5.1), JIT JSEngine integration
 - Interpreter engine provides 100% W3C compliance baseline
 - Static generator produces hybrid code with shared semantics from interpreter engine
 
@@ -318,7 +333,7 @@ class EventQueueManager {
 
 ### Must Have
 - [x] Interpreter engine: 202/202 W3C tests
-- [x] Static generator: W3C Static Tests 8/8 (100%) ✅
+- [x] Static generator: W3C Static Tests 12/12 (100%) ✅
 - [x] Static generator: Hybrid code generation (static + dynamic)
 - [x] Logic commonization: Shared helpers with interpreter engine
 - [ ] Static generator: 60+ tests (basic features)
@@ -343,6 +358,6 @@ class EventQueueManager {
 
 ---
 
-**Status**: Phase 3 Complete ✅ - W3C SCXML compliance achieved (8/8 tests)
+**Status**: Phase 3 Complete ✅ - W3C SCXML compliance achieved (12/12 tests)
 **Last Updated**: 2025-10-14
-**Version**: 3.2 (ForeachHelper Refactoring + Type Preservation Fix)
+**Version**: 3.3 (SendHelper Refactoring + Send Action Support)

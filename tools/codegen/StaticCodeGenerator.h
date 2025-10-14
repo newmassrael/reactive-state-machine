@@ -168,6 +168,7 @@ public:
     bool hasForEach = false;            // Uses <foreach> action
     bool hasComplexDatamodel = false;   // Uses arrays, typeof, dynamic variables
     bool hasComplexECMAScript = false;  // Needs JSEngine for evaluation
+    bool hasSend = false;               // Uses <send> action
 
     // Helper: Determine if JSEngine is needed
     bool needsJSEngine() const {

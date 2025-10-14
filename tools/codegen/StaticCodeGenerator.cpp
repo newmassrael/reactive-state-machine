@@ -15,6 +15,8 @@
 #include "actions/LogAction.h"
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
+#include "actions/SendAction.h"
+#include "common/SendHelper.h"
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
 #include "parsing/SCXMLParser.h"
@@ -179,6 +181,8 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 }
                 // Recursively check iteration actions
                 detectFeatures(action.iterationActions);
+            } else if (action.type == Action::SEND) {
+                model.hasSend = true;
             } else if (action.type == Action::IF) {
                 for (const auto &branch : action.branches) {
                     detectFeatures(branch.actions);
@@ -236,6 +240,11 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#include <memory>\n";
     ss << "#include <stdexcept>\n";
     ss << "#include \"static/StaticExecutionEngine.h\"\n";
+
+    // Add SendHelper include if needed
+    if (model.hasSend) {
+        ss << "#include \"common/SendHelper.h\"\n";
+    }
 
     // Add JSEngine and Logger includes if needed for hybrid code generation (OUTSIDE namespace)
     if (model.needsJSEngine()) {
@@ -768,6 +777,14 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
                 foreachResult.iterationActions = processActions(foreachAction->getIterationActions());
                 result.push_back(foreachResult);
             }
+        } else if (actionType == "send") {
+            if (auto sendAction = std::dynamic_pointer_cast<RSM::SendAction>(actionNode)) {
+                // Store event, target, and targetExpr for send action
+                std::string event = sendAction->getEvent();
+                std::string target = sendAction->getTarget();
+                std::string targetExpr = sendAction->getTargetExpr();
+                result.push_back(Action(Action::SEND, event, target, targetExpr));
+            }
         }
     }
 
@@ -1002,6 +1019,22 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         break;
     case Action::LOG:
         ss << "                // TODO: log " << action.param1 << "\n";
+        break;
+    case Action::SEND:
+        // W3C SCXML 6.2: send with target validation using shared SendHelper
+        // param1: event, param2: target, param3: targetExpr
+        {
+            std::string target = action.param2;
+
+            // W3C SCXML 6.2 (tests 159, 194): Use SendHelper for validation (Single Source of Truth)
+            ss << "                // W3C SCXML 6.2: Validate send target using SendHelper\n";
+            ss << "                if (::RSM::SendHelper::isInvalidTarget(\"" << target << "\")) {\n";
+            ss << "                    // W3C SCXML 5.10: Invalid target stops subsequent executable content\n";
+            ss << "                    return;  // Stop execution of subsequent actions in this "
+                  "entry/exit/transition\n";
+            ss << "                }\n";
+            ss << "                // TODO: send event=" << action.param1 << " target=" << target << "\n";
+        }
         break;
     case Action::IF:
         // Generate if/elseif/else branches

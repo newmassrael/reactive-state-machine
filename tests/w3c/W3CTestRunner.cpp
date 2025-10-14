@@ -30,6 +30,7 @@
 #include "test155_sm.h"
 #include "test156_sm.h"
 #include "test158_sm.h"
+#include "test159_sm.h"
 
 namespace RSM::W3C {
 
@@ -1593,6 +1594,8 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             JIT_TEST_CASE(156, "Foreach error handling stops loop (JIT JSEngine)")
 
             JIT_TEST_CASE(158, "Executable content document order (JIT)")
+
+            JIT_TEST_CASE(159, "Error in executable content stops subsequent elements (JIT)")
 
         default:
             LOG_WARN("W3C JIT Test: Test {} not yet implemented in jit engine", testId);
