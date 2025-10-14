@@ -167,7 +167,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         }
     }
 
-    // Step 5: Feature detection for hybrid generation
+    // Step 5: Feature detection for hybrid code generation
     std::function<void(const std::vector<Action> &)> detectFeatures;
     detectFeatures = [&](const std::vector<Action> &actions) {
         for (const auto &action : actions) {
@@ -237,7 +237,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#include <stdexcept>\n";
     ss << "#include \"static/StaticExecutionEngine.h\"\n";
 
-    // Add JSEngine and Logger includes if needed for hybrid generation (OUTSIDE namespace)
+    // Add JSEngine and Logger includes if needed for hybrid code generation (OUTSIDE namespace)
     if (model.needsJSEngine()) {
         ss << "#include <optional>\n";
         ss << "#include \"common/Logger.h\"\n";
@@ -513,8 +513,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                     if (hasGuard) {
                         std::string guardExpr = trans.guard;
 
-                        // Pure Dynamic: ALL guards use JSEngine evaluation
-                        // Pure Static: Only typeof guards use JSEngine, others use C++ direct evaluation
+                        // Interpreter Engine: ALL guards use JSEngine evaluation
+                        // JIT Engine: Only typeof guards use JSEngine, others use C++ direct evaluation
                         bool needsJSEngine = model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
                         bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
@@ -524,7 +524,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                         }
 
                         if (needsJSEngine) {
-                            // Pure Dynamic or complex guard → JSEngine evaluation using GuardHelper
+                            // Interpreter Engine or complex guard → JSEngine evaluation using GuardHelper
                             if (firstTransition) {
                                 ss << indent << "{\n";  // Open scope for JSEngine variables
                             }
@@ -534,7 +534,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                                << escapeStringLiteral(guardExpr) << "\")) {\n";
                             indent += "        ";  // Indent for code inside the if block
                         } else if (isFunctionCall) {
-                            // Pure Static: Extract function name from guard expression
+                            // JIT Engine: Extract function name from guard expression
                             if (firstTransition) {
                                 ss << indent;
                             }
@@ -549,7 +549,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                             ss << "if (derived()." << guardFunc << "()) {\n";
                             indent += "    ";
                         } else {
-                            // Pure Static: Simple datamodel expression - use C++ direct evaluation
+                            // JIT Engine: Simple datamodel expression - use C++ direct evaluation
                             if (firstTransition) {
                                 ss << indent;
                             }
@@ -793,13 +793,13 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
             if (var.initialValue.find('[') != std::string::npos) {
                 ss << "    // Array variable (handled by JSEngine): " << var.name << " = " << var.initialValue << "\n";
             } else if (var.initialValue.empty()) {
-                ss << "    // Dynamic variable (handled by JSEngine): " << var.name << "\n";
+                ss << "    // Runtime-evaluated variable (handled by JSEngine): " << var.name << "\n";
             } else {
                 ss << "    int " << var.name << " = " << var.initialValue << ";\n";
             }
         }
 
-        // Add JSEngine session ID for hybrid generation (lazy-initialized)
+        // Add JSEngine session ID for hybrid code generation (lazy-initialized)
         if (model.needsJSEngine()) {
             ss << "\n    // JSEngine session for dynamic features (lazy-initialized)\n";
             ss << "    mutable ::std::optional<::std::string> sessionId_;\n";
@@ -956,7 +956,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         ss << "            sessionId_ = jsEngine.generateSessionIdString(\"" << model.name << "_\");\n";
         ss << "            jsEngine.createSession(sessionId_.value());\n";
 
-        // Initialize ALL datamodel variables in JSEngine (Pure Dynamic architecture)
+        // Initialize ALL datamodel variables in JSEngine (Interpreter Engine architecture)
         for (const auto &var : model.dataModel) {
             // Generate initialization expression (use "undefined" if no initial value)
             std::string initExpr = var.initialValue.empty() ? "undefined" : var.initialValue;
@@ -1030,10 +1030,10 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         }
         break;
     case Action::FOREACH:
-        // Hybrid generation: foreach → JSEngine with error handling
+        // JIT generation: foreach → JSEngine with error handling
         {
             bool hasErrorExecution = (events.find("error.execution") != events.end());
-            ss << "                // Foreach loop (hybrid: delegated to JSEngine)\n";
+            ss << "                // Foreach loop (JIT: delegated to JSEngine)\n";
 
             if (hasErrorExecution) {
                 ss << "                try {\n";

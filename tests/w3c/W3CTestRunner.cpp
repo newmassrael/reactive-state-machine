@@ -18,7 +18,7 @@
 #include <optional>
 #include <thread>
 
-// Include generated static test headers for hybrid engine
+// Include generated static test headers for jit engine
 #include "test144_sm.h"
 #include "test147_sm.h"
 #include "test148_sm.h"
@@ -613,90 +613,96 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
             std::ofstream xmlFile(outputPath_);
             if (xmlFile) {
                 // Separate reports by engine type
-                std::vector<TestReport> dynamicReports;
-                std::vector<TestReport> hybridReports;
-                
+                std::vector<TestReport> interpreterReports;
+                std::vector<TestReport> jitReports;
+
                 for (const auto &report : allReports_) {
-                    if (report.engineType == "dynamic") {
-                        dynamicReports.push_back(report);
-                    } else if (report.engineType == "hybrid") {
-                        hybridReports.push_back(report);
+                    if (report.engineType == "interpreter") {
+                        interpreterReports.push_back(report);
+                    } else if (report.engineType == "jit") {
+                        jitReports.push_back(report);
                     }
                 }
-                
+
                 // Calculate statistics per engine
                 auto calculateEngineStats = [](const std::vector<TestReport> &reports) {
                     size_t failures = 0, errors = 0;
                     double totalTime = 0.0;
                     for (const auto &r : reports) {
-                        if (r.validationResult.finalResult == TestResult::FAIL) failures++;
-                        if (r.validationResult.finalResult == TestResult::ERROR || 
-                            r.validationResult.finalResult == TestResult::TIMEOUT) errors++;
+                        if (r.validationResult.finalResult == TestResult::FAIL) {
+                            failures++;
+                        }
+                        if (r.validationResult.finalResult == TestResult::ERROR ||
+                            r.validationResult.finalResult == TestResult::TIMEOUT) {
+                            errors++;
+                        }
                         totalTime += r.executionContext.executionTime.count() / 1000.0;
                     }
                     return std::make_tuple(failures, errors, totalTime);
                 };
-                
-                auto [dynFailures, dynErrors, dynTime] = calculateEngineStats(dynamicReports);
-                auto [hybFailures, hybErrors, hybTime] = calculateEngineStats(hybridReports);
-                
+
+                auto [interpFailures, interpErrors, interpTime] = calculateEngineStats(interpreterReports);
+                auto [jitFailures, jitErrors, jitTime] = calculateEngineStats(jitReports);
+
                 // Write XML with separate testsuites
                 xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" << std::endl;
                 xmlFile << "<testsuites tests=\"" << summary.totalTests << "\" "
                         << "failures=\"" << summary.failedTests << "\" "
                         << "errors=\"" << summary.errorTests << "\" "
                         << "time=\"" << (summary.totalExecutionTime.count() / 1000.0) << "\">" << std::endl;
-                
-                // Dynamic engine testsuite
-                if (!dynamicReports.empty()) {
-                    xmlFile << "  <testsuite name=\"W3C_SCXML_Dynamic\" "
-                            << "tests=\"" << dynamicReports.size() << "\" "
-                            << "failures=\"" << dynFailures << "\" "
-                            << "errors=\"" << dynErrors << "\" "
-                            << "time=\"" << dynTime << "\">" << std::endl;
-                    
-                    for (const auto &report : dynamicReports) {
-                        xmlFile << "    <testcase classname=\"W3C_Dynamic\" "
+
+                // Interpreter engine testsuite
+                if (!interpreterReports.empty()) {
+                    xmlFile << "  <testsuite name=\"W3C_SCXML_Interpreter\" "
+                            << "tests=\"" << interpreterReports.size() << "\" "
+                            << "failures=\"" << interpFailures << "\" "
+                            << "errors=\"" << interpErrors << "\" "
+                            << "time=\"" << interpTime << "\">" << std::endl;
+
+                    for (const auto &report : interpreterReports) {
+                        xmlFile << "    <testcase classname=\"W3C_Interpreter\" "
                                 << "name=\"Test_" << report.testId << "\" "
                                 << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
-                        
+
                         if (report.validationResult.finalResult != TestResult::PASS) {
                             xmlFile << ">" << std::endl;
-                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>" << std::endl;
+                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>"
+                                    << std::endl;
                             xmlFile << "    </testcase>" << std::endl;
                         } else {
                             xmlFile << "/>" << std::endl;
                         }
                     }
-                    
+
                     xmlFile << "  </testsuite>" << std::endl;
                 }
-                
-                // Hybrid engine testsuite
-                if (!hybridReports.empty()) {
-                    xmlFile << "  <testsuite name=\"W3C_SCXML_Hybrid\" "
-                            << "tests=\"" << hybridReports.size() << "\" "
-                            << "failures=\"" << hybFailures << "\" "
-                            << "errors=\"" << hybErrors << "\" "
-                            << "time=\"" << hybTime << "\">" << std::endl;
-                    
-                    for (const auto &report : hybridReports) {
-                        xmlFile << "    <testcase classname=\"W3C_Hybrid\" "
+
+                // JIT engine testsuite
+                if (!jitReports.empty()) {
+                    xmlFile << "  <testsuite name=\"W3C_SCXML_JIT\" "
+                            << "tests=\"" << jitReports.size() << "\" "
+                            << "failures=\"" << jitFailures << "\" "
+                            << "errors=\"" << jitErrors << "\" "
+                            << "time=\"" << jitTime << "\">" << std::endl;
+
+                    for (const auto &report : jitReports) {
+                        xmlFile << "    <testcase classname=\"W3C_JIT\" "
                                 << "name=\"Test_" << report.testId << "\" "
                                 << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
-                        
+
                         if (report.validationResult.finalResult != TestResult::PASS) {
                             xmlFile << ">" << std::endl;
-                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>" << std::endl;
+                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>"
+                                    << std::endl;
                             xmlFile << "    </testcase>" << std::endl;
                         } else {
                             xmlFile << "/>" << std::endl;
                         }
                     }
-                    
+
                     xmlFile << "  </testsuite>" << std::endl;
                 }
-                
+
                 xmlFile << "</testsuites>" << std::endl;
                 xmlFile.close();
             }
@@ -887,7 +893,7 @@ TestRunSummary W3CTestRunner::runAllTests(bool skipReporting) {
     LOG_INFO("W3C Test Execution: Completed {} tests total", reports.size());
 
     TestRunSummary summary = calculateSummary(reports);
-    
+
     if (!skipReporting) {
         reporter_->generateSummary(summary);
         reporter_->endTestRun();
@@ -899,7 +905,7 @@ TestRunSummary W3CTestRunner::runAllTests(bool skipReporting) {
 TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
-    report.engineType = "dynamic";  // Dynamic engine execution
+    report.engineType = "interpreter";  // Interpreter engine execution
 
     try {
         // Parse metadata
@@ -1053,7 +1059,7 @@ std::optional<TestReport> W3CTestRunner::shouldSkipHttpTestInDockerTsan(const st
 
     TestReport report;
     report.testId = std::to_string(testId);
-    report.engineType = "dynamic";
+    report.engineType = "interpreter";
     report.metadata.id = testId;
     report.validationResult = ValidationResult(true, TestResult::PASS, "Skipped: HTTP test in Docker TSAN environment");
 
@@ -1072,7 +1078,7 @@ std::optional<TestReport> W3CTestRunner::shouldSkipHttpTestInDockerTsan(const st
 
     TestReport report;
     report.testId = testId;
-    report.engineType = "dynamic";
+    report.engineType = "interpreter";
     report.validationResult = ValidationResult(true, TestResult::PASS, "Skipped: HTTP test in Docker TSAN environment");
 
     return report;
@@ -1330,19 +1336,19 @@ std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
                     reporter_->reportTestResult(report);
                 }
 
-                // Run hybrid engine test for each variant (unsupported tests will return FAIL)
+                // Run jit engine test for each variant (unsupported tests will return FAIL)
                 try {
-                    LOG_INFO("W3C Test {}: Running hybrid engine test for variant", testId);
-                    TestReport hybridReport = runHybridTest(testId);
-                    // Preserve the variant suffix from dynamic test report (last added report)
+                    LOG_INFO("W3C Test {}: Running jit engine test for variant", testId);
+                    TestReport jitReport = runJitTest(testId);
+                    // Preserve the variant suffix from interpreter test report (last added report)
                     if (!matchingReports.empty()) {
-                        hybridReport.testId = matchingReports.back().testId;
+                        jitReport.testId = matchingReports.back().testId;
                     }
-                    matchingReports.push_back(hybridReport);
-                    reporter_->reportTestResult(hybridReport);
-                    LOG_INFO("W3C Test {}: Hybrid engine test completed for variant", testId);
+                    matchingReports.push_back(jitReport);
+                    reporter_->reportTestResult(jitReport);
+                    LOG_INFO("W3C Test {}: JIT engine test completed for variant", testId);
                 } catch (const std::exception &e) {
-                    LOG_ERROR("W3C Test {}: Hybrid engine test failed for variant: {}", testId, e.what());
+                    LOG_ERROR("W3C Test {}: JIT engine test failed for variant: {}", testId, e.what());
                     // Don't throw - continue with other variants
                 }
             } catch (const std::exception &e) {
@@ -1388,7 +1394,7 @@ TestRunSummary W3CTestRunner::runFilteredTests(const std::string &conformanceLev
 TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDirectory, W3CHttpTestServer *httpServer) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
-    report.engineType = "dynamic";  // Dynamic engine execution
+    report.engineType = "interpreter";  // Interpreter engine execution
 
     try {
         // Parse metadata
@@ -1538,11 +1544,11 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
     }
 }
 
-TestReport W3CTestRunner::runHybridTest(int testId) {
+TestReport W3CTestRunner::runJitTest(int testId) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
     report.testId = std::to_string(testId);
-    report.engineType = "hybrid";  // Hybrid engine execution (static generated code)
+    report.engineType = "jit";  // JIT engine execution (static generated code)
 
     auto startTime = std::chrono::steady_clock::now();
 
@@ -1594,7 +1600,7 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
                 sm.initialize();
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test150::State::Pass;
             }();
-            testDescription = "Foreach with dynamic variables (Hybrid JSEngine)";
+            testDescription = "Foreach with dynamic variables (JIT JSEngine)";
             break;
 
         case 151:
@@ -1603,7 +1609,7 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
                 sm.initialize();
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test151::State::Pass;
             }();
-            testDescription = "Foreach declares new variables (Hybrid JSEngine)";
+            testDescription = "Foreach declares new variables (JIT JSEngine)";
             break;
 
         case 152:
@@ -1612,7 +1618,7 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
                 sm.initialize();
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test152::State::Pass;
             }();
-            testDescription = "Foreach error handling (Hybrid JSEngine)";
+            testDescription = "Foreach error handling (JIT JSEngine)";
             break;
 
         case 153:
@@ -1621,7 +1627,7 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
                 sm.initialize();
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test153::State::Pass;
             }();
-            testDescription = "Foreach array iteration order (Hybrid JSEngine)";
+            testDescription = "Foreach array iteration order (JIT JSEngine)";
             break;
 
         case 155:
@@ -1630,7 +1636,7 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
                 sm.initialize();
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test155::State::Pass;
             }();
-            testDescription = "Foreach sums array items into variable (Hybrid JSEngine)";
+            testDescription = "Foreach sums array items into variable (JIT JSEngine)";
             break;
 
         case 156:
@@ -1639,14 +1645,13 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
                 sm.initialize();
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test156::State::Pass;
             }();
-            testDescription = "Foreach error handling stops loop (Hybrid JSEngine)";
+            testDescription = "Foreach error handling stops loop (JIT JSEngine)";
             break;
 
         default:
-            LOG_WARN("W3C Hybrid Test: Test {} not yet implemented in hybrid engine", testId);
-            report.validationResult = ValidationResult(
-                false, TestResult::FAIL,
-                "Test not yet implemented in hybrid engine");
+            LOG_WARN("W3C JIT Test: Test {} not yet implemented in jit engine", testId);
+            report.validationResult =
+                ValidationResult(false, TestResult::FAIL, "Test not yet implemented in jit engine");
             report.executionContext.finalState = "fail";
             return report;
         }
@@ -1661,13 +1666,13 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
 
         // Set validation result
         if (testPassed) {
-            report.validationResult = ValidationResult(true, TestResult::PASS, "Hybrid engine test passed");
+            report.validationResult = ValidationResult(true, TestResult::PASS, "JIT engine test passed");
             report.executionContext.finalState = "pass";
-            LOG_DEBUG("W3C Hybrid Test: Test {} PASS ({}ms)", testId, report.executionContext.executionTime.count());
+            LOG_DEBUG("W3C JIT Test: Test {} PASS ({}ms)", testId, report.executionContext.executionTime.count());
         } else {
-            report.validationResult = ValidationResult(true, TestResult::FAIL, "Hybrid engine test failed");
+            report.validationResult = ValidationResult(true, TestResult::FAIL, "JIT engine test failed");
             report.executionContext.finalState = "fail";
-            LOG_DEBUG("W3C Hybrid Test: Test {} FAIL ({}ms)", testId, report.executionContext.executionTime.count());
+            LOG_DEBUG("W3C JIT Test: Test {} FAIL ({}ms)", testId, report.executionContext.executionTime.count());
         }
 
         return report;
@@ -1677,10 +1682,10 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
         report.executionContext.executionTime =
             std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
         report.validationResult =
-            ValidationResult(false, TestResult::ERROR, "Hybrid engine exception: " + std::string(e.what()));
+            ValidationResult(false, TestResult::ERROR, "JIT engine exception: " + std::string(e.what()));
         report.executionContext.finalState = "error";
         report.executionContext.errorMessage = e.what();
-        LOG_ERROR("W3C Hybrid Test: Exception in test {}: {}", testId, e.what());
+        LOG_ERROR("W3C JIT Test: Exception in test {}: {}", testId, e.what());
         return report;
     }
 }

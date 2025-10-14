@@ -448,7 +448,7 @@ add_executable(w3c_test_cli
     w3c/W3CHttpTestServer.cpp
     w3c/impl/W3CTestEventDispatcher.cpp
     mocks/MockEventRaiser.cpp
-    ${GENERATED_W3C_HEADERS}  # Trigger generation of static test headers for hybrid engine
+    ${GENERATED_W3C_HEADERS}  # Trigger generation of static test headers for JIT engine
 )
 
 target_link_libraries(w3c_test_cli

@@ -1261,7 +1261,7 @@ bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::
         // Transform numeric variable names to JavaScript-compatible identifiers
         std::string jsVarName = transformVariableName(varName);
 
-        // Use shared ForeachHelper logic (eliminates code duplication with Hybrid engine)
+        // Use shared ForeachHelper logic (eliminates code duplication with JIT engine)
         bool success = ForeachHelper::setLoopVariable(JSEngine::instance(), sessionId_, jsVarName, value);
 
         if (success) {

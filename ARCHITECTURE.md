@@ -53,7 +53,7 @@ class GeneratedStateMachine {
 - **Performance**: Pure static parts run 100x faster than dynamic
 - **Memory**: 8 bytes (pure static) to ~100KB (full dynamic features)
 - **Always Working**: Never refuses generation, always produces functioning code
-- **Logic Reuse**: Shares core semantics with dynamic engine through helper functions
+- **Logic Reuse**: Shares core semantics with interpreter engine through helper functions
 
 ## Code Generation Strategy
 
@@ -125,7 +125,7 @@ Generated code works for ALL SCXML (W3C 100%)
 
 ### Core Reuse Architecture
 
-**Critical Principle**: Zero duplication - Static and dynamic engines share W3C SCXML core.
+**Critical Principle**: Zero duplication - Static and interpreter engines share W3C SCXML core.
 
 ```cpp
 // Shared Core Components (rsm/include/core/)
@@ -186,9 +186,9 @@ public:
 
 ### Design Principle: Logic Commonization
 
-**Critical Rule**: All hybrid engine logic MUST reuse dynamic engine implementations through shared helper functions. This ensures:
+**Critical Rule**: All jit engine logic MUST reuse interpreter engine implementations through shared helper functions. This ensures:
 - Single source of truth for W3C SCXML semantics
-- Bug fixes automatically benefit both static and dynamic engines
+- Bug fixes automatically benefit both static and interpreter engines
 - Compliance guarantee through proven implementations
 
 **Example**: W3C SCXML 3.5.1 Document Order Preservation
@@ -196,8 +196,8 @@ public:
 // Static Generator uses shared helper (StaticCodeGenerator.cpp)
 auto transitionsByEvent = groupTransitionsByEventPreservingOrder(eventTransitions);
 
-// Helper implementation mirrors dynamic engine logic (StateMachine.cpp)
-// Dynamic engine: Simple for-loop preserves document order
+// Helper implementation mirrors interpreter engine logic (StateMachine.cpp)
+// Interpreter engine: Simple for-loop preserves document order
 // Static engine: Helper function preserves document order using std::vector<std::pair>
 ```
 
@@ -235,7 +235,7 @@ class EventQueueManager {
 
 **StaticCodeGenerator::groupTransitionsByEventPreservingOrder()**:
 - W3C SCXML 3.5.1: Transitions evaluated in document order
-- Mirrors dynamic engine's simple for-loop logic
+- Mirrors interpreter engine's simple for-loop logic
 - Used in: Main state transitions, parallel region transitions
 - Benefits: Compliance guarantee, zero code duplication
 
@@ -243,7 +243,7 @@ class EventQueueManager {
 - W3C SCXML 4.6: Foreach variable declaration and type preservation
 - Single Source of Truth for foreach variable setting logic
 - Location: `rsm/include/common/ForeachHelper.h`
-- Used by: Dynamic engine (ActionExecutorImpl), Hybrid engine (generated code)
+- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
 - Features:
   - Variable existence check (`'var' in this`)
   - Automatic declaration with `var` keyword for new variables
@@ -280,12 +280,12 @@ class EventQueueManager {
 
 ### Phase 3: W3C SCXML Compliance (Complete ✅)
 - test144: W3C SCXML 3.5.1 document order preservation
-- test150-155: Hybrid JSEngine integration (foreach, dynamic datamodel)
+- test150-155: JIT JSEngine integration (foreach, dynamic datamodel)
 - test155: Fixed type preservation in foreach loops (numeric addition vs string concatenation)
   - Root cause: `ScriptValue(string)` created STRING type → JavaScript performed string concatenation
   - Solution: Use `executeScript("var = value;")` to let JavaScript evaluate types
-  - ForeachHelper refactored as Single Source of Truth (used by both Dynamic and Hybrid engines)
-- Shared helper functions with dynamic engine (ForeachHelper::setLoopVariable)
+  - ForeachHelper refactored as Single Source of Truth (used by both Interpreter and JIT engines)
+- Shared helper functions with interpreter engine (ForeachHelper::setLoopVariable)
 - Final state transition logic (no fall-through)
 - **Result**: 8/8 W3C Static Tests PASSED
 
@@ -301,7 +301,7 @@ class EventQueueManager {
 
 ## Current Test Coverage
 
-| Category | Static Generator | Dynamic Engine | Combined |
+| Category | Static Generator | Interpreter Engine | Combined |
 |----------|------------------|----------------|----------|
 | **W3C Static Tests** | **8/8 (100%)** ✅ | N/A | **8/8 (100%)** |
 | **Basic Tests** | 8/60 (13%) | 60/60 (100%) | 60/60 (100%) |
@@ -310,17 +310,17 @@ class EventQueueManager {
 | **Total** | **8/202 (4%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144-153): Validates W3C SCXML compliance including document order (3.5.1), hybrid JSEngine integration
-- Dynamic engine provides 100% W3C compliance baseline
-- Static generator produces hybrid code with shared semantics from dynamic engine
+- W3C Static Tests (144-153): Validates W3C SCXML compliance including document order (3.5.1), JIT JSEngine integration
+- Interpreter engine provides 100% W3C compliance baseline
+- Static generator produces hybrid code with shared semantics from interpreter engine
 
 ## Success Metrics
 
 ### Must Have
-- [x] Dynamic engine: 202/202 W3C tests
+- [x] Interpreter engine: 202/202 W3C tests
 - [x] Static generator: W3C Static Tests 8/8 (100%) ✅
 - [x] Static generator: Hybrid code generation (static + dynamic)
-- [x] Logic commonization: Shared helpers with dynamic engine
+- [x] Logic commonization: Shared helpers with interpreter engine
 - [ ] Static generator: 60+ tests (basic features)
 
 ### Should Have
@@ -336,7 +336,7 @@ class EventQueueManager {
 
 ## Key Principles
 
-1. **W3C Compliance is Non-Negotiable**: All 202 tests must pass (via dynamic engine)
+1. **W3C Compliance is Non-Negotiable**: All 202 tests must pass (via interpreter engine)
 2. **Always Generate Code**: Never refuse generation, always produce working implementation
 3. **Automatic Optimization**: Generator decides static vs dynamic internally
 4. **Lazy Initialization**: Pay only for features actually used in SCXML

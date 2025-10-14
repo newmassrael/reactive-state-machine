@@ -29,7 +29,7 @@ struct TestRunSummary {
  */
 struct TestReport {
     std::string testId;
-    std::string engineType;  // "dynamic" or "hybrid" - indicates which engine executed the test
+    std::string engineType;  // "interpreter" or "jit" - indicates which engine executed the test
     TestMetadata metadata;
     TestExecutionContext executionContext;
     ValidationResult validationResult;

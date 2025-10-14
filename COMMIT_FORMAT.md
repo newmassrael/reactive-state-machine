@@ -66,11 +66,11 @@ refactor: Eliminate code duplication with shared helper functions
 
 ### Good: Complex Feature (still 3 items)
 ```
-feat: Run hybrid engine for all 202 W3C tests with variant support
+feat: Run jit engine for all 202 W3C tests with variant support
 
-- Execute hybrid engine for all tests (unsupported return FAIL)
-- Preserve variant suffixes (403a, 403b, 403c) in hybrid execution
-- Display failed tests separately by engine type (Dynamic/Hybrid)
+- Execute jit engine for all tests (unsupported return FAIL)
+- Preserve variant suffixes (403a, 403b, 403c) in JIT execution
+- Display failed tests separately by engine type (Interpreter/JIT)
 ```
 
 ### Bad: Too Many Details
@@ -105,7 +105,7 @@ Based on our changes, the commit should be:
 refactor: Implement ForeachHelper as Single Source of Truth
 
 - Add ForeachHelper::setLoopVariable() with W3C SCXML 4.6 compliance
-- Refactor Dynamic and Hybrid engines to use shared helper (eliminate 40+ LOC duplication)
+- Refactor Interpreter and JIT engines to use shared helper (eliminate 40+ LOC duplication)
 - Fix test155 type preservation (executeScript vs setVariable for JavaScript type evaluation)
 ```
 

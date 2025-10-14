@@ -379,7 +379,7 @@ int main(int argc, char *argv[]) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
 
-            // Get all reports from reporter (includes dynamic and hybrid)
+            // Get all reports from reporter (includes interpreter and JIT)
             allReports = runner.getReporter()->getAllReports();
 
             // Complete test run reporting
@@ -389,22 +389,22 @@ int main(int argc, char *argv[]) {
         } else {
             RSM::Logger::info("W3C CLI: Running all W3C SCXML compliance tests...");
 
-            // Run all tests with dynamic engine (skip reporting to avoid duplicate XML write)
+            // Run all tests with interpreter engine (skip reporting to avoid duplicate XML write)
             summary = runner.runAllTests(/* skipReporting = */ true);
 
-            // Get all dynamic engine reports from reporter
+            // Get all interpreter engine reports from reporter
             allReports = runner.getReporter()->getAllReports();
 
-            // Extract all test IDs (including variants) from dynamic engine reports
+            // Extract all test IDs (including variants) from interpreter engine reports
             std::vector<std::string> allTestIds;
             for (const auto &report : allReports) {
-                if (report.engineType == "dynamic") {
+                if (report.engineType == "interpreter") {
                     allTestIds.push_back(report.testId);
                 }
             }
 
-            // Run hybrid engine tests for all test IDs (including variants)
-            LOG_INFO("W3C CLI: Running hybrid engine tests for all {} tests (including variants)", allTestIds.size());
+            // Run jit engine tests for all test IDs (including variants)
+            LOG_INFO("W3C CLI: Running jit engine tests for all {} tests (including variants)", allTestIds.size());
             for (const std::string &testIdStr : allTestIds) {
                 try {
                     // Extract numeric portion from testId (e.g., "403a" -> 403)
@@ -422,43 +422,43 @@ int main(int argc, char *argv[]) {
                     }
 
                     int testId = std::stoi(numericPart);
-                    RSM::W3C::TestReport hybridReport = runner.runHybridTest(testId);
+                    RSM::W3C::TestReport jitReport = runner.runJitTest(testId);
                     // Preserve the original testId (with variant suffix if present)
-                    hybridReport.testId = testIdStr;
-                    allReports.push_back(hybridReport);
-                    runner.getReporter()->reportTestResult(hybridReport);
+                    jitReport.testId = testIdStr;
+                    allReports.push_back(jitReport);
+                    runner.getReporter()->reportTestResult(jitReport);
 
-                    // Update summary with hybrid results
+                    // Update summary with JIT results
                     summary.totalTests++;
-                    switch (hybridReport.validationResult.finalResult) {
+                    switch (jitReport.validationResult.finalResult) {
                     case RSM::W3C::TestResult::PASS:
                         summary.passedTests++;
                         break;
                     case RSM::W3C::TestResult::FAIL:
                         summary.failedTests++;
-                        summary.failedTestIds.push_back(hybridReport.testId);
+                        summary.failedTestIds.push_back(jitReport.testId);
                         break;
                     case RSM::W3C::TestResult::ERROR:
                     case RSM::W3C::TestResult::TIMEOUT:
                         summary.errorTests++;
-                        summary.errorTestIds.push_back(hybridReport.testId);
+                        summary.errorTestIds.push_back(jitReport.testId);
                         break;
                     }
-                    summary.totalExecutionTime += hybridReport.executionContext.executionTime;
+                    summary.totalExecutionTime += jitReport.executionContext.executionTime;
                 } catch (const std::exception &e) {
-                    LOG_ERROR("W3C CLI: Hybrid engine test {} failed: {}", testIdStr, e.what());
-                    
-                    // Create error report for failed hybrid test
+                    LOG_ERROR("W3C CLI: JIT engine test {} failed: {}", testIdStr, e.what());
+
+                    // Create error report for failed JIT test
                     RSM::W3C::TestReport errorReport;
                     errorReport.testId = testIdStr;
-                    errorReport.engineType = "hybrid";
+                    errorReport.engineType = "jit";
                     errorReport.validationResult.finalResult = RSM::W3C::TestResult::ERROR;
-                    errorReport.validationResult.reason = std::string("Hybrid engine error: ") + e.what();
+                    errorReport.validationResult.reason = std::string("JIT engine error: ") + e.what();
                     errorReport.executionContext.executionTime = std::chrono::milliseconds(0);
-                    
+
                     allReports.push_back(errorReport);
                     runner.getReporter()->reportTestResult(errorReport);
-                    
+
                     // Update summary
                     summary.totalTests++;
                     summary.errorTests++;
@@ -470,8 +470,8 @@ int main(int argc, char *argv[]) {
             if (summary.totalTests > 0) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
-            
-            // Generate final report with both dynamic and hybrid results
+
+            // Generate final report with both interpreter and JIT results
             runner.getReporter()->generateSummary(summary);
             runner.getReporter()->endTestRun();
         }
@@ -494,14 +494,14 @@ int main(int argc, char *argv[]) {
             std::vector<std::string> errorTestIds;
         };
 
-        EngineStats dynamicStats, hybridStats;
+        EngineStats interpreterStats, jitStats;
 
         for (const auto &report : allReports) {
             EngineStats *engineStats = nullptr;
-            if (report.engineType == "dynamic") {
-                engineStats = &dynamicStats;
-            } else if (report.engineType == "hybrid") {
-                engineStats = &hybridStats;
+            if (report.engineType == "interpreter") {
+                engineStats = &interpreterStats;
+            } else if (report.engineType == "jit") {
+                engineStats = &jitStats;
             }
 
             if (engineStats) {
@@ -537,11 +537,11 @@ int main(int argc, char *argv[]) {
             printf("┌──────────────┬─────────┬────────┬────────┬────────┐\n");
             printf("│ Engine       │ Total   │ Passed │ Failed │ Errors │\n");
             printf("├──────────────┼─────────┼────────┼────────┼────────┤\n");
-            printf("│ Dynamic      │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", dynamicStats.total, dynamicStats.passed,
-                   dynamicStats.failed, dynamicStats.errors);
-            if (hybridStats.total > 0) {
-                printf("│ Hybrid       │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", hybridStats.total, hybridStats.passed,
-                       hybridStats.failed, hybridStats.errors);
+            printf("│ Interpreter  │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", interpreterStats.total,
+                   interpreterStats.passed, interpreterStats.failed, interpreterStats.errors);
+            if (jitStats.total > 0) {
+                printf("│ JIT          │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", jitStats.total, jitStats.passed,
+                       jitStats.failed, jitStats.errors);
             }
             printf("├──────────────┼─────────┼────────┼────────┼────────┤\n");
             printf("│ Total        │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", summary.totalTests, summary.passedTests,
@@ -560,49 +560,49 @@ int main(int argc, char *argv[]) {
 
         // Show specific failed test IDs by engine
         if (hasEngineStats) {
-            // Show Dynamic engine failures
-            if (!dynamicStats.failedTestIds.empty()) {
+            // Show Interpreter engine failures
+            if (!interpreterStats.failedTestIds.empty()) {
                 printf("\n");
-                printf("❌ Failed Tests (Dynamic): ");
-                for (size_t i = 0; i < dynamicStats.failedTestIds.size(); ++i) {
-                    printf("%s", dynamicStats.failedTestIds[i].c_str());
-                    if (i < dynamicStats.failedTestIds.size() - 1) {
+                printf("❌ Failed Tests (Interpreter): ");
+                for (size_t i = 0; i < interpreterStats.failedTestIds.size(); ++i) {
+                    printf("%s", interpreterStats.failedTestIds[i].c_str());
+                    if (i < interpreterStats.failedTestIds.size() - 1) {
                         printf(", ");
                     }
                 }
                 printf("\n");
             }
 
-            // Show Hybrid engine failures
-            if (!hybridStats.failedTestIds.empty()) {
-                printf("❌ Failed Tests (Hybrid): ");
-                for (size_t i = 0; i < hybridStats.failedTestIds.size(); ++i) {
-                    printf("%s", hybridStats.failedTestIds[i].c_str());
-                    if (i < hybridStats.failedTestIds.size() - 1) {
+            // Show JIT engine failures
+            if (!jitStats.failedTestIds.empty()) {
+                printf("❌ Failed Tests (JIT): ");
+                for (size_t i = 0; i < jitStats.failedTestIds.size(); ++i) {
+                    printf("%s", jitStats.failedTestIds[i].c_str());
+                    if (i < jitStats.failedTestIds.size() - 1) {
                         printf(", ");
                     }
                 }
                 printf("\n");
             }
 
-            // Show Dynamic engine errors
-            if (!dynamicStats.errorTestIds.empty()) {
-                printf("🚨 Error Tests (Dynamic): ");
-                for (size_t i = 0; i < dynamicStats.errorTestIds.size(); ++i) {
-                    printf("%s", dynamicStats.errorTestIds[i].c_str());
-                    if (i < dynamicStats.errorTestIds.size() - 1) {
+            // Show Interpreter engine errors
+            if (!interpreterStats.errorTestIds.empty()) {
+                printf("🚨 Error Tests (Interpreter): ");
+                for (size_t i = 0; i < interpreterStats.errorTestIds.size(); ++i) {
+                    printf("%s", interpreterStats.errorTestIds[i].c_str());
+                    if (i < interpreterStats.errorTestIds.size() - 1) {
                         printf(", ");
                     }
                 }
                 printf("\n");
             }
 
-            // Show Hybrid engine errors
-            if (!hybridStats.errorTestIds.empty()) {
-                printf("🚨 Error Tests (Hybrid): ");
-                for (size_t i = 0; i < hybridStats.errorTestIds.size(); ++i) {
-                    printf("%s", hybridStats.errorTestIds[i].c_str());
-                    if (i < hybridStats.errorTestIds.size() - 1) {
+            // Show JIT engine errors
+            if (!jitStats.errorTestIds.empty()) {
+                printf("🚨 Error Tests (JIT): ");
+                for (size_t i = 0; i < jitStats.errorTestIds.size(); ++i) {
+                    printf("%s", jitStats.errorTestIds[i].c_str());
+                    if (i < jitStats.errorTestIds.size() - 1) {
                         printf(", ");
                     }
                 }

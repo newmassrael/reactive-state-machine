@@ -164,7 +164,7 @@ public:
     std::vector<Transition> transitions;
     std::vector<DataModelVariable> dataModel;  // Data model variables
 
-    // Feature detection flags for hybrid generation
+    // Feature detection flags for hybrid code generation
     bool hasForEach = false;            // Uses <foreach> action
     bool hasComplexDatamodel = false;   // Uses arrays, typeof, dynamic variables
     bool hasComplexECMAScript = false;  // Needs JSEngine for evaluation

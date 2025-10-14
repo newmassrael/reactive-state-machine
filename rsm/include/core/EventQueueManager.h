@@ -15,7 +15,7 @@ namespace RSM::Core {
  *
  * Design Goals:
  * - Single source of truth for event queue logic
- * - Shared between static and dynamic engines
+ * - Shared between static and interpreter engines
  * - Zero overhead when not used (inline methods)
  * - Template-based for type safety
  *
