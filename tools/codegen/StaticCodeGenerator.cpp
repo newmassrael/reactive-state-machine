@@ -973,19 +973,6 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         }
 
         ss << "        }\n";
-        ss << "    }\n\n";
-
-        ss << "    // Helper: Execute foreach loop with JSEngine\n";
-        ss << "    void executeForeachLoop(const ::std::string& arrayName, const ::std::string& itemVar, const "
-              "::std::string& indexVar) {\n";
-        ss << "        ensureJSEngine();\n";
-        ss << "        auto& jsEngine = ::RSM::JSEngine::instance();\n";
-        ss << "        auto arrayValues = ::RSM::ForeachHelper::evaluateForeachArray(jsEngine, sessionId_.value(), "
-              "arrayName);\n";
-        ss << "        for (size_t i = 0; i < arrayValues.size(); ++i) {\n";
-        ss << "            ::RSM::ForeachHelper::setForeachIterationVariables(jsEngine, sessionId_.value(), itemVar, "
-              "arrayValues[i], indexVar, i);\n";
-        ss << "        }\n";
         ss << "    }\n";
     }
 
@@ -1057,43 +1044,55 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                << action.param2 << "\");\n";
 
             if (action.iterationActions.empty()) {
-                // Simple case: no iteration actions, use helper method (DRY)
-                ss << "                    executeForeachLoop(\"" << action.param1 << "\", \"" << action.param2
-                   << "\", \"" << action.param3 << "\");\n";
+                // Simple case: no iteration actions, use ForeachHelper directly
+                ss << "                    {\n";
+                ss << "                        this->ensureJSEngine();\n";
+                ss << "                        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                ss << "                        ::RSM::ForeachHelper::executeForeachWithoutBody(\n";
+                ss << "                            jsEngine, sessionId_.value(),\n";
+                ss << "                            \"" << action.param1 << "\", \"" << action.param2 << "\", \""
+                   << action.param3 << "\"\n";
+                ss << "                        );\n";
+                ss << "                    }\n";
             } else {
-                // Complex case: has iteration actions, transpile to JavaScript and execute via JSEngine
+                // Complex case: has iteration actions, use helper with W3C 4.6 compliant error handling
                 ss << "                    {\n";
                 ss << "                        // Execute foreach: array=" << action.param1
                    << ", item=" << action.param2 << ", index=" << action.param3 << "\n";
                 ss << "                        this->ensureJSEngine();\n";
                 ss << "                        auto& jsEngine = ::RSM::JSEngine::instance();\n";
-                ss << "                        auto arrayValues = ::RSM::ForeachHelper::evaluateForeachArray(jsEngine, "
-                      "sessionId_.value(), \""
-                   << action.param1 << "\");\n";
-                ss << "                        for (size_t i = 0; i < arrayValues.size(); ++i) {\n";
-                ss << "                            ::RSM::ForeachHelper::setForeachIterationVariables(jsEngine, "
-                      "sessionId_.value(), \""
-                   << action.param2 << "\", arrayValues[i], \"" << action.param3 << "\", i);\n";
+                ss << "                        // W3C SCXML 4.6: Use ForeachHelper for centralized error handling\n";
+                ss << "                        ::RSM::ForeachHelper::executeForeachWithActions(\n";
+                ss << "                            jsEngine, sessionId_.value(),\n";
+                ss << "                            \"" << action.param1 << "\", \"" << action.param2 << "\", \""
+                   << action.param3 << "\",\n";
+                ss << "                            [&](size_t i) -> bool {\n";
+                ss << "                                (void)i;  // Iteration index available if needed\n";
 
                 // Execute iteration actions using same logic as ActionExecutor::assignVariable()
                 for (const auto &iterAction : action.iterationActions) {
                     if (iterAction.type == Action::ASSIGN) {
-                        // Use evaluateExpression + setVariable (same as ActionExecutor)
-                        ss << "                            auto exprResult = "
+                        // Each action gets its own scope to avoid variable name conflicts
+                        ss << "                                {\n";
+                        ss << "                                    auto exprResult = "
                               "jsEngine.evaluateExpression(sessionId_.value(), \""
                            << escapeStringLiteral(iterAction.param2) << "\").get();\n";
-                        ss << "                            if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
-                        ss << "                                LOG_ERROR(\"Failed to evaluate expression in foreach: "
+                        ss << "                                    if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
+                        ss << "                                        LOG_ERROR(\"Failed to evaluate expression in "
+                              "foreach: "
                            << escapeStringLiteral(iterAction.param2) << "\");\n";
-                        ss << "                                throw std::runtime_error(\"Expression evaluation "
-                              "failed\");\n";
-                        ss << "                            }\n";
-                        ss << "                            jsEngine.setVariable(sessionId_.value(), \""
+                        ss << "                                        return false;  // W3C SCXML 4.6: Stop foreach "
+                              "execution on error\n";
+                        ss << "                                    }\n";
+                        ss << "                                    jsEngine.setVariable(sessionId_.value(), \""
                            << iterAction.param1 << "\", exprResult.getInternalValue());\n";
+                        ss << "                                }\n";
                     }
                 }
 
-                ss << "                        }\n";
+                ss << "                                return true;  // Continue to next iteration\n";
+                ss << "                            }\n";
+                ss << "                        );\n";
                 ss << "                    }\n";
             }
 

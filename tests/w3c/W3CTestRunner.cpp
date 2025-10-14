@@ -28,6 +28,7 @@
 #include "test152_sm.h"
 #include "test153_sm.h"
 #include "test155_sm.h"
+#include "test156_sm.h"
 
 namespace RSM::W3C {
 
@@ -1564,6 +1565,15 @@ TestReport W3CTestRunner::runHybridTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test155::State::Pass;
             }();
             testDescription = "Foreach sums array items into variable (Hybrid JSEngine)";
+            break;
+
+        case 156:
+            testPassed = []() {
+                RSM::Generated::test156::test156 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test156::State::Pass;
+            }();
+            testDescription = "Foreach error handling stops loop (Hybrid JSEngine)";
             break;
 
         default:

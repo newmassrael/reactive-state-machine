@@ -437,6 +437,7 @@ rsm_generate_static_w3c_test(151 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(152 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(153 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(155 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(156 ${STATIC_W3C_OUTPUT_DIR})
 
 # Full W3C Test Runner for all W3C SCXML 1.0 compliance tests
 add_executable(w3c_test_cli

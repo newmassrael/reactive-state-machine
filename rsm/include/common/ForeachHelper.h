@@ -147,4 +147,87 @@ inline void executeForeachWithoutBody(JSEngine &jsEngine, const std::string &ses
     }
 }
 
+/**
+ * @brief Executes a foreach loop with custom action body and W3C 4.6 compliant error handling
+ *
+ * This is the Single Source of Truth for foreach error handling logic,
+ * eliminating code duplication between Dynamic and Hybrid engines.
+ *
+ * W3C SCXML 4.6 Compliance:
+ * "If the evaluation of any child element of foreach causes an error,
+ * the processor MUST cease execution of the foreach element and the block that contains it."
+ *
+ * @tparam BodyFunc Callable type (lambda, function pointer, functor) that takes (size_t iteration)
+ *                  and returns bool (true = continue, false = stop loop due to error)
+ * @param jsEngine Reference to JSEngine instance
+ * @param sessionId JSEngine session ID
+ * @param arrayExpr Array expression to evaluate (e.g., "Var3", "[1,2,3]")
+ * @param itemVar Item variable name (e.g., "Var2")
+ * @param indexVar Index variable name (empty string if not used)
+ * @param executeBody Lambda/callable that executes iteration actions.
+ *                    Return true to continue, false to stop loop (W3C 4.6 error handling)
+ * @return true if all iterations succeeded, false if loop was stopped due to error
+ * @throws std::runtime_error if array evaluation or variable setting fails
+ *
+ * @example Dynamic Engine usage:
+ * @code
+ * bool success = ForeachHelper::executeForeachWithActions(
+ *     jsEngine, sessionId, "myArray", "item", "index",
+ *     [&](size_t i) {
+ *         // Execute nested actions
+ *         for (const auto& action : nestedActions) {
+ *             if (!action->execute(context)) {
+ *                 return false;  // Stop loop on error (W3C 4.6)
+ *             }
+ *         }
+ *         return true;
+ *     }
+ * );
+ * @endcode
+ *
+ * @example Hybrid Engine usage (generated code):
+ * @code
+ * bool success = ::RSM::ForeachHelper::executeForeachWithActions(
+ *     jsEngine, sessionId_.value(), "Var3", "Var2", "",
+ *     [&](size_t i) {
+ *         // Custom C++ generated code
+ *         auto result = jsEngine.evaluateExpression(sessionId_.value(), "Var1 + 1").get();
+ *         if (!::RSM::JSEngine::isSuccess(result)) {
+ *             LOG_ERROR("Expression evaluation failed");
+ *             return false;  // Stop loop on error (W3C 4.6)
+ *         }
+ *         jsEngine.setVariable(sessionId_.value(), "Var1", result.getInternalValue());
+ *         return true;
+ *     }
+ * );
+ * @endcode
+ */
+template <typename BodyFunc>
+inline bool executeForeachWithActions(JSEngine &jsEngine, const std::string &sessionId, const std::string &arrayExpr,
+                                      const std::string &itemVar, const std::string &indexVar, BodyFunc &&executeBody) {
+    try {
+        // Evaluate array expression
+        auto arrayValues = evaluateForeachArray(jsEngine, sessionId, arrayExpr);
+
+        // W3C SCXML 4.6: Execute foreach loop with error handling
+        for (size_t i = 0; i < arrayValues.size(); ++i) {
+            // Set iteration variables (item and optional index)
+            setForeachIterationVariables(jsEngine, sessionId, itemVar, arrayValues[i], indexVar, i);
+
+            // Execute body actions for this iteration
+            // W3C SCXML 4.6: If body returns false (error), stop loop execution
+            if (!executeBody(i)) {
+                LOG_DEBUG("Foreach loop stopped at iteration {} due to error (W3C SCXML 4.6)", i);
+                return false;  // Single Source of Truth for W3C 4.6 compliance
+            }
+        }
+
+        return true;  // All iterations succeeded
+
+    } catch (const std::exception &e) {
+        LOG_ERROR("Exception in foreach execution: {}", e.what());
+        throw;
+    }
+}
+
 }  // namespace RSM::ForeachHelper
