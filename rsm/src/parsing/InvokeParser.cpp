@@ -276,7 +276,7 @@ void RSM::InvokeParser::parseContentElement(const xmlpp::Element *invokeElement,
                         xmlNodeDump(buf, node->doc, node, 0, 0);
 
                         // 버퍼에서 문자열 추출
-                        content += (const char *)buf->content;
+                        content += (const char *)xmlBufferContent(buf);
 
                         // 버퍼 해제
                         xmlBufferFree(buf);

@@ -105,7 +105,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
                     auto buf = xmlBufferCreate();
                     if (buf) {
                         xmlNodeDump(buf, node->doc, node, 0, 0);
-                        xmlContent += (const char *)buf->content;
+                        xmlContent += (const char *)xmlBufferContent(buf);
                         xmlBufferFree(buf);
                     }
                 } else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {

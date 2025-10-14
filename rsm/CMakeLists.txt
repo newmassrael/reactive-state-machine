@@ -1,12 +1,44 @@
 # RSM Unified Module
 # Complete RSM implementation with domain models, runtime engine, and scripting
 
-# Find required system dependencies  
+# Build libxml2 from submodule using ExternalProject + CMake
+include(ExternalProject)
+
+set(LIBXML2_INSTALL_DIR ${CMAKE_BINARY_DIR}/libxml2_install)
+set(LIBXML2_BUILD_DIR ${CMAKE_BINARY_DIR}/libxml2_build)
+
+ExternalProject_Add(libxml2_external
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libxml2
+    BUILD_IN_SOURCE 0
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${LIBXML2_INSTALL_DIR}
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DBUILD_SHARED_LIBS=ON
+        -DLIBXML2_WITH_PYTHON=OFF
+        -DLIBXML2_WITH_PROGRAMS=OFF
+        -DLIBXML2_WITH_TESTS=OFF
+        -DLIBXML2_WITH_LZMA=OFF
+        -DLIBXML2_WITH_ZLIB=ON
+    BUILD_BYPRODUCTS
+        ${LIBXML2_INSTALL_DIR}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}
+        ${LIBXML2_INSTALL_DIR}/include/libxml2/libxml/tree.h
+)
+
+# Set libxml2 variables for linking
+set(LIBXML2_INCLUDE_DIRS ${LIBXML2_INSTALL_DIR}/include/libxml2)
+set(LIBXML2_LIBRARIES ${LIBXML2_INSTALL_DIR}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX})
+set(LIBXML2_PREFIX ${LIBXML2_INSTALL_DIR})
+
+# Create include directories at configure time
+file(MAKE_DIRECTORY ${LIBXML2_INCLUDE_DIRS})
+
+message(STATUS "LIBXML2_INSTALL_DIR: ${LIBXML2_INSTALL_DIR}")
+message(STATUS "LIBXML2_INCLUDE_DIRS: ${LIBXML2_INCLUDE_DIRS}")
+
+# Find pkg-config for libxml++ (which may need it)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBXML2 REQUIRED libxml-2.0)
 
 # Build libxml++ from submodule using ExternalProject + Meson
-include(ExternalProject)
 
 set(LIBXMLXX_INSTALL_DIR ${CMAKE_BINARY_DIR}/libxmlxx_install)
 set(LIBXMLXX_BUILD_DIR ${CMAKE_BINARY_DIR}/libxmlxx_build)
@@ -14,8 +46,9 @@ set(LIBXMLXX_BUILD_DIR ${CMAKE_BINARY_DIR}/libxmlxx_build)
 ExternalProject_Add(libxmlxx_external
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libxml++
     BUILD_IN_SOURCE 0
+    DEPENDS libxml2_external
     CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env
-        PKG_CONFIG_PATH=${LIBXML2_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}
+        PKG_CONFIG_PATH=${LIBXML2_INSTALL_DIR}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}
         meson setup ${LIBXMLXX_BUILD_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libxml++
         --prefix=${LIBXMLXX_INSTALL_DIR}
         --libdir=lib
@@ -179,8 +212,8 @@ target_include_directories(rsm_unified
         ${Boost_INCLUDE_DIRS}
 )
 
-# Make rsm_unified depend on the external libxml++ build
-add_dependencies(rsm_unified libxmlxx_external)
+# Make rsm_unified depend on the external libxml2 and libxml++ builds
+add_dependencies(rsm_unified libxml2_external libxmlxx_external)
 
 # RSM 코드베이스에서 std::cout 사용 금지 설정  
 # printf 계열은 시스템 헤더 충돌로 인해 비활성화됨

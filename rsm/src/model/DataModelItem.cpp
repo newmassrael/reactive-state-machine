@@ -215,10 +215,7 @@ std::optional<std::string> RSM::DataModelItem::queryXPath(const std::string &xpa
                 return dynamic_cast<xmlpp::TextNode *>(child)->get_content();
             } else {
                 // 텍스트 노드가 없으면 노드 경로 반환
-                std::optional<xmlpp::ustring> path = node->get_path2();
-                if (path) {
-                    return path.value();
-                }
+                return node->get_path();
             }
         } else {
             // 여러 노드일 경우, 결과를 결합

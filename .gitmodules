@@ -10,3 +10,6 @@
 [submodule "third_party/spdlog"]
 	path = third_party/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "third_party/libxml2"]
+	path = third_party/libxml2
+	url = https://gitlab.gnome.org/GNOME/libxml2.git
