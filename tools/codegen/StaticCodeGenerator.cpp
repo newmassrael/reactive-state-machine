@@ -255,6 +255,10 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 if (!action.param5.empty() || !action.param6.empty()) {
                     model.hasSendWithDelay = true;
                 }
+                // W3C SCXML 5.10: Detect send with params (requires event data support)
+                if (!action.sendParams.empty()) {
+                    model.hasSendParams = true;
+                }
             } else if (action.type == Action::ASSIGN) {
                 // W3C SCXML: <assign> with expr attribute requires JSEngine for evaluation
                 // Test 174: <assign location="Var1" expr="'http://...'" />
@@ -425,6 +429,10 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     }
     // TransitionHelper for W3C SCXML 3.12 event matching (Zero Duplication)
     ss << "#include \"common/TransitionHelper.h\"\n";
+    // EventDataHelper for W3C SCXML 5.10 event data construction (Zero Duplication)
+    if (model.hasSendParams) {
+        ss << "#include \"common/EventDataHelper.h\"\n";
+    }
 
     // Add JSEngine and Logger includes if needed for hybrid code generation (OUTSIDE namespace)
     if (model.needsJSEngine()) {
@@ -553,6 +561,16 @@ std::string StaticCodeGenerator::generateStrategyInterface(const std::string &cl
 std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events,
                                                       const std::vector<StaticInvokeInfo> &staticInvokes) {
     std::stringstream ss;
+
+    // W3C SCXML 5.10: Set event data in JSEngine for _event.data access (test176)
+    if (model.hasSendParams && model.needsJSEngine()) {
+        ss << "        // W3C SCXML 5.10: Set pending event data in JSEngine\n";
+        ss << "        if (!pendingEventData_.empty()) {\n";
+        ss << "            setEventDataInJSEngine(pendingEventData_);\n";
+        ss << "            pendingEventData_.clear();\n";
+        ss << "        }\n";
+        ss << "\n";
+    }
 
     // W3C SCXML 6.4: Check pending done.invoke events from child completion
     if (!staticInvokes.empty()) {
@@ -1253,7 +1271,13 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
                 std::string eventExpr = sendAction->getEventExpr();
                 std::string delay = sendAction->getDelay();
                 std::string delayExpr = sendAction->getDelayExpr();
-                result.push_back(Action(Action::SEND, event, target, targetExpr, eventExpr, delay, delayExpr));
+
+                // W3C SCXML 5.10: Extract send params for event data construction
+                Action sendActionResult(Action::SEND, event, target, targetExpr, eventExpr, delay, delayExpr);
+                for (const auto &param : sendAction->getParamsWithExpr()) {
+                    sendActionResult.sendParams.push_back({param.name, param.expr});
+                }
+                result.push_back(sendActionResult);
             }
         }
     }
@@ -1265,8 +1289,13 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                                                const std::vector<StaticInvokeInfo> &staticInvokes) {
     std::stringstream ss;
     std::set<std::string> events = extractEvents(model);
+
+    // W3C SCXML Policy Generation Strategy (ARCHITECTURE.md):
+    // Generate stateful Policy when any stateful feature is present
+    bool needsStateful = model.needsStatefulPolicy();
+
+    // Feature detection flags (for specific code generation needs)
     bool hasDataModel = !model.dataModel.empty() || model.needsJSEngine();
-    // Check if any state has invokes
     bool hasInvokes = false;
     for (const auto &state : model.states) {
         if (!state.invokes.empty()) {
@@ -1306,13 +1335,19 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     }
     // Add session ID for JSEngine and/or Invoke (lazy-initialized)
     if (model.needsJSEngine() || hasInvokes) {
-        ss << "\n    // Session ID for JSEngine/Invoke (lazy-initialized)\n";
+        ss << "    // Session ID for JSEngine/Invoke (lazy-initialized)\n";
         ss << "    mutable ::std::optional<::std::string> sessionId_;\n";
     }
 
     // Add JSEngine initialization flag (to prevent duplicate createSession calls)
     if (model.needsJSEngine()) {
         ss << "    mutable bool jsEngineInitialized_ = false;\n";
+    }
+
+    // W3C SCXML 5.10: Event data map for send params (test176)
+    if (model.hasSendParams && model.needsJSEngine()) {
+        ss << "    // W3C SCXML 5.10: Event data storage for _event.data access\n";
+        ss << "    mutable ::std::string pendingEventData_;\n";
     }
 
     // Phase 4: Add event scheduler for delayed send (lazy-initialized)
@@ -1433,7 +1468,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
 
     // Execute entry actions
     ss << "    template<typename Engine>\n";
-    if (hasDataModel || hasInvokes) {
+    if (needsStateful) {
         ss << "    void executeEntryActions(State state, Engine& engine) {\n";  // non-static for stateful
     } else {
         ss << "    static void executeEntryActions(State state, Engine& engine) {\n";  // static for stateless
@@ -1580,7 +1615,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
 
     // Execute exit actions
     ss << "    template<typename Engine>\n";
-    if (hasDataModel || hasInvokes) {
+    if (needsStateful) {
         ss << "    void executeExitActions(State state, Engine& engine) {\n";  // non-static for stateful
     } else {
         ss << "    static void executeExitActions(State state, Engine& engine) {\n";  // static for stateless
@@ -1642,7 +1677,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
 
     // Process transition
     ss << "    template<typename Engine>\n";
-    if (hasDataModel || hasInvokes) {
+    if (needsStateful) {
         ss << "    bool processTransition(State& currentState, Event event, Engine& engine) {\n";  // non-static for
                                                                                                    // stateful
     } else {
@@ -1652,8 +1687,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     ss << generateProcessEvent(model, events, staticInvokes);
 
     // Generate private helper methods
-    bool needsHelpers = hasInvokes || model.needsJSEngine();
-    if (needsHelpers) {
+    if (needsStateful) {
         ss << "private:\n";
 
         // Session ID initialization helper (for Invoke and/or JSEngine)
@@ -1696,6 +1730,24 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
 
         ss << "        jsEngineInitialized_ = true;\n";
         ss << "    }\n";
+
+        // W3C SCXML 5.10: Helper to set event data in JSEngine for _event.data access
+        if (model.hasSendParams) {
+            ss << "\n";
+            ss << "    // Helper: Set event data in JSEngine for _event.data access (W3C SCXML 5.10)\n";
+            ss << "    void setEventDataInJSEngine(const std::string& eventData) {\n";
+            ss << "        if (eventData.empty()) return;\n";
+            ss << "        ensureJSEngine();\n";
+            ss << "        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+            ss << "        // Create _event object with data property\n";
+            ss << "        std::string eventScript = \"(function() { _event = { data: \" + eventData + \" }; "
+                  "})();\";\n";
+            ss << "        auto result = jsEngine.executeScript(sessionId_.value(), eventScript).get();\n";
+            ss << "        if (!::RSM::JSEngine::isSuccess(result)) {\n";
+            ss << "            LOG_ERROR(\"Failed to set _event.data in JSEngine\");\n";
+            ss << "        }\n";
+            ss << "    }\n";
+        }
     }
 
     ss << "};\n\n";
@@ -1830,7 +1882,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                     std::string eventEnum = capitalize(eventName);
                     if (firstEvent) {
                         ss << "                    if (eventName == \"" << eventName << "\") {\n";
-                        ss << "                        " << engineVar << ".raise(Event::" << eventEnum << ");\n";
+                        {
+                            ss << "                        " << engineVar << ".raise(Event::" << eventEnum << ");\n";
+                        }
                         firstEvent = false;
                     } else {
                         ss << "                    } else if (eventName == \"" << eventName << "\") {\n";
@@ -1880,7 +1934,47 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 } else {
                     // Immediate send (no delay) - use raise as before
                     if (events.find(event) != events.end()) {
-                        ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ");\n";
+                        // W3C SCXML 5.10: Construct event data from params using EventDataHelper (Single Source of
+                        // Truth)
+                        if (!action.sendParams.empty()) {
+                            ss << "                // W3C SCXML 5.10: Build event data using EventDataHelper (Single "
+                                  "Source of Truth)\n";
+                            ss << "                {\n";
+                            ss << "                    std::map<std::string, std::vector<std::string>> params;\n";
+
+                            for (const auto &[paramName, paramExpr] : action.sendParams) {
+                                // Evaluate param expression and add to params map
+                                if (model.needsJSEngine()) {
+                                    ss << "                    {\n";
+                                    ss << "                        this->ensureJSEngine();\n";
+                                    ss << "                        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                    ss << "                        auto paramResult = "
+                                          "jsEngine.getVariable(sessionId_.value(), \""
+                                       << paramExpr << "\").get();\n";
+                                    ss << "                        if (::RSM::JSEngine::isSuccess(paramResult)) {\n";
+                                    ss << "                            params[\"" << paramName
+                                       << "\"].push_back(::RSM::JSEngine::resultToString(paramResult));\n";
+                                    ss << "                        } else {\n";
+                                    ss << "                            LOG_ERROR(\"Failed to evaluate param expr: "
+                                       << escapeStringLiteral(paramExpr) << "\");\n";
+                                    ss << "                            params[\"" << paramName
+                                       << "\"].push_back(\"\");\n";
+                                    ss << "                        }\n";
+                                    ss << "                    }\n";
+                                } else {  // Static datamodel - direct variable reference
+                                    ss << "                    params[\"" << paramName
+                                       << "\"].push_back(std::to_string(" << paramExpr << "));\n";
+                                }
+                            }
+
+                            ss << "                    std::string eventData = "
+                                  "::RSM::EventDataHelper::buildJsonFromParams(params);\n";
+                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
+                               << ", eventData);\n";
+                            ss << "                }\n";
+                        } else {
+                            ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ");\n";
+                        }
                     } else {
                         // Event not in enum, likely unreachable - just comment
                         ss << "                // Event '" << event << "' not defined in Event enum (unreachable)\n";

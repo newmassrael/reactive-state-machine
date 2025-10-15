@@ -1,4 +1,5 @@
 #include "events/InternalEventTarget.h"
+#include "common/EventDataHelper.h"
 #include "common/JsonUtils.h"
 #include "common/Logger.h"
 #include "runtime/EventRaiserImpl.h"
@@ -155,7 +156,13 @@ std::string InternalEventTarget::buildEventData(const EventDescriptor &event) co
         return event.data;
     }
 
-    // For complex data with parameters, build structured JSON object
+    // W3C SCXML 5.10: Build event data from params (Single Source of Truth)
+    // Use EventDataHelper for consistent JSON construction (Interpreter + JIT)
+    if (event.data.empty() && !event.params.empty()) {
+        return EventDataHelper::buildJsonFromParams(event.params);
+    }
+
+    // For complex data with both data and parameters, build structured JSON object
     json eventDataJson = json::object();
 
     // Add main data if provided
@@ -163,7 +170,7 @@ std::string InternalEventTarget::buildEventData(const EventDescriptor &event) co
         eventDataJson["data"] = event.data;
     }
 
-    // Add parameters (W3C SCXML: Support duplicate param names - Test 178)
+    // Add parameters using EventDataHelper logic (W3C Test 178: duplicate param names)
     for (const auto &param : event.params) {
         if (param.second.size() == 1) {
             // Single value: store as string

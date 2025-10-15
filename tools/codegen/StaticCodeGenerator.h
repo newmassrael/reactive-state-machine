@@ -152,8 +152,9 @@ struct Action {
     std::string param4;  // fourth parameter (e.g., eventExpr for SEND)
     std::string param5;  // fifth parameter (e.g., delay for SEND)
     std::string param6;  // sixth parameter (e.g., delayexpr for SEND)
-    std::vector<ConditionalBranch> branches;  // For IF action: if/elseif/else branches
-    std::vector<Action> iterationActions;     // For FOREACH: actions to execute in loop
+    std::vector<ConditionalBranch> branches;                      // For IF action: if/elseif/else branches
+    std::vector<Action> iterationActions;                         // For FOREACH: actions to execute in loop
+    std::vector<std::pair<std::string, std::string>> sendParams;  // For SEND: param name->expr pairs
 
     Action(Type t, const std::string &p1 = "", const std::string &p2 = "", const std::string &p3 = "",
            const std::string &p4 = "", const std::string &p5 = "", const std::string &p6 = "")
@@ -206,6 +207,7 @@ public:
     bool hasComplexECMAScript = false;  // Needs JSEngine for evaluation
     bool hasSend = false;               // Uses <send> action
     bool hasSendWithDelay = false;      // Uses <send delay> or <send delayexpr> (Phase 4)
+    bool hasSendParams = false;         // Uses <send> with <param> elements (event data)
 
     // Helper: Determine if JSEngine is needed
     bool needsJSEngine() const {
@@ -215,6 +217,11 @@ public:
     // Helper: Determine if EventScheduler is needed (Phase 4)
     bool needsEventScheduler() const {
         return hasSendWithDelay;
+    }
+
+    // Helper: Determine if stateful Policy is needed (ARCHITECTURE.md)
+    bool needsStatefulPolicy() const {
+        return needsJSEngine() || needsEventScheduler() || hasSendParams || !dataModel.empty();
     }
 };
 

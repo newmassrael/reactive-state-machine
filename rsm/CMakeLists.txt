@@ -104,6 +104,7 @@ add_library(rsm_unified
     src/model/SCXMLContext.cpp
 
     # Common utilities
+    src/common/EventDataHelper.cpp
     src/common/GuardUtils.cpp
     src/common/Logger.cpp
     src/common/NodeFactory.cpp

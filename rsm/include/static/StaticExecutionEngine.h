@@ -7,7 +7,6 @@
 #include "core/EventQueueManager.h"
 #include "core/HierarchicalStateHelper.h"
 #include <cstdint>
-#include <map>
 #include <stdexcept>
 #include <string>
 
@@ -55,9 +54,18 @@ protected:
      * Delegates to Core::EventQueueManager for W3C compliance.
      *
      * @param event Event to raise internally
+     * @param eventData Optional event data as JSON string (W3C SCXML 5.10)
      */
-    void raise(Event event) {
+    void raise(Event event, const std::string &eventData = "") {
         eventQueue_.raise(event);  // Use shared core implementation
+
+        // W3C SCXML 5.10: Store event data for _event.data access (test176)
+        // Note: pendingEventData_ is only present in policies with send params
+        if constexpr (requires { policy_.pendingEventData_; }) {
+            if (!eventData.empty()) {
+                policy_.pendingEventData_ = eventData;
+            }
+        }
     }
 
     /**

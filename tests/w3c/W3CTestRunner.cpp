@@ -35,6 +35,7 @@
 #include "test173_sm.h"
 #include "test174_sm.h"
 #include "test175_sm.h"
+#include "test176_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1636,6 +1637,8 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             }();
             testDescription = "Send delayexpr uses current datamodel value (JIT) - Phase 4";
             break;
+
+            JIT_TEST_CASE(176, "Send param uses current datamodel value (JIT)")
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")
 

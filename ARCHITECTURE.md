@@ -90,13 +90,37 @@ Generated code works for ALL SCXML (W3C 100%)
 
 ## Feature Handling Strategy
 
+### Policy Generation Strategy
+
+**Critical Design Decision**: Policy methods (processTransition, executeEntryActions, etc.) generation depends on feature requirements:
+
+1. **Pure Static Policy** (Zero stateful features):
+   - All methods generated as `static` or `template<typename Engine>` static-style
+   - No member variables except simple datamodel vars
+   - Examples: test144 (basic transitions only)
+   - **Memory**: 8-100 bytes, zero overhead
+   - **Performance**: Optimal, fully inlined
+
+2. **Stateful Policy** (Any stateful feature present):
+   - **Trigger conditions** (any one triggers stateful mode):
+     - JSEngine needed (complex expressions, ECMAScript)
+     - Invoke support (session management)
+     - Send params / Event data (W3C SCXML 5.10)
+     - Delayed send with scheduler
+   - All methods generated as **non-static member functions**
+   - Policy has member variables: `sessionId_`, `jsEngineInitialized_`, `eventDataMap_`, etc.
+   - Examples: test150-176 (JSEngine), test239 (Invoke)
+   - **Memory**: Policy size + session data (~1-10KB)
+   - **Performance**: Still fast, single indirection
+
+**Rationale**: Mixing static and non-static methods creates complexity and prevents features like event data. Once any stateful feature is needed, entire Policy becomes stateful for consistency and extensibility.
+
 ### Static Handling (Compile-Time Code Generation)
 
 **Basic Features**:
 - ✅ Atomic, Compound, Final states → enum State
 - ✅ Event-based transitions → switch-case
 - ✅ Guard conditions (simple expressions) → if (x > 0)
-- ✅ Guard conditions (callbacks) → if (derived().guardFunc())
 - ✅ Entry/exit actions → executeEntryActions()
 - ✅ Raise events → internal event queue
 - ✅ Done events → automatic generation
@@ -107,7 +131,7 @@ Generated code works for ALL SCXML (W3C 100%)
 - ✅ If/elseif/else conditionals → C++ if-else chains
 - ✅ Variable assignments → direct member access
 
-**Result**: Pure static code, 8-100 bytes, zero runtime overhead
+**Result**: Pure static code (if no stateful features), 8-100 bytes, zero runtime overhead
 
 ### Dynamic Handling (Runtime Components)
 
