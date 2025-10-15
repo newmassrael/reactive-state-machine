@@ -134,6 +134,25 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
             stateInfo.exitActions.insert(stateInfo.exitActions.end(), actions.begin(), actions.end());
         }
 
+        // W3C SCXML 6.4: Extract invoke elements (Phase 3.6)
+        for (const auto &invokeNode : state->getInvoke()) {
+            InvokeInfo invokeInfo;
+            invokeInfo.invokeId = invokeNode->getId();
+            invokeInfo.type = invokeNode->getType();
+            invokeInfo.src = invokeNode->getSrc();
+            invokeInfo.srcExpr = invokeNode->getSrcExpr();
+            invokeInfo.autoforward = invokeNode->isAutoForward();
+            invokeInfo.finalizeContent = invokeNode->getFinalize();
+            invokeInfo.namelist = invokeNode->getNamelist();
+            invokeInfo.content = invokeNode->getContent();
+            invokeInfo.contentExpr = invokeNode->getContentExpr();
+            invokeInfo.params = invokeNode->getParams();
+
+            stateInfo.invokes.push_back(invokeInfo);
+            LOG_DEBUG("StaticCodeGenerator: State '{}' has invoke: id='{}', type='{}', src='{}', autoforward={}",
+                      stateId, invokeInfo.invokeId, invokeInfo.type, invokeInfo.src, invokeInfo.autoforward);
+        }
+
         model.states.push_back(stateInfo);
 
         // Extract transitions from each state
@@ -246,8 +265,23 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#include <memory>\n";
     ss << "#include <stdexcept>\n";
     ss << "#include <string>\n";
+    ss << "#include <unordered_map>\n";
     ss << "#include \"static/StaticExecutionEngine.h\"\n";
 
+    // Check if invoke support is needed (Phase 3.7)
+    bool hasInvokes = false;
+    for (const auto &state : model.states) {
+        if (!state.invokes.empty()) {
+            hasInvokes = true;
+            break;
+        }
+    }
+
+    if (hasInvokes) {
+        ss << "#include \"core/StateMachine.h\"\n";
+        ss << "#include \"core/InvokeProcessingAlgorithms.h\"\n";
+        ss << "#include \"core/InvokeManagerAdapters.h\"\n";
+    }
     // Add SendHelper include if needed
     if (model.hasSend) {
         ss << "#include \"common/SendHelper.h\"\n";
@@ -361,6 +395,36 @@ std::string StaticCodeGenerator::generateStrategyInterface(const std::string &cl
 
 std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events) {
     std::stringstream ss;
+
+    // W3C SCXML 6.4-6.5: Invoke processing (finalize/autoforward)
+    // Check if model has invokes
+    bool hasInvokes = false;
+    for (const auto &state : model.states) {
+        if (!state.invokes.empty()) {
+            hasInvokes = true;
+            break;
+        }
+    }
+
+    if (hasInvokes) {
+        ss << "        // W3C SCXML 6.4-6.5: Invoke processing\n";
+        ss << "        // Get originSessionId from event metadata (set by StaticExecutionEngine::processEvent)\n";
+        ss << "        const std::string& originSessionId = currentEventMetadata_.originSessionId;\n";
+        ss << "\n";
+        ss << "        // Create invoke manager adapter for algorithm calls\n";
+        ss << "        RSM::Core::JITInvokeManager<" << model.name << "Policy> invokeManager(*this);\n";
+        ss << "\n";
+        ss << "        // W3C SCXML 6.5: Execute finalize handler if event from child\n";
+        ss << "        RSM::Core::InvokeProcessingAlgorithms::processFinalize(originSessionId, invokeManager, "
+              "*this);\n";
+        ss << "\n";
+        ss << "        // W3C SCXML 6.4.1: Autoforward events to children\n";
+        ss << "        if (sessionId_.has_value()) {\n";
+        ss << "            RSM::Core::InvokeProcessingAlgorithms::processAutoforward(event, sessionId_.value(), "
+              "invokeManager);\n";
+        ss << "        }\n";
+        ss << "\n";
+    }
 
     ss << "        (void)engine;\n";
     ss << "        (void)event;\n";
@@ -803,6 +867,14 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     std::stringstream ss;
     std::set<std::string> events = extractEvents(model);
     bool hasDataModel = !model.dataModel.empty() || model.needsJSEngine();
+    // Check if any state has invokes
+    bool hasInvokes = false;
+    for (const auto &state : model.states) {
+        if (!state.invokes.empty()) {
+            hasInvokes = true;
+            break;
+        }
+    }
 
     // Generate State Policy class
     ss << "// State policy for " << model.name << "\n";
@@ -831,12 +903,23 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
             }
         }
 
-        // Add JSEngine session ID for hybrid code generation (lazy-initialized)
-        if (model.needsJSEngine()) {
-            ss << "\n    // JSEngine session for dynamic features (lazy-initialized)\n";
-            ss << "    mutable ::std::optional<::std::string> sessionId_;\n";
-        }
         ss << "\n";
+    }
+    // Add session ID for JSEngine and/or Invoke (lazy-initialized)
+    if (model.needsJSEngine() || hasInvokes) {
+        ss << "\n    // Session ID for JSEngine/Invoke (lazy-initialized)\n";
+        ss << "    mutable ::std::optional<::std::string> sessionId_;\n";
+    }
+
+    // Add JSEngine initialization flag (to prevent duplicate createSession calls)
+    if (model.needsJSEngine()) {
+        ss << "    mutable bool jsEngineInitialized_ = false;\n";
+    }
+
+    // W3C SCXML 5.10: Current event metadata (for invoke finalize)
+    if (hasInvokes) {
+        ss << "    // W3C SCXML 5.10: Current event metadata (originSessionId for finalize)\n";
+        ss << "    mutable ::RSM::Core::EventMetadata currentEventMetadata_;\n";
     }
 
     // W3C SCXML 3.4: Generate parallel region state variables
@@ -858,6 +941,20 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
                    << "State_ = State::" << capitalize(regionName) << ";\n";
             }
         }
+        ss << "\n";
+    }
+
+    if (hasInvokes) {
+        ss << "    // W3C SCXML 6.4: Invoke session tracking (Phase 3)\n";
+        ss << "    struct ChildSession {\n";
+        ss << "        std::string sessionId;\n";
+        ss << "        std::string invokeId;\n";
+        ss << "        std::string parentSessionId;\n";
+        ss << "        bool autoforward = false;\n";
+        ss << "        std::string finalizeScript;\n";
+        ss << "        std::shared_ptr<::RSM::Core::StateMachine> stateMachine;\n";
+        ss << "    };\n\n";
+        ss << "    std::unordered_map<std::string, ChildSession> activeInvokes_;\n";
         ss << "\n";
     }
 
@@ -907,7 +1004,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
     // Execute entry actions
     ss << "    template<typename Engine>\n";
-    if (hasDataModel) {
+    if (hasDataModel || hasInvokes) {
         ss << "    void executeEntryActions(State state, Engine& engine) {\n";  // non-static for stateful
     } else {
         ss << "    static void executeEntryActions(State state, Engine& engine) {\n";  // static for stateless
@@ -917,8 +1014,9 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     for (const auto &state : model.states) {
         bool hasEntryActions = !state.entryActions.empty();
         bool needsParallelInit = state.isParallel && !state.childRegions.empty();
+        bool hasInvoke = !state.invokes.empty();
 
-        if (hasEntryActions || needsParallelInit) {
+        if (hasEntryActions || needsParallelInit || hasInvoke) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
 
             // W3C SCXML 3.4: Initialize parallel region states first (before entry actions)
@@ -936,6 +1034,42 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
                 generateActionCode(ss, action, "engine", events, model);
             }
 
+            // W3C SCXML 6.4: Start invoke elements on state entry (Phase 3.9)
+            if (hasInvoke) {
+                ss << "                // W3C SCXML 6.4: Start invoke elements\n";
+                ss << "                ensureSessionId();\n";
+                ss << "                if (!sessionId_.has_value()) return;  // Should not happen\n";
+                ss << "\n";
+
+                for (const auto &invoke : state.invokes) {
+                    ss << "                // Invoke: id='" << invoke.invokeId << "', type='" << invoke.type << "'\n";
+
+                    // Generate unique invokeId if empty
+                    std::string invokeIdExpr =
+                        invoke.invokeId.empty()
+                            ? "sessionId_.value() + \"_invoke_\" + std::to_string(activeInvokes_.size())"
+                            : "\"" + invoke.invokeId + "\"";
+
+                    ss << "                {\n";
+                    ss << "                    ChildSession child;\n";
+                    ss << "                    child.invokeId = " << invokeIdExpr << ";\n";
+                    ss << "                    child.sessionId = sessionId_.value() + \"_\" + child.invokeId;\n";
+                    ss << "                    child.parentSessionId = sessionId_.value();\n";
+                    ss << "                    child.autoforward = " << (invoke.autoforward ? "true" : "false")
+                       << ";\n";
+
+                    // Store finalize script if present
+                    if (!invoke.finalizeContent.empty()) {
+                        ss << "                    child.finalizeScript = R\"(" << invoke.finalizeContent << ")\";\n";
+                    }
+
+                    ss << "                    activeInvokes_[child.invokeId] = child;\n";
+                    ss << "                    // TODO: Spawn child state machine for type='" << invoke.type
+                       << "', src='" << invoke.src << "'\n";
+                    ss << "                }\n";
+                }
+            }
+
             ss << "                break;\n";
         }
     }
@@ -946,7 +1080,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
     // Execute exit actions
     ss << "    template<typename Engine>\n";
-    if (hasDataModel) {
+    if (hasDataModel || hasInvokes) {
         ss << "    void executeExitActions(State state, Engine& engine) {\n";  // non-static for stateful
     } else {
         ss << "    static void executeExitActions(State state, Engine& engine) {\n";  // static for stateless
@@ -954,8 +1088,39 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     ss << "        (void)engine;\n";
     ss << "        switch (state) {\n";
     for (const auto &state : model.states) {
-        if (!state.exitActions.empty()) {
+        bool hasExitActions = !state.exitActions.empty();
+        bool hasInvoke = !state.invokes.empty();
+
+        if (hasExitActions || hasInvoke) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
+
+            // W3C SCXML 6.4: Cancel invoke elements on state exit first (Phase 3.9)
+            if (hasInvoke) {
+                ss << "                // W3C SCXML 6.4: Cancel invoke elements\n";
+
+                for (const auto &invoke : state.invokes) {
+                    // Generate invokeId expression (same as entry logic)
+                    std::string invokeIdExpr =
+                        invoke.invokeId.empty()
+                            ? "sessionId_.value() + \"_invoke_\" + std::to_string(activeInvokes_.size())"
+                            : "\"" + invoke.invokeId + "\"";
+
+                    ss << "                {\n";
+                    ss << "                    std::string invokeId = " << invokeIdExpr << ";\n";
+                    ss << "                    auto it = activeInvokes_.find(invokeId);\n";
+                    ss << "                    if (it != activeInvokes_.end()) {\n";
+                    ss << "                        // TODO: Send cancel.invoke.{invokeId} platform event\n";
+                    ss << "                        // TODO: Stop child state machine if running\n";
+                    ss << "                        if (it->second.stateMachine) {\n";
+                    ss << "                            // it->second.stateMachine->stop();\n";
+                    ss << "                        }\n";
+                    ss << "                        activeInvokes_.erase(it);\n";
+                    ss << "                    }\n";
+                    ss << "                }\n";
+                }
+            }
+
+            // Then execute exit actions
             for (const auto &action : state.exitActions) {
                 generateActionCode(ss, action, "engine", events, model);
             }
@@ -969,7 +1134,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
     // Process transition
     ss << "    template<typename Engine>\n";
-    if (hasDataModel) {
+    if (hasDataModel || hasInvokes) {
         ss << "    bool processTransition(State& currentState, Event event, Engine& engine) {\n";  // non-static for
                                                                                                    // stateful
     } else {
@@ -978,15 +1143,32 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
     }
     ss << generateProcessEvent(model, events);
 
-    // Generate private helper methods for JSEngine operations
-    if (model.needsJSEngine()) {
+    // Generate private helper methods
+    bool needsHelpers = hasInvokes || model.needsJSEngine();
+    if (needsHelpers) {
         ss << "private:\n";
+
+        // Session ID initialization helper (for Invoke and/or JSEngine)
+        if (hasInvokes || model.needsJSEngine()) {
+            ss << "    // Helper: Ensure session ID is initialized\n";
+            ss << "    void ensureSessionId() const {\n";
+            ss << "        if (!sessionId_.has_value()) {\n";
+            ss << "            sessionId_ = \"session_\" + std::to_string(reinterpret_cast<uintptr_t>(this));\n";
+            ss << "        }\n";
+            ss << "    }\n\n";
+        }
+    }
+
+    // Generate JSEngine-specific helpers
+    if (model.needsJSEngine()) {
         ss << "    // Helper: Ensure JSEngine is initialized (lazy initialization)\n";
         ss << "    void ensureJSEngine() const {\n";
-        ss << "        if (!sessionId_.has_value()) {\n";
-        ss << "            auto& jsEngine = ::RSM::JSEngine::instance();\n";
-        ss << "            sessionId_ = jsEngine.generateSessionIdString(\"" << model.name << "_\");\n";
-        ss << "            jsEngine.createSession(sessionId_.value());\n";
+        ss << "        if (jsEngineInitialized_) return;  // Already initialized\n";
+        ss << "        ensureSessionId();\n";
+        ss << "        if (!sessionId_.has_value()) return;  // Should not happen\n";
+        ss << "        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+        ss << "        jsEngine.createSession(sessionId_.value());\n";
+        ss << "\n";
 
         // Initialize ALL datamodel variables in JSEngine (Interpreter Engine architecture)
         for (const auto &var : model.dataModel) {
@@ -1004,7 +1186,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
                << ".getInternalValue());\n";
         }
 
-        ss << "        }\n";
+        ss << "        jsEngineInitialized_ = true;\n";
         ss << "    }\n";
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/Logger.h"
+#include "core/EventMetadata.h"
 #include "core/EventProcessingAlgorithms.h"
 #include "core/EventQueueAdapters.h"
 #include "core/EventQueueManager.h"
@@ -215,6 +216,38 @@ public:
         if (!isRunning_) {
             return;
         }
+
+        // Clear previous event metadata (internal events have no metadata)
+        policy_.currentEventMetadata_ = RSM::Core::EventMetadata();
+
+        State oldState = currentState_;
+        // Call through policy instance (works for both static and non-static)
+        if (policy_.processTransition(currentState_, event, *this)) {
+            if (oldState != currentState_) {
+                executeOnExit(oldState);
+                executeOnEntry(currentState_);
+                processInternalQueue();
+                checkEventlessTransitions();
+            }
+        }
+    }
+
+    /**
+     * @brief Process an external event with metadata (W3C SCXML 5.10)
+     *
+     * External events with metadata support originSessionId for invoke finalize.
+     * Used when events come from child sessions via invoke.
+     *
+     * @param event External event to process
+     * @param metadata Event metadata (originSessionId, etc.)
+     */
+    void processEvent(Event event, const RSM::Core::EventMetadata &metadata) {
+        if (!isRunning_) {
+            return;
+        }
+
+        // Set event metadata for invoke processing
+        policy_.currentEventMetadata_ = metadata;
 
         State oldState = currentState_;
         // Call through policy instance (works for both static and non-static)

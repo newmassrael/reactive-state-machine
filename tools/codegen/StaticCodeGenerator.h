@@ -143,6 +143,21 @@ struct Action {
         : type(t), param1(p1), param2(p2), param3(p3), param4(p4) {}
 };
 
+// W3C SCXML 6.4: Invoke information for JIT code generation
+struct InvokeInfo {
+    std::string invokeId;         // Invoke ID (generated or specified)
+    std::string type;             // Invoke type (e.g., "scxml", "http")
+    std::string src;              // SCXML file path or URL
+    std::string srcExpr;          // Dynamic src expression
+    bool autoforward = false;     // W3C SCXML 6.4.1: Autoforward flag
+    std::string finalizeContent;  // W3C SCXML 6.5: Finalize handler XML content
+    std::string namelist;         // Variable names to pass to child
+    std::string content;          // Inline SCXML content
+    std::string contentExpr;      // Dynamic content expression
+    // param: name->expr/location mapping for data passing
+    std::vector<std::tuple<std::string, std::string, std::string>> params;
+};
+
 struct State {
     std::string name;
     bool isFinal = false;
@@ -150,6 +165,7 @@ struct State {
     std::vector<std::string> childRegions;  // W3C SCXML 3.4: Child region state IDs for parallel states
     std::vector<Action> entryActions;       // Actions from <onentry>
     std::vector<Action> exitActions;        // Actions from <onexit>
+    std::vector<InvokeInfo> invokes;        // W3C SCXML 6.4: Invoke elements in this state
 };
 
 struct DataModelVariable {
