@@ -38,6 +38,7 @@
 #include "test176_sm.h"
 #include "test178_sm.h"
 #include "test179_sm.h"
+#include "test183_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1654,6 +1655,8 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             break;
 
             JIT_TEST_CASE(179, "Send content populates event body (JIT)")
+
+            JIT_TEST_CASE(183, "Basic conditional transition (JIT)")
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")
 

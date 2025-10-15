@@ -1291,6 +1291,8 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
                 sendActionResult.sendContent = sendAction->getContent();
                 // W3C SCXML 5.10: Extract send contentexpr for dynamic event data
                 sendActionResult.sendContentExpr = sendAction->getContentExpr();
+                // W3C SCXML 6.2.4: Extract idlocation for sendid storage (test183)
+                sendActionResult.sendIdLocation = sendAction->getIdLocation();
                 result.push_back(sendActionResult);
             }
         }
@@ -1830,6 +1832,29 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             std::string target = action.param2;
             std::string targetExpr = action.param3;
             std::string eventExpr = action.param4;
+            std::string idLocation = action.sendIdLocation;
+
+            // W3C SCXML 6.2.4: Generate unique sendid and store in idlocation if specified (test183)
+            if (!idLocation.empty()) {
+                ss << "                // W3C SCXML 6.2.4: Generate sendid and store in idlocation (test183)\n";
+                ss << "                // Using SendHelper for Zero Duplication (shared with interpreter)\n";
+                ss << "                {\n";
+                if (model.needsJSEngine()) {
+                    ss << "                    this->ensureJSEngine();\n";
+                    ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                    ss << "                    // Generate unique sendid using shared helper (Single Source of "
+                          "Truth)\n";
+                    ss << "                    std::string sendId = ::RSM::SendHelper::generateSendId();\n";
+                    ss << "                    // Store sendid in idlocation variable using shared helper\n";
+                    ss << "                    ::RSM::SendHelper::storeInIdLocation(jsEngine, sessionId_.value(), \""
+                       << idLocation << "\", sendId);\n";
+                } else {
+                    // Static mode: direct variable assignment (JSEngine not available)
+                    ss << "                    std::string sendId = ::RSM::SendHelper::generateSendId();\n";
+                    ss << "                    " << idLocation << " = sendId;\n";
+                }
+                ss << "                }\n";
+            }
 
             // W3C SCXML 6.2: Handle targetexpr (dynamic target evaluation) - Test 173
             if (!targetExpr.empty()) {
