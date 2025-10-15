@@ -12,6 +12,7 @@
 #include "common/ForeachValidator.h"
 #include "common/Logger.h"
 #include "common/SendHelper.h"
+#include "common/SendSchedulingHelper.h"
 #include "common/StringUtils.h"
 #include "common/TypeRegistry.h"
 #include "common/UniqueIdGenerator.h"
@@ -951,11 +952,11 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
         // Parse delay (evaluate delay expression if needed)
         std::chrono::milliseconds delay{0};
         if (!action.getDelay().empty()) {
-            delay = action.parseDelayString(action.getDelay());
+            delay = SendSchedulingHelper::parseDelayString(action.getDelay());
         } else if (!action.getDelayExpr().empty()) {
             std::string delayStr = evaluateExpression(action.getDelayExpr());
             if (!delayStr.empty()) {
-                delay = action.parseDelayString(delayStr);
+                delay = SendSchedulingHelper::parseDelayString(delayStr);
             }
         }
 

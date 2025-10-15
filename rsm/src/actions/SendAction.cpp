@@ -1,4 +1,5 @@
 #include "actions/SendAction.h"
+#include "common/SendSchedulingHelper.h"
 #include "common/UniqueIdGenerator.h"
 #include "runtime/IActionExecutor.h"
 #include "runtime/IExecutionContext.h"
@@ -157,43 +158,6 @@ const std::string &SendAction::getContent() const {
     return content_;
 }
 
-std::chrono::milliseconds SendAction::parseDelayString(const std::string &delayStr) const {
-    if (delayStr.empty()) {
-        return std::chrono::milliseconds{0};
-    }
-
-    // Parse delay formats: "5s", "100ms", "2min", "1h", ".5s", "0.5s"
-    std::regex delayPattern(R"((\d*\.?\d+)\s*(ms|s|min|h|sec|seconds?|minutes?|hours?)?)");
-    std::smatch match;
-
-    if (!std::regex_match(delayStr, match, delayPattern)) {
-        LOG_DEBUG("SendAction: Failed to parse delay string: '{}'", delayStr);
-        return std::chrono::milliseconds{0};  // Invalid format
-    }
-
-    double value = std::stod(match[1].str());
-    std::string unit = match[2].str();
-
-    LOG_DEBUG("SendAction: Parsed delay - value: {}, unit: '{}'", value, unit);
-
-    // Convert to milliseconds
-    // W3C SCXML: unit-less values are treated as seconds per specification
-    if (unit.empty()) {
-        return std::chrono::milliseconds{static_cast<long long>(value * 1000)};
-    } else if (unit == "ms") {
-        return std::chrono::milliseconds{static_cast<long long>(value)};
-    } else if (unit == "s" || unit == "sec" || unit == "seconds" || unit == "second") {
-        return std::chrono::milliseconds{static_cast<long long>(value * 1000)};
-    } else if (unit == "min" || unit == "minutes" || unit == "minute") {
-        return std::chrono::milliseconds{static_cast<long long>(value * 60 * 1000)};
-    } else if (unit == "h" || unit == "hours" || unit == "hour") {
-        return std::chrono::milliseconds{static_cast<long long>(value * 60 * 60 * 1000)};
-    }
-
-    LOG_DEBUG("SendAction: Unknown unit '{}', returning 0ms", unit);
-    return std::chrono::milliseconds{0};  // Unknown unit
-}
-
 std::vector<std::string> SendAction::validateSpecific() const {
     std::vector<std::string> errors;
 
@@ -224,7 +188,7 @@ std::vector<std::string> SendAction::validateSpecific() const {
 
     // Validate delay format if provided
     if (!delay_.empty()) {
-        auto delayMs = parseDelayString(delay_);
+        auto delayMs = SendSchedulingHelper::parseDelayString(delay_);
         if (delayMs.count() < 0) {
             errors.push_back("Invalid delay format: " + delay_);
         }

@@ -150,12 +150,14 @@ struct Action {
     std::string param2;  // additional parameter (e.g., assign location, item var for FOREACH)
     std::string param3;  // third parameter (e.g., index var for FOREACH, targetExpr for SEND)
     std::string param4;  // fourth parameter (e.g., eventExpr for SEND)
+    std::string param5;  // fifth parameter (e.g., delay for SEND)
+    std::string param6;  // sixth parameter (e.g., delayexpr for SEND)
     std::vector<ConditionalBranch> branches;  // For IF action: if/elseif/else branches
     std::vector<Action> iterationActions;     // For FOREACH: actions to execute in loop
 
     Action(Type t, const std::string &p1 = "", const std::string &p2 = "", const std::string &p3 = "",
-           const std::string &p4 = "")
-        : type(t), param1(p1), param2(p2), param3(p3), param4(p4) {}
+           const std::string &p4 = "", const std::string &p5 = "", const std::string &p6 = "")
+        : type(t), param1(p1), param2(p2), param3(p3), param4(p4), param5(p5), param6(p6) {}
 };
 
 // W3C SCXML 6.4: Invoke information for JIT code generation
@@ -203,10 +205,16 @@ public:
     bool hasComplexDatamodel = false;   // Uses arrays, typeof, dynamic variables
     bool hasComplexECMAScript = false;  // Needs JSEngine for evaluation
     bool hasSend = false;               // Uses <send> action
+    bool hasSendWithDelay = false;      // Uses <send delay> or <send delayexpr> (Phase 4)
 
     // Helper: Determine if JSEngine is needed
     bool needsJSEngine() const {
         return hasForEach || hasComplexDatamodel || hasComplexECMAScript;
+    }
+
+    // Helper: Determine if EventScheduler is needed (Phase 4)
+    bool needsEventScheduler() const {
+        return hasSendWithDelay;
     }
 };
 

@@ -225,13 +225,6 @@ public:
      */
     const std::string &getContent() const;
 
-    /**
-     * @brief Parse delay string to milliseconds
-     * @param delayStr Delay specification (e.g., "5s", "100ms", "2min")
-     * @return Delay in milliseconds, 0 if immediate or invalid
-     */
-    std::chrono::milliseconds parseDelayString(const std::string &delayStr) const;
-
     // IActionNode implementation
     bool execute(IExecutionContext &context) override;
     std::string getActionType() const override;

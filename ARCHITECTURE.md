@@ -120,7 +120,7 @@ Generated code works for ALL SCXML (W3C 100%)
   - ✅ Static child SCXML (`<invoke type="scxml" src="child.scxml">`) → Generated child class, direct instantiation
   - 🔴 Dynamic invocation (`<invoke type="http">`, srcexpr) → std::unique_ptr<InvokeExecutor> (lazy-init)
   - **Decision**: Code generator analyzes src attribute at generation time
-- 🔴 Send with delay (timers) → std::unique_ptr<TimerManager> (lazy-init)
+- ✅ Send with delay → SendSchedulingHelper::SimpleScheduler<Event> (lazy-init, Phase 4 complete)
 
 **Complex Scripting**:
 - 🔴 Math.* operations → std::unique_ptr<JSEngine> (lazy-init)
@@ -278,6 +278,19 @@ class EventQueueManager {
   - Two APIs: validateTarget() with error message, isInvalidTarget() for boolean check
 - Benefits: Zero code duplication, consistent error handling across engines
 
+**RSM::SendSchedulingHelper::parseDelayString() / SimpleScheduler**:
+- W3C SCXML 6.2: Delay string parsing and event scheduling logic
+- Single Source of Truth for delayed send implementation shared between engines
+- Location: `rsm/include/common/SendSchedulingHelper.h`
+- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
+- Features:
+  - Delay format parsing: "5s", "100ms", "2min", "1h", ".5s", "0.5s"
+  - SimpleScheduler with O(log n) priority queue for efficient scheduling
+  - W3C SCXML 6.2.5: Sendid support for event tracking and cancellation
+  - Thread-safe unique sendid generation with atomic counter
+  - Automatic filtering of cancelled events
+- Benefits: Zero code duplication, guaranteed W3C compliance, efficient scheduling
+
 ### Future Core Components (Planned)
 
 **RSM::Core::StateExecutor**:
@@ -306,6 +319,7 @@ class EventQueueManager {
 - Guard condition handling
 
 ### Phase 3: W3C SCXML Compliance (Complete ✅)
+- W3C Static Tests: 17/17 (100%) ✅
 - test144: W3C SCXML 3.5.1 document order preservation
 - test150-155: JIT JSEngine integration (foreach, dynamic datamodel)
 - test155: Fixed type preservation in foreach loops (numeric addition vs string concatenation)
@@ -337,10 +351,21 @@ class EventQueueManager {
 - Final state transition logic (no fall-through)
 - **Result**: 16/16 W3C Static Tests PASSED ✅
 
-### Phase 4: Dynamic Component Integration (Planned)
-- ParallelStateHandler for parallel states
-- InvokeHandler for external invocations
-- JSEngine integration for complex scripts
+### Phase 4: Dynamic Component Integration (Partial ✅)
+- ✅ Send with delay → SendSchedulingHelper (W3C SCXML 6.2)
+  - test175: Send delayexpr with current datamodel value
+  - SimpleScheduler with priority queue (O(log n) scheduling)
+  - Event::NONE for scheduler polling without semantic transitions
+  - StaticExecutionEngine::tick() method for single-threaded polling
+  - Zero overhead for state machines without delayed sends (lazy-init)
+  - Hybrid approach: Static delay ("5s") or dynamic delayexpr ("Var1")
+  - **Single Source of Truth**: parseDelayString() shared across engines (Zero Duplication achieved)
+  - **W3C SCXML 6.2.5**: Sendid support with cancelEvent() for `<cancel>` element
+  - Thread-safe unique sendid generation with atomic counter
+  - Automatic filtering of cancelled events in popReadyEvent()
+- 🔴 ParallelStateHandler for parallel states (planned)
+- 🔴 InvokeHandler for external invocations (planned)
+- 🔴 JSEngine integration for complex scripts (planned)
 
 ### Phase 5: Full Hybrid Implementation (Planned)
 - Automatic detection and integration
@@ -351,14 +376,14 @@ class EventQueueManager {
 
 | Category | Static Generator | Interpreter Engine | Combined |
 |----------|------------------|----------------|----------|
-| **W3C Static Tests** | **16/16 (100%)** ✅ | N/A | **16/16 (100%)** |
+| **W3C Static Tests** | **17/17 (100%)** ✅ | N/A | **17/17 (100%)** |
 | **Basic Tests** | 12/60 (20%) | 60/60 (100%) | 60/60 (100%) |
 | **Datamodel Tests** | 4/30 (13%) | 30/30 (100%) | 30/30 (100%) |
 | **Complex Tests** | 0/112 (0%) | 112/112 (100%) | 112/112 (100%) |
 | **Total** | **12/202 (6%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-174, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, invoke, hierarchical states, JIT JSEngine integration
+- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-175, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, delayed send (6.2), invoke, hierarchical states, JIT JSEngine integration
 - Interpreter engine provides 100% W3C compliance baseline
 - Static generator produces hybrid code with shared semantics from interpreter engine
 
@@ -394,6 +419,6 @@ class EventQueueManager {
 
 ---
 
-**Status**: Phase 3 Complete ✅ - W3C SCXML compliance achieved (13/13 tests)
-**Last Updated**: 2025-10-14
-**Version**: 3.4 (EventExpr Support + String Literal Safety)
+**Status**: Phase 4 Partial ✅ - Send with delay support complete (test175)
+**Last Updated**: 2025-10-15
+**Version**: 4.0 (Delayed Send + Event Scheduler)

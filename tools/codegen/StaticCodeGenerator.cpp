@@ -251,6 +251,10 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 detectFeatures(action.iterationActions);
             } else if (action.type == Action::SEND) {
                 model.hasSend = true;
+                // Phase 4: Detect send with delay (requires EventScheduler)
+                if (!action.param5.empty() || !action.param6.empty()) {
+                    model.hasSendWithDelay = true;
+                }
             } else if (action.type == Action::ASSIGN) {
                 // W3C SCXML: <assign> with expr attribute requires JSEngine for evaluation
                 // Test 174: <assign location="Var1" expr="'http://...'" />
@@ -415,6 +419,12 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     if (model.hasSend) {
         ss << "#include \"common/SendHelper.h\"\n";
     }
+    // Phase 4: Add SendSchedulingHelper for delayed send
+    if (model.needsEventScheduler()) {
+        ss << "#include \"common/SendSchedulingHelper.h\"\n";
+    }
+    // TransitionHelper for W3C SCXML 3.12 event matching (Zero Duplication)
+    ss << "#include \"common/TransitionHelper.h\"\n";
 
     // Add JSEngine and Logger includes if needed for hybrid code generation (OUTSIDE namespace)
     if (model.needsJSEngine()) {
@@ -487,7 +497,25 @@ std::string StaticCodeGenerator::generateStateEnum(const std::set<std::string> &
 }
 
 std::string StaticCodeGenerator::generateEventEnum(const std::set<std::string> &events) {
-    return generateEnum("Event", events);
+    // Phase 4: Add NONE as first enum value for scheduler polling
+    // Event() (default constructor) will be Event::NONE, which never matches transitions
+    // This allows tick() method to poll scheduler without triggering unwanted transitions
+    std::stringstream ss;
+    ss << "enum class Event : uint8_t {\n";
+    ss << "    NONE,  // Phase 4: Default event for scheduler polling (no semantic meaning)\n";
+
+    size_t idx = 0;
+    for (const auto &value : events) {
+        ss << "    " << capitalize(value);
+        if (idx < events.size() - 1) {
+            ss << ",";
+        }
+        ss << "\n";
+        idx++;
+    }
+
+    ss << "};\n";
+    return ss.str();
 }
 
 std::string StaticCodeGenerator::generateStrategyInterface(const std::string &className,
@@ -536,6 +564,18 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
             ss << "            engine.raise(Event::Done_invoke);\n";
             ss << "        }\n";
         }
+        ss << "\n";
+    }
+
+    // Phase 4: Check for ready scheduled events
+    if (model.needsEventScheduler()) {
+        ss << "        // Phase 4: W3C SCXML 6.2 - Process ready scheduled events\n";
+        ss << "        {\n";
+        ss << "            Event scheduledEvent;\n";
+        ss << "            while (eventScheduler_.popReadyEvent(scheduledEvent)) {\n";
+        ss << "                engine.raise(scheduledEvent);\n";
+        ss << "            }\n";
+        ss << "        }\n";
         ss << "\n";
     }
 
@@ -634,6 +674,18 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
             if (!eventTransitions.empty()) {
                 // W3C SCXML 3.5.1: Group transitions by event while preserving document order
                 auto transitionsByEvent = groupTransitionsByEventPreservingOrder(eventTransitions);
+
+                // W3C SCXML 3.12.1: Separate wildcard transitions (event="*") for special handling
+                // Wildcards match any event and should be checked after specific events
+                std::vector<Transition> wildcardTransitions;
+                for (auto it = transitionsByEvent.begin(); it != transitionsByEvent.end();) {
+                    if (it->first == "*") {
+                        wildcardTransitions = it->second;
+                        it = transitionsByEvent.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
 
                 // Generate event-based transition checks
                 bool firstEvent = true;
@@ -741,9 +793,116 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                     }
                 }
 
-                // Close event chain
-                if (!firstEvent) {
+                // W3C SCXML 3.12.1: Generate wildcard transitions (event="*") as catch-all
+                // Wildcards match any event except Event::NONE (scheduler polling event)
+                if (!wildcardTransitions.empty()) {
+                    if (!firstEvent) {
+                        // Add else if after specific event checks
+                        ss << baseIndent << "} else if (event != Event::NONE) {\n";
+                    } else {
+                        // No specific events, just check for non-NONE
+                        ss << baseIndent << "if (event != Event::NONE) {\n";
+                    }
+
+                    const std::string eventIndent = baseIndent + "    ";
+
+                    // Generate guard-based transition chain for wildcard
+                    bool firstGuard = true;
+                    for (const auto &trans : wildcardTransitions) {
+                        bool hasGuard = !trans.guard.empty();
+                        std::string guardIndent = eventIndent;
+
+                        if (hasGuard) {
+                            // Guarded transition
+                            std::string guardExpr = trans.guard;
+                            bool needsJSEngine =
+                                model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
+                            bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
+
+                            if (firstGuard) {
+                                // First guard uses if
+                                if (needsJSEngine) {
+                                    ss << eventIndent << "this->ensureJSEngine();\n";
+                                    ss << eventIndent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                    ss << eventIndent
+                                       << "if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
+                                       << escapeStringLiteral(guardExpr) << "\")) {\n";
+                                } else if (isFunctionCall) {
+                                    std::string guardFunc = guardExpr;
+                                    size_t parenPos = guardFunc.find('(');
+                                    if (parenPos != std::string::npos) {
+                                        guardFunc = guardFunc.substr(0, parenPos);
+                                    }
+                                    if (!guardFunc.empty() && guardFunc[0] == '!') {
+                                        guardFunc = guardFunc.substr(1);
+                                    }
+                                    ss << eventIndent << "if (derived()." << guardFunc << "()) {\n";
+                                } else {
+                                    ss << eventIndent << "if (" << guardExpr << ") {\n";
+                                }
+                                firstGuard = false;
+                            } else {
+                                // Subsequent guards use else if
+                                if (needsJSEngine) {
+                                    ss << eventIndent << "} else {\n";
+                                    guardIndent = eventIndent + "    ";
+                                    ss << guardIndent << "this->ensureJSEngine();\n";
+                                    ss << guardIndent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                    ss << guardIndent
+                                       << "if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
+                                       << escapeStringLiteral(guardExpr) << "\")) {\n";
+                                } else if (isFunctionCall) {
+                                    std::string guardFunc = guardExpr;
+                                    size_t parenPos = guardFunc.find('(');
+                                    if (parenPos != std::string::npos) {
+                                        guardFunc = guardFunc.substr(0, parenPos);
+                                    }
+                                    if (!guardFunc.empty() && guardFunc[0] == '!') {
+                                        guardFunc = guardFunc.substr(1);
+                                    }
+                                    ss << eventIndent << "} else if (derived()." << guardFunc << "()) {\n";
+                                } else {
+                                    ss << eventIndent << "} else if (" << guardExpr << ") {\n";
+                                }
+                            }
+                            guardIndent += "    ";
+                        } else {
+                            // Unguarded transition (fallback else clause)
+                            if (!firstGuard) {
+                                ss << eventIndent << "} else {\n";
+                                guardIndent += "    ";
+                            }
+                        }
+
+                        // Generate transition action calls
+                        for (const auto &action : trans.actions) {
+                            ss << guardIndent << "derived()." << action << "();\n";
+                        }
+
+                        // W3C SCXML: Execute transition actions
+                        for (const auto &action : trans.transitionActions) {
+                            generateActionCode(ss, action, "engine", events, model);
+                        }
+
+                        // W3C SCXML: Only change state if targetState exists
+                        if (!trans.targetState.empty()) {
+                            ss << guardIndent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                        }
+                        ss << guardIndent << "transitionTaken = true;\n";
+                    }
+
+                    // Close guard chain if we had any guards
+                    if (!firstGuard) {
+                        ss << eventIndent << "}\n";
+                    }
+
+                    // Close wildcard event check
                     ss << baseIndent << "}\n";
+                } else {
+                    // No wildcard transitions, close event chain normally
+                    if (!firstEvent) {
+                        ss << baseIndent << "}\n";
+                    }
                 }
             }
 
@@ -873,6 +1032,17 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                         // W3C SCXML 3.5.1: Group transitions by event while preserving document order
                         auto transitionsByEvent = groupTransitionsByEventPreservingOrder(regionIt->second);
 
+                        // W3C SCXML 3.12.1: Separate wildcard transitions for special handling
+                        std::vector<Transition> wildcardTransitions;
+                        for (auto it = transitionsByEvent.begin(); it != transitionsByEvent.end();) {
+                            if (it->first == "*") {
+                                wildcardTransitions = it->second;
+                                it = transitionsByEvent.erase(it);
+                            } else {
+                                ++it;
+                            }
+                        }
+
                         // Generate event-based transition checks
                         bool firstEvent = true;
                         const std::string baseIndent = "                    ";
@@ -942,9 +1112,67 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                             }
                         }
 
-                        // Close event chain
-                        if (!firstEvent) {
+                        // W3C SCXML 3.12.1: Generate wildcard transitions as catch-all
+                        if (!wildcardTransitions.empty()) {
+                            if (!firstEvent) {
+                                ss << baseIndent << "} else if (event != Event::NONE) {\n";
+                            } else {
+                                ss << baseIndent << "if (event != Event::NONE) {\n";
+                            }
+
+                            const std::string eventIndent = baseIndent + "    ";
+
+                            bool firstGuard = true;
+                            for (const auto &trans : wildcardTransitions) {
+                                bool hasGuard = !trans.guard.empty();
+                                std::string guardIndent = eventIndent;
+
+                                if (hasGuard) {
+                                    if (firstGuard) {
+                                        ss << eventIndent << "if (" << trans.guard << ") {\n";
+                                        firstGuard = false;
+                                    } else {
+                                        ss << eventIndent << "} else if (" << trans.guard << ") {\n";
+                                    }
+                                    guardIndent += "    ";
+                                } else {
+                                    if (!firstGuard) {
+                                        ss << eventIndent << "} else {\n";
+                                        guardIndent += "    ";
+                                    }
+                                }
+
+                                for (const auto &action : trans.transitionActions) {
+                                    std::stringstream actionSS;
+                                    generateActionCode(actionSS, action, "engine", events, model);
+                                    std::string actionCode = actionSS.str();
+                                    std::istringstream iss(actionCode);
+                                    std::string line;
+                                    while (std::getline(iss, line)) {
+                                        if (!line.empty()) {
+                                            ss << guardIndent << line << "\n";
+                                        }
+                                    }
+                                }
+
+                                if (!trans.targetState.empty()) {
+                                    ss << guardIndent << "parallel_" << stateName << "_region" << i
+                                       << "State_ = State::" << capitalize(trans.targetState) << ";\n";
+                                }
+
+                                ss << guardIndent << "transitionTaken = true;\n";
+                            }
+
+                            if (!firstGuard) {
+                                ss << eventIndent << "}\n";
+                            }
+
                             ss << baseIndent << "}\n";
+                        } else {
+                            // No wildcard transitions, close event chain normally
+                            if (!firstEvent) {
+                                ss << baseIndent << "}\n";
+                            }
                         }
                     }
 
@@ -1018,12 +1246,14 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
             }
         } else if (actionType == "send") {
             if (auto sendAction = std::dynamic_pointer_cast<RSM::SendAction>(actionNode)) {
-                // Store event, target, targetExpr, and eventExpr for send action
+                // W3C SCXML 6.2: Store send action parameters (event, target, delay, etc.)
                 std::string event = sendAction->getEvent();
                 std::string target = sendAction->getTarget();
                 std::string targetExpr = sendAction->getTargetExpr();
                 std::string eventExpr = sendAction->getEventExpr();
-                result.push_back(Action(Action::SEND, event, target, targetExpr, eventExpr));
+                std::string delay = sendAction->getDelay();
+                std::string delayExpr = sendAction->getDelayExpr();
+                result.push_back(Action(Action::SEND, event, target, targetExpr, eventExpr, delay, delayExpr));
             }
         }
     }
@@ -1083,6 +1313,12 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     // Add JSEngine initialization flag (to prevent duplicate createSession calls)
     if (model.needsJSEngine()) {
         ss << "    mutable bool jsEngineInitialized_ = false;\n";
+    }
+
+    // Phase 4: Add event scheduler for delayed send (lazy-initialized)
+    if (model.needsEventScheduler()) {
+        ss << "    // Phase 4: Event scheduler for W3C SCXML 6.2 delayed send (lazy-init)\n";
+        ss << "    mutable ::RSM::SendSchedulingHelper::SimpleScheduler<Event> eventScheduler_;\n";
     }
 
     // W3C SCXML 5.10: Current event metadata (for invoke finalize)
@@ -1606,12 +1842,49 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 }
                 ss << "                }\n";
             } else if (!event.empty()) {
-                // Static event: only raise if event exists in Event enum
-                if (events.find(event) != events.end()) {
-                    ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ");\n";
+                // Phase 4: Handle delay/delayexpr for scheduled send
+                std::string delay = action.param5;
+                std::string delayExpr = action.param6;
+
+                if (!delay.empty() || !delayExpr.empty()) {
+                    // W3C SCXML 6.2: Delayed send - schedule event for future delivery
+                    ss << "                // Phase 4: W3C SCXML 6.2 delayed send (test175)\n";
+                    ss << "                {\n";
+
+                    if (!delayExpr.empty()) {
+                        // Dynamic delay from variable
+                        ss << "                    std::string delayStr;\n";
+                        if (model.needsJSEngine()) {
+                            ss << "                    this->ensureJSEngine();\n";
+                            ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                            ss << "                    auto delayResult = jsEngine.getVariable(sessionId_.value(), \""
+                               << delayExpr << "\").get();\n";
+                            ss << "                    if (::RSM::JSEngine::isSuccess(delayResult)) {\n";
+                            ss << "                        delayStr = ::RSM::JSEngine::resultToString(delayResult);\n";
+                            ss << "                    }\n";
+                        } else {
+                            ss << "                    delayStr = " << delayExpr << ";\n";
+                        }
+                        ss << "                    auto delayMs = "
+                              "::RSM::SendSchedulingHelper::parseDelayString(delayStr);\n";
+                        ss << "                    eventScheduler_.scheduleEvent(Event::" << capitalize(event)
+                           << ", delayMs);\n";
+                    } else {
+                        // Static delay
+                        ss << "                    auto delayMs = ::RSM::SendSchedulingHelper::parseDelayString(\""
+                           << delay << "\");\n";
+                        ss << "                    eventScheduler_.scheduleEvent(Event::" << capitalize(event)
+                           << ", delayMs);\n";
+                    }
+                    ss << "                }\n";
                 } else {
-                    // Event not in enum, likely unreachable - just comment
-                    ss << "                // Event '" << event << "' not defined in Event enum (unreachable)\n";
+                    // Immediate send (no delay) - use raise as before
+                    if (events.find(event) != events.end()) {
+                        ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ");\n";
+                    } else {
+                        // Event not in enum, likely unreachable - just comment
+                        ss << "                // Event '" << event << "' not defined in Event enum (unreachable)\n";
+                    }
                 }
             }
         }

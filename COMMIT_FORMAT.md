@@ -22,7 +22,7 @@
 ### 2. Body
 - One blank line after subject
 - Bullet points (- prefix) only
-- **Maximum 3 items** - focus on key changes
+- **1-3 items** - focus on key changes (fewer is better)
 - Be specific and technical
 - Reference W3C SCXML sections when applicable (e.g., "W3C SCXML 3.12.1")
 
@@ -64,13 +64,21 @@ refactor: Eliminate code duplication with shared helper functions
 - Extract test summary function to eliminate duplication
 ```
 
-### Good: Complex Feature (still 3 items)
+### Good: Complex Feature (1-3 items)
 ```
 feat: Run jit engine for all 202 W3C tests with variant support
 
 - Execute jit engine for all tests (unsupported return FAIL)
 - Preserve variant suffixes (403a, 403b, 403c) in JIT execution
 - Display failed tests separately by engine type (Interpreter/JIT)
+```
+
+### Good: Concise (1-2 items when sufficient)
+```
+refactor: Extract TransitionHelper as Single Source of Truth
+
+- Implement W3C SCXML 3.12 event matching in shared helper
+- Eliminate 35 LOC duplication between Interpreter and JIT engines
 ```
 
 ### Bad: Too Many Details
@@ -110,7 +118,7 @@ refactor: Implement ForeachHelper as Single Source of Truth
 ```
 
 **Key Points**:
-- 3 items exactly
+- 1-3 items (use fewer when sufficient)
 - No emojis, no attribution tags
 - Specific and technical
 - References W3C SCXML section

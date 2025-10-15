@@ -227,8 +227,8 @@ public:
             return;
         }
 
-        // Clear previous event metadata (internal events have no metadata)
-        policy_.currentEventMetadata_ = RSM::Core::EventMetadata();
+        // Note: currentEventMetadata_ is only present in policies with invokes
+        // If needed, it's managed by processTransition() and processEvent(Event, EventMetadata)
 
         State oldState = currentState_;
         // Call through policy instance (works for both static and non-static)
@@ -310,6 +310,49 @@ public:
      */
     void stop() {
         isRunning_ = false;
+    }
+
+    /**
+     * @brief Tick scheduler and process ready internal events (W3C SCXML 6.2)
+     *
+     * Phase 4: For single-threaded JIT engines with delayed send support.
+     * This method polls the event scheduler and processes any ready scheduled events
+     * without injecting an external event. Should be called periodically in a polling
+     * loop to allow delayed sends to fire at the correct time.
+     *
+     * Implementation: Calls processTransition to trigger scheduler check, which
+     * raises ready scheduled events to the internal queue, then processes them.
+     * The dummy event parameter won't match transitions in final states.
+     */
+    void tick() {
+        if (!isRunning_ || isInFinalState()) {
+            return;
+        }
+
+        // Trigger scheduler check by calling processTransition
+        // Use Event() which is typically the first enum value (e.g., Wildcard)
+        // This triggers the scheduler check in processTransition, which raises
+        // any ready scheduled events to the internal queue.
+        State oldState = currentState_;
+        if (policy_.processTransition(currentState_, Event(), *this)) {
+            // Only execute state change actions if state actually changed
+            if (oldState != currentState_) {
+                executeOnExit(oldState);
+                executeOnEntry(currentState_);
+                processInternalQueue();
+                checkEventlessTransitions();
+
+                // W3C SCXML 6.4: Notify parent if reached final state
+                if (isInFinalState() && completionCallback_) {
+                    completionCallback_();
+                }
+            }
+        }
+
+        // Even if no transition taken, process internal queue in case
+        // scheduler raised events that should be processed
+        processInternalQueue();
+        checkEventlessTransitions();
     }
 
     /**

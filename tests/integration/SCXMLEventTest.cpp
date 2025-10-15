@@ -2,6 +2,7 @@
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
 #include "common/JsonUtils.h"
+#include "common/SendSchedulingHelper.h"
 #include "common/TestUtils.h"
 #include "events/EventDispatcherImpl.h"
 #include "events/EventRaiserService.h"
@@ -368,20 +369,18 @@ TEST_F(SCXMLEventTest, ActionCloning) {
 }
 
 /**
- * @brief Test delay parsing functionality in SendAction
+ * @brief Test delay parsing functionality using SendSchedulingHelper
  */
 TEST_F(SCXMLEventTest, SendActionDelayParsing) {
-    auto sendAction = std::make_shared<SendAction>("test.event", "send_delay");
-
-    // Test various delay formats
-    EXPECT_EQ(sendAction->parseDelayString("100ms").count(), 100);
-    EXPECT_EQ(sendAction->parseDelayString("5s").count(), 5000);
-    EXPECT_EQ(sendAction->parseDelayString("2min").count(), 120000);
-    EXPECT_EQ(sendAction->parseDelayString("1h").count(), 3600000);
+    // Test various delay formats using SendSchedulingHelper (Single Source of Truth)
+    EXPECT_EQ(SendSchedulingHelper::parseDelayString("100ms").count(), 100);
+    EXPECT_EQ(SendSchedulingHelper::parseDelayString("5s").count(), 5000);
+    EXPECT_EQ(SendSchedulingHelper::parseDelayString("2min").count(), 120000);
+    EXPECT_EQ(SendSchedulingHelper::parseDelayString("1h").count(), 3600000);
 
     // Test invalid formats
-    EXPECT_EQ(sendAction->parseDelayString("invalid").count(), 0);
-    EXPECT_EQ(sendAction->parseDelayString("").count(), 0);
+    EXPECT_EQ(SendSchedulingHelper::parseDelayString("invalid").count(), 0);
+    EXPECT_EQ(SendSchedulingHelper::parseDelayString("").count(), 0);
 }
 
 /**

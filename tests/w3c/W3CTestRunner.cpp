@@ -34,6 +34,7 @@
 #include "test172_sm.h"
 #include "test173_sm.h"
 #include "test174_sm.h"
+#include "test175_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1606,6 +1607,35 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             JIT_TEST_CASE(173, "Send targetexpr uses current datamodel value (JIT)")
 
             JIT_TEST_CASE(174, "Send typeexpr uses current datamodel value (JIT)")
+
+        // Phase 4: test175 requires delayed send processing
+        case 175:
+            testPassed = []() {
+                RSM::Generated::test175::test175 sm;
+                sm.initialize();
+
+                // Phase 4: Process scheduled events until completion or timeout
+                auto startTime = std::chrono::steady_clock::now();
+                const auto timeout = std::chrono::seconds(2);
+
+                while (!sm.isInFinalState()) {
+                    // Check for timeout
+                    if (std::chrono::steady_clock::now() - startTime > timeout) {
+                        break;
+                    }
+
+                    // Sleep briefly to allow scheduled events to become ready
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+                    // Phase 4: Poll scheduler and process ready events without external event
+                    // tick() uses Event::NONE which has no semantic meaning and won't match transitions
+                    sm.tick();
+                }
+
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test175::State::Pass;
+            }();
+            testDescription = "Send delayexpr uses current datamodel value (JIT) - Phase 4";
+            break;
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")
 

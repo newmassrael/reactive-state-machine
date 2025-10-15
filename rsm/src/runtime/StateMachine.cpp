@@ -1,6 +1,7 @@
 #include "runtime/StateMachine.h"
 #include "common/Logger.h"
 #include "common/StringUtils.h"
+#include "common/TransitionHelper.h"
 #include "core/EventProcessingAlgorithms.h"
 #include "core/EventQueueAdapters.h"
 #include "events/EventRaiserService.h"
@@ -1005,43 +1006,8 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             eventMatches = eventDescriptors.empty();
         } else {
             // W3C SCXML 3.12: Check if ANY descriptor matches the event
-            constexpr size_t WILDCARD_SUFFIX_LEN = 2;  // Length of ".*"
-
-            for (const auto &descriptor : eventDescriptors) {
-                // Skip malformed/empty descriptors from parsing errors
-                if (descriptor.empty()) {
-                    continue;
-                }
-
-                // W3C SCXML 3.12: Wildcard "*" matches any event
-                if (descriptor == "*") {
-                    eventMatches = true;
-                    break;
-                }
-
-                // W3C SCXML 3.12: Exact match
-                if (descriptor == eventName) {
-                    eventMatches = true;
-                    break;
-                }
-
-                // W3C SCXML 3.12: Wildcard pattern "foo.*" matches "foo", "foo.bar", "foo.bar.baz"
-                if (descriptor.ends_with(".*")) {
-                    std::string prefix = descriptor.substr(0, descriptor.length() - WILDCARD_SUFFIX_LEN);
-                    // Match if event is exactly the prefix OR starts with "prefix."
-                    if (eventName == prefix || eventName.starts_with(prefix + ".")) {
-                        eventMatches = true;
-                        break;
-                    }
-                } else {
-                    // W3C SCXML 3.12: Token-based prefix matching
-                    // "foo" matches "foo.bar" but NOT "foobar"
-                    if (eventName.starts_with(descriptor + ".")) {
-                        eventMatches = true;
-                        break;
-                    }
-                }
-            }
+            // Use TransitionHelper for Single Source of Truth (Zero Duplication with JIT engine)
+            eventMatches = RSM::TransitionHelper::matchesAnyEventDescriptor(eventDescriptors, eventName);
         }
 
         if (!eventMatches) {
