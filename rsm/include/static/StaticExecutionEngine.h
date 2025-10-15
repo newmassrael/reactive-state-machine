@@ -5,6 +5,7 @@
 #include "core/EventProcessingAlgorithms.h"
 #include "core/EventQueueAdapters.h"
 #include "core/EventQueueManager.h"
+#include "core/HierarchicalStateHelper.h"
 #include <cstdint>
 #include <map>
 #include <stdexcept>
@@ -38,6 +39,7 @@ private:
     State currentState_;
     RSM::Core::EventQueueManager<Event> eventQueue_;  // Shared core component
     bool isRunning_ = false;
+    std::function<void()> completionCallback_;  // W3C SCXML 6.4: Callback for done.invoke
 
 protected:
     StatePolicy policy_;  // Policy instance for stateful policies
@@ -189,14 +191,22 @@ public:
      * @brief Initialize state machine (W3C SCXML 3.2)
      *
      * Performs the initial configuration:
-     * 1. Enter initial state
+     * 1. Enter initial state (with hierarchical entry from root to leaf)
      * 2. Execute entry actions (may raise internal events)
      * 3. Process internal event queue
      * 4. Check for eventless transitions
      */
     void initialize() {
         isRunning_ = true;
-        executeOnEntry(currentState_);
+
+        // W3C SCXML 3.3: Use HierarchicalStateHelper for correct entry order
+        auto entryChain = RSM::Core::HierarchicalStateHelper<StatePolicy>::buildEntryChain(currentState_);
+
+        // Execute entry actions from root to leaf (ancestor first)
+        for (const auto &state : entryChain) {
+            executeOnEntry(state);
+        }
+
         processInternalQueue();
         checkEventlessTransitions();
     }
@@ -228,6 +238,11 @@ public:
                 executeOnEntry(currentState_);
                 processInternalQueue();
                 checkEventlessTransitions();
+
+                // W3C SCXML 6.4: Notify parent if reached final state
+                if (isInFinalState() && completionCallback_) {
+                    completionCallback_();
+                }
             }
         }
     }
@@ -257,6 +272,11 @@ public:
                 executeOnEntry(currentState_);
                 processInternalQueue();
                 checkEventlessTransitions();
+
+                // W3C SCXML 6.4: Notify parent if reached final state
+                if (isInFinalState() && completionCallback_) {
+                    completionCallback_();
+                }
             }
         }
     }
@@ -290,6 +310,18 @@ public:
      */
     void stop() {
         isRunning_ = false;
+    }
+
+    /**
+     * @brief Set completion callback for done.invoke event generation (W3C SCXML 6.4)
+     *
+     * This callback is invoked when the state machine reaches a final state.
+     * Used by parent to generate done.invoke.{id} events.
+     *
+     * @param callback Function to call on completion (nullptr to clear)
+     */
+    void setCompletionCallback(std::function<void()> callback) {
+        completionCallback_ = callback;
     }
 };
 

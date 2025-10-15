@@ -6,6 +6,11 @@
 
 **Philosophy**: "You don't pay for what you don't use" - automatically use static handling where possible, dynamic where needed.
 
+**Hybrid Approach**: The same SCXML feature can be handled statically or dynamically:
+- **Static**: When all information is available at code generation time (e.g., `<invoke src="child.scxml">`)
+- **Dynamic**: When information is only available at runtime (e.g., `<invoke srcexpr="targetVar">`)
+- **Decision**: Made by code generator during analysis, transparent to user
+
 ## Core Architecture
 
 ### Unified Code Generator (scxml-codegen)
@@ -111,7 +116,10 @@ Generated code works for ALL SCXML (W3C 100%)
 - 🔴 History states → std::unique_ptr<HistoryTracker> (lazy-init)
 
 **External Communication**:
-- 🔴 Invoke (HTTP, child SCXML) → std::unique_ptr<InvokeHandler> (lazy-init)
+- **Invoke** (hybrid approach):
+  - ✅ Static child SCXML (`<invoke type="scxml" src="child.scxml">`) → Generated child class, direct instantiation
+  - 🔴 Dynamic invocation (`<invoke type="http">`, srcexpr) → std::unique_ptr<InvokeExecutor> (lazy-init)
+  - **Decision**: Code generator analyzes src attribute at generation time
 - 🔴 Send with delay (timers) → std::unique_ptr<TimerManager> (lazy-init)
 
 **Complex Scripting**:
@@ -158,9 +166,17 @@ public:
         }
         
         if (model.hasInvoke()) {
-            code << "    std::unique_ptr<InvokeHandler> invokeHandler;
+            // Analyze invoke types at generation time
+            if (model.hasStaticInvoke()) {
+                // Generate child SCXML classes and direct instantiation
+                generateStaticInvokeHandling(model, code);
+            }
+            if (model.hasDynamicInvoke()) {
+                // Use InvokeExecutor for HTTP, srcexpr, etc.
+                code << "    std::unique_ptr<InvokeExecutor> invokeExecutor;
 ";
-            generateInvokeHandling(model, code);
+                generateDynamicInvokeHandling(model, code);
+            }
         }
         
         if (model.hasComplexECMAScript()) {
@@ -304,9 +320,22 @@ class EventQueueManager {
   - JavaScript string literal handling ('value' → C++ "value")
   - Runtime string-to-enum conversion for dynamic event raising
   - Proper escape handling using escapeStringLiteral()
-- Shared helper functions with interpreter engine (ForeachHelper, SendHelper)
+- test173-174: targetexpr support (W3C SCXML 6.2.4)
+  - Dynamic target evaluation for send actions
+  - Runtime target resolution with JavaScript expressions
+  - SendHelper integration for target validation
+- test239: Invoke + Hierarchical States (W3C SCXML 3.3, 6.4, 6.5)
+  - W3C SCXML 3.3: Hierarchical/composite state entry (root-to-leaf order)
+  - W3C SCXML 6.4: Static invoke with child SCXML compilation
+  - W3C SCXML 6.5: Finalize handler code generation
+  - W3C SCXML 6.4.1: Autoforward flag support (forward events to children)
+  - HierarchicalStateHelper refactored as Single Source of Truth
+  - Zero Duplication: Shared hierarchical entry logic between Interpreter and JIT
+  - Infinite loop protection: Cycle detection for malformed SCXML (MAX_DEPTH=16)
+  - Performance optimization: Pre-allocated entry chain (reserve 8 states)
+- Shared helper functions with interpreter engine (ForeachHelper, SendHelper, HierarchicalStateHelper)
 - Final state transition logic (no fall-through)
-- **Result**: 13/13 W3C Static Tests PASSED
+- **Result**: 16/16 W3C Static Tests PASSED ✅
 
 ### Phase 4: Dynamic Component Integration (Planned)
 - ParallelStateHandler for parallel states
@@ -322,14 +351,14 @@ class EventQueueManager {
 
 | Category | Static Generator | Interpreter Engine | Combined |
 |----------|------------------|----------------|----------|
-| **W3C Static Tests** | **13/13 (100%)** ✅ | N/A | **13/13 (100%)** |
+| **W3C Static Tests** | **16/16 (100%)** ✅ | N/A | **16/16 (100%)** |
 | **Basic Tests** | 12/60 (20%) | 60/60 (100%) | 60/60 (100%) |
 | **Datamodel Tests** | 4/30 (13%) | 30/30 (100%) | 30/30 (100%) |
 | **Complex Tests** | 0/112 (0%) | 112/112 (100%) | 112/112 (100%) |
 | **Total** | **12/202 (6%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144, 147-153, 155-156, 158-159, 172): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, JIT JSEngine integration
+- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-174, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, invoke, hierarchical states, JIT JSEngine integration
 - Interpreter engine provides 100% W3C compliance baseline
 - Static generator produces hybrid code with shared semantics from interpreter engine
 
@@ -337,7 +366,7 @@ class EventQueueManager {
 
 ### Must Have
 - [x] Interpreter engine: 202/202 W3C tests
-- [x] Static generator: W3C Static Tests 13/13 (100%) ✅
+- [x] Static generator: W3C Static Tests 16/16 (100%) ✅
 - [x] Static generator: Hybrid code generation (static + dynamic)
 - [x] Logic commonization: Shared helpers with interpreter engine
 - [ ] Static generator: 60+ tests (basic features)
@@ -358,7 +387,10 @@ class EventQueueManager {
 1. **W3C Compliance is Non-Negotiable**: All 202 tests must pass (via interpreter engine)
 2. **Always Generate Code**: Never refuse generation, always produce working implementation
 3. **Automatic Optimization**: Generator decides static vs dynamic internally
+   - Same feature can be static OR dynamic depending on usage (e.g., invoke with static src vs srcexpr)
+   - Analysis happens at code generation time, not runtime
 4. **Lazy Initialization**: Pay only for features actually used in SCXML
+5. **Zero Duplication**: Static and Interpreter engines share core W3C SCXML logic through helpers
 
 ---
 

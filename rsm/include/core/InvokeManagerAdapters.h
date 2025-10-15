@@ -122,9 +122,11 @@ public:
      * @return Finalize script if exists, empty string otherwise
      */
     std::string getFinalizeScript(const std::string &childSessionId) const {
-        auto it = policy_.activeInvokes_.find(childSessionId);
-        if (it != policy_.activeInvokes_.end()) {
-            return it->second.finalizeScript;
+        // Find invoke by matching child session ID
+        for (const auto &[invokeId, session] : policy_.activeInvokes_) {
+            if (session.sessionId == childSessionId) {
+                return session.finalizeScript;
+            }
         }
         return "";
     }

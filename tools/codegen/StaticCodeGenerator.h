@@ -47,8 +47,20 @@ public:
     std::string generateEventEnum(const std::set<std::string> &events);
     std::string generateStrategyInterface(const std::string &className, const std::set<std::string> &guards,
                                           const std::set<std::string> &actions);
-    std::string generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events);
-    std::string generateClass(const SCXMLModel &model);
+
+    // Static invoke info for member generation
+    struct StaticInvokeInfo {
+        std::string invokeId;         // Unique invoke ID
+        std::string childName;        // Child class name (e.g., test239sub1)
+        std::string stateName;        // Parent state containing this invoke
+        bool autoforward = false;     // W3C SCXML 6.4.1: Autoforward flag
+        std::string finalizeContent;  // W3C SCXML 6.5: Finalize handler script
+    };
+
+    std::string generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events,
+                                     const std::vector<StaticInvokeInfo> &staticInvokes = {});
+
+    std::string generateClass(const SCXMLModel &model, const std::vector<StaticInvokeInfo> &staticInvokes = {});
     void generateActionCode(std::stringstream &ss, const Action &action, const std::string &engineVar,
                             const std::set<std::string> &events, const SCXMLModel &model);
     static std::string capitalizePublic(const std::string &str);
@@ -87,6 +99,9 @@ private:
 
     // Security: Escape string for safe code generation
     std::string escapeStringLiteral(const std::string &str);
+
+    // W3C SCXML 3.3: Generate parent state mapping for hierarchical entry
+    std::string generateGetParentMethod(const SCXMLModel &model);
 
     // File writing
     bool writeToFile(const std::string &path, const std::string &content);
@@ -160,6 +175,7 @@ struct InvokeInfo {
 
 struct State {
     std::string name;
+    std::string parentState;  // W3C SCXML 3.3: Parent state (empty for root states)
     bool isFinal = false;
     bool isParallel = false;                // W3C SCXML 3.4: Parallel state flag
     std::vector<std::string> childRegions;  // W3C SCXML 3.4: Child region state IDs for parallel states

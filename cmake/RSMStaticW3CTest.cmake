@@ -4,9 +4,16 @@
 # rsm_generate_static_w3c_test: Generate C++ code for a single W3C test
 #
 # This does NOT create executable - just generates C++ header from TXML
+# Optional third parameter: RESOURCE_DIR (defaults to TEST_NUM if not specified)
 #
 function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
-    set(TXML_FILE "${CMAKE_SOURCE_DIR}/resources/${TEST_NUM}/test${TEST_NUM}.txml")
+    # Optional third parameter for resource directory (for sub-tests like test239sub1)
+    set(RESOURCE_DIR "${TEST_NUM}")
+    if(ARGC GREATER 2)
+        set(RESOURCE_DIR "${ARGV2}")
+    endif()
+    
+    set(TXML_FILE "${CMAKE_SOURCE_DIR}/resources/${RESOURCE_DIR}/test${TEST_NUM}.txml")
     set(SCXML_FILE "${OUTPUT_DIR}/test${TEST_NUM}.scxml")
     set(GENERATED_HEADER "${OUTPUT_DIR}/test${TEST_NUM}_sm.h")
 

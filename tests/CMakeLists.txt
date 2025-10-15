@@ -441,6 +441,27 @@ rsm_generate_static_w3c_test(156 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(158 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(159 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(172 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(173 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(174 ${STATIC_W3C_OUTPUT_DIR})
+# Copy test239sub1.scxml directly (sub-state machine without pass/fail states)
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test239sub1.scxml"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/resources/239/test239sub1.scxml" "${STATIC_W3C_OUTPUT_DIR}/test239sub1.scxml"
+    DEPENDS "${CMAKE_SOURCE_DIR}/resources/239/test239sub1.scxml"
+    COMMENT "Copying test239sub1.scxml"
+    VERBATIM
+)
+# Generate code for test239sub1
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test239sub1_sm.h"
+    COMMAND scxml-codegen -o "${STATIC_W3C_OUTPUT_DIR}" "${STATIC_W3C_OUTPUT_DIR}/test239sub1.scxml"
+    DEPENDS scxml-codegen "${STATIC_W3C_OUTPUT_DIR}/test239sub1.scxml"
+    COMMENT "Generating C++ code: test239sub1_sm.h"
+    VERBATIM
+)
+# Add to generated headers list so it's part of the build
+set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${STATIC_W3C_OUTPUT_DIR}/test239sub1_sm.h")
+rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})
 
 # Full W3C Test Runner for all W3C SCXML 1.0 compliance tests
 add_executable(w3c_test_cli
