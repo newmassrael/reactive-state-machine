@@ -255,8 +255,11 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 if (!action.param5.empty() || !action.param6.empty()) {
                     model.hasSendWithDelay = true;
                 }
-                // W3C SCXML 5.10: Detect send with params (requires event data support)
-                if (!action.sendParams.empty()) {
+                // W3C SCXML 5.10: Detect send with params or content (requires event data support)
+                // - sendParams: <param> elements for structured event data
+                // - sendContent: <content> element for raw event data (test179)
+                // - sendContentExpr: <content expr="..."> for dynamic content evaluation
+                if (!action.sendParams.empty() || !action.sendContent.empty() || !action.sendContentExpr.empty()) {
                     model.hasSendParams = true;
                 }
             } else if (action.type == Action::ASSIGN) {
@@ -286,10 +289,14 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         }
     }
 
-    // Detect typeof in guards
+    // Detect typeof and _event in guards (requires JSEngine)
     for (const auto &trans : model.transitions) {
         if (trans.guard.find("typeof") != std::string::npos) {
             model.hasComplexDatamodel = true;
+        }
+        // W3C SCXML 5.10: _event.data access requires JSEngine (test179)
+        if (trans.guard.find("_event") != std::string::npos) {
+            model.hasComplexECMAScript = true;
         }
     }
 
@@ -729,8 +736,9 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                         if (hasGuard) {
                             // Guarded transition
                             std::string guardExpr = trans.guard;
-                            bool needsJSEngine =
-                                model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
+                            bool needsJSEngine = model.needsJSEngine() ||
+                                                 (guardExpr.find("typeof") != std::string::npos) ||
+                                                 (guardExpr.find("_event") != std::string::npos);
                             bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
                             if (firstGuard) {
@@ -833,8 +841,9 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                         if (hasGuard) {
                             // Guarded transition
                             std::string guardExpr = trans.guard;
-                            bool needsJSEngine =
-                                model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
+                            bool needsJSEngine = model.needsJSEngine() ||
+                                                 (guardExpr.find("typeof") != std::string::npos) ||
+                                                 (guardExpr.find("_event") != std::string::npos);
                             bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
                             if (firstGuard) {
@@ -940,7 +949,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                         // Interpreter Engine: ALL guards use JSEngine evaluation
                         // JIT Engine: Only typeof guards use JSEngine, others use C++ direct evaluation
-                        bool needsJSEngine = model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos);
+                        bool needsJSEngine = model.needsJSEngine() || (guardExpr.find("typeof") != std::string::npos) ||
+                                             (guardExpr.find("_event") != std::string::npos);
                         bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
                         // Add else if this is not the first guarded transition
@@ -1277,6 +1287,10 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
                 for (const auto &param : sendAction->getParamsWithExpr()) {
                     sendActionResult.sendParams.push_back({param.name, param.expr});
                 }
+                // W3C SCXML 5.10: Extract send content for event data (test179)
+                sendActionResult.sendContent = sendAction->getContent();
+                // W3C SCXML 5.10: Extract send contentexpr for dynamic event data
+                sendActionResult.sendContentExpr = sendAction->getContentExpr();
                 result.push_back(sendActionResult);
             }
         }
@@ -1969,6 +1983,33 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
                             ss << "                    std::string eventData = "
                                   "::RSM::EventDataHelper::buildJsonFromParams(params);\n";
+                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
+                               << ", eventData);\n";
+                            ss << "                }\n";
+                        } else if (!action.sendContent.empty()) {
+                            // W3C SCXML 5.10: Set event data from <content> literal (test179)
+                            ss << "                // W3C SCXML 5.10: Set _event.data from <content> literal\n";
+                            ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ", \""
+                               << escapeStringLiteral(action.sendContent) << "\");\n";
+                        } else if (!action.sendContentExpr.empty()) {
+                            // W3C SCXML 5.10: Set event data from <content expr="..."> dynamic evaluation
+                            ss << "                // W3C SCXML 5.10: Evaluate <content expr> for event data\n";
+                            ss << "                {\n";
+                            ss << "                    this->ensureJSEngine();\n";
+                            ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                            ss << "                    auto contentResult = "
+                                  "jsEngine.evaluateExpression(sessionId_.value(), \""
+                               << escapeStringLiteral(action.sendContentExpr) << "\").get();\n";
+                            ss << "                    std::string eventData;\n";
+                            ss << "                    if (::RSM::JSEngine::isSuccess(contentResult)) {\n";
+                            ss << "                        eventData = "
+                                  "::RSM::JSEngine::resultToString(contentResult);\n";
+                            ss << "                    } else {\n";
+                            ss << "                        LOG_ERROR(\"Failed to evaluate content expr: "
+                               << escapeStringLiteral(action.sendContentExpr) << "\");\n";
+                            ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
+                            ss << "                        eventData = \"\";\n";
+                            ss << "                    }\n";
                             ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
                                << ", eventData);\n";
                             ss << "                }\n";

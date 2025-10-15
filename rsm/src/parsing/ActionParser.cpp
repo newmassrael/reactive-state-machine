@@ -281,33 +281,44 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
             sendAction->setSendId(sendIdAttr->get_value());
         }
 
-        // W3C SCXML C.2 & B.2: Parse content child element for HTTP body and XML DOM
+        // W3C SCXML 5.10 & C.2: Parse content child element for event data
         auto contentElements = ParsingCommon::findChildElements(actionElement, "content");
         if (!contentElements.empty()) {
             auto contentElement = contentElements[0];
-            std::string contentText;
 
-            // W3C SCXML B.2: Content element can contain XML elements requiring full serialization
-            auto children = contentElement->get_children();
-            for (auto child : children) {
-                // Check if child is an element node (XML content)
-                if (auto elementNode = dynamic_cast<const xmlpp::Element *>(child)) {
-                    // Serialize XML element using libxml2
-                    xmlNodePtr xmlNode = const_cast<xmlNodePtr>(elementNode->cobj());
-                    xmlBufferPtr buffer = xmlBufferCreate();
-                    xmlNodeDump(buffer, xmlNode->doc, xmlNode, 0, 0);
-                    std::string xmlContent = reinterpret_cast<const char *>(xmlBufferContent(buffer));
-                    xmlBufferFree(buffer);
-                    contentText += xmlContent;
-                } else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
-                    // Include text nodes as-is
-                    contentText += textNode->get_content();
+            // W3C SCXML 5.10: Check for expr attribute (dynamic content evaluation)
+            auto contentExprAttr = contentElement->get_attribute("expr");
+            if (contentExprAttr) {
+                // Use expr attribute for dynamic content
+                std::string contentExpr = contentExprAttr->get_value();
+                sendAction->setContentExpr(contentExpr);
+                LOG_DEBUG("ActionParser: Parsed send content expr: '{}'", contentExpr);
+            } else {
+                // W3C SCXML 5.10: Use child content as literal (test179)
+                std::string contentText;
+
+                // W3C SCXML B.2: Content element can contain XML elements requiring full serialization
+                auto children = contentElement->get_children();
+                for (auto child : children) {
+                    // Check if child is an element node (XML content)
+                    if (auto elementNode = dynamic_cast<const xmlpp::Element *>(child)) {
+                        // Serialize XML element using libxml2
+                        xmlNodePtr xmlNode = const_cast<xmlNodePtr>(elementNode->cobj());
+                        xmlBufferPtr buffer = xmlBufferCreate();
+                        xmlNodeDump(buffer, xmlNode->doc, xmlNode, 0, 0);
+                        std::string xmlContent = reinterpret_cast<const char *>(xmlBufferContent(buffer));
+                        xmlBufferFree(buffer);
+                        contentText += xmlContent;
+                    } else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
+                        // Include text nodes as-is
+                        contentText += textNode->get_content();
+                    }
                 }
-            }
 
-            if (!contentText.empty()) {
-                sendAction->setContent(contentText);
-                LOG_DEBUG("ActionParser: Parsed send content: '{}'", contentText);
+                if (!contentText.empty()) {
+                    sendAction->setContent(contentText);
+                    LOG_DEBUG("ActionParser: Parsed send content literal: '{}'", contentText);
+                }
             }
         }
 

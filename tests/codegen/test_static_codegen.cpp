@@ -566,6 +566,117 @@ TEST_F(StaticCodeGenTest, GeneratesPolicyPattern) {
     EXPECT_TRUE(content.find("Derived& derived()") == std::string::npos) << "Should NOT have derived() helper method";
 }
 
+TEST_F(StaticCodeGenTest, GeneratesSendWithContent) {
+    // Arrange: SCXML with <send><content> (W3C SCXML 5.10, test179)
+    std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" name="ContentSM" initial="s0">
+  <state id="s0">
+    <onentry>
+      <send event="event1">
+        <content>123</content>
+      </send>
+    </onentry>
+    <transition event="event1" cond="_event.data == 123" target="pass"/>
+    <transition event="*" target="fail"/>
+  </state>
+  <final id="pass"/>
+  <final id="fail"/>
+</scxml>)XML";
+
+    std::string scxmlPath = (testDir_ / "content_test.scxml").string();
+    std::ofstream file(scxmlPath);
+    ASSERT_TRUE(file.is_open());
+    file << scxmlContent;
+    file.close();
+
+    std::string outputDir = testDir_.string();
+
+    // Act: Generate code
+    StaticCodeGenerator generator;
+    ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
+
+    // Assert: Verify content support is generated
+    std::string generatedFile = (testDir_ / "ContentSM_sm.h").string();
+    ASSERT_TRUE(fs::exists(generatedFile));
+
+    std::string content = readFile(generatedFile);
+
+    // Should generate stateful policy (content requires event data support)
+    EXPECT_TRUE(content.find("mutable ::std::string pendingEventData_") != std::string::npos)
+        << "Should have pendingEventData_ for event data storage";
+
+    // Should have setEventDataInJSEngine helper
+    EXPECT_TRUE(content.find("setEventDataInJSEngine") != std::string::npos)
+        << "Should have setEventDataInJSEngine helper method";
+
+    // Should pass content as event data in raise call
+    EXPECT_TRUE(content.find("engine.raise(Event::Event1, \"123\")") != std::string::npos)
+        << "Should pass content data \"123\" to raise()";
+
+    // Should detect _event in guard condition and use JSEngine
+    EXPECT_TRUE(content.find("::RSM::GuardHelper::evaluateGuard") != std::string::npos)
+        << "Should use GuardHelper for _event.data condition";
+
+    EXPECT_TRUE(content.find("\"_event.data == 123\"") != std::string::npos)
+        << "Should evaluate condition via JSEngine";
+
+    // Should have JSEngine initialization
+    EXPECT_TRUE(content.find("ensureJSEngine()") != std::string::npos)
+        << "Should call ensureJSEngine() for JSEngine setup";
+}
+
+TEST_F(StaticCodeGenTest, GeneratesSendWithParams) {
+    // Arrange: SCXML with <send><param> (W3C SCXML 5.10, test176)
+    std::string scxmlContent = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" name="ParamSM" initial="s0">
+  <datamodel>
+    <data id="Var1" expr="42"/>
+  </datamodel>
+  <state id="s0">
+    <onentry>
+      <send event="event1">
+        <param name="aParam" expr="Var1"/>
+      </send>
+    </onentry>
+    <transition event="event1" target="pass"/>
+  </state>
+  <final id="pass"/>
+</scxml>)XML";
+
+    std::string scxmlPath = (testDir_ / "param_test.scxml").string();
+    std::ofstream file(scxmlPath);
+    ASSERT_TRUE(file.is_open());
+    file << scxmlContent;
+    file.close();
+
+    std::string outputDir = testDir_.string();
+
+    // Act: Generate code
+    StaticCodeGenerator generator;
+    ASSERT_TRUE(generator.generate(scxmlPath, outputDir));
+
+    // Assert: Verify param support is generated
+    std::string generatedFile = (testDir_ / "ParamSM_sm.h").string();
+    ASSERT_TRUE(fs::exists(generatedFile));
+
+    std::string content = readFile(generatedFile);
+
+    // Should use EventDataHelper for param JSON construction
+    EXPECT_TRUE(content.find("::RSM::EventDataHelper::buildJsonFromParams") != std::string::npos)
+        << "Should use EventDataHelper::buildJsonFromParams()";
+
+    // Should have params map
+    EXPECT_TRUE(content.find("std::map<std::string, std::vector<std::string>> params") != std::string::npos)
+        << "Should create params map for event data";
+
+    // Should add param to map
+    EXPECT_TRUE(content.find("params[\"aParam\"]") != std::string::npos) << "Should add aParam to params map";
+
+    // Should pass eventData to raise
+    EXPECT_TRUE(content.find("engine.raise(Event::Event1, eventData)") != std::string::npos)
+        << "Should pass eventData from params to raise()";
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

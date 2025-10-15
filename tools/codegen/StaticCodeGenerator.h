@@ -154,7 +154,9 @@ struct Action {
     std::string param6;  // sixth parameter (e.g., delayexpr for SEND)
     std::vector<ConditionalBranch> branches;                      // For IF action: if/elseif/else branches
     std::vector<Action> iterationActions;                         // For FOREACH: actions to execute in loop
-    std::vector<std::pair<std::string, std::string>> sendParams;  // For SEND: param name->expr pairs
+    std::vector<std::pair<std::string, std::string>> sendParams;  // For SEND: param name->expr pairs (W3C 5.10)
+    std::string sendContent;                                      // For SEND: <content> literal (W3C 5.10, test179)
+    std::string sendContentExpr;  // For SEND: <content expr="..."> dynamic content (W3C 5.10)
 
     Action(Type t, const std::string &p1 = "", const std::string &p2 = "", const std::string &p3 = "",
            const std::string &p4 = "", const std::string &p5 = "", const std::string &p6 = "")

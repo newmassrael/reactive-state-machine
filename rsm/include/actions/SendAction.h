@@ -225,6 +225,21 @@ public:
      */
     const std::string &getContent() const;
 
+    /**
+     * @brief Set the content expression for dynamic content evaluation (W3C SCXML expr attribute)
+     * @param contentExpr Expression to evaluate for content
+     * @note Mutually exclusive with content. W3C SCXML: Cannot have both expr and child content.
+     *       When expr is present, it is evaluated to determine the content value.
+     *       If evaluation fails, error.execution is placed in queue and empty string is used.
+     */
+    void setContentExpr(const std::string &contentExpr);
+
+    /**
+     * @brief Get the content expression
+     * @return Content expression string (empty if not set)
+     */
+    const std::string &getContentExpr() const;
+
     // IActionNode implementation
     bool execute(IExecutionContext &context) override;
     std::string getActionType() const override;
@@ -251,6 +266,7 @@ private:
     std::string namelist_;                   // Space-separated list of variables for event data (W3C SCXML C.1)
     std::vector<SendParam> paramsWithExpr_;  // W3C SCXML compliant params with expr
     std::string content_;                    // Content to send as HTTP body (W3C SCXML C.2)
+    std::string contentExpr_;                // Content expression for dynamic evaluation (W3C SCXML expr attribute)
 };
 
 }  // namespace RSM

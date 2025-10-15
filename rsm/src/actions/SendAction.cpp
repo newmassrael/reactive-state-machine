@@ -158,6 +158,14 @@ const std::string &SendAction::getContent() const {
     return content_;
 }
 
+void SendAction::setContentExpr(const std::string &contentExpr) {
+    contentExpr_ = contentExpr;
+}
+
+const std::string &SendAction::getContentExpr() const {
+    return contentExpr_;
+}
+
 std::vector<std::string> SendAction::validateSpecific() const {
     std::vector<std::string> errors;
 
@@ -184,6 +192,11 @@ std::vector<std::string> SendAction::validateSpecific() const {
     // W3C SCXML 6.2: Cannot have both type and typeexpr
     if (!type_.empty() && !typeExpr_.empty()) {
         errors.push_back("Send action cannot have both 'type' and 'typeexpr' attributes");
+    }
+
+    // W3C SCXML 5.10: Cannot have both content and contentexpr
+    if (!content_.empty() && !contentExpr_.empty()) {
+        errors.push_back("Send action cannot have both 'content' and 'contentexpr' attributes");
     }
 
     // Validate delay format if provided

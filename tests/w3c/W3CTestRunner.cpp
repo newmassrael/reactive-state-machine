@@ -37,6 +37,7 @@
 #include "test175_sm.h"
 #include "test176_sm.h"
 #include "test178_sm.h"
+#include "test179_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1651,6 +1652,8 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             }();
             testDescription = "Send with duplicate param names (JIT)";
             break;
+
+            JIT_TEST_CASE(179, "Send content populates event body (JIT)")
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")
 
