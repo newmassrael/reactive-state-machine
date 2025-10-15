@@ -597,9 +597,19 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
         ss << "        // Phase 4: W3C SCXML 6.2 - Process ready scheduled events\n";
         ss << "        {\n";
         ss << "            Event scheduledEvent;\n";
-        ss << "            while (eventScheduler_.popReadyEvent(scheduledEvent)) {\n";
-        ss << "                engine.raise(scheduledEvent);\n";
-        ss << "            }\n";
+        if (model.hasSendParams && model.needsJSEngine()) {
+            ss << "            std::string eventData;\n";
+            ss << "            while (eventScheduler_.popReadyEvent(scheduledEvent, eventData)) {\n";
+            ss << "                if (!eventData.empty()) {\n";
+            ss << "                    pendingEventData_ = eventData;\n";
+            ss << "                }\n";
+            ss << "                engine.raise(scheduledEvent);\n";
+            ss << "            }\n";
+        } else {
+            ss << "            while (eventScheduler_.popReadyEvent(scheduledEvent)) {\n";
+            ss << "                engine.raise(scheduledEvent);\n";
+            ss << "            }\n";
+        }
         ss << "        }\n";
         ss << "\n";
     }
@@ -1941,8 +1951,37 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
                 if (!delay.empty() || !delayExpr.empty()) {
                     // W3C SCXML 6.2: Delayed send - schedule event for future delivery
-                    ss << "                // Phase 4: W3C SCXML 6.2 delayed send (test175)\n";
+                    // W3C SCXML 6.2 + 5.10: Evaluate params at send time, not dispatch time (test186)
+                    ss << "                // Phase 4: W3C SCXML 6.2 delayed send (test186)\n";
                     ss << "                {\n";
+
+                    // W3C SCXML 5.10: Evaluate params BEFORE scheduling (test186)
+                    if (!action.sendParams.empty()) {
+                        ss << "                    // W3C SCXML 6.2: Evaluate params at send time (test186)\n";
+                        ss << "                    std::map<std::string, std::vector<std::string>> params;\n";
+                        for (const auto &[paramName, paramExpr] : action.sendParams) {
+                            if (model.needsJSEngine()) {
+                                ss << "                    {\n";
+                                ss << "                        this->ensureJSEngine();\n";
+                                ss << "                        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                ss << "                        auto paramResult = "
+                                      "jsEngine.getVariable(sessionId_.value(), \""
+                                   << paramExpr << "\").get();\n";
+                                ss << "                        if (::RSM::JSEngine::isSuccess(paramResult)) {\n";
+                                ss << "                            params[\"" << paramName
+                                   << "\"].push_back(::RSM::JSEngine::resultToString(paramResult));\n";
+                                ss << "                        } else {\n";
+                                ss << "                            LOG_ERROR(\"Failed to evaluate param expr: "
+                                   << escapeStringLiteral(paramExpr) << "\");\n";
+                                ss << "                            params[\"" << paramName << "\"].push_back(\"\");\n";
+                                ss << "                        }\n";
+                                ss << "                    }\n";
+                            } else {
+                                ss << "                    params[\"" << paramName << "\"].push_back(std::to_string("
+                                   << paramExpr << "));\n";
+                            }
+                        }
+                    }
 
                     if (!delayExpr.empty()) {
                         // Dynamic delay from variable
@@ -1960,12 +1999,19 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                         }
                         ss << "                    auto delayMs = "
                               "::RSM::SendSchedulingHelper::parseDelayString(delayStr);\n";
-                        ss << "                    eventScheduler_.scheduleEvent(Event::" << capitalize(event)
-                           << ", delayMs);\n";
                     } else {
                         // Static delay
                         ss << "                    auto delayMs = ::RSM::SendSchedulingHelper::parseDelayString(\""
                            << delay << "\");\n";
+                    }
+
+                    // Build event data and schedule with data
+                    if (!action.sendParams.empty()) {
+                        ss << "                    std::string eventData = "
+                              "::RSM::EventDataHelper::buildJsonFromParams(params);\n";
+                        ss << "                    eventScheduler_.scheduleEvent(Event::" << capitalize(event)
+                           << ", delayMs, \"\", eventData);\n";
+                    } else {
                         ss << "                    eventScheduler_.scheduleEvent(Event::" << capitalize(event)
                            << ", delayMs);\n";
                     }

@@ -72,14 +72,17 @@ public:
      * Used by JIT engine to implement W3C SCXML delayed event delivery.
      *
      * W3C SCXML 6.2.5: sendid enables event cancellation via <cancel sendidexpr="..."/>
+     * W3C SCXML 5.10: eventData stores _event.data for param elements (test186)
      */
     template <typename EventType> struct ScheduledEvent {
         EventType event;
         std::chrono::steady_clock::time_point fireTime;
-        std::string sendId;  // W3C SCXML 6.2.5: Unique identifier for cancellation
+        std::string sendId;     // W3C SCXML 6.2.5: Unique identifier for cancellation
+        std::string eventData;  // W3C SCXML 5.10: Event data JSON from params
 
-        ScheduledEvent(EventType evt, std::chrono::steady_clock::time_point fire, std::string id = "")
-            : event(evt), fireTime(fire), sendId(std::move(id)) {}
+        ScheduledEvent(EventType evt, std::chrono::steady_clock::time_point fire, std::string id = "",
+                       std::string data = "")
+            : event(evt), fireTime(fire), sendId(std::move(id)), eventData(std::move(data)) {}
 
         // Comparator for priority queue (earlier times have higher priority)
         bool operator>(const ScheduledEvent &other) const {
@@ -105,13 +108,16 @@ public:
          *
          * W3C SCXML 6.2: Send element with delay/delayexpr
          * W3C SCXML 6.2.5: Returns sendid for event tracking and cancellation
+         * W3C SCXML 5.10: eventData contains _event.data from params (test186)
          *
          * @param event Event to schedule
          * @param delay Delay before delivery
          * @param sendId Optional sendid for cancellation (generated if empty)
+         * @param eventData Optional event data JSON from params
          * @return The sendid assigned to this event (for cancellation)
          */
-        std::string scheduleEvent(EventType event, std::chrono::milliseconds delay, const std::string &sendId = "") {
+        std::string scheduleEvent(EventType event, std::chrono::milliseconds delay, const std::string &sendId = "",
+                                  const std::string &eventData = "") {
             auto fireTime = std::chrono::steady_clock::now() + delay;
 
             // W3C SCXML 6.2.5: Generate unique sendid if not provided
@@ -120,7 +126,7 @@ public:
                 actualSendId = generateUniqueSendId();
             }
 
-            queue_.push(ScheduledEventType(event, fireTime, actualSendId));
+            queue_.push(ScheduledEventType(event, fireTime, actualSendId, eventData));
             return actualSendId;
         }
 
@@ -140,11 +146,13 @@ public:
          * @brief Get next ready event (skips cancelled events)
          *
          * W3C SCXML 6.2.5: Cancelled events are automatically filtered out
+         * W3C SCXML 5.10: outEventData contains _event.data from params (test186)
          *
          * @param outEvent Output parameter for event
+         * @param outEventData Output parameter for event data JSON
          * @return true if event retrieved, false if no ready events
          */
-        bool popReadyEvent(EventType &outEvent) {
+        bool popReadyEvent(EventType &outEvent, std::string &outEventData) {
             while (!queue_.empty()) {
                 if (queue_.top().fireTime > std::chrono::steady_clock::now()) {
                     return false;  // No ready events yet
@@ -160,9 +168,23 @@ public:
                 }
 
                 outEvent = scheduledEvent.event;
+                outEventData = scheduledEvent.eventData;
                 return true;
             }
             return false;
+        }
+
+        /**
+         * @brief Get next ready event (skips cancelled events) - backward compatibility
+         *
+         * W3C SCXML 6.2.5: Cancelled events are automatically filtered out
+         *
+         * @param outEvent Output parameter for event
+         * @return true if event retrieved, false if no ready events
+         */
+        bool popReadyEvent(EventType &outEvent) {
+            std::string eventData;
+            return popReadyEvent(outEvent, eventData);
         }
 
         /**
