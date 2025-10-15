@@ -751,8 +751,15 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             }
         }
 
-        // W3C SCXML 5.10.2 (test 577): Check if this is HTTP event processor (needed for validation)
+        // W3C SCXML 6.2 (test 174): Evaluate type or typeexpr for send action
         std::string sendType = action.getType();
+        if (sendType.empty() && !action.getTypeExpr().empty()) {
+            // W3C SCXML 6.2: typeexpr uses current datamodel value (not initial value)
+            sendType = evaluateExpression(action.getTypeExpr());
+            LOG_DEBUG("ActionExecutorImpl: Evaluated typeexpr '{}' to type: '{}'", action.getTypeExpr(), sendType);
+        }
+
+        // W3C SCXML 5.10.2 (test 577): Check if this is HTTP event processor (needed for validation)
         bool isHttpEventProcessor = (sendType.find("BasicHTTPEventProcessor") != std::string::npos ||
                                      sendType == "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor");
 

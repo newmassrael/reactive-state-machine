@@ -35,6 +35,7 @@ std::shared_ptr<IActionNode> SendAction::clone() const {
     cloned->delayExpr_ = delayExpr_;
     cloned->sendId_ = sendId_;
     cloned->type_ = type_;
+    cloned->typeExpr_ = typeExpr_;
     cloned->paramsWithExpr_ = paramsWithExpr_;
     cloned->content_ = content_;
     return cloned;
@@ -118,6 +119,14 @@ void SendAction::setType(const std::string &type) {
 
 const std::string &SendAction::getType() const {
     return type_;
+}
+
+void SendAction::setTypeExpr(const std::string &typeExpr) {
+    typeExpr_ = typeExpr;
+}
+
+const std::string &SendAction::getTypeExpr() const {
+    return typeExpr_;
 }
 
 void SendAction::setNamelist(const std::string &namelist) {
@@ -208,6 +217,11 @@ std::vector<std::string> SendAction::validateSpecific() const {
         errors.push_back("Send action cannot have both 'delay' and 'delayexpr' attributes");
     }
 
+    // W3C SCXML 6.2: Cannot have both type and typeexpr
+    if (!type_.empty() && !typeExpr_.empty()) {
+        errors.push_back("Send action cannot have both 'type' and 'typeexpr' attributes");
+    }
+
     // Validate delay format if provided
     if (!delay_.empty()) {
         auto delayMs = parseDelayString(delay_);
@@ -250,6 +264,12 @@ std::string SendAction::getSpecificDescription() const {
 
     if (!sendId_.empty()) {
         desc += " sendid='" + sendId_ + "'";
+    }
+
+    if (!type_.empty()) {
+        desc += " type='" + type_ + "'";
+    } else if (!typeExpr_.empty()) {
+        desc += " typeexpr='" + typeExpr_ + "'";
     }
 
     if (!paramsWithExpr_.empty()) {

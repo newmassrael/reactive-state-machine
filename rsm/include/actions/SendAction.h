@@ -159,6 +159,18 @@ public:
     const std::string &getType() const;
 
     /**
+     * @brief Set type expression for dynamic type evaluation (W3C SCXML 6.2 typeexpr attribute)
+     * @param typeExpr Expression to evaluate for event type at send time
+     */
+    void setTypeExpr(const std::string &typeExpr);
+
+    /**
+     * @brief Get type expression
+     * @return Type expression string
+     */
+    const std::string &getTypeExpr() const;
+
+    /**
      * @brief Set namelist for W3C SCXML compliant data passing
      * @param namelist Space-separated list of variable names to include in event data
      */
@@ -242,6 +254,7 @@ private:
     std::string sendId_;                     // Sender ID for tracking
     std::string idLocation_;                 // Variable name to store sendid (W3C SCXML idlocation)
     std::string type_;                       // Event type (empty by default per W3C SCXML)
+    std::string typeExpr_;                   // Type expression for dynamic type evaluation (W3C SCXML 6.2)
     std::string namelist_;                   // Space-separated list of variables for event data (W3C SCXML C.1)
     std::vector<SendParam> paramsWithExpr_;  // W3C SCXML compliant params with expr
     std::string content_;                    // Content to send as HTTP body (W3C SCXML C.2)

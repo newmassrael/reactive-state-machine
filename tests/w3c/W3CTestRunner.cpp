@@ -33,6 +33,7 @@
 #include "test159_sm.h"
 #include "test172_sm.h"
 #include "test173_sm.h"
+#include "test174_sm.h"
 
 namespace RSM::W3C {
 
@@ -1602,6 +1603,8 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             JIT_TEST_CASE(172, "Send eventexpr uses current datamodel value (JIT)")
 
             JIT_TEST_CASE(173, "Send targetexpr uses current datamodel value (JIT)")
+
+            JIT_TEST_CASE(174, "Send typeexpr uses current datamodel value (JIT)")
 
         default:
             LOG_WARN("W3C JIT Test: Test {} not yet implemented in jit engine", testId);

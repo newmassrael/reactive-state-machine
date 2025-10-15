@@ -1,6 +1,8 @@
 #include "runtime/StateMachine.h"
 #include "common/Logger.h"
 #include "common/StringUtils.h"
+#include "core/EventProcessingAlgorithms.h"
+#include "core/EventQueueAdapters.h"
 #include "events/EventRaiserService.h"
 
 #include "factory/NodeFactory.h"
@@ -333,7 +335,9 @@ bool StateMachine::start() {
             int iterations = 0;
             const int MAX_START_ITERATIONS = 1000;
 
-            while (eventRaiserImpl->hasQueuedEvents()) {
+            // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
+            RSM::Core::InterpreterEventQueue adapter(eventRaiserImpl);
+            while (adapter.hasEvents()) {
                 if (++iterations > MAX_START_ITERATIONS) {
                     LOG_ERROR("StateMachine: start() exceeded max iterations ({}) - possible infinite event loop",
                               MAX_START_ITERATIONS);
@@ -345,7 +349,7 @@ bool StateMachine::start() {
                 // W3C SCXML 3.3: RAII guard to prevent recursive auto-processing during batch event processing
                 {
                     BatchProcessingGuard batchGuard(isBatchProcessing_);
-                    eventRaiserImpl->processQueuedEvents();
+                    adapter.popNext();
                 }
 
                 // Check for eventless transitions after processing events
@@ -678,13 +682,13 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                 if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
                     auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
                     if (eventRaiserImpl) {
-                        while (eventRaiserImpl->hasQueuedEvents()) {
+                        // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
+                        RSM::Core::InterpreterEventQueue adapter(eventRaiserImpl);
+                        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [](bool) {
                             LOG_DEBUG(
                                 "W3C SCXML 3.3: Processing queued internal event after parallel external transition");
-                            if (!eventRaiserImpl->processNextQueuedEvent()) {
-                                break;
-                            }
-                        }
+                            return true;
+                        });
                     }
                 }
 
@@ -817,13 +821,13 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
             if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
                 auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
                 if (eventRaiserImpl) {
-                    while (eventRaiserImpl->hasQueuedEvents()) {
+                    // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
+                    RSM::Core::InterpreterEventQueue adapter(eventRaiserImpl);
+                    RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [](bool) {
                         LOG_DEBUG(
                             "W3C SCXML 3.3: Processing queued internal event after external transition from parallel");
-                        if (!eventRaiserImpl->processNextQueuedEvent()) {
-                            break;
-                        }
-                    }
+                        return true;
+                    });
                 }
             }
 
@@ -846,12 +850,12 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                 if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
                     auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
                     if (eventRaiserImpl) {
-                        while (eventRaiserImpl->hasQueuedEvents()) {
+                        // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
+                        RSM::Core::InterpreterEventQueue adapter(eventRaiserImpl);
+                        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [](bool) {
                             LOG_DEBUG("W3C SCXML 3.4: Processing done.state event after parallel completion");
-                            if (!eventRaiserImpl->processNextQueuedEvent()) {
-                                break;
-                            }
-                        }
+                            return true;
+                        });
                     }
                 }
             }
@@ -921,12 +925,12 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                 if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
                     auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
                     if (eventRaiserImpl) {
-                        while (eventRaiserImpl->hasQueuedEvents()) {
+                        // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
+                        RSM::Core::InterpreterEventQueue adapter(eventRaiserImpl);
+                        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [](bool) {
                             LOG_DEBUG("W3C SCXML 3.3: Processing queued internal event after successful transition");
-                            if (!eventRaiserImpl->processNextQueuedEvent()) {
-                                break;
-                            }
-                        }
+                            return true;
+                        });
                     }
                 }
 
@@ -955,12 +959,12 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
     if (!eventGuard.wasAlreadySet_ && !isBatchProcessing_ && eventRaiser_) {
         auto eventRaiserImpl = std::dynamic_pointer_cast<EventRaiserImpl>(eventRaiser_);
         if (eventRaiserImpl) {
-            while (eventRaiserImpl->hasQueuedEvents()) {
+            // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
+            RSM::Core::InterpreterEventQueue adapter(eventRaiserImpl);
+            RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [](bool) {
                 LOG_DEBUG("W3C SCXML 3.3: Processing queued internal event");
-                if (!eventRaiserImpl->processNextQueuedEvent()) {
-                    break;  // Queue became empty or processing failed
-                }
-            }
+                return true;
+            });
         }
     }
 

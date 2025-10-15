@@ -183,6 +183,12 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 detectFeatures(action.iterationActions);
             } else if (action.type == Action::SEND) {
                 model.hasSend = true;
+            } else if (action.type == Action::ASSIGN) {
+                // W3C SCXML: <assign> with expr attribute requires JSEngine for evaluation
+                // Test 174: <assign location="Var1" expr="'http://...'" />
+                if (!action.param2.empty()) {
+                    model.hasComplexDatamodel = true;
+                }
             } else if (action.type == Action::IF) {
                 for (const auto &branch : action.branches) {
                     detectFeatures(branch.actions);
@@ -487,7 +493,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                         // W3C SCXML: Execute transition actions (e.g., assign for internal transitions)
                         for (const auto &action : trans.transitionActions) {
-                            generateActionCode(ss, action, "engine", events);
+                            generateActionCode(ss, action, "engine", events, model);
                         }
 
                         // W3C SCXML: Only change state if targetState exists (not an internal transition)
@@ -587,7 +593,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                     // W3C SCXML: Execute transition actions (e.g., assign for internal transitions)
                     for (const auto &action : trans.transitionActions) {
-                        generateActionCode(ss, action, "engine", events);
+                        generateActionCode(ss, action, "engine", events, model);
                     }
 
                     // W3C SCXML: Only change state if targetState exists (not an internal transition)
@@ -677,7 +683,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                                 // Execute transition actions
                                 for (const auto &action : trans.transitionActions) {
                                     std::stringstream actionSS;
-                                    generateActionCode(actionSS, action, "engine", events);
+                                    generateActionCode(actionSS, action, "engine", events, model);
                                     std::string actionCode = actionSS.str();
                                     // Add proper indentation to action code
                                     std::istringstream iss(actionCode);
@@ -927,7 +933,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 
             // Then execute entry actions
             for (const auto &action : state.entryActions) {
-                generateActionCode(ss, action, "engine", events);
+                generateActionCode(ss, action, "engine", events, model);
             }
 
             ss << "                break;\n";
@@ -951,7 +957,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
         if (!state.exitActions.empty()) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
             for (const auto &action : state.exitActions) {
-                generateActionCode(ss, action, "engine", events);
+                generateActionCode(ss, action, "engine", events, model);
             }
             ss << "                break;\n";
         }
@@ -1015,7 +1021,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model) {
 }
 
 void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action &action, const std::string &engineVar,
-                                             const std::set<std::string> &events) {
+                                             const std::set<std::string> &events, const SCXMLModel &model) {
     switch (action.type) {
     case Action::RAISE:
         ss << "                " << engineVar << ".raise(Event::" << capitalize(action.param1) << ");\n";
@@ -1024,15 +1030,38 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         ss << "                " << action.param1 << "();\n";
         break;
     case Action::ASSIGN: {
-        std::string expr = action.param2;
-        // Convert JavaScript string literal 'value' to C++ string literal "value"
-        if (expr.size() >= 2 && expr.front() == '\'' && expr.back() == '\'') {
-            // Extract string content and escape special characters
-            std::string strValue = expr.substr(1, expr.size() - 2);
-            std::string escapedValue = escapeStringLiteral(strValue);
-            expr = "\"" + escapedValue + "\"";
+        // W3C SCXML: <assign> with expr attribute
+        // When JSEngine is needed, use evaluateExpression + setVariable pattern
+        // When JSEngine is not needed, use direct C++ assignment
+        if (model.needsJSEngine()) {
+            // JSEngine-based assignment: evaluate expression and set variable
+            ss << "                {\n";  // Extra scope to avoid "jump to case label" error
+            ss << "                    this->ensureJSEngine();\n";
+            ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+            ss << "                    {\n";
+            ss << "                        auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), \""
+               << escapeStringLiteral(action.param2) << "\").get();\n";
+            ss << "                        if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
+            ss << "                            LOG_ERROR(\"Failed to evaluate expression for assign: "
+               << escapeStringLiteral(action.param2) << "\");\n";
+            ss << "                            throw std::runtime_error(\"Assign expression evaluation failed\");\n";
+            ss << "                        }\n";
+            ss << "                        jsEngine.setVariable(sessionId_.value(), \"" << action.param1
+               << "\", exprResult.getInternalValue());\n";
+            ss << "                    }\n";
+            ss << "                }\n";
+        } else {
+            // Direct C++ assignment for simple static variables
+            std::string expr = action.param2;
+            // Convert JavaScript string literal 'value' to C++ string literal "value"
+            if (expr.size() >= 2 && expr.front() == '\'' && expr.back() == '\'') {
+                // Extract string content and escape special characters
+                std::string strValue = expr.substr(1, expr.size() - 2);
+                std::string escapedValue = escapeStringLiteral(strValue);
+                expr = "\"" + escapedValue + "\"";
+            }
+            ss << "                " << action.param1 << " = " << expr << ";\n";
         }
-        ss << "                " << action.param1 << " = " << expr << ";\n";
     } break;
     case Action::LOG:
         ss << "                // TODO: log " << action.param1 << "\n";
@@ -1048,10 +1077,25 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
             // W3C SCXML 6.2: Handle targetexpr (dynamic target evaluation) - Test 173
             if (!targetExpr.empty()) {
-                // Dynamic target: evaluate targetExpr directly (variable reference in static code)
                 ss << "                // W3C SCXML 6.2 (test 173): Validate dynamic target from targetexpr\n";
                 ss << "                {\n";
-                ss << "                    std::string dynamicTarget = " << targetExpr << ";\n";
+                if (model.needsJSEngine()) {
+                    // JSEngine-based: retrieve variable value from JSEngine
+                    ss << "                    this->ensureJSEngine();\n";
+                    ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                    ss << "                    auto targetResult = jsEngine.getVariable(sessionId_.value(), \""
+                       << targetExpr << "\").get();\n";
+                    ss << "                    if (!::RSM::JSEngine::isSuccess(targetResult)) {\n";
+                    ss << "                        LOG_ERROR(\"Failed to get variable for targetexpr: "
+                       << escapeStringLiteral(targetExpr) << "\");\n";
+                    ss << "                        return;\n";
+                    ss << "                    }\n";
+                    ss << "                    std::string dynamicTarget = "
+                          "::RSM::JSEngine::resultToString(targetResult);\n";
+                } else {
+                    // Static: direct variable reference
+                    ss << "                    std::string dynamicTarget = " << targetExpr << ";\n";
+                }
                 ss << "                    if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {\n";
                 ss << "                        // W3C SCXML 6.2: Invalid target stops execution\n";
                 ss << "                        return;\n";
@@ -1070,10 +1114,24 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
             // W3C SCXML: Handle eventexpr (dynamic event name evaluation)
             if (!eventExpr.empty()) {
-                // Dynamic event: evaluate eventExpr and raise the result
                 ss << "                // W3C SCXML 6.2 (test172): Evaluate eventexpr and raise as event\n";
                 ss << "                {\n";
-                ss << "                    std::string eventName = " << eventExpr << ";\n";
+                if (model.needsJSEngine()) {
+                    // JSEngine-based: retrieve variable value from JSEngine
+                    ss << "                    this->ensureJSEngine();\n";
+                    ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                    ss << "                    auto eventResult = jsEngine.getVariable(sessionId_.value(), \""
+                       << eventExpr << "\").get();\n";
+                    ss << "                    if (!::RSM::JSEngine::isSuccess(eventResult)) {\n";
+                    ss << "                        LOG_ERROR(\"Failed to get variable for eventexpr: "
+                       << escapeStringLiteral(eventExpr) << "\");\n";
+                    ss << "                        return;\n";
+                    ss << "                    }\n";
+                    ss << "                    std::string eventName = ::RSM::JSEngine::resultToString(eventResult);\n";
+                } else {
+                    // Static: direct variable reference
+                    ss << "                    std::string eventName = " << eventExpr << ";\n";
+                }
                 ss << "                    // Convert event name string to Event enum\n";
 
                 // Generate if-else chain to map string to Event enum
@@ -1122,7 +1180,7 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
             // Generate actions in this branch
             for (const auto &branchAction : branch.actions) {
-                generateActionCode(ss, branchAction, engineVar, events);
+                generateActionCode(ss, branchAction, engineVar, events, model);
             }
         }
 

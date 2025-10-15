@@ -1,6 +1,8 @@
 #pragma once
 
 #include "common/Logger.h"
+#include "core/EventProcessingAlgorithms.h"
+#include "core/EventQueueAdapters.h"
 #include "core/EventQueueManager.h"
 #include <cstdint>
 #include <map>
@@ -94,13 +96,16 @@ protected:
      * the macrostep completion logic where all internal events generated
      * during state entry are processed before external events.
      *
-     * Delegates to Core::EventQueueManager for W3C-compliant queue processing.
+     * Uses shared EventProcessingAlgorithms for W3C-compliant processing.
+     * This ensures Interpreter and JIT engines use identical logic.
      *
      * Supports both static (stateless) and non-static (stateful) policies.
      * Static methods can also be called through an instance in C++.
      */
     void processInternalQueue() {
-        eventQueue_.processAll([this](Event event) {
+        // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
+        RSM::Core::JITEventQueue<Event> adapter(eventQueue_);
+        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [this](Event event) {
             // Process event through transition logic
             State oldState = currentState_;
             // Call through policy instance (works for both static and non-static)
@@ -111,7 +116,7 @@ protected:
                     executeOnEntry(currentState_);
                 }
             }
-            return false;  // Return value not used in current implementation
+            return true;  // Continue processing
         });
     }
 
@@ -122,6 +127,9 @@ protected:
      * immediately after entering a state. They are checked after all
      * internal events have been processed.
      *
+     * Uses shared EventProcessingAlgorithms for W3C-compliant processing.
+     * This ensures Interpreter and JIT engines use identical logic.
+     *
      * Uses iteration instead of recursion to prevent stack overflow
      * and includes loop detection to prevent infinite cycles.
      */
@@ -129,15 +137,30 @@ protected:
         static const int MAX_ITERATIONS = 100;  // Safety limit
         int iterations = 0;
 
+        // W3C SCXML 3.13: Use shared algorithm (Single Source of Truth)
+        RSM::Core::JITEventQueue<Event> adapter(eventQueue_);
+
         while (iterations++ < MAX_ITERATIONS) {
             State oldState = currentState_;
+
             // Call processTransition with default event for eventless transitions
             if (policy_.processTransition(currentState_, Event(), *this)) {
                 if (oldState != currentState_) {
                     executeOnExit(oldState);
                     executeOnEntry(currentState_);
-                    // Process any new internal events
-                    processInternalQueue();
+
+                    // W3C SCXML 3.12.1: Process any new internal events
+                    RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [this](Event event) {
+                        State oldEventState = currentState_;
+                        if (policy_.processTransition(currentState_, event, *this)) {
+                            if (oldEventState != currentState_) {
+                                executeOnExit(oldEventState);
+                                executeOnEntry(currentState_);
+                            }
+                        }
+                        return true;
+                    });
+
                     // Continue loop to check for more eventless transitions
                 } else {
                     // Transition taken but state didn't change - stop

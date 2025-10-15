@@ -263,6 +263,12 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
             sendAction->setType(typeAttr->get_value());
         }
 
+        // W3C SCXML 6.2: Parse typeexpr attribute for dynamic type evaluation (Test 174)
+        auto typeExprAttr = actionElement->get_attribute("typeexpr");
+        if (typeExprAttr) {
+            sendAction->setTypeExpr(typeExprAttr->get_value());
+        }
+
         // W3C SCXML C.1: Parse namelist attribute for event data
         auto namelistAttr = actionElement->get_attribute("namelist");
         if (namelistAttr) {
