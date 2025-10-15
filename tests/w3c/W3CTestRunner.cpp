@@ -36,6 +36,7 @@
 #include "test174_sm.h"
 #include "test175_sm.h"
 #include "test176_sm.h"
+#include "test178_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1639,6 +1640,17 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             break;
 
             JIT_TEST_CASE(176, "Send param uses current datamodel value (JIT)")
+
+        // W3C manual test: Duplicate param names verification done in EventDataHelperTest
+        // This integration test only verifies state machine execution completes successfully
+        case 178:
+            testPassed = []() {
+                RSM::Generated::test178::test178 sm;
+                sm.initialize();
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test178::State::Final;
+            }();
+            testDescription = "Send with duplicate param names (JIT)";
+            break;
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")
 

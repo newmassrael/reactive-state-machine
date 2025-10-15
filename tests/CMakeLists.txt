@@ -80,6 +80,7 @@ add_executable(rsm_scxml_tests
     simple_scxml_test.cpp
     core/TypeRegistryTest.cpp
     concurrency/TypeRegistryThreadSafetyTest.cpp
+    common/EventDataHelperTest.cpp
 )
 
 target_include_directories(rsm_scxml_tests
@@ -445,6 +446,7 @@ rsm_generate_static_w3c_test(173 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(174 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(175 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(176 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(178 ${STATIC_W3C_OUTPUT_DIR})
 # Copy test239sub1.scxml directly (sub-state machine without pass/fail states)
 add_custom_command(
     OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test239sub1.scxml"
