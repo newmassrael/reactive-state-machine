@@ -41,6 +41,7 @@
 #include "test183_sm.h"
 #include "test185_sm.h"
 #include "test186_sm.h"
+#include "test187_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1716,6 +1717,29 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test186::State::Pass;
             }();
             testDescription = "Send arguments evaluated at send time not dispatch (JIT)";
+            break;
+
+        // Phase 4: test187 requires delayed send processing and invoke
+        case 187:
+            testPassed = []() {
+                RSM::Generated::test187::test187 sm;
+                sm.initialize();
+
+                // Phase 4: Process scheduled events until completion or timeout
+                auto startTime = std::chrono::steady_clock::now();
+                const auto timeout = std::chrono::seconds(2);
+
+                while (!sm.isInFinalState()) {
+                    if (std::chrono::steady_clock::now() - startTime > timeout) {
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    sm.tick();
+                }
+
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test187::State::Pass;
+            }();
+            testDescription = "Delayed send discarded on session termination (JIT)";
             break;
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")

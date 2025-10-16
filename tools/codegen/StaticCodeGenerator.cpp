@@ -2296,6 +2296,11 @@ std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model
     for (const auto &state : model.states) {
         extractFromActions(state.entryActions);
         extractFromActions(state.exitActions);
+
+        // W3C SCXML 6.4: Add done.invoke event if state has invoke elements
+        if (!state.invokes.empty()) {
+            events.insert("done.invoke");
+        }
     }
 
     return events;
