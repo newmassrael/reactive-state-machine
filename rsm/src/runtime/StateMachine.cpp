@@ -2519,7 +2519,7 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
     // RAII guard ensures flag is cleared on all exit paths (normal return, error, exception)
     TransitionGuard transitionGuard(inTransition_);
 
-    // Phase 1: Exit all source states (executing onexit actions)
+    // W3C SCXML 3.13: Exit all source states (executing onexit actions)
     // W3C SCXML: Compute unique exit set from all transitions, exit in correct order
     std::set<std::string> exitSetUnique;
     for (const auto &transInfo : transitions) {
@@ -2604,7 +2604,7 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
         }
     }
 
-    LOG_DEBUG("W3C SCXML 3.13: Phase 1 - Exiting {} state(s)", allStatesToExit.size());
+    LOG_DEBUG("W3C SCXML 3.13: Exiting {} state(s)", allStatesToExit.size());
     for (const auto &stateId : allStatesToExit) {
         if (!exitState(stateId)) {
             LOG_ERROR("W3C SCXML 3.13: Failed to exit state '{}' during microstep", stateId);
@@ -2612,8 +2612,8 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
         }
     }
 
-    // Phase 2: Execute all transition actions in document order
-    LOG_DEBUG("W3C SCXML 3.13: Phase 2 - Executing transition actions for {} transition(s)", transitions.size());
+    // W3C SCXML 3.13: Execute all transition actions in document order
+    LOG_DEBUG("W3C SCXML 3.13: Executing transition actions for {} transition(s)", transitions.size());
     for (const auto &transInfo : transitions) {
         const auto &actionNodes = transInfo.transition->getActionNodes();
         if (!actionNodes.empty()) {
@@ -2641,8 +2641,8 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
         }
     }
 
-    // Phase 3: Enter all target states (executing onentry actions)
-    LOG_DEBUG("W3C SCXML 3.13: Phase 3 - Entering {} target state(s)", transitions.size());
+    // W3C SCXML 3.13: Enter all target states (executing onentry actions)
+    LOG_DEBUG("W3C SCXML 3.13: Entering {} target state(s)", transitions.size());
     for (const auto &transInfo : transitions) {
         if (!transInfo.targetState.empty()) {
             if (!enterState(transInfo.targetState)) {

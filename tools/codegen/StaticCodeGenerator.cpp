@@ -65,8 +65,15 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     // If root initial is a composite state with its own initial, follow the chain
     std::string initialState = rsmModel->getInitialState();
     if (initialState.empty()) {
-        LOG_ERROR("StaticCodeGenerator: SCXML model '{}' has no initial state", model.name);
-        return false;
+        LOG_WARN("StaticCodeGenerator: SCXML model '{}' has no initial state - generating Interpreter wrapper",
+                 model.name);
+        std::stringstream ss;
+        bool result = generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
+        if (result) {
+            fs::path outputPath = fs::path(outputDir) / (model.name + "_sm.h");
+            writeToFile(outputPath.string(), ss.str());
+        }
+        return result;
     }
 
     // Recursively resolve composite state initials to find leaf state
@@ -86,8 +93,15 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         }
 
         if (!stateNode) {
-            LOG_ERROR("StaticCodeGenerator: Initial state '{}' not found in model", currentState);
-            return false;
+            LOG_WARN("StaticCodeGenerator: Initial state '{}' not found in model - generating Interpreter wrapper",
+                     currentState);
+            std::stringstream ss;
+            bool result = generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
+            if (result) {
+                fs::path outputPath = fs::path(outputDir) / (model.name + "_sm.h");
+                writeToFile(outputPath.string(), ss.str());
+            }
+            return result;
         }
 
         // Check if this state has an initial child
@@ -1324,6 +1338,8 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
                 sendActionResult.sendContentExpr = sendAction->getContentExpr();
                 // W3C SCXML 6.2.4: Extract idlocation for sendid storage (test183)
                 sendActionResult.sendIdLocation = sendAction->getIdLocation();
+                // W3C SCXML 6.2.4: Extract type for event processor (test193)
+                sendActionResult.sendType = sendAction->getType();
                 result.push_back(sendActionResult);
             }
         }
@@ -2128,29 +2144,45 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
                             ss << "                    std::string eventData = "
                                   "::RSM::EventDataHelper::buildJsonFromParams(params);\n";
-                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
-                            // Truth)
-                            ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
-                               << "\")) {\n";
-                            ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
-                               << ", eventData);\n";
-                            ss << "                    } else {\n";
-                            ss << "                        " << engineVar
-                               << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
-                            ss << "                    }\n";
+                            // W3C SCXML 6.2.4: Check type attribute for queue routing (test193)
+                            if (!action.sendType.empty() &&
+                                action.sendType == "http://www.w3.org/TR/scxml/#SCXMLEventProcessor") {
+                                ss << "                    " << engineVar
+                                   << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
+                            } else {
+                                // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                                // Truth)
+                                ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
+                                   << "\")) {\n";
+                                ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
+                                   << ", eventData);\n";
+                                ss << "                    } else {\n";
+                                ss << "                        " << engineVar
+                                   << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
+                                ss << "                    }\n";
+                            }
                             ss << "                }\n";
                         } else if (!action.sendContent.empty()) {
                             // W3C SCXML 5.10: Set event data from <content> literal (test179)
-                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
-                            // Truth)
                             ss << "                // W3C SCXML 5.10: Set _event.data from <content> literal\n";
-                            ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target << "\")) {\n";
-                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event) << ", \""
-                               << escapeStringLiteral(action.sendContent) << "\");\n";
-                            ss << "                } else {\n";
-                            ss << "                    " << engineVar << ".raiseExternal(Event::" << capitalize(event)
-                               << ", \"" << escapeStringLiteral(action.sendContent) << "\");\n";
-                            ss << "                }\n";
+                            // W3C SCXML 6.2.4: Check type attribute for queue routing (test193)
+                            if (!action.sendType.empty() &&
+                                action.sendType == "http://www.w3.org/TR/scxml/#SCXMLEventProcessor") {
+                                ss << "                " << engineVar << ".raiseExternal(Event::" << capitalize(event)
+                                   << ", \"" << escapeStringLiteral(action.sendContent) << "\");\n";
+                            } else {
+                                // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                                // Truth)
+                                ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target
+                                   << "\")) {\n";
+                                ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
+                                   << ", \"" << escapeStringLiteral(action.sendContent) << "\");\n";
+                                ss << "                } else {\n";
+                                ss << "                    " << engineVar
+                                   << ".raiseExternal(Event::" << capitalize(event) << ", \""
+                                   << escapeStringLiteral(action.sendContent) << "\");\n";
+                                ss << "                }\n";
+                            }
                         } else if (!action.sendContentExpr.empty()) {
                             // W3C SCXML 5.10: Set event data from <content expr="..."> dynamic evaluation
                             ss << "                // W3C SCXML 5.10: Evaluate <content expr> for event data\n";
@@ -2170,27 +2202,42 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                             ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
                             ss << "                        eventData = \"\";\n";
                             ss << "                    }\n";
-                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
-                            // Truth)
-                            ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
-                               << "\")) {\n";
-                            ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
-                               << ", eventData);\n";
-                            ss << "                    } else {\n";
-                            ss << "                        " << engineVar
-                               << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
-                            ss << "                    }\n";
+                            // W3C SCXML 6.2.4: Check type attribute for queue routing (test193)
+                            if (!action.sendType.empty() &&
+                                action.sendType == "http://www.w3.org/TR/scxml/#SCXMLEventProcessor") {
+                                ss << "                    " << engineVar
+                                   << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
+                            } else {
+                                // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                                // Truth)
+                                ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
+                                   << "\")) {\n";
+                                ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
+                                   << ", eventData);\n";
+                                ss << "                    } else {\n";
+                                ss << "                        " << engineVar
+                                   << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
+                                ss << "                    }\n";
+                            }
                             ss << "                }\n";
                         } else {
-                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
-                            // Truth)
-                            ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target << "\")) {\n";
-                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
-                               << ");\n";
-                            ss << "                } else {\n";
-                            ss << "                    " << engineVar << ".raiseExternal(Event::" << capitalize(event)
-                               << ");\n";
-                            ss << "                }\n";
+                            // W3C SCXML 6.2.4: Check type attribute for queue routing (test193)
+                            if (!action.sendType.empty() &&
+                                action.sendType == "http://www.w3.org/TR/scxml/#SCXMLEventProcessor") {
+                                ss << "                " << engineVar << ".raiseExternal(Event::" << capitalize(event)
+                                   << ");\n";
+                            } else {
+                                // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                                // Truth)
+                                ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target
+                                   << "\")) {\n";
+                                ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
+                                   << ");\n";
+                                ss << "                } else {\n";
+                                ss << "                    " << engineVar
+                                   << ".raiseExternal(Event::" << capitalize(event) << ");\n";
+                                ss << "                }\n";
+                            }
                         }
                     } else {
                         // Event not in enum, likely unreachable - just comment

@@ -148,6 +148,8 @@ Generated code works for ALL SCXML (W3C 100%)
   - 🔴 Dynamic invocation (`<invoke srcexpr="...">`, `<invoke><content>`, `<invoke contentExpr="...">`) → **Entire SCXML runs on Interpreter engine**
   - **Decision**: Code generator scans ALL invoke elements in SCXML at generation time
   - **Strategy**: If ANY invoke is dynamic → Generate Interpreter wrapper for ENTIRE SCXML (no hybrid)
+  - **Verification**: Before adding tests, verify static generation capability by converting TXML→SCXML and checking for wrapper warnings (see CLAUDE.md for verification method)
+  - **Integration**: Tests requiring Interpreter wrappers must be registered in `tests/CMakeLists.txt` and `tests/w3c/W3CTestRunner.cpp` (see CLAUDE.md for detailed steps)
   - **Rationale**:
     - Dynamic invoke requires runtime SCXML loading and parent-child communication through StateMachine infrastructure
     - Mixing JIT and Interpreter within single SCXML creates complexity and violates Zero Duplication principle

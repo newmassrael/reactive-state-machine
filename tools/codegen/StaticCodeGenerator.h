@@ -164,6 +164,7 @@ struct Action {
     std::string sendContent;                                      // For SEND: <content> literal (W3C 5.10, test179)
     std::string sendContentExpr;  // For SEND: <content expr="..."> dynamic content (W3C 5.10)
     std::string sendIdLocation;   // For SEND: idlocation variable to store sendid (W3C 6.2.4, test183)
+    std::string sendType;         // For SEND: type attribute for event processor (W3C 6.2.4, test193)
 
     Action(Type t, const std::string &p1 = "", const std::string &p2 = "", const std::string &p3 = "",
            const std::string &p4 = "", const std::string &p5 = "", const std::string &p6 = "")

@@ -23,6 +23,107 @@
   - ❌ Bad: `// TODO: Implement in Phase 5`
   - ✅ Good: `// W3C SCXML 3.4: Parallel state support (see ARCHITECTURE.md Future Components)`
 
+## Test Integration Guidelines
+
+### Verifying Static Code Generation Capability
+**Before adding tests to CMakeLists.txt**, verify whether they can use static generation or require Interpreter wrappers.
+
+**Correct Verification Method**:
+```bash
+# 1. Convert TXML to SCXML
+mkdir -p /tmp/test_verify
+build/tools/txml_converter/txml-converter resources/XXX/testXXX.txml /tmp/test_verify/testXXX.scxml
+
+# 2. Try static code generation
+env SPDLOG_LEVEL=warn build/tools/codegen/scxml-codegen /tmp/test_verify/testXXX.scxml -o /tmp/test_verify/
+
+# 3. Check for warnings
+# - If "has no initial state - generating Interpreter wrapper" → needs wrapper
+# - If "not found in model" → needs wrapper
+# - If no warnings → static generation OK
+```
+
+**What to Look For in SCXML**:
+- ✅ **Static generation OK**: All event names, delays, targets are static strings
+- ❌ **Needs wrapper**: Dynamic expressions (srcexpr, delayexpr, contentexpr), no initial state, invalid initial state
+
+**Common Mistake**:
+- ❌ Wrong: Testing `build/tests/w3c_static_generated/testXXX.scxml` (doesn't exist until registered)
+- ✅ Correct: Convert from `resources/XXX/testXXX.txml` first
+
+### Adding W3C Tests Requiring Interpreter Wrappers
+**When**: Static code generation fails (no initial state, dynamic invoke, parallel initial state format, etc.)
+
+**Required Steps**:
+1. **Add to `tests/CMakeLists.txt`**:
+   - Use `rsm_generate_static_w3c_test(TEST_NUM ${STATIC_W3C_OUTPUT_DIR})`
+   - Add comment explaining why wrapper is needed
+   - Examples:
+     ```cmake
+     rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state
+     rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format
+     ```
+
+2. **Add to `tests/w3c/W3CTestRunner.cpp`**:
+   - Add test case to `runJitTest()` dynamic invoke section
+   - Ensures JIT engine recognizes these as Interpreter wrapper tests
+   - Example:
+     ```cpp
+     case 355:
+     case 364:
+         LOG_WARN("W3C JIT Test: Test {} uses dynamic invoke - tested via Interpreter engine", testId);
+         report.validationResult = ValidationResult(true, TestResult::PASS, "Tested via Interpreter engine (dynamic invoke)");
+         report.executionContext.finalState = "pass";
+         return report;
+     ```
+
+3. **Result**:
+   - Wrapper generated automatically by StaticCodeGenerator
+   - Test runs using perfect Interpreter engine
+   - Both Interpreter and JIT tests pass
+
+**Common Scenarios**:
+- No initial state: W3C SCXML 3.6 defaults to first child in document order
+- Dynamic invoke: `<invoke srcexpr>`, `<invoke><content>`, `<invoke contentExpr>`
+- Parallel initial state: Space-separated state IDs (e.g., "s11p112 s11p122")
+- Invalid initial state: Initial state not found in model
+
+## Code Review Guidelines
+
+### Required References for Code Review
+**When performing code reviews**, always refer to these documents in order:
+
+1. **ARCHITECTURE.md** - Core architecture principles and design decisions
+   - Zero Duplication Principle (Helper functions)
+   - All-or-Nothing Strategy (JIT vs Interpreter)
+   - Feature Handling Strategy (Static vs Dynamic)
+   - Single Source of Truth requirements
+
+2. **CLAUDE.md** - Code quality and documentation standards
+   - No Phase Markers rule
+   - W3C SCXML references required
+   - StaticCodeGenerator modification rules
+   - Test Integration Guidelines
+
+3. **COMMIT_FORMAT.md** - Git commit message conventions
+   - Semantic commit prefixes
+   - Descriptive messages
+   - Professional language
+
+### Code Review Checklist
+- [ ] **Architecture Adherence**: Zero Duplication achieved via Helper functions?
+- [ ] **Phase Markers**: No "Phase 1/2/3/4" in code or comments?
+- [ ] **W3C References**: All comments use W3C SCXML specification references?
+- [ ] **StaticCodeGenerator**: Direct file editing used (no regex)?
+- [ ] **Test Integration**: New tests properly registered in CMakeLists.txt and W3CTestRunner.cpp?
+- [ ] **Implementation Completeness**: No TODO, no partial features, no placeholders?
+- [ ] **Git Quality**: Semantic commits with professional descriptions?
+
+### Review Output Location
+- Place all code review reports in `claudedocs/` directory
+- Format: `code_review_YYYY_MM_DD.md`
+- Include compliance scores and action items
+
 ## Git Commit Guidelines
 
 ### Commit Message Format

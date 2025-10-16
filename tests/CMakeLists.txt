@@ -458,6 +458,7 @@ rsm_generate_static_w3c_test(190 ${STATIC_W3C_OUTPUT_DIR})
 # W3C SCXML 6.4: Dynamic invoke tests (inline content, srcexpr, contentExpr) - generate Interpreter wrappers
 rsm_generate_static_w3c_test(191 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(192 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(193 ${STATIC_W3C_OUTPUT_DIR})  # type attribute for queue routing (W3C SCXML 6.2.4)
 rsm_generate_static_w3c_test(205 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(207 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> (invoke cancellation across sessions)
 rsm_generate_static_w3c_test(210 ${STATIC_W3C_OUTPUT_DIR})  # sendidexpr (cancel with dynamic expression)
@@ -486,6 +487,13 @@ rsm_generate_static_w3c_test(247 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> +
 rsm_generate_static_w3c_test(250 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + cancellation (manual test)
 rsm_generate_static_w3c_test(252 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + event cancellation after invoke termination
 rsm_generate_static_w3c_test(253 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + bidirectional SCXML event processor
+rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (default to first child in document order)
+rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format (space-separated IDs)
+rsm_generate_static_w3c_test(372 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (done.state.parentid after final)
+rsm_generate_static_w3c_test(375 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (onentry execution order)
+rsm_generate_static_w3c_test(376 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (onentry error handling)
+rsm_generate_static_w3c_test(377 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (onexit execution order)
+rsm_generate_static_w3c_test(378 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (onexit error handling)
 # W3C SCXML 6.4: test239 uses dynamic invoke - generates Interpreter wrapper
 # Copy test239sub1.scxml directly (sub-state machine without pass/fail states)
 add_custom_command(
@@ -516,6 +524,9 @@ add_custom_command(
     COMMENT "Copying test242sub1.scxml"
     VERBATIM
 )
+# Add to generated headers list so it's part of the build
+set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${STATIC_W3C_OUTPUT_DIR}/test242sub1.scxml")
+rsm_generate_static_w3c_test(242 ${STATIC_W3C_OUTPUT_DIR})
 
 # Full W3C Test Runner for all W3C SCXML 1.0 compliance tests
 add_executable(w3c_test_cli

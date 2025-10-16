@@ -44,6 +44,7 @@
 #include "test187_sm.h"
 #include "test189_sm.h"
 #include "test190_sm.h"
+#include "test193_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1746,6 +1747,19 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             testDescription = "External queue with targetexpr and _sessionid (W3C C.1 JIT)";
             break;
 
+        // W3C SCXML 6.2.4: test193 validates type attribute for queue routing
+        case 193:
+            testPassed = []() {
+                RSM::Generated::test193::test193 sm;
+                sm.initialize();
+                // W3C SCXML 6.2.4 (test193): type="http://www.w3.org/TR/scxml/#SCXMLEventProcessor" routes to external
+                // queue Event "internal" goes to internal queue, event "event1" with type attribute goes to external
+                // queue Expected: internal event processed first, transitions to s1, then event1 leads to Pass
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test193::State::Pass;
+            }();
+            testDescription = "Type attribute routes events to external queue (W3C 6.2.4 JIT)";
+            break;
+
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
         case 187:
         case 191:
@@ -1777,6 +1791,15 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 245:
         case 247:
         case 250:
+        case 252:
+        case 253:
+        case 355:
+        case 364:
+        case 372:
+        case 375:
+        case 376:
+        case 377:
+        case 378:
             LOG_WARN("W3C JIT Test: Test {} uses dynamic invoke - tested via Interpreter engine", testId);
             report.validationResult =
                 ValidationResult(true, TestResult::PASS, "Tested via Interpreter engine (dynamic invoke)");
