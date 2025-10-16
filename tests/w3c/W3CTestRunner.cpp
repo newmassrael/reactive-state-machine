@@ -1826,6 +1826,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             break;
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
+        // test226 - child uses <send target="#_parent"> which requires Interpreter
         case 187:
         case 191:
         case 192:
@@ -1838,6 +1839,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 223:
         case 224:
         case 225:
+        case 226:  // child uses <send target="#_parent"> (not yet supported in Static JIT)
         case 228:
         case 229:
         case 230:

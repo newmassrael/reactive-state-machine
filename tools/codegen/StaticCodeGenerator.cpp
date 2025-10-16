@@ -1961,8 +1961,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
 
     // Generate cleanup code for each child state machine
     for (const auto &invokeInfo : staticInvokes) {
-        ss << "        if (child_" << invokeInfo.invokeId << "_) {\n";
-        ss << "            child_" << invokeInfo.invokeId << "_.reset();\n";
+        ss << "        if (policy_.child_" << invokeInfo.invokeId << "_) {\n";
+        ss << "            policy_.child_" << invokeInfo.invokeId << "_.reset();\n";
         ss << "        }\n";
     }
 
