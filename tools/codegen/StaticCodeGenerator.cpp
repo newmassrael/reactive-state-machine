@@ -317,7 +317,39 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     LOG_INFO("StaticCodeGenerator: Feature detection - forEach: {}, complexDatamodel: {}, needsJSEngine: {}",
              model.hasForEach, model.hasComplexDatamodel, model.needsJSEngine());
 
-    // Step 5.5: Generate child SCXML code for static invokes (W3C SCXML 6.4)
+    // Step 5.5: Check for dynamic invokes BEFORE attempting child SCXML generation
+    // W3C SCXML 6.4: Dynamic invoke detection - use Interpreter engine for entire SCXML
+    // ARCHITECTURE.md: No hybrid approach - either fully JIT or fully Interpreter
+    bool hasInvokes = false;
+    bool hasDynamicInvokes = false;
+    for (const auto &state : model.states) {
+        if (!state.invokes.empty()) {
+            hasInvokes = true;
+            // Check for dynamic invokes
+            for (const auto &invoke : state.invokes) {
+                bool isStaticInvoke =
+                    (invoke.type.empty() || invoke.type == "scxml" || invoke.type == "http://www.w3.org/TR/scxml/") &&
+                    !invoke.src.empty() && invoke.srcExpr.empty() && invoke.content.empty() &&
+                    invoke.contentExpr.empty();
+                if (!isStaticInvoke) {
+                    hasDynamicInvokes = true;
+                    break;
+                }
+            }
+        }
+        if (hasDynamicInvokes) {
+            break;
+        }
+    }
+
+    if (hasDynamicInvokes) {
+        LOG_INFO("StaticCodeGenerator: Dynamic invoke detected in '{}' - generating Interpreter wrapper", model.name);
+        std::stringstream ss;
+        return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
+    }
+
+    // Step 5.6: Generate child SCXML code for static invokes (W3C SCXML 6.4)
+    // Only reached if no dynamic invokes detected above
     std::set<std::string> childIncludes;  // Track generated child headers for include directives
 
     // Track static invoke information for member generation
@@ -422,33 +454,26 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#include <unordered_map>\n";
     ss << "#include \"static/StaticExecutionEngine.h\"\n";
 
-    // Check if invoke support is needed (W3C SCXML 6.4)
-    bool hasInvokes = false;
-    bool hasDynamicInvokes = false;
-    for (const auto &state : model.states) {
-        if (!state.invokes.empty()) {
-            hasInvokes = true;
-            // Check for dynamic invokes
-            for (const auto &invoke : state.invokes) {
-                bool isStaticInvoke =
-                    (invoke.type.empty() || invoke.type == "scxml" || invoke.type == "http://www.w3.org/TR/scxml/") &&
-                    !invoke.src.empty() && invoke.srcExpr.empty() && invoke.content.empty() &&
-                    invoke.contentExpr.empty();
-                if (!isStaticInvoke) {
-                    hasDynamicInvokes = true;
-                    break;
-                }
-            }
-        }
-        if (hasDynamicInvokes) {
+    // W3C SCXML 5.10: _event metadata access requires Interpreter (test198)
+    // Static engine doesn't track event metadata (origintype, sendid, invokeid, etc.)
+    // ARCHITECTURE.md: No hybrid approach - fall back to Interpreter for entire SCXML
+    bool hasEventMetadata = false;
+    for (const auto &trans : model.transitions) {
+        // Check for _event.origintype, _event.sendid, _event.invokeid, _event.origin, etc.
+        // But not _event.data or _event.name which static engine can handle
+        if (trans.guard.find("_event.origintype") != std::string::npos ||
+            trans.guard.find("_event.sendid") != std::string::npos ||
+            trans.guard.find("_event.invokeid") != std::string::npos ||
+            trans.guard.find("_event.origin") != std::string::npos ||
+            trans.guard.find("_event.type") != std::string::npos) {
+            hasEventMetadata = true;
             break;
         }
     }
 
-    // W3C SCXML 6.4: Dynamic invoke detection - use Interpreter engine for entire SCXML
-    // ARCHITECTURE.md: No hybrid approach - either fully JIT or fully Interpreter
-    if (hasDynamicInvokes) {
-        LOG_INFO("StaticCodeGenerator: Dynamic invoke detected in '{}' - generating Interpreter wrapper", model.name);
+    if (hasEventMetadata) {
+        LOG_INFO("StaticCodeGenerator: Event metadata access detected in '{}' - generating Interpreter wrapper",
+                 model.name);
         return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
     }
 
@@ -2585,6 +2610,12 @@ std::string StaticCodeGenerator::escapeStringLiteral(const std::string &str) {
     for (char c : str) {
         switch (c) {
         case '"':
+            result += "\\\"";
+            break;
+        case '\'':
+            // W3C SCXML: Convert JavaScript single quotes to double quotes
+            // This allows JavaScript expressions with string literals to work correctly
+            // when passed through C++ string literals to the JSEngine
             result += "\\\"";
             break;
         case '\\':

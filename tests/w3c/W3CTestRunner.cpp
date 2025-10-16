@@ -46,6 +46,7 @@
 #include "test190_sm.h"
 #include "test193_sm.h"
 #include "test194_sm.h"
+#include "test198_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1772,6 +1773,10 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             }();
             testDescription = "Invalid target raises error.execution (W3C 6.2 JIT)";
             break;
+
+        // W3C SCXML 6.2 (test198): Default event processor type
+        // Note: Uses Interpreter wrapper due to _event.origintype metadata requirement
+        case 198:
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
         case 187:

@@ -460,6 +460,7 @@ rsm_generate_static_w3c_test(191 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(192 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(193 ${STATIC_W3C_OUTPUT_DIR})  # type attribute for queue routing (W3C SCXML 6.2.4)
 rsm_generate_static_w3c_test(194 ${STATIC_W3C_OUTPUT_DIR})  # invalid target raises error.execution (W3C SCXML 6.2)
+rsm_generate_static_w3c_test(198 ${STATIC_W3C_OUTPUT_DIR})  # default event processor type (W3C SCXML 6.2)
 rsm_generate_static_w3c_test(205 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(207 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> (invoke cancellation across sessions)
 rsm_generate_static_w3c_test(210 ${STATIC_W3C_OUTPUT_DIR})  # sendidexpr (cancel with dynamic expression)
@@ -525,8 +526,16 @@ add_custom_command(
     COMMENT "Copying test242sub1.scxml"
     VERBATIM
 )
+# Generate code for test242sub1
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test242sub1_sm.h"
+    COMMAND scxml-codegen -o "${STATIC_W3C_OUTPUT_DIR}" "${STATIC_W3C_OUTPUT_DIR}/test242sub1.scxml"
+    DEPENDS scxml-codegen "${STATIC_W3C_OUTPUT_DIR}/test242sub1.scxml"
+    COMMENT "Generating C++ code: test242sub1_sm.h"
+    VERBATIM
+)
 # Add to generated headers list so it's part of the build
-set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${STATIC_W3C_OUTPUT_DIR}/test242sub1.scxml")
+set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${STATIC_W3C_OUTPUT_DIR}/test242sub1_sm.h")
 rsm_generate_static_w3c_test(242 ${STATIC_W3C_OUTPUT_DIR})
 
 # Full W3C Test Runner for all W3C SCXML 1.0 compliance tests
