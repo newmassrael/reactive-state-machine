@@ -5,7 +5,7 @@
 
 /**
  * @file ParallelProcessingAlgorithms.h
- * @brief Single Source of Truth for W3C SCXML Parallel state processing (Phase 4)
+ * @brief Single Source of Truth for W3C SCXML Parallel state processing (W3C SCXML 3.4)
  *
  * Design principles (same as EventProcessingAlgorithms and InvokeProcessingAlgorithms):
  * 1. Algorithm sharing only - data structures remain engine-specific

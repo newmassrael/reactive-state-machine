@@ -36,7 +36,8 @@ public:
 
 private:
     State currentState_;
-    RSM::Core::EventQueueManager<Event> eventQueue_;  // Shared core component
+    RSM::Core::EventQueueManager<Event> internalQueue_;  // W3C SCXML C.1: Internal event queue (high priority)
+    RSM::Core::EventQueueManager<Event> externalQueue_;  // W3C SCXML C.1: External event queue (low priority)
     bool isRunning_ = false;
     std::function<void()> completionCallback_;  // W3C SCXML 6.4: Callback for done.invoke
 
@@ -51,16 +52,46 @@ protected:
      * They are processed before external events but after currently queued
      * internal events (FIFO ordering).
      *
+     * Used by:
+     * - <raise> element (W3C SCXML 3.14.1)
+     * - <send> with target="#_internal" (W3C SCXML C.1)
+     *
      * Delegates to Core::EventQueueManager for W3C compliance.
      *
      * @param event Event to raise internally
      * @param eventData Optional event data as JSON string (W3C SCXML 5.10)
      */
     void raise(Event event, const std::string &eventData = "") {
-        eventQueue_.raise(event);  // Use shared core implementation
+        internalQueue_.raise(event);  // W3C SCXML C.1: High priority queue
 
         // W3C SCXML 5.10: Store event data for _event.data access (test176)
         // Note: pendingEventData_ is only present in policies with send params
+        if constexpr (requires { policy_.pendingEventData_; }) {
+            if (!eventData.empty()) {
+                policy_.pendingEventData_ = eventData;
+            }
+        }
+    }
+
+    /**
+     * @brief Raise an external event (W3C SCXML C.1)
+     *
+     * External events are placed at the back of the external event queue.
+     * They are processed after all internal events have been consumed.
+     *
+     * Used by:
+     * - <send> without target (W3C SCXML 6.2)
+     * - <send> with external targets (not #_internal)
+     *
+     * W3C SCXML C.1 (test189): External queue has lower priority than internal queue.
+     *
+     * @param event Event to raise externally
+     * @param eventData Optional event data as JSON string (W3C SCXML 5.10)
+     */
+    void raiseExternal(Event event, const std::string &eventData = "") {
+        externalQueue_.raise(event);  // W3C SCXML C.1: Low priority queue
+
+        // W3C SCXML 5.10: Store event data for _event.data access
         if constexpr (requires { policy_.pendingEventData_; }) {
             if (!eventData.empty()) {
                 policy_.pendingEventData_ = eventData;
@@ -101,11 +132,13 @@ protected:
     }
 
     /**
-     * @brief Process internal event queue (W3C SCXML D.1 Algorithm)
+     * @brief Process both internal and external event queues (W3C SCXML D.1 Algorithm)
      *
-     * Processes all queued internal events in FIFO order. This implements
-     * the macrostep completion logic where all internal events generated
-     * during state entry are processed before external events.
+     * Processes all queued internal and external events in priority order.
+     * Internal events are processed first (high priority), then external events.
+     *
+     * W3C SCXML C.1 (test189): Internal queue (#_internal target) has higher
+     * priority than external queue (no target or external targets).
      *
      * Uses shared EventProcessingAlgorithms for W3C-compliant processing.
      * This ensures Interpreter and JIT engines use identical logic.
@@ -113,10 +146,26 @@ protected:
      * Supports both static (stateless) and non-static (stateful) policies.
      * Static methods can also be called through an instance in C++.
      */
-    void processInternalQueue() {
-        // W3C SCXML 3.12.1: Use shared algorithm (Single Source of Truth)
-        RSM::Core::JITEventQueue<Event> adapter(eventQueue_);
-        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [this](Event event) {
+    void processEventQueues() {
+        // W3C SCXML C.1: Process internal queue first (high priority)
+        RSM::Core::JITEventQueue<Event> internalAdapter(internalQueue_);
+        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(internalAdapter, [this](Event event) {
+            // Process event through transition logic
+            State oldState = currentState_;
+            // Call through policy instance (works for both static and non-static)
+            if (policy_.processTransition(currentState_, event, *this)) {
+                // Transition occurred: execute exit/entry actions
+                if (oldState != currentState_) {
+                    executeOnExit(oldState);
+                    executeOnEntry(currentState_);
+                }
+            }
+            return true;  // Continue processing
+        });
+
+        // W3C SCXML C.1: Process external queue second (low priority)
+        RSM::Core::JITEventQueue<Event> externalAdapter(externalQueue_);
+        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(externalAdapter, [this](Event event) {
             // Process event through transition logic
             State oldState = currentState_;
             // Call through policy instance (works for both static and non-static)
@@ -149,7 +198,8 @@ protected:
         int iterations = 0;
 
         // W3C SCXML 3.13: Use shared algorithm (Single Source of Truth)
-        RSM::Core::JITEventQueue<Event> adapter(eventQueue_);
+        // Note: Eventless transitions can raise new internal events, use internal queue
+        RSM::Core::JITEventQueue<Event> adapter(internalQueue_);
 
         while (iterations++ < MAX_ITERATIONS) {
             State oldState = currentState_;
@@ -215,7 +265,7 @@ public:
             executeOnEntry(state);
         }
 
-        processInternalQueue();
+        processEventQueues();
         checkEventlessTransitions();
     }
 
@@ -244,7 +294,7 @@ public:
             if (oldState != currentState_) {
                 executeOnExit(oldState);
                 executeOnEntry(currentState_);
-                processInternalQueue();
+                processEventQueues();
                 checkEventlessTransitions();
 
                 // W3C SCXML 6.4: Notify parent if reached final state
@@ -278,7 +328,7 @@ public:
             if (oldState != currentState_) {
                 executeOnExit(oldState);
                 executeOnEntry(currentState_);
-                processInternalQueue();
+                processEventQueues();
                 checkEventlessTransitions();
 
                 // W3C SCXML 6.4: Notify parent if reached final state
@@ -323,7 +373,7 @@ public:
     /**
      * @brief Tick scheduler and process ready internal events (W3C SCXML 6.2)
      *
-     * Phase 4: For single-threaded JIT engines with delayed send support.
+     * For single-threaded JIT engines with delayed send support.
      * This method polls the event scheduler and processes any ready scheduled events
      * without injecting an external event. Should be called periodically in a polling
      * loop to allow delayed sends to fire at the correct time.
@@ -347,7 +397,7 @@ public:
             if (oldState != currentState_) {
                 executeOnExit(oldState);
                 executeOnEntry(currentState_);
-                processInternalQueue();
+                processEventQueues();
                 checkEventlessTransitions();
 
                 // W3C SCXML 6.4: Notify parent if reached final state
@@ -359,7 +409,7 @@ public:
 
         // Even if no transition taken, process internal queue in case
         // scheduler raised events that should be processed
-        processInternalQueue();
+        processEventQueues();
         checkEventlessTransitions();
     }
 

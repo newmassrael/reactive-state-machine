@@ -6,7 +6,7 @@
 
 /**
  * @file InvokeProcessingAlgorithms.h
- * @brief Single Source of Truth for W3C SCXML Invoke processing (Phase 3)
+ * @brief Single Source of Truth for W3C SCXML Invoke processing (W3C SCXML 6.4)
  *
  * Design principles (same as EventProcessingAlgorithms):
  * 1. Algorithm sharing only - data structures remain engine-specific

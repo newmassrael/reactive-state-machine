@@ -452,6 +452,7 @@ rsm_generate_static_w3c_test(183 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(185 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(186 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(187 ${STATIC_W3C_OUTPUT_DIR})
+rsm_generate_static_w3c_test(189 ${STATIC_W3C_OUTPUT_DIR})
 # Copy test239sub1.scxml directly (sub-state machine without pass/fail states)
 add_custom_command(
     OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test239sub1.scxml"

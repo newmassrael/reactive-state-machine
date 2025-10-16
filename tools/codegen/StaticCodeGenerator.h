@@ -209,7 +209,7 @@ public:
     bool hasComplexDatamodel = false;   // Uses arrays, typeof, dynamic variables
     bool hasComplexECMAScript = false;  // Needs JSEngine for evaluation
     bool hasSend = false;               // Uses <send> action
-    bool hasSendWithDelay = false;      // Uses <send delay> or <send delayexpr> (Phase 4)
+    bool hasSendWithDelay = false;      // Uses <send delay> or <send delayexpr> (W3C SCXML 6.2)
     bool hasSendParams = false;         // Uses <send> with <param> elements (event data)
 
     // Helper: Determine if JSEngine is needed
@@ -217,7 +217,7 @@ public:
         return hasForEach || hasComplexDatamodel || hasComplexECMAScript;
     }
 
-    // Helper: Determine if EventScheduler is needed (Phase 4)
+    // Helper: Determine if EventScheduler is needed (W3C SCXML 6.2)
     bool needsEventScheduler() const {
         return hasSendWithDelay;
     }

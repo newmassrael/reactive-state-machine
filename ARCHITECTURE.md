@@ -144,7 +144,7 @@ Generated code works for ALL SCXML (W3C 100%)
   - ✅ Static child SCXML (`<invoke type="scxml" src="child.scxml">`) → Generated child class, direct instantiation
   - 🔴 Dynamic invocation (`<invoke type="http">`, srcexpr) → std::unique_ptr<InvokeExecutor> (lazy-init)
   - **Decision**: Code generator analyzes src attribute at generation time
-- ✅ Send with delay → SendSchedulingHelper::SimpleScheduler<Event> (lazy-init, Phase 4 complete)
+- ✅ Send with delay → SendSchedulingHelper::SimpleScheduler<Event> (lazy-init)
 
 **Complex Scripting**:
 - 🔴 Math.* operations → std::unique_ptr<JSEngine> (lazy-init)
@@ -449,6 +449,6 @@ class EventQueueManager {
 
 ---
 
-**Status**: Phase 4 Partial ✅ - Send with delay support complete (test175)
+**Status**: Dynamic Component Integration (Partial ✅) - Send with delay support complete (test175-187)
 **Last Updated**: 2025-10-15
 **Version**: 4.0 (Delayed Send + Event Scheduler)

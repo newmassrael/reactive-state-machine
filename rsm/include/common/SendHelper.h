@@ -36,6 +36,23 @@ public:
     }
 
     /**
+     * @brief Check if target should use internal event queue (W3C SCXML C.1)
+     *
+     * Single Source of Truth for internal queue routing logic.
+     * Used by JIT engine to determine which queue to use for raise operations.
+     *
+     * W3C SCXML C.1 (test189): Events with target="#_internal" must go to
+     * the internal event queue, which has higher priority than external queue.
+     *
+     * @param target Target to check
+     * @return true if target is "#_internal" (internal queue), false otherwise (external queue)
+     */
+    static bool isInternalTarget(const std::string &target) {
+        // W3C SCXML C.1: #_internal indicates internal event queue
+        return target == "#_internal";
+    }
+
+    /**
      * @brief Validate send target according to W3C SCXML 6.2
      *
      * W3C SCXML 6.2 (tests 159, 194): Invalid target values (e.g., starting with "!")

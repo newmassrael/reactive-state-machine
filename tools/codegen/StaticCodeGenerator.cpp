@@ -183,7 +183,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
             stateInfo.exitActions.insert(stateInfo.exitActions.end(), actions.begin(), actions.end());
         }
 
-        // W3C SCXML 6.4: Extract invoke elements (Phase 3.6)
+        // W3C SCXML 6.4: Extract invoke elements
         for (const auto &invokeNode : state->getInvoke()) {
             InvokeInfo invokeInfo;
             invokeInfo.invokeId = invokeNode->getId();
@@ -251,7 +251,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 detectFeatures(action.iterationActions);
             } else if (action.type == Action::SEND) {
                 model.hasSend = true;
-                // Phase 4: Detect send with delay (requires EventScheduler)
+                // W3C SCXML 6.2: Detect send with delay (requires EventScheduler)
                 if (!action.param5.empty() || !action.param6.empty()) {
                     model.hasSendWithDelay = true;
                 }
@@ -303,7 +303,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     LOG_INFO("StaticCodeGenerator: Feature detection - forEach: {}, complexDatamodel: {}, needsJSEngine: {}",
              model.hasForEach, model.hasComplexDatamodel, model.needsJSEngine());
 
-    // Step 5.5: Generate child SCXML code for static invokes (Phase 3)
+    // Step 5.5: Generate child SCXML code for static invokes (W3C SCXML 6.4)
     std::set<std::string> childIncludes;  // Track generated child headers for include directives
 
     // Track static invoke information for member generation
@@ -408,7 +408,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << "#include <unordered_map>\n";
     ss << "#include \"static/StaticExecutionEngine.h\"\n";
 
-    // Check if invoke support is needed (Phase 3.7)
+    // Check if invoke support is needed (W3C SCXML 6.4)
     bool hasInvokes = false;
     for (const auto &state : model.states) {
         if (!state.invokes.empty()) {
@@ -418,7 +418,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     }
 
     if (hasInvokes) {
-        // Phase 3: Include child SCXML headers for static invokes
+        // W3C SCXML 6.4: Include child SCXML headers for static invokes
         if (!childIncludes.empty()) {
             ss << "\n// Child SCXML headers (static invokes)\n";
             for (const auto &childInclude : childIncludes) {
@@ -430,7 +430,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     if (model.hasSend) {
         ss << "#include \"common/SendHelper.h\"\n";
     }
-    // Phase 4: Add SendSchedulingHelper for delayed send
+    // W3C SCXML 6.2: Add SendSchedulingHelper for delayed send
     if (model.needsEventScheduler()) {
         ss << "#include \"common/SendSchedulingHelper.h\"\n";
     }
@@ -512,12 +512,12 @@ std::string StaticCodeGenerator::generateStateEnum(const std::set<std::string> &
 }
 
 std::string StaticCodeGenerator::generateEventEnum(const std::set<std::string> &events) {
-    // Phase 4: Add NONE as first enum value for scheduler polling
+    // W3C SCXML 6.2: Add NONE as first enum value for scheduler polling
     // Event() (default constructor) will be Event::NONE, which never matches transitions
     // This allows tick() method to poll scheduler without triggering unwanted transitions
     std::stringstream ss;
     ss << "enum class Event : uint8_t {\n";
-    ss << "    NONE,  // Phase 4: Default event for scheduler polling (no semantic meaning)\n";
+    ss << "    NONE,  // W3C SCXML 6.2: Default event for scheduler polling (no semantic meaning)\n";
 
     size_t idx = 0;
     for (const auto &value : events) {
@@ -592,9 +592,9 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
         ss << "\n";
     }
 
-    // Phase 4: Check for ready scheduled events
+    // W3C SCXML 6.2: Check for ready scheduled events
     if (model.needsEventScheduler()) {
-        ss << "        // Phase 4: W3C SCXML 6.2 - Process ready scheduled events\n";
+        ss << "        // W3C SCXML 6.2: Process ready scheduled events\n";
         ss << "        {\n";
         ss << "            Event scheduledEvent;\n";
         if (model.hasSendParams && model.needsJSEngine()) {
@@ -1376,9 +1376,9 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "    mutable ::std::string pendingEventData_;\n";
     }
 
-    // Phase 4: Add event scheduler for delayed send (lazy-initialized)
+    // W3C SCXML 6.2: Add event scheduler for delayed send (lazy-initialized)
     if (model.needsEventScheduler()) {
-        ss << "    // Phase 4: Event scheduler for W3C SCXML 6.2 delayed send (lazy-init)\n";
+        ss << "    // W3C SCXML 6.2: Event scheduler for delayed send (lazy-init)\n";
         ss << "    mutable ::RSM::SendSchedulingHelper::SimpleScheduler<Event> eventScheduler_;\n";
     }
 
@@ -1411,9 +1411,9 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     }
 
     if (hasInvokes) {
-        // Generate child state machine member variables (Phase 3)
+        // Generate child state machine member variables (W3C SCXML 6.4)
         if (!staticInvokes.empty()) {
-            ss << "    // W3C SCXML 6.4: Static invoke child state machines (Phase 3)\n";
+            ss << "    // W3C SCXML 6.4: Static invoke child state machines\n";
             for (const auto &invokeInfo : staticInvokes) {
                 ss << "    mutable std::shared_ptr<::RSM::Generated::" << invokeInfo.childName
                    << "::" << invokeInfo.childName << "> child_" << invokeInfo.invokeId << "_;\n";
@@ -1430,7 +1430,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
             }
         }
 
-        ss << "    // W3C SCXML 6.4: Child session tracking (Phase 3)\n";
+        ss << "    // W3C SCXML 6.4: Child session tracking\n";
         ss << "    struct ChildSession {\n";
         ss << "        std::string sessionId;           // Child's session ID\n";
         ss << "        std::string invokeId;            // Invoke element ID\n";
@@ -1524,7 +1524,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                 generateActionCode(ss, action, "engine", events, model);
             }
 
-            // W3C SCXML 6.4: Start invoke elements on state entry (Phase 3.9)
+            // W3C SCXML 6.4: Start invoke elements on state entry
             if (hasInvoke) {
                 ss << "                // W3C SCXML 6.4: Start invoke elements\n";
                 ss << "                ensureSessionId();\n";
@@ -1614,13 +1614,13 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                            << invokeId << "\", session.autoforward);\n";
                         ss << "                }\n";
                     } else {
-                        // Dynamic invoke: Placeholder implementation (Phase 3)
+                        // Dynamic invoke: Placeholder implementation
                         ss << "                // W3C SCXML 6.4: Dynamic invoke (placeholder - immediately complete)\n";
                         ss << "                // type='" << invoke.type << "', src='" << invoke.src << "', srcExpr='"
                            << invoke.srcExpr << "'\n";
                         ss << "                {\n";
-                        ss << "                    // TODO Phase 4: Implement InvokeExecutor for runtime SCXML "
-                              "loading\n";
+                        ss << "                    // W3C SCXML 6.4: InvokeExecutor for runtime SCXML loading (see "
+                              "ARCHITECTURE.md)\n";
                         ss << "                    // For now, immediately raise done.invoke to allow test "
                               "progression\n";
                         ss << "                    LOG_INFO(\"Dynamic invoke placeholder: id=" << invokeId
@@ -1655,7 +1655,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         if (hasExitActions || hasInvoke) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
 
-            // W3C SCXML 6.4: Cancel invoke elements on state exit first (Phase 3.9)
+            // W3C SCXML 6.4: Cancel invoke elements on state exit first
             if (hasInvoke) {
                 ss << "                // W3C SCXML 6.4: Cancel invoke elements\n";
 
@@ -1945,14 +1945,14 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 }
                 ss << "                }\n";
             } else if (!event.empty()) {
-                // Phase 4: Handle delay/delayexpr for scheduled send
+                // W3C SCXML 6.2: Handle delay/delayexpr for scheduled send
                 std::string delay = action.param5;
                 std::string delayExpr = action.param6;
 
                 if (!delay.empty() || !delayExpr.empty()) {
                     // W3C SCXML 6.2: Delayed send - schedule event for future delivery
                     // W3C SCXML 6.2 + 5.10: Evaluate params at send time, not dispatch time (test186)
-                    ss << "                // Phase 4: W3C SCXML 6.2 delayed send (test186)\n";
+                    ss << "                // W3C SCXML 6.2: Delayed send (test186)\n";
                     ss << "                {\n";
 
                     // W3C SCXML 5.10: Evaluate params BEFORE scheduling (test186)
@@ -2054,14 +2054,29 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
                             ss << "                    std::string eventData = "
                                   "::RSM::EventDataHelper::buildJsonFromParams(params);\n";
-                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
+                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                            // Truth)
+                            ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
+                               << "\")) {\n";
+                            ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
                                << ", eventData);\n";
+                            ss << "                    } else {\n";
+                            ss << "                        " << engineVar
+                               << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
+                            ss << "                    }\n";
                             ss << "                }\n";
                         } else if (!action.sendContent.empty()) {
                             // W3C SCXML 5.10: Set event data from <content> literal (test179)
+                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                            // Truth)
                             ss << "                // W3C SCXML 5.10: Set _event.data from <content> literal\n";
-                            ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ", \""
+                            ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target << "\")) {\n";
+                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event) << ", \""
                                << escapeStringLiteral(action.sendContent) << "\");\n";
+                            ss << "                } else {\n";
+                            ss << "                    " << engineVar << ".raiseExternal(Event::" << capitalize(event)
+                               << ", \"" << escapeStringLiteral(action.sendContent) << "\");\n";
+                            ss << "                }\n";
                         } else if (!action.sendContentExpr.empty()) {
                             // W3C SCXML 5.10: Set event data from <content expr="..."> dynamic evaluation
                             ss << "                // W3C SCXML 5.10: Evaluate <content expr> for event data\n";
@@ -2081,11 +2096,27 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                             ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
                             ss << "                        eventData = \"\";\n";
                             ss << "                    }\n";
-                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
+                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                            // Truth)
+                            ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
+                               << "\")) {\n";
+                            ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
                                << ", eventData);\n";
+                            ss << "                    } else {\n";
+                            ss << "                        " << engineVar
+                               << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
+                            ss << "                    }\n";
                             ss << "                }\n";
                         } else {
-                            ss << "                " << engineVar << ".raise(Event::" << capitalize(event) << ");\n";
+                            // W3C SCXML C.1 (test189): Use SendHelper to determine queue routing (Single Source of
+                            // Truth)
+                            ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target << "\")) {\n";
+                            ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
+                               << ");\n";
+                            ss << "                } else {\n";
+                            ss << "                    " << engineVar << ".raiseExternal(Event::" << capitalize(event)
+                               << ");\n";
+                            ss << "                }\n";
                         }
                     } else {
                         // Event not in enum, likely unreachable - just comment

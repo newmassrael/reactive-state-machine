@@ -7,7 +7,7 @@
 
 /**
  * @file InvokeManagerAdapters.h
- * @brief Adapter pattern for Invoke management (Phase 3)
+ * @brief Adapter pattern for Invoke management (W3C SCXML 6.4)
  *
  * Design principles (same as EventQueueAdapters):
  * 1. Minimal interface for InvokeProcessingAlgorithms

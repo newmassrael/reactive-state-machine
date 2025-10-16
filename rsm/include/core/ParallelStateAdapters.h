@@ -5,7 +5,7 @@
 
 /**
  * @file ParallelStateAdapters.h
- * @brief Adapter pattern for Parallel state management (Phase 4)
+ * @brief Adapter pattern for Parallel state management (W3C SCXML 3.4)
  *
  * Design principles (same as InvokeManagerAdapters and EventQueueAdapters):
  * 1. Minimal interface for ParallelProcessingAlgorithms

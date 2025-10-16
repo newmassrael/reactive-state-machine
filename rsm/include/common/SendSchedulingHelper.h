@@ -20,7 +20,7 @@ namespace RSM {
  * - 6.2: Send element delay/delayexpr semantics
  * - 3.12: Event scheduling and delayed delivery
  *
- * Phase 4: Timer support for delayed send events
+ * W3C SCXML 6.2: Timer support for delayed send events
  */
 class SendSchedulingHelper {
 public:

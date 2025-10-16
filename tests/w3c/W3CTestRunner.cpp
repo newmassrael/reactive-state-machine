@@ -42,6 +42,7 @@
 #include "test185_sm.h"
 #include "test186_sm.h"
 #include "test187_sm.h"
+#include "test189_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1615,13 +1616,13 @@ TestReport W3CTestRunner::runJitTest(int testId) {
 
             JIT_TEST_CASE(174, "Send typeexpr uses current datamodel value (JIT)")
 
-        // Phase 4: test175 requires delayed send processing
+        // W3C SCXML 6.2: test175 requires delayed send processing
         case 175:
             testPassed = []() {
                 RSM::Generated::test175::test175 sm;
                 sm.initialize();
 
-                // Phase 4: Process scheduled events until completion or timeout
+                // W3C SCXML 6.2: Process scheduled events until completion or timeout
                 auto startTime = std::chrono::steady_clock::now();
                 const auto timeout = std::chrono::seconds(2);
 
@@ -1634,14 +1635,14 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                     // Sleep briefly to allow scheduled events to become ready
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-                    // Phase 4: Poll scheduler and process ready events without external event
+                    // W3C SCXML 6.2: Poll scheduler and process ready events without external event
                     // tick() uses Event::NONE which has no semantic meaning and won't match transitions
                     sm.tick();
                 }
 
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test175::State::Pass;
             }();
-            testDescription = "Send delayexpr uses current datamodel value (JIT) - Phase 4";
+            testDescription = "Send delayexpr uses current datamodel value (JIT)";
             break;
 
             JIT_TEST_CASE(176, "Send param uses current datamodel value (JIT)")
@@ -1661,13 +1662,13 @@ TestReport W3CTestRunner::runJitTest(int testId) {
 
             JIT_TEST_CASE(183, "Basic conditional transition (JIT)")
 
-        // Phase 4: test185 requires delayed send processing
+        // W3C SCXML 6.2: test185 requires delayed send processing
         case 185:
             testPassed = []() {
                 RSM::Generated::test185::test185 sm;
                 sm.initialize();
 
-                // Phase 4: Process scheduled events until completion or timeout
+                // W3C SCXML 6.2: Process scheduled events until completion or timeout
                 auto startTime = std::chrono::steady_clock::now();
                 const auto timeout = std::chrono::seconds(2);
 
@@ -1680,7 +1681,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                     // Sleep briefly to allow scheduled events to become ready
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-                    // Phase 4: Poll scheduler and process ready events without external event
+                    // W3C SCXML 6.2: Poll scheduler and process ready events without external event
                     // tick() uses Event::NONE which has no semantic meaning and won't match transitions
                     sm.tick();
                 }
@@ -1690,13 +1691,13 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             testDescription = "Send delay interval elapses before dispatch (JIT)";
             break;
 
-        // Phase 4: test186 requires delayed send processing
+        // W3C SCXML 6.2: test186 requires delayed send processing
         case 186:
             testPassed = []() {
                 RSM::Generated::test186::test186 sm;
                 sm.initialize();
 
-                // Phase 4: Process scheduled events until completion or timeout
+                // W3C SCXML 6.2: Process scheduled events until completion or timeout
                 auto startTime = std::chrono::steady_clock::now();
                 const auto timeout = std::chrono::seconds(2);
 
@@ -1709,7 +1710,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                     // Sleep briefly to allow scheduled events to become ready
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-                    // Phase 4: Poll scheduler and process ready events without external event
+                    // W3C SCXML 6.2: Poll scheduler and process ready events without external event
                     // tick() uses Event::NONE which has no semantic meaning and won't match transitions
                     sm.tick();
                 }
@@ -1719,13 +1720,13 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             testDescription = "Send arguments evaluated at send time not dispatch (JIT)";
             break;
 
-        // Phase 4: test187 requires delayed send processing and invoke
+        // W3C SCXML 6.2: test187 requires delayed send processing and invoke
         case 187:
             testPassed = []() {
                 RSM::Generated::test187::test187 sm;
                 sm.initialize();
 
-                // Phase 4: Process scheduled events until completion or timeout
+                // W3C SCXML 6.2: Process scheduled events until completion or timeout
                 auto startTime = std::chrono::steady_clock::now();
                 const auto timeout = std::chrono::seconds(2);
 
@@ -1740,6 +1741,19 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test187::State::Pass;
             }();
             testDescription = "Delayed send discarded on session termination (JIT)";
+            break;
+
+        // W3C SCXML C.1: test189 validates internal vs external queue priority
+        case 189:
+            testPassed = []() {
+                RSM::Generated::test189::test189 sm;
+                sm.initialize();
+                // W3C SCXML C.1 (test189): Internal queue (#_internal) has priority over external queue
+                // Event2 sent to external queue, Event1 sent to internal queue
+                // Expected: Event1 processed first (Pass state), not Event2 (Fail state)
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test189::State::Pass;
+            }();
+            testDescription = "Internal queue priority over external queue (W3C C.1 JIT)";
             break;
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")
