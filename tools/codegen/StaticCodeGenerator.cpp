@@ -477,6 +477,37 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
     }
 
+    // W3C SCXML 6.2 (test199): Unsupported send type requires TypeRegistry validation
+    // Static engine cannot validate send types at compile-time - requires runtime TypeRegistry
+    // ARCHITECTURE.md: No hybrid approach - fall back to Interpreter for entire SCXML
+    auto isSupportedSendType = [](const std::string &sendType) -> bool {
+        return sendType.empty() || sendType == "scxml" || sendType == "http://www.w3.org/TR/scxml/" ||
+               sendType == "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
+    };
+
+    auto hasUnsupportedSend = [&](const std::vector<Action> &actions) -> bool {
+        for (const auto &action : actions) {
+            if (action.type == Action::SEND && !isSupportedSendType(action.sendType)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    bool hasUnsupportedSendType = false;
+    for (const auto &state : model.states) {
+        if (hasUnsupportedSend(state.entryActions) || hasUnsupportedSend(state.exitActions)) {
+            hasUnsupportedSendType = true;
+            break;
+        }
+    }
+
+    if (hasUnsupportedSendType) {
+        LOG_INFO("StaticCodeGenerator: Unsupported send type detected in '{}' - generating Interpreter wrapper",
+                 model.name);
+        return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
+    }
+
     if (hasInvokes) {
         // W3C SCXML 6.4: Include child SCXML headers for static invokes
         if (!childIncludes.empty()) {

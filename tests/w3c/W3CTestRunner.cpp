@@ -47,6 +47,7 @@
 #include "test193_sm.h"
 #include "test194_sm.h"
 #include "test198_sm.h"
+#include "test199_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1777,6 +1778,10 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         // W3C SCXML 6.2 (test198): Default event processor type
         // Note: Uses Interpreter wrapper due to _event.origintype metadata requirement
         case 198:
+
+        // W3C SCXML 6.2 (test199): Unsupported send type raises error.execution
+        // Note: Uses Interpreter wrapper due to TypeRegistry validation requirement
+        case 199:
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
         case 187:
