@@ -1978,7 +1978,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                     ss << "                    std::string dynamicTarget = " << targetExpr << ";\n";
                 }
                 ss << "                    if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {\n";
-                ss << "                        // W3C SCXML 6.2: Invalid target stops execution\n";
+                ss << "                        // W3C SCXML 5.10: Invalid target raises error.execution and stops "
+                      "execution\n";
+                ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
                 ss << "                        return;\n";
                 ss << "                    }\n";
                 ss << "                    // Target is valid (including #_internal for internal events)\n";
@@ -1987,7 +1989,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 // Static target validation (only when targetExpr is not present)
                 ss << "                // W3C SCXML 6.2 (tests 159, 194): Validate send target using SendHelper\n";
                 ss << "                if (::RSM::SendHelper::isInvalidTarget(\"" << target << "\")) {\n";
-                ss << "                    // W3C SCXML 5.10: Invalid target stops subsequent executable content\n";
+                ss << "                    // W3C SCXML 5.10: Invalid target raises error.execution and stops "
+                      "subsequent executable content\n";
+                ss << "                    " << engineVar << ".raise(Event::Error_execution);\n";
                 ss << "                    return;  // Stop execution of subsequent actions in this "
                       "entry/exit/transition\n";
                 ss << "                }\n";
@@ -2455,6 +2459,11 @@ std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model
             events.insert("error.execution");  // W3C SCXML 6.4.6: Raised on invoke failure
             events.insert("cancel.invoke");    // W3C SCXML 6.4: Raised when invoke is cancelled
         }
+    }
+
+    // W3C SCXML 5.10: Add error.execution if model has send (for invalid target validation)
+    if (model.hasSend) {
+        events.insert("error.execution");  // W3C SCXML 5.10: Raised on send validation errors
     }
 
     return events;

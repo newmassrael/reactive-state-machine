@@ -45,6 +45,7 @@
 #include "test189_sm.h"
 #include "test190_sm.h"
 #include "test193_sm.h"
+#include "test194_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1758,6 +1759,18 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test193::State::Pass;
             }();
             testDescription = "Type attribute routes events to external queue (W3C 6.2.4 JIT)";
+            break;
+
+        // W3C SCXML 6.2 (test194): Invalid target raises error.execution
+        case 194:
+            testPassed = []() {
+                RSM::Generated::test194::test194 sm;
+                sm.initialize();
+                // W3C SCXML 6.2 (test194): Invalid target "!invalid" must raise error.execution
+                // Expected: error.execution transitions to Pass, timeout transitions to Fail
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test194::State::Pass;
+            }();
+            testDescription = "Invalid target raises error.execution (W3C 6.2 JIT)";
             break;
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
