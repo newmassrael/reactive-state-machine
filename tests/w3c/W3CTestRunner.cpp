@@ -50,6 +50,7 @@
 #include "test199_sm.h"
 #include "test200_sm.h"
 #include "test201_sm.h"
+#include "test208_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1800,6 +1801,29 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         // W3C SCXML 6.2 (test201): BasicHTTP event processor (optional)
         // Note: Uses Interpreter wrapper due to unsupported optional event processor type
         case 201:
+
+        // W3C SCXML 6.3: test208 requires delayed send cancellation processing
+        case 208:
+            testPassed = []() {
+                RSM::Generated::test208::test208 sm;
+                sm.initialize();
+
+                // W3C SCXML 6.3: Process scheduled events until completion or timeout
+                auto startTime = std::chrono::steady_clock::now();
+                const auto timeout = std::chrono::seconds(2);
+
+                while (!sm.isInFinalState()) {
+                    if (std::chrono::steady_clock::now() - startTime > timeout) {
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    sm.tick();
+                }
+
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test208::State::Pass;
+            }();
+            testDescription = "Cancel delayed send by sendid (W3C 6.3 JIT)";
+            break;
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
         case 187:

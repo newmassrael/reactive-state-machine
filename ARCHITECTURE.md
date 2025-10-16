@@ -93,6 +93,110 @@ Generated code works for ALL SCXML (W3C 100%)
 
 ## Feature Handling Strategy
 
+### Static vs Interpreter Decision Criteria
+
+**Critical Principle**: The decision between Static (JIT) and Interpreter wrapper is based on **logical implementability at compile-time**, NOT on current StaticCodeGenerator implementation status.
+
+#### Static JIT Generation (Compile-Time Known)
+
+**Requirements**: All SCXML features can be resolved at compile-time
+
+**Criteria**:
+- ✅ **Literal Values**: All event names, state IDs, delays, sendids are string literals
+- ✅ **Static Attributes**: `<send id="foo">`, `<cancel sendid="foo">`, `delay="1s"`
+- ✅ **Static Expressions**: Simple guards (`x > 0`), assignments (`x = 5`)
+- ✅ **Compile-Time Constants**: All values deterministic at code generation time
+
+**Examples**:
+```xml
+<!-- Static: Literal sendid and delay -->
+<send id="foo" event="event1" delay="1s"/>
+<cancel sendid="foo"/>
+
+<!-- Static: Literal target -->
+<send target="#_child" event="childEvent"/>
+
+<!-- Static: Simple guard condition -->
+<transition event="event1" cond="x > 0" target="pass"/>
+```
+
+**Generated Code Characteristics**:
+- Direct C++ function calls with literal string arguments
+- Compile-time constants embedded in generated code
+- Zero runtime overhead for feature detection
+
+#### Interpreter Wrapper (Runtime Resolution Required)
+
+**Requirements**: SCXML features require runtime evaluation or dynamic resolution
+
+**Criteria**:
+- 🔴 **Dynamic Expressions**: `sendidexpr`, `targetexpr`, `delayexpr` with variables
+- 🔴 **Runtime Metadata**: `_event.origintype`, `_event.sendid`, `_event.data`
+- 🔴 **Dynamic Invoke**: `<invoke srcexpr>`, `<invoke><content>`, `<invoke contentExpr>`
+- 🔴 **Unsupported Processors**: Non-SCXML event processor types (BasicHTTP, custom)
+- 🔴 **Runtime Validation**: TypeRegistry lookups, platform-specific features
+
+**Examples**:
+```xml
+<!-- Dynamic: Expression-based sendid -->
+<cancel sendidexpr="variableName"/>
+<cancel sendidexpr="_event.sendid"/>
+
+<!-- Dynamic: Runtime metadata access -->
+<transition event="*" cond="_event.origintype == 'http://...'"/>
+
+<!-- Dynamic: Expression-based target -->
+<send targetexpr="'#_' + targetVar" event="msg"/>
+
+<!-- Dynamic: Unsupported processor type -->
+<send type="http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor"/>
+```
+
+**Rationale**:
+- Expressions require JavaScript evaluation at runtime
+- Metadata available only during event processing
+- TypeRegistry validation requires runtime infrastructure
+- Dynamic invoke needs SCXML loading at runtime
+
+#### Decision Matrix
+
+| SCXML Feature | Static Possible? | Interpreter Needed? | Reason |
+|---------------|------------------|---------------------|---------|
+| `<cancel sendid="foo"/>` | ✅ Yes | No | Literal string, compile-time known |
+| `<cancel sendidexpr="var"/>` | ❌ No | Yes | Variable evaluation at runtime |
+| `<send id="x" delay="1s"/>` | ✅ Yes | No | Literal sendid and delay |
+| `<send delayexpr="varDelay"/>` | ❌ No | Yes | Variable evaluation at runtime |
+| `_event.origintype` | ❌ No | Yes | Runtime metadata not available at compile-time |
+| `<send type="scxml"/>` | ✅ Yes | No | Standard SCXML processor |
+| `<send type="BasicHTTP"/>` | ❌ No | Yes | Optional processor, TypeRegistry validation |
+| `<invoke src="child.scxml"/>` | ✅ Yes | No | Static child SCXML, compile-time known |
+| `<invoke srcexpr="pathVar"/>` | ❌ No | Yes | Dynamic SCXML loading at runtime |
+
+#### Current Implementation Gap
+
+**Important Distinction**:
+- **Logical Possibility**: Can this feature be implemented statically? (Design decision)
+- **Current Support**: Does StaticCodeGenerator currently support this? (Implementation status)
+
+**Examples**:
+- `<cancel sendid="foo"/>`: **Logically static** ✅, **implemented** ✅ (test208)
+  - SendSchedulingHelper.cancelEvent() reused across engines
+  - scheduleEvent() supports sendId parameter for tracking
+  - StaticCodeGenerator parses `<cancel>` and generates `cancelEvent()` call
+  - **Status**: Fully implemented in Static JIT with Zero Duplication
+
+- `<cancel sendidexpr="_event.sendid"/>`: **Logically dynamic** ❌, **requires Interpreter** 🔴
+  - Needs runtime _event metadata access
+  - Cannot be determined at compile-time
+  - **Action**: Always use Interpreter wrapper
+
+**Verification Process** (see CLAUDE.md):
+1. Convert TXML to SCXML: `txml-converter test.txml /tmp/test.scxml`
+2. Try static generation: `scxml-codegen /tmp/test.scxml -o /tmp/`
+3. Check generated header for wrapper comments:
+   - "// W3C SCXML X.X: ... detected - using Interpreter engine" → Interpreter wrapper
+   - No wrapper comments → Static JIT generated
+
 ### Policy Generation Strategy
 
 **Critical Design Decision**: Policy methods (processTransition, executeEntryActions, etc.) generation depends on feature requirements:
@@ -393,13 +497,19 @@ class EventQueueManager {
     - test187: Dynamic invoke with done.invoke event (W3C SCXML 6.4)
     - Automatic done.invoke event generation for invoke elements
     - Event enum includes Done_invoke when state has invoke
+  - test208: Cancel delayed send by sendid (W3C SCXML 6.3)
+    - `<cancel sendid="foo"/>` support with literal sendid
+    - Automatic fallback to Interpreter wrapper for `sendidexpr` (dynamic expressions)
+    - Event enum includes all sent events (even if cancelled)
+    - SendSchedulingHelper.cancelEvent() reused across engines
   - SimpleScheduler with priority queue (O(log n) scheduling)
   - Event::NONE for scheduler polling without semantic transitions
   - StaticExecutionEngine::tick() method for single-threaded polling
   - Zero overhead for state machines without delayed sends (lazy-init)
   - Hybrid approach: Static delay ("5s") or dynamic delayexpr ("Var1")
   - **Single Source of Truth**: parseDelayString() shared across engines (Zero Duplication achieved)
-  - **W3C SCXML 6.2.5**: Sendid support with cancelEvent() for `<cancel>` element
+  - **W3C SCXML 6.2.5**: Sendid support for event tracking
+  - **W3C SCXML 6.3**: Cancel element support with sendid parameter
   - Thread-safe unique sendid generation with atomic counter
   - Automatic filtering of cancelled events in popReadyEvent()
 - 🔴 ParallelStateHandler for parallel states (planned)
@@ -422,7 +532,7 @@ class EventQueueManager {
 | **Total** | **12/202 (6%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-175, 185-187, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, delayed send (6.2), event data (5.10), invoke with done.invoke events (6.4), hierarchical states, JIT JSEngine integration
+- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-175, 185-187, 208, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, delayed send (6.2), cancel element (6.3), event data (5.10), invoke with done.invoke events (6.4), hierarchical states, JIT JSEngine integration
 - Interpreter engine provides 100% W3C compliance baseline
 - Static generator produces hybrid code with shared semantics from interpreter engine
 

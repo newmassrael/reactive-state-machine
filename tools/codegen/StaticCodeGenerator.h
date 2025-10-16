@@ -142,18 +142,20 @@ struct ConditionalBranch {
 // Executable content action representation
 struct Action {
     enum Type {
-        RAISE,   // <raise event="name"/>
-        SCRIPT,  // <script>code</script>
-        ASSIGN,  // <assign location="var" expr="value"/>
-        LOG,     // <log expr="message"/>
-        SEND,    // <send event="name"/>
-        IF,      // <if cond="expr">...</if>
-        FOREACH  // <foreach array="arr" item="item" index="idx">...</foreach>
+        RAISE,    // <raise event="name"/>
+        SCRIPT,   // <script>code</script>
+        ASSIGN,   // <assign location="var" expr="value"/>
+        LOG,      // <log expr="message"/>
+        SEND,     // <send event="name"/>
+        IF,       // <if cond="expr">...</if>
+        FOREACH,  // <foreach array="arr" item="item" index="idx">...</foreach>
+        CANCEL    // <cancel sendid="id"/> or <cancel sendidexpr="expr"/> (W3C SCXML 6.3)
     };
 
     Type type;
-    std::string param1;  // event name for RAISE, array for FOREACH, script content for SCRIPT, condition for IF, etc.
-    std::string param2;  // additional parameter (e.g., assign location, item var for FOREACH)
+    std::string param1;  // event name for RAISE, array for FOREACH, script content for SCRIPT, condition for IF, sendid
+                         // for CANCEL, etc.
+    std::string param2;  // additional parameter (e.g., assign location, item var for FOREACH, sendidexpr for CANCEL)
     std::string param3;  // third parameter (e.g., index var for FOREACH, targetExpr for SEND)
     std::string param4;  // fourth parameter (e.g., eventExpr for SEND)
     std::string param5;  // fifth parameter (e.g., delay for SEND)
@@ -163,6 +165,7 @@ struct Action {
     std::vector<std::pair<std::string, std::string>> sendParams;  // For SEND: param name->expr pairs (W3C 5.10)
     std::string sendContent;                                      // For SEND: <content> literal (W3C 5.10, test179)
     std::string sendContentExpr;  // For SEND: <content expr="..."> dynamic content (W3C 5.10)
+    std::string sendId;           // For SEND: id attribute for event tracking/cancellation (W3C 6.2.5, test208)
     std::string sendIdLocation;   // For SEND: idlocation variable to store sendid (W3C 6.2.4, test183)
     std::string sendType;         // For SEND: type attribute for event processor (W3C 6.2.4, test193)
 

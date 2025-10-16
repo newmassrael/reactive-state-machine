@@ -10,6 +10,7 @@
 #include <sstream>
 
 #include "actions/AssignAction.h"
+#include "actions/CancelAction.h"
 #include "actions/ForeachAction.h"
 #include "actions/IfAction.h"
 #include "actions/LogAction.h"
@@ -504,6 +505,33 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
 
     if (hasUnsupportedSendType) {
         LOG_INFO("StaticCodeGenerator: Unsupported send type detected in '{}' - generating Interpreter wrapper",
+                 model.name);
+        return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
+    }
+
+    // W3C SCXML 6.3 (test208): sendidexpr requires runtime evaluation
+    // Static engine can only handle literal sendid values, not dynamic expressions
+    // ARCHITECTURE.md: sendid="foo" → Static, sendidexpr="variable" → Interpreter
+    auto hasCancelWithExpr = [](const std::vector<Action> &actions) -> bool {
+        for (const auto &action : actions) {
+            // param1 = sendid (literal), param2 = sendidexpr (expression)
+            if (action.type == Action::CANCEL && !action.param2.empty()) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    bool hasDynamicCancel = false;
+    for (const auto &state : model.states) {
+        if (hasCancelWithExpr(state.entryActions) || hasCancelWithExpr(state.exitActions)) {
+            hasDynamicCancel = true;
+            break;
+        }
+    }
+
+    if (hasDynamicCancel) {
+        LOG_INFO("StaticCodeGenerator: Dynamic cancel (sendidexpr) detected in '{}' - generating Interpreter wrapper",
                  model.name);
         return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
     }
@@ -1392,11 +1420,21 @@ StaticCodeGenerator::processActions(const std::vector<std::shared_ptr<RSM::IActi
                 sendActionResult.sendContent = sendAction->getContent();
                 // W3C SCXML 5.10: Extract send contentexpr for dynamic event data
                 sendActionResult.sendContentExpr = sendAction->getContentExpr();
+                // W3C SCXML 6.2.5: Extract id attribute for event tracking/cancellation (test208)
+                sendActionResult.sendId = sendAction->getSendId();
                 // W3C SCXML 6.2.4: Extract idlocation for sendid storage (test183)
                 sendActionResult.sendIdLocation = sendAction->getIdLocation();
                 // W3C SCXML 6.2.4: Extract type for event processor (test193)
                 sendActionResult.sendType = sendAction->getType();
                 result.push_back(sendActionResult);
+            }
+        } else if (actionType == "cancel") {
+            if (auto cancelAction = std::dynamic_pointer_cast<RSM::CancelAction>(actionNode)) {
+                // W3C SCXML 6.3: Cancel scheduled send event by sendid
+                // param1 = sendid (literal), param2 = sendidexpr (expression)
+                std::string sendId = cancelAction->getSendId();
+                std::string sendIdExpr = cancelAction->getSendIdExpr();
+                result.push_back(Action(Action::CANCEL, sendId, sendIdExpr));
             }
         }
     }
@@ -2101,13 +2139,13 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
                 if (!delay.empty() || !delayExpr.empty()) {
                     // W3C SCXML 6.2: Delayed send - schedule event for future delivery
-                    // W3C SCXML 6.2 + 5.10: Evaluate params at send time, not dispatch time (test186)
-                    ss << "                // W3C SCXML 6.2: Delayed send (test186)\n";
+                    // W3C SCXML 5.10: Evaluate params at send time, not dispatch time (test186)
+                    ss << "                // W3C SCXML 6.2: Delayed send with event scheduling\n";
                     ss << "                {\n";
 
                     // W3C SCXML 5.10: Evaluate params BEFORE scheduling (test186)
                     if (!action.sendParams.empty()) {
-                        ss << "                    // W3C SCXML 6.2: Evaluate params at send time (test186)\n";
+                        ss << "                    // W3C SCXML 5.10: Evaluate params at send time (test186)\n";
                         ss << "                    std::map<std::string, std::vector<std::string>> params;\n";
                         for (const auto &[paramName, paramExpr] : action.sendParams) {
                             if (model.needsJSEngine()) {
@@ -2160,10 +2198,11 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                         ss << "                    std::string eventData = "
                               "::RSM::EventDataHelper::buildJsonFromParams(params);\n";
                         ss << "                    eventScheduler_.scheduleEvent(Event::" << capitalize(event)
-                           << ", delayMs, \"\", eventData);\n";
+                           << ", delayMs, \"" << escapeStringLiteral(action.sendId) << "\", eventData);\n";
                     } else {
+                        // W3C SCXML 6.2.5: Pass sendId for event tracking/cancellation (test208)
                         ss << "                    eventScheduler_.scheduleEvent(Event::" << capitalize(event)
-                           << ", delayMs);\n";
+                           << ", delayMs, \"" << escapeStringLiteral(action.sendId) << "\");\n";
                     }
                     ss << "                }\n";
                 } else {
@@ -2305,6 +2344,14 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                     }
                 }
             }
+        }
+        break;
+    case Action::CANCEL:
+        // W3C SCXML 6.3: Cancel scheduled send event by sendid
+        // param1 = sendid (literal string), param2 = sendidexpr (should be empty for static)
+        if (!action.param1.empty()) {
+            ss << "                // W3C SCXML 6.3: Cancel delayed send event\n";
+            ss << "                eventScheduler_.cancelEvent(\"" << escapeStringLiteral(action.param1) << "\");\n";
         }
         break;
     case Action::IF:
@@ -2494,6 +2541,9 @@ std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model
     extractFromActions = [&](const std::vector<Action> &actions) {
         for (const auto &action : actions) {
             if (action.type == Action::RAISE && !action.param1.empty()) {
+                events.insert(action.param1);
+            } else if (action.type == Action::SEND && !action.param1.empty()) {
+                // W3C SCXML 6.2: Extract events from send actions (test208)
                 events.insert(action.param1);
             } else if (action.type == Action::IF) {
                 // Recursively process if/elseif/else branches
