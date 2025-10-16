@@ -49,6 +49,7 @@
 #include "test198_sm.h"
 #include "test199_sm.h"
 #include "test200_sm.h"
+#include "test201_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1795,6 +1796,10 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         // W3C SCXML 6.2 (test199): Unsupported send type raises error.execution
         // Note: Uses Interpreter wrapper due to TypeRegistry validation requirement
         case 199:
+
+        // W3C SCXML 6.2 (test201): BasicHTTP event processor (optional)
+        // Note: Uses Interpreter wrapper due to unsupported optional event processor type
+        case 201:
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
         case 187:
