@@ -287,13 +287,17 @@ const std::regex TXMLConverter::CONF_ALL_ELEMENTS{R"abc(<conf:[^>]*/>|<conf:[^>]
                                                   std::regex::optimize};
 
 std::string TXMLConverter::convertTXMLToSCXML(const std::string &txml) {
+    return convertTXMLToSCXML(txml, false);
+}
+
+std::string TXMLConverter::convertTXMLToSCXML(const std::string &txml, bool isManualTest) {
     if (txml.empty()) {
         throw std::invalid_argument("TXML content cannot be empty");
     }
 
     try {
         std::string scxml = applyTransformations(txml);
-        validateSCXML(scxml);
+        validateSCXML(scxml, isManualTest);
         return scxml;
     } catch (const std::exception &e) {
         throw std::runtime_error("TXML to SCXML conversion failed: " + std::string(e.what()));
@@ -686,7 +690,7 @@ std::string TXMLConverter::convertConfElements(const std::string &content) {
     return result;
 }
 
-void TXMLConverter::validateSCXML(const std::string &scxml) {
+void TXMLConverter::validateSCXML(const std::string &scxml, bool isManualTest) {
     // Basic validation checks
     if (scxml.find("<scxml") == std::string::npos) {
         throw std::invalid_argument("Converted content does not contain <scxml> element");
@@ -705,14 +709,16 @@ void TXMLConverter::validateSCXML(const std::string &scxml) {
         throw std::runtime_error("Conversion incomplete: conf: namespace references still present");
     }
 
-    // Ensure we have pass/fail targets for W3C test validation
-    bool hasPassTarget =
-        (scxml.find(R"(target="pass")") != std::string::npos) || (scxml.find(R"(id="pass")") != std::string::npos);
-    bool hasFailTarget =
-        (scxml.find(R"(target="fail")") != std::string::npos) || (scxml.find(R"(id="fail")") != std::string::npos);
+    // Ensure we have pass/fail targets for W3C test validation (unless it's a manual test)
+    if (!isManualTest) {
+        bool hasPassTarget =
+            (scxml.find(R"(target="pass")") != std::string::npos) || (scxml.find(R"(id="pass")") != std::string::npos);
+        bool hasFailTarget =
+            (scxml.find(R"(target="fail")") != std::string::npos) || (scxml.find(R"(id="fail")") != std::string::npos);
 
-    if (!hasPassTarget && !hasFailTarget) {
-        throw std::runtime_error("Converted SCXML must have pass or fail targets for W3C compliance testing");
+        if (!hasPassTarget && !hasFailTarget) {
+            throw std::runtime_error("Converted SCXML must have pass or fail targets for W3C compliance testing");
+        }
     }
 }
 

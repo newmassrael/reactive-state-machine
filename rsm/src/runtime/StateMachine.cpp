@@ -170,6 +170,16 @@ bool StateMachine::loadSCXMLFromString(const std::string &scxmlContent) {
     }
 }
 
+bool StateMachine::loadModel(std::shared_ptr<SCXMLModel> model) {
+    if (!model) {
+        LOG_ERROR("StateMachine: Cannot load null model");
+        return false;
+    }
+
+    model_ = model;
+    return initializeFromModel();
+}
+
 bool StateMachine::start() {
     if (initialState_.empty()) {
         LOG_ERROR("StateMachine: Cannot start - no initial state defined");

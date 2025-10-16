@@ -68,9 +68,17 @@ int main(int argc, char **argv) {
         // Read TXML file
         std::string txmlContent = readFile(inputPath);
 
+        // Check if this is a manual test by reading metadata
+        fs::path metadataPath = inputPath.parent_path() / "metadata.txt";
+        bool isManualTest = false;
+        if (fs::exists(metadataPath)) {
+            std::string metadata = readFile(metadataPath);
+            isManualTest = (metadata.find("manual: True") != std::string::npos);
+        }
+
         // Convert TXML to SCXML
         RSM::W3C::TXMLConverter converter;
-        std::string scxmlContent = converter.convertTXMLToSCXML(txmlContent);
+        std::string scxmlContent = converter.convertTXMLToSCXML(txmlContent, isManualTest);
 
         // Output result
         if (writeToStdout) {

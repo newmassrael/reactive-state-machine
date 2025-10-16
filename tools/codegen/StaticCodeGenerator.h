@@ -105,6 +105,12 @@ private:
 
     // File writing
     bool writeToFile(const std::string &path, const std::string &content);
+
+    // W3C SCXML 6.4: Generate Interpreter wrapper for dynamic invoke fallback
+    // ARCHITECTURE.md: No hybrid approach - entire SCXML uses Interpreter when dynamic invoke detected
+    bool generateInterpreterWrapper(std::stringstream &ss, const SCXMLModel &model,
+                                    std::shared_ptr<RSM::SCXMLModel> rsmModel, const std::string &scxmlPath,
+                                    const std::string &outputDir);
 };
 
 // Simplified model for code generation (extracted from RSM::SCXMLModel)

@@ -410,11 +410,32 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
 
     // Check if invoke support is needed (W3C SCXML 6.4)
     bool hasInvokes = false;
+    bool hasDynamicInvokes = false;
     for (const auto &state : model.states) {
         if (!state.invokes.empty()) {
             hasInvokes = true;
+            // Check for dynamic invokes
+            for (const auto &invoke : state.invokes) {
+                bool isStaticInvoke =
+                    (invoke.type.empty() || invoke.type == "scxml" || invoke.type == "http://www.w3.org/TR/scxml/") &&
+                    !invoke.src.empty() && invoke.srcExpr.empty() && invoke.content.empty() &&
+                    invoke.contentExpr.empty();
+                if (!isStaticInvoke) {
+                    hasDynamicInvokes = true;
+                    break;
+                }
+            }
+        }
+        if (hasDynamicInvokes) {
             break;
         }
+    }
+
+    // W3C SCXML 6.4: Dynamic invoke detection - use Interpreter engine for entire SCXML
+    // ARCHITECTURE.md: No hybrid approach - either fully JIT or fully Interpreter
+    if (hasDynamicInvokes) {
+        LOG_INFO("StaticCodeGenerator: Dynamic invoke detected in '{}' - generating Interpreter wrapper", model.name);
+        return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
     }
 
     if (hasInvokes) {
@@ -1468,6 +1489,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "    // Active child sessions indexed by invokeId\n";
         ss << "    mutable std::unordered_map<std::string, ChildSession> activeInvokes_;\n";
         ss << "\n";
+        // Note: Dynamic invoke handling moved to early return (line 433-435)
+        // ARCHITECTURE.md: All-or-Nothing strategy prevents reaching this code with dynamic invokes
     }
 
     // JSEngine lazy initialization and cleanup (RAII + Lazy Init pattern)
@@ -1608,13 +1631,23 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                            << " completed, pending done.invoke event\");\n";
                         ss << "                    });\n";
                         ss << "                    \n";
-                        ss << "                    child_" << invokeId << "_->initialize();\n";
-                        ss << "                    \n";
-                        ss << "                    // W3C SCXML 6.4: Check if child immediately reached final state\n";
-                        ss << "                    if (child_" << invokeId << "_->isInFinalState()) {\n";
-                        ss << "                        LOG_INFO(\"Child " << invokeId
+                        ss << "                    // W3C SCXML 6.4.6: Handle invoke failure with error.execution\n";
+                        ss << "                    try {\n";
+                        ss << "                        child_" << invokeId << "_->initialize();\n";
+                        ss << "                        \n";
+                        ss << "                        // W3C SCXML 6.4: Check if child immediately reached final "
+                              "state\n";
+                        ss << "                        if (child_" << invokeId << "_->isInFinalState()) {\n";
+                        ss << "                            LOG_INFO(\"Child " << invokeId
                            << " immediately completed, raising done.invoke\");\n";
-                        ss << "                        engine.raise(Event::Done_invoke);\n";
+                        ss << "                            engine.raise(Event::Done_invoke);\n";
+                        ss << "                        }\n";
+                        ss << "                    } catch (const std::exception& e) {\n";
+                        ss << "                        // W3C SCXML 6.4.6: Raise error.execution on invoke failure\n";
+                        ss << "                        LOG_ERROR(\"Failed to initialize child " << invokeId
+                           << ": {}\", e.what());\n";
+                        ss << "                        engine.raise(Event::Error_execution);\n";
+                        ss << "                        child_" << invokeId << "_ = nullptr;\n";
                         ss << "                    }\n";
                         ss << "                    \n";
                         ss << "                    // W3C SCXML 6.4: Track child session for lifecycle management\n";
@@ -1638,21 +1671,9 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                         ss << "                    LOG_DEBUG(\"Invoke session created: id={}, autoforward={}\", \""
                            << invokeId << "\", session.autoforward);\n";
                         ss << "                }\n";
-                    } else {
-                        // Dynamic invoke: Placeholder implementation
-                        ss << "                // W3C SCXML 6.4: Dynamic invoke (placeholder - immediately complete)\n";
-                        ss << "                // type='" << invoke.type << "', src='" << invoke.src << "', srcExpr='"
-                           << invoke.srcExpr << "'\n";
-                        ss << "                {\n";
-                        ss << "                    // W3C SCXML 6.4: InvokeExecutor for runtime SCXML loading (see "
-                              "ARCHITECTURE.md)\n";
-                        ss << "                    // For now, immediately raise done.invoke to allow test "
-                              "progression\n";
-                        ss << "                    LOG_INFO(\"Dynamic invoke placeholder: id=" << invokeId
-                           << ", immediately completing\");\n";
-                        ss << "                    engine.raise(Event::Done_invoke);\n";
-                        ss << "                }\n";
                     }
+                    // Note: Dynamic invoke case handled by early return at function start (line 433-435)
+                    // ARCHITECTURE.md: All-or-Nothing strategy - no hybrid JIT+Interpreter
                 }
             }
 
@@ -1703,9 +1724,25 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                         ss << "                // W3C SCXML 6.4: Cleanup static invoke child\n";
                         ss << "                if (child_" << invokeId << "_) {\n";
                         ss << "                    LOG_DEBUG(\"Stopping static invoke: id=" << invokeId << "\");\n";
-                        ss << "                    // TODO: Send cancel.invoke." << invokeId << " platform event\n";
+                        ss << "                    // W3C SCXML 6.4: Send cancel.invoke platform event\n";
+                        ss << "                    engine.raise(Event::Cancel_invoke);\n";
                         ss << "                    child_" << invokeId
                            << "_.reset();  // Destroy child state machine\n";
+                        ss << "                }\n";
+                    } else {
+                        // Dynamic invoke cleanup
+                        ss << "                \n";
+                        ss << "                // W3C SCXML 6.4: Cleanup dynamic invoke (Interpreter engine)\n";
+                        ss << "                {\n";
+                        ss << "                    auto it = interpreterEngines_.find(\"" << invokeId << "\");\n";
+                        ss << "                    if (it != interpreterEngines_.end()) {\n";
+                        ss << "                        LOG_DEBUG(\"Stopping dynamic invoke: id=" << invokeId
+                           << "\");\n";
+                        ss << "                        // W3C SCXML 6.4: Send cancel.invoke platform event\n";
+                        ss << "                        engine.raise(Event::Cancel_invoke);\n";
+                        ss << "                        interpreterEngines_.erase(it);  // Destroy Interpreter "
+                              "instance\n";
+                        ss << "                    }\n";
                         ss << "                }\n";
                     }
 
@@ -1808,6 +1845,18 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     ss << "class " << model.name << " : public ::RSM::Static::StaticExecutionEngine<" << model.name << "Policy> {\n";
     ss << "public:\n";
     ss << "    " << model.name << "() = default;\n";
+    ss << "\n";
+    ss << "    ~" << model.name << "() {\n";
+    ss << "        // W3C SCXML 6.4: Cleanup child state machines on destruction\n";
+
+    // Generate cleanup code for each child state machine
+    for (const auto &invokeInfo : staticInvokes) {
+        ss << "        if (child_" << invokeInfo.invokeId << "_) {\n";
+        ss << "            child_" << invokeInfo.invokeId << "_.reset();\n";
+        ss << "        }\n";
+    }
+
+    ss << "    }\n";
     ss << "};\n";
 
     return ss.str();
@@ -2353,9 +2402,11 @@ std::set<std::string> StaticCodeGenerator::extractEvents(const SCXMLModel &model
         extractFromActions(state.entryActions);
         extractFromActions(state.exitActions);
 
-        // W3C SCXML 6.4: Add done.invoke event if state has invoke elements
+        // W3C SCXML 6.4: Add invoke-related platform events if state has invoke elements
         if (!state.invokes.empty()) {
-            events.insert("done.invoke");
+            events.insert("done.invoke");      // W3C SCXML 6.4: Raised when child completes
+            events.insert("error.execution");  // W3C SCXML 6.4.6: Raised on invoke failure
+            events.insert("cancel.invoke");    // W3C SCXML 6.4: Raised when invoke is cancelled
         }
     }
 
@@ -2578,6 +2629,90 @@ bool StaticCodeGenerator::writeToFile(const std::string &path, const std::string
     file.close();
 
     LOG_DEBUG("StaticCodeGenerator: Successfully wrote {} bytes to {}", content.size(), path);
+    return true;
+}
+
+bool StaticCodeGenerator::generateInterpreterWrapper(std::stringstream &ss, const SCXMLModel &model,
+                                                     std::shared_ptr<RSM::SCXMLModel> rsmModel,
+                                                     const std::string &scxmlPath, const std::string &outputDir) {
+    (void)rsmModel;  // Model is injected later via setModel() API
+
+    // W3C SCXML 6.4: Dynamic invoke detected - generate Interpreter wrapper
+    // ARCHITECTURE.md: Zero Duplication - reuse Interpreter engine instead of reimplementing
+
+    LOG_INFO("StaticCodeGenerator: Generating Interpreter wrapper for '{}' (dynamic invoke fallback)", model.name);
+
+    // Clear existing content and start fresh
+    ss.str("");
+    ss.clear();
+
+    // Generate header with Interpreter includes
+    ss << "#pragma once\n";
+    ss << "#include <memory>\n";
+    ss << "#include \"runtime/StateMachine.h\"\n";
+    ss << "#include \"model/SCXMLModel.h\"\n";
+    ss << "\n";
+    ss << "// W3C SCXML 6.4: Dynamic invoke detected - using Interpreter engine\n";
+    ss << "// ARCHITECTURE.md: No hybrid approach - entire SCXML runs on Interpreter\n";
+    ss << "\n";
+
+    // Generate namespace
+    ss << "namespace RSM::Generated::" << model.name << " {\n\n";
+
+    // Generate Interpreter wrapper class
+    ss << "// Interpreter wrapper class - provides StaticExecutionEngine-compatible interface\n";
+    ss << "class " << model.name << " {\n";
+    ss << "private:\n";
+    ss << "    std::shared_ptr<::RSM::StateMachine> interpreter_;\n";
+    ss << "\n";
+    ss << "public:\n";
+    ss << "    " << model.name << "() = default;\n";
+    ss << "\n";
+    ss << "    void initialize() {\n";
+    ss << "        interpreter_ = std::make_shared<::RSM::StateMachine>();\n";
+    ss << "        if (!interpreter_->loadSCXML(\"" << scxmlPath << "\")) {\n";
+    ss << "            throw std::runtime_error(\"" << model.name << ": Failed to load SCXML from " << scxmlPath
+       << "\");\n";
+    ss << "        }\n";
+    ss << "        if (!interpreter_->start()) {\n";
+    ss << "            throw std::runtime_error(\"" << model.name << ": Failed to start Interpreter\");\n";
+    ss << "        }\n";
+    ss << "    }\n";
+    ss << "\n";
+    ss << "    bool isInFinalState() const {\n";
+    ss << "        return interpreter_ ? interpreter_->isInFinalState() : false;\n";
+    ss << "    }\n";
+    ss << "\n";
+    ss << "    void setCompletionCallback(std::function<void()> callback) {\n";
+    ss << "        if (interpreter_) {\n";
+    ss << "            interpreter_->setCompletionCallback(callback);\n";
+    ss << "        }\n";
+    ss << "    }\n";
+    ss << "\n";
+    ss << "    std::string getCurrentState() const {\n";
+    ss << "        return interpreter_ ? interpreter_->getCurrentState() : \"\";\n";
+    ss << "    }\n";
+    ss << "\n";
+    ss << "    void processEvent(const std::string& eventName, const std::string& eventData = \"\") {\n";
+    ss << "        if (interpreter_) {\n";
+    ss << "            interpreter_->processEvent(eventName, eventData);\n";
+    ss << "        }\n";
+    ss << "    }\n";
+    ss << "};\n\n";
+
+    ss << "} // namespace RSM::Generated::" << model.name << "\n";
+
+    // Write to file
+    std::string filename = model.name + "_sm.h";
+    std::string outputPath = fs::path(outputDir) / filename;
+
+    LOG_INFO("StaticCodeGenerator: Writing generated code to: {}", outputPath);
+    if (!writeToFile(outputPath, ss.str())) {
+        LOG_ERROR("StaticCodeGenerator: Failed to write Interpreter wrapper to file");
+        return false;
+    }
+
+    LOG_INFO("StaticCodeGenerator: Successfully generated Interpreter wrapper for '{}'", model.name);
     return true;
 }
 

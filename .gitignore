@@ -95,3 +95,6 @@ resources/*/*.scxml
 claudedocs
 docker_tsan/docker-tsan-build.log
 
+# Claude Code local settings
+.claude/
+

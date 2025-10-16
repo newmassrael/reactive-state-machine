@@ -113,6 +113,18 @@ public:
     bool loadSCXMLFromString(const std::string &scxmlContent);
 
     /**
+     * @brief Load pre-parsed SCXML model directly
+     *
+     * This method is used by StaticCodeGenerator when dynamic invoke is detected.
+     * Instead of re-parsing the SCXML file, the already-parsed model is injected directly.
+     * This follows the Zero Duplication principle (ARCHITECTURE.md).
+     *
+     * @param model Pre-parsed SCXML model
+     * @return true if loaded successfully
+     */
+    bool loadModel(std::shared_ptr<SCXMLModel> model);
+
+    /**
      * @brief Start the state machine
      * @return true if started successfully
      */

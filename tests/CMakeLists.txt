@@ -451,9 +451,42 @@ rsm_generate_static_w3c_test(179 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(183 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(185 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(186 ${STATIC_W3C_OUTPUT_DIR})
+# W3C SCXML 6.4: test187 uses dynamic invoke - generates Interpreter wrapper
 rsm_generate_static_w3c_test(187 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(189 ${STATIC_W3C_OUTPUT_DIR})
 rsm_generate_static_w3c_test(190 ${STATIC_W3C_OUTPUT_DIR})
+# W3C SCXML 6.4: Dynamic invoke tests (inline content, srcexpr, contentExpr) - generate Interpreter wrappers
+rsm_generate_static_w3c_test(191 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(192 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(205 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(207 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> (invoke cancellation across sessions)
+rsm_generate_static_w3c_test(210 ${STATIC_W3C_OUTPUT_DIR})  # sendidexpr (cancel with dynamic expression)
+rsm_generate_static_w3c_test(215 ${STATIC_W3C_OUTPUT_DIR})  # typeexpr + inline <content>
+rsm_generate_static_w3c_test(216 ${STATIC_W3C_OUTPUT_DIR})  # srcexpr
+rsm_generate_static_w3c_test(220 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(223 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(224 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(225 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(228 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(229 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + autoforward
+rsm_generate_static_w3c_test(230 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + autoforward (manual)
+rsm_generate_static_w3c_test(232 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(233 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + finalize
+rsm_generate_static_w3c_test(234 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + finalize + parallel
+rsm_generate_static_w3c_test(235 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(236 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
+rsm_generate_static_w3c_test(237 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + cancellation
+rsm_generate_static_w3c_test(240 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + namelist + params
+rsm_generate_static_w3c_test(241 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + namelist/param consistency
+rsm_generate_static_w3c_test(242 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + static src (mixed invoke - needs test242sub1.scxml)
+rsm_generate_static_w3c_test(243 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + param
+rsm_generate_static_w3c_test(244 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + namelist
+rsm_generate_static_w3c_test(245 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + namelist (non-existent var)
+rsm_generate_static_w3c_test(247 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + done.invoke
+rsm_generate_static_w3c_test(250 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + cancellation (manual test)
+rsm_generate_static_w3c_test(252 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + event cancellation after invoke termination
+rsm_generate_static_w3c_test(253 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + bidirectional SCXML event processor
+# W3C SCXML 6.4: test239 uses dynamic invoke - generates Interpreter wrapper
 # Copy test239sub1.scxml directly (sub-state machine without pass/fail states)
 add_custom_command(
     OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test239sub1.scxml"
@@ -473,6 +506,16 @@ add_custom_command(
 # Add to generated headers list so it's part of the build
 set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${STATIC_W3C_OUTPUT_DIR}/test239sub1_sm.h")
 rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})
+
+# W3C SCXML 6.4: test242 uses both static src and dynamic content - generates Interpreter wrapper
+# Copy test242sub1.scxml directly (static invoke target)
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test242sub1.scxml"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/resources/242/test242sub1.scxml" "${STATIC_W3C_OUTPUT_DIR}/test242sub1.scxml"
+    DEPENDS "${CMAKE_SOURCE_DIR}/resources/242/test242sub1.scxml"
+    COMMENT "Copying test242sub1.scxml"
+    VERBATIM
+)
 
 # Full W3C Test Runner for all W3C SCXML 1.0 compliance tests
 add_executable(w3c_test_cli

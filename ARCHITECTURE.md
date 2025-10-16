@@ -1,15 +1,18 @@
-# Architecture: Hybrid Static + Dynamic SCXML Engine
+# Architecture: Static (JIT) + Dynamic (Interpreter) SCXML Engine
 
 ## Vision
 
-**Goal**: W3C SCXML 1.0 100% compliance through unified code generation that produces hybrid static+dynamic implementations.
+**Goal**: W3C SCXML 1.0 100% compliance through intelligent code generation.
 
-**Philosophy**: "You don't pay for what you don't use" - automatically use static handling where possible, dynamic where needed.
+**Philosophy**: "You don't pay for what you don't use" - automatically choose JIT or Interpreter engine based on SCXML features.
 
-**Hybrid Approach**: The same SCXML feature can be handled statically or dynamically:
-- **Static**: When all information is available at code generation time (e.g., `<invoke src="child.scxml">`)
-- **Dynamic**: When information is only available at runtime (e.g., `<invoke srcexpr="targetVar">`)
+**All-or-Nothing Strategy**: Code generator analyzes SCXML and chooses execution engine:
+- **JIT Engine (Static)**: When all features are known at compile-time → generates optimized C++ code
+- **Interpreter Engine (Dynamic)**: When runtime features detected → uses proven Interpreter engine
+- **No Hybrid**: Single SCXML never mixes JIT + Interpreter (clean separation)
 - **Decision**: Made by code generator during analysis, transparent to user
+
+**Key Trigger**: Dynamic invoke (`<invoke srcexpr>`, `<invoke><content>`, `<invoke contentExpr>`) → Entire SCXML runs on Interpreter
 
 ## Core Architecture
 
@@ -140,10 +143,16 @@ Generated code works for ALL SCXML (W3C 100%)
 - 🔴 History states → std::unique_ptr<HistoryTracker> (lazy-init)
 
 **External Communication**:
-- **Invoke** (hybrid approach):
-  - ✅ Static child SCXML (`<invoke type="scxml" src="child.scxml">`) → Generated child class, direct instantiation
-  - 🔴 Dynamic invocation (`<invoke type="http">`, srcexpr) → std::unique_ptr<InvokeExecutor> (lazy-init)
-  - **Decision**: Code generator analyzes src attribute at generation time
+- **Invoke** (All-or-Nothing strategy):
+  - ✅ Static child SCXML (`<invoke type="scxml" src="child.scxml">`) → Generated child classes, JIT engine for entire SCXML
+  - 🔴 Dynamic invocation (`<invoke srcexpr="...">`, `<invoke><content>`, `<invoke contentExpr="...">`) → **Entire SCXML runs on Interpreter engine**
+  - **Decision**: Code generator scans ALL invoke elements in SCXML at generation time
+  - **Strategy**: If ANY invoke is dynamic → Generate Interpreter wrapper for ENTIRE SCXML (no hybrid)
+  - **Rationale**:
+    - Dynamic invoke requires runtime SCXML loading and parent-child communication through StateMachine infrastructure
+    - Mixing JIT and Interpreter within single SCXML creates complexity and violates Zero Duplication principle
+    - All-or-Nothing ensures clean separation: either fully static (JIT) or fully dynamic (Interpreter)
+    - Maintains full W3C SCXML 6.4 compliance through proven Interpreter engine
 - ✅ Send with delay → SendSchedulingHelper::SimpleScheduler<Event> (lazy-init)
 
 **Complex Scripting**:
@@ -189,18 +198,16 @@ public:
             generateParallelHandling(model, code);
         }
         
-        if (model.hasInvoke()) {
-            // Analyze invoke types at generation time
-            if (model.hasStaticInvoke()) {
-                // Generate child SCXML classes and direct instantiation
-                generateStaticInvokeHandling(model, code);
-            }
-            if (model.hasDynamicInvoke()) {
-                // Use InvokeExecutor for HTTP, srcexpr, etc.
-                code << "    std::unique_ptr<InvokeExecutor> invokeExecutor;
-";
-                generateDynamicInvokeHandling(model, code);
-            }
+        if (model.hasDynamicInvoke()) {
+            // W3C SCXML 6.4: Dynamic invoke detected - use Interpreter for ENTIRE SCXML
+            // ARCHITECTURE.md: All-or-Nothing strategy (no hybrid)
+            return generateInterpreterWrapper(model, scxmlPath);
+            // Wrapper loads SCXML at runtime via StateMachine::loadSCXML()
+        }
+
+        if (model.hasStaticInvoke()) {
+            // All invokes are static - generate JIT code with child classes
+            generateStaticInvokeHandling(model, code);
         }
         
         if (model.hasComplexECMAScript()) {

@@ -326,7 +326,7 @@ private:
     /**
      * @brief Validate that conversion produced valid SCXML
      */
-    void validateSCXML(const std::string &scxml);
+    void validateSCXML(const std::string &scxml, bool isManualTest = false);
 
 public:
     TXMLConverter() = default;
@@ -340,6 +340,7 @@ public:
      * @throws std::runtime_error if conversion fails
      */
     std::string convertTXMLToSCXML(const std::string &txml) override;
+    std::string convertTXMLToSCXML(const std::string &txml, bool isManualTest);
 
     /**
      * @brief Convert TXML to SCXML without W3C validation
