@@ -48,6 +48,7 @@
 #include "test194_sm.h"
 #include "test198_sm.h"
 #include "test199_sm.h"
+#include "test200_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1773,6 +1774,18 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test194::State::Pass;
             }();
             testDescription = "Invalid target raises error.execution (W3C 6.2 JIT)";
+            break;
+
+        // W3C SCXML 6.2 (test200): SCXML event processor support
+        case 200:
+            testPassed = []() {
+                RSM::Generated::test200::test200 sm;
+                sm.initialize();
+                // W3C SCXML 6.2 (test200): Processor must support http://www.w3.org/TR/scxml/#SCXMLEventProcessor
+                // Expected: event1 sent with SCXML processor type transitions to Pass
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test200::State::Pass;
+            }();
+            testDescription = "SCXML event processor support (W3C 6.2 JIT)";
             break;
 
         // W3C SCXML 6.2 (test198): Default event processor type

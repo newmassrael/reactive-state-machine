@@ -462,6 +462,7 @@ rsm_generate_static_w3c_test(193 ${STATIC_W3C_OUTPUT_DIR})  # type attribute for
 rsm_generate_static_w3c_test(194 ${STATIC_W3C_OUTPUT_DIR})  # invalid target raises error.execution (W3C SCXML 6.2)
 rsm_generate_static_w3c_test(198 ${STATIC_W3C_OUTPUT_DIR})  # default event processor type (W3C SCXML 6.2)
 rsm_generate_static_w3c_test(199 ${STATIC_W3C_OUTPUT_DIR})  # unsupported send type raises error.execution (W3C SCXML 6.2)
+rsm_generate_static_w3c_test(200 ${STATIC_W3C_OUTPUT_DIR})  # SCXML event processor support (W3C SCXML 6.2)
 rsm_generate_static_w3c_test(205 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(207 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> (invoke cancellation across sessions)
 rsm_generate_static_w3c_test(210 ${STATIC_W3C_OUTPUT_DIR})  # sendidexpr (cancel with dynamic expression)
