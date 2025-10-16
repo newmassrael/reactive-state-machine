@@ -1340,6 +1340,14 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     if (hasDataModel) {
         ss << "    // Datamodel variables\n";
         for (const auto &var : model.dataModel) {
+            // W3C SCXML 5.10: System variables (_sessionid, _name, etc.) handled by JSEngine
+            // These require runtime evaluation and cannot be static member variables
+            if (var.name == "_sessionid" || var.name == "_name" || var.name == "_ioprocessors" ||
+                var.name == "_event") {
+                ss << "    // System variable (handled by JSEngine): " << var.name << "\n";
+                continue;
+            }
+
             // Detect variable type from initial value
             if (var.initialValue.find('[') != std::string::npos) {
                 ss << "    // Array variable (handled by JSEngine): " << var.name << " = " << var.initialValue << "\n";
@@ -1353,7 +1361,24 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                 std::string escapedValue = escapeStringLiteral(strValue);
                 ss << "    std::string " << var.name << " = \"" << escapedValue << "\";\n";
             } else {
-                ss << "    int " << var.name << " = " << var.initialValue << ";\n";
+                // Check if it's a numeric literal
+                bool isNumericLiteral = true;
+                for (char c : var.initialValue) {
+                    if (!std::isdigit(c) && c != '.' && c != '-' && c != '+') {
+                        isNumericLiteral = false;
+                        break;
+                    }
+                }
+
+                if (isNumericLiteral) {
+                    // It's a number literal, safe for static generation
+                    ss << "    int " << var.name << " = " << var.initialValue << ";\n";
+                } else {
+                    // It's a runtime expression (identifier, function call, etc.)
+                    // W3C SCXML 5.10: Requires JSEngine for evaluation
+                    ss << "    // Runtime-evaluated variable (handled by JSEngine): " << var.name << " = "
+                       << var.initialValue << "\n";
+                }
             }
         }
 

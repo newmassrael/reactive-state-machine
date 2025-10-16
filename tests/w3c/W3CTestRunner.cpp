@@ -43,6 +43,7 @@
 #include "test186_sm.h"
 #include "test187_sm.h"
 #include "test189_sm.h"
+#include "test190_sm.h"
 #include "test239_sm.h"
 
 namespace RSM::W3C {
@@ -1754,6 +1755,18 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test189::State::Pass;
             }();
             testDescription = "Internal queue priority over external queue (W3C C.1 JIT)";
+            break;
+
+        // W3C SCXML C.1: test190 validates targetexpr with system variables
+        case 190:
+            testPassed = []() {
+                RSM::Generated::test190::test190 sm;
+                sm.initialize();
+                // W3C SCXML C.1 (test190): targetexpr using _sessionid system variable
+                // Validates external queue routing with dynamic target expression
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test190::State::Pass;
+            }();
+            testDescription = "External queue with targetexpr and _sessionid (W3C C.1 JIT)";
             break;
 
             JIT_TEST_CASE(239, "Invoke element lifecycle with done.invoke")
