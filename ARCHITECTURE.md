@@ -456,6 +456,18 @@ class EventQueueManager {
   - W3C SCXML 5.10: Invalid targets stop subsequent executable content
 - Benefits: Zero code duplication, consistent event routing across engines
 
+**RSM::AssignHelper::isValidLocation() / getInvalidLocationErrorMessage()**:
+- W3C SCXML 5.3, 5.4: Assignment location validation
+- Single Source of Truth for assign action validation shared between engines
+- Location: `rsm/include/common/AssignHelper.h`
+- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
+- Features:
+  - **isValidLocation()**: Empty location detection (rejects empty strings)
+  - **getInvalidLocationErrorMessage()**: Standard error message generation
+  - W3C SCXML 5.10: Invalid locations raise error.execution and stop subsequent executable content
+  - Applies to: Main assign actions, foreach iteration assigns
+- Benefits: Zero code duplication, guaranteed W3C compliance across all assign contexts
+
 **RSM::SendSchedulingHelper::parseDelayString() / SimpleScheduler**:
 - W3C SCXML 6.2: Delay string parsing and event scheduling logic
 - Single Source of Truth for delayed send implementation shared between engines

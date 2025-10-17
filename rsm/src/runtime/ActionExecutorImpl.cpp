@@ -7,6 +7,7 @@
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
+#include "common/AssignHelper.h"
 #include "common/Constants.h"
 #include "common/ForeachHelper.h"
 #include "common/ForeachValidator.h"
@@ -84,15 +85,19 @@ bool ActionExecutorImpl::executeScript(const std::string &script) {
 }
 
 bool ActionExecutorImpl::assignVariable(const std::string &location, const std::string &expr) {
-    if (location.empty()) {
+    // W3C SCXML 5.3, 5.4: Empty location check (shared with JIT via AssignHelper)
+    // ARCHITECTURE.md: Zero Duplication - Use shared AssignHelper for cross-engine consistency
+    if (!AssignHelper::isValidLocation(location)) {
         LOG_ERROR("Cannot assign to empty location");
         // W3C SCXML 5.4: Raise error.execution for invalid location
         if (eventRaiser_) {
-            eventRaiser_->raiseEvent("error.execution", "Assignment location cannot be empty");
+            eventRaiser_->raiseEvent("error.execution", AssignHelper::getInvalidLocationErrorMessage());
         }
         return false;
     }
 
+    // Implementation-specific: Variable name format validation (Interpreter engine only)
+    // Checks regex pattern for valid variable identifiers (not shared with JIT)
     if (!isValidLocation(location)) {
         LOG_ERROR("Invalid variable location: {}", location);
         // W3C SCXML 5.4: Raise error.execution for invalid location

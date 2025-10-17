@@ -17,6 +17,7 @@
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
+#include "common/AssignHelper.h"
 #include "common/BindingHelper.h"
 #include "common/DataModelHelper.h"
 #include "common/SendHelper.h"
@@ -704,6 +705,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         ss << "#include <optional>\n";
         ss << "#include \"common/Logger.h\"\n";
         ss << "#include \"scripting/JSEngine.h\"\n";
+        ss << "#include \"common/AssignHelper.h\"\n";
         ss << "#include \"common/ForeachValidator.h\"\n";
         ss << "#include \"common/ForeachHelper.h\"\n";
         ss << "#include \"common/GuardHelper.h\"\n";
@@ -2330,12 +2332,20 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         ss << "                " << action.param1 << "();\n";
         break;
     case Action::ASSIGN: {
-        // W3C SCXML: <assign> with expr attribute
+        // W3C SCXML 5.3, 5.4: <assign> with expr attribute and location validation
+        // ARCHITECTURE.md: Zero Duplication - Use shared AssignHelper
         // When JSEngine is needed, use evaluateExpression + setVariable pattern
         // When JSEngine is not needed, use direct C++ assignment
         if (model.needsJSEngine()) {
             // JSEngine-based assignment: evaluate expression and set variable
             ss << "                {\n";  // Extra scope to avoid "jump to case label" error
+            ss << "                    // W3C SCXML 5.3, 5.4: Validate assignment location using shared AssignHelper\n";
+            ss << "                    if (!::RSM::AssignHelper::isValidLocation(\"" << action.param1 << "\")) {\n";
+            ss << "                        LOG_ERROR(\"W3C SCXML 5.3: {}\", "
+                  "::RSM::AssignHelper::getInvalidLocationErrorMessage());\n";
+            ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
+            ss << "                        break;  // W3C SCXML 5.10: Stop processing subsequent executable content\n";
+            ss << "                    }\n";
             ss << "                    this->ensureJSEngine();\n";
             ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
             ss << "                    {\n";
@@ -2344,7 +2354,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             ss << "                        if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
             ss << "                            LOG_ERROR(\"Failed to evaluate expression for assign: "
                << escapeStringLiteral(action.param2) << "\");\n";
-            ss << "                            throw std::runtime_error(\"Assign expression evaluation failed\");\n";
+            ss << "                            " << engineVar << ".raise(Event::Error_execution);\n";
+            ss << "                            break;  // W3C SCXML 5.10: Stop processing subsequent executable "
+                  "content\n";
             ss << "                        }\n";
             ss << "                        jsEngine.setVariable(sessionId_.value(), \"" << action.param1
                << "\", exprResult.getInternalValue());\n";
@@ -2783,6 +2795,15 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                     if (iterAction.type == Action::ASSIGN) {
                         // Each action gets its own scope to avoid variable name conflicts
                         ss << "                                {\n";
+                        ss << "                                    // W3C SCXML 5.3, 5.4: Validate assignment location "
+                              "using shared AssignHelper\n";
+                        ss << "                                    if (!::RSM::AssignHelper::isValidLocation(\""
+                           << iterAction.param1 << "\")) {\n";
+                        ss << "                                        LOG_ERROR(\"W3C SCXML 5.3: {}\", "
+                              "::RSM::AssignHelper::getInvalidLocationErrorMessage());\n";
+                        ss << "                                        return false;  // W3C SCXML 4.6: Stop foreach "
+                              "execution on error\n";
+                        ss << "                                    }\n";
                         ss << "                                    auto exprResult = "
                               "jsEngine.evaluateExpression(sessionId_.value(), \""
                            << escapeStringLiteral(iterAction.param2) << "\").get();\n";
