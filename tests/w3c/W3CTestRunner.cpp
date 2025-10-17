@@ -55,6 +55,7 @@
 #include "test239_sm.h"
 #include "test276_sm.h"
 #include "test277_sm.h"
+#include "test278_sm.h"
 
 namespace RSM::W3C {
 
@@ -1861,6 +1862,21 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test277::State::Pass;
             }();
             testDescription = "Datamodel init error.execution (W3C 5.3 JIT)";
+            break;
+
+        // W3C SCXML 5.10: test278 - global datamodel scope (state-level datamodel accessible globally)
+        case 278:
+            testPassed = []() {
+                RSM::Generated::test278::test278 sm;
+                sm.initialize();
+
+                // W3C SCXML 5.10: Variable Var1 defined in state s1's datamodel is globally accessible
+                // Initial state is s0, which checks Var1 == 1 (should pass)
+                sm.tick();
+
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test278::State::Pass;
+            }();
+            testDescription = "Global scope datamodel access (W3C 5.10 JIT)";
             break;
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper

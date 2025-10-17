@@ -17,6 +17,7 @@
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
+#include "common/DataModelHelper.h"
 #include "common/SendHelper.h"
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
@@ -122,22 +123,42 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     LOG_INFO("StaticCodeGenerator: Resolved initial state chain: {} -> actual initial: {}", initialState,
              model.initial);
 
-    // Extract datamodel variables
+    // Extract datamodel variables (root level + state level)
+    // W3C SCXML 5.10: Track variable names to avoid duplicates
+    std::set<std::string> dataModelVarNames;
+
+    // Root level datamodel
     for (const auto &dataItem : rsmModel->getDataModelItems()) {
+        auto helperVar = DataModelHelper::extractVariable(dataItem.get());
         DataModelVariable var;
-        var.name = dataItem->getId();
-        // Try expr attribute first, fallback to content (text between tags)
-        var.initialValue = dataItem->getExpr();
-        if (var.initialValue.empty()) {
-            var.initialValue = dataItem->getContent();
-            // Trim whitespace from content (important for inline array/object literals)
-            auto start = var.initialValue.find_first_not_of(" \t\n\r");
-            auto end = var.initialValue.find_last_not_of(" \t\n\r");
-            if (start != std::string::npos && end != std::string::npos) {
-                var.initialValue = var.initialValue.substr(start, end - start + 1);
-            }
-        }
+        var.name = helperVar.name;
+        var.initialValue = helperVar.initialValue;
         model.dataModel.push_back(var);
+        dataModelVarNames.insert(var.name);
+    }
+
+    // W3C SCXML 5.10: Extract state-level datamodel variables (global scope)
+    auto allStatesForDatamodel = rsmModel->getAllStates();
+    for (const auto &state : allStatesForDatamodel) {
+        for (const auto &dataItem : state->getDataItems()) {
+            std::string varName = dataItem->getId();
+
+            // Skip if already added (avoid duplicates)
+            if (dataModelVarNames.find(varName) != dataModelVarNames.end()) {
+                LOG_DEBUG("StaticCodeGenerator: Skipping duplicate datamodel variable '{}' from state '{}'", varName,
+                          state->getId());
+                continue;
+            }
+
+            auto helperVar = DataModelHelper::extractVariable(dataItem.get());
+            DataModelVariable var;
+            var.name = helperVar.name;
+            var.initialValue = helperVar.initialValue;
+            model.dataModel.push_back(var);
+            dataModelVarNames.insert(var.name);
+            LOG_DEBUG("StaticCodeGenerator: Extracted state-level datamodel variable '{}' from state '{}'", var.name,
+                      state->getId());
+        }
     }
 
     // Extract all states
