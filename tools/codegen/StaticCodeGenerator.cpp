@@ -2884,8 +2884,8 @@ std::string StaticCodeGenerator::capitalize(const std::string &str) {
         return str;
     }
 
-    // Handle wildcard event
-    if (str == "*") {
+    // Handle wildcard event (W3C SCXML 3.12.1: event="*" or event=".*")
+    if (str == "*" || str == ".*") {
         return "Wildcard";
     }
 
