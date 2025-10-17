@@ -18,44 +18,19 @@
 #include <optional>
 #include <thread>
 
-// Include generated static test headers for jit engine
-#include "test144_sm.h"
-#include "test147_sm.h"
-#include "test148_sm.h"
-#include "test149_sm.h"
-#include "test150_sm.h"
-#include "test151_sm.h"
-#include "test152_sm.h"
-#include "test153_sm.h"
-#include "test155_sm.h"
-#include "test156_sm.h"
-#include "test158_sm.h"
-#include "test159_sm.h"
-#include "test172_sm.h"
-#include "test173_sm.h"
-#include "test174_sm.h"
-#include "test175_sm.h"
-#include "test176_sm.h"
-#include "test178_sm.h"
-#include "test179_sm.h"
-#include "test183_sm.h"
-#include "test185_sm.h"
-#include "test186_sm.h"
+// JIT Test Registry (new modular system)
+#include "jit_tests/AllJitTests.h"
+
+// Include generated static test headers for Interpreter engine fallback
+// These tests require Interpreter wrappers due to dynamic features or metadata requirements
 #include "test187_sm.h"
 #include "test189_sm.h"
 #include "test190_sm.h"
-#include "test193_sm.h"
-#include "test194_sm.h"
 #include "test198_sm.h"
 #include "test199_sm.h"
-#include "test200_sm.h"
 #include "test201_sm.h"
-#include "test208_sm.h"
 #include "test226_sm.h"
 #include "test239_sm.h"
-#include "test276_sm.h"
-#include "test277_sm.h"
-#include "test278_sm.h"
 
 namespace RSM::W3C {
 
@@ -1572,6 +1547,45 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
 }
 
 TestReport W3CTestRunner::runJitTest(int testId) {
+    // Try registry-based test first (new modular system)
+    auto registryTest = RSM::W3C::JitTests::JitTestRegistry::instance().createTest(testId);
+    if (registryTest) {
+        TestReport report;
+        report.timestamp = std::chrono::system_clock::now();
+        report.testId = std::to_string(testId);
+        report.engineType = "jit";
+
+        auto startTime = std::chrono::steady_clock::now();
+
+        try {
+            bool testPassed = registryTest->run();
+            std::string testDescription = registryTest->getDescription();
+
+            auto endTime = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+            if (testPassed) {
+                report.validationResult = ValidationResult(true, TestResult::PASS, testDescription);
+                report.executionContext.finalState = "pass";
+            } else {
+                report.validationResult = ValidationResult(false, TestResult::FAIL, testDescription);
+                report.executionContext.finalState = "fail";
+            }
+
+            LOG_INFO("JIT Test {} ({}): {} in {}ms", testId, testDescription, testPassed ? "PASS" : "FAIL",
+                     duration.count());
+
+            return report;
+
+        } catch (const std::exception &e) {
+            LOG_ERROR("JIT Test {} failed with exception: {}", testId, e.what());
+            report.validationResult = ValidationResult(false, TestResult::ERROR, e.what());
+            report.executionContext.finalState = "error";
+            return report;
+        }
+    }
+
+    // Fallback to switch-case for Interpreter wrapper tests
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
     report.testId = std::to_string(testId);
@@ -1598,289 +1612,22 @@ TestReport W3CTestRunner::runJitTest(int testId) {
 
         // Execute the appropriate generated static test based on testId
         switch (testId) {
-            JIT_TEST_CASE(144, "Event queue ordering")
-
-            JIT_TEST_CASE(147, "If/elseif/else conditionals with datamodel")
-
-            JIT_TEST_CASE(148, "Else clause execution with datamodel")
-
-            JIT_TEST_CASE(149, "Neither if nor elseif executes")
-
-            JIT_TEST_CASE(150, "Foreach with dynamic variables (JIT JSEngine)")
-
-            JIT_TEST_CASE(151, "Foreach declares new variables (JIT JSEngine)")
-
-            JIT_TEST_CASE(152, "Foreach error handling (JIT JSEngine)")
-
-            JIT_TEST_CASE(153, "Foreach array iteration order (JIT JSEngine)")
-
-            JIT_TEST_CASE(155, "Foreach sums array items into variable (JIT JSEngine)")
-
-            JIT_TEST_CASE(156, "Foreach error handling stops loop (JIT JSEngine)")
-
-            JIT_TEST_CASE(158, "Executable content document order (JIT)")
-
-            JIT_TEST_CASE(159, "Error in executable content stops subsequent elements (JIT)")
-
-            JIT_TEST_CASE(172, "Send eventexpr uses current datamodel value (JIT)")
-
-            JIT_TEST_CASE(173, "Send targetexpr uses current datamodel value (JIT)")
-
-            JIT_TEST_CASE(174, "Send typeexpr uses current datamodel value (JIT)")
-
-        // W3C SCXML 6.2: test175 requires delayed send processing
-        case 175:
-            testPassed = []() {
-                RSM::Generated::test175::test175 sm;
-                sm.initialize();
-
-                // W3C SCXML 6.2: Process scheduled events until completion or timeout
-                auto startTime = std::chrono::steady_clock::now();
-                const auto timeout = std::chrono::seconds(2);
-
-                while (!sm.isInFinalState()) {
-                    // Check for timeout
-                    if (std::chrono::steady_clock::now() - startTime > timeout) {
-                        break;
-                    }
-
-                    // Sleep briefly to allow scheduled events to become ready
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-                    // W3C SCXML 6.2: Poll scheduler and process ready events without external event
-                    // tick() uses Event::NONE which has no semantic meaning and won't match transitions
-                    sm.tick();
-                }
-
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test175::State::Pass;
-            }();
-            testDescription = "Send delayexpr uses current datamodel value (JIT)";
-            break;
-
-            JIT_TEST_CASE(176, "Send param uses current datamodel value (JIT)")
-
-        // W3C manual test: Duplicate param names verification done in EventDataHelperTest
-        // This integration test only verifies state machine execution completes successfully
-        case 178:
-            testPassed = []() {
-                RSM::Generated::test178::test178 sm;
-                sm.initialize();
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test178::State::Final;
-            }();
-            testDescription = "Send with duplicate param names (JIT)";
-            break;
-
-            JIT_TEST_CASE(179, "Send content populates event body (JIT)")
-
-            JIT_TEST_CASE(183, "Basic conditional transition (JIT)")
-
-        // W3C SCXML 6.2: test185 requires delayed send processing
-        case 185:
-            testPassed = []() {
-                RSM::Generated::test185::test185 sm;
-                sm.initialize();
-
-                // W3C SCXML 6.2: Process scheduled events until completion or timeout
-                auto startTime = std::chrono::steady_clock::now();
-                const auto timeout = std::chrono::seconds(2);
-
-                while (!sm.isInFinalState()) {
-                    // Check for timeout
-                    if (std::chrono::steady_clock::now() - startTime > timeout) {
-                        break;
-                    }
-
-                    // Sleep briefly to allow scheduled events to become ready
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-                    // W3C SCXML 6.2: Poll scheduler and process ready events without external event
-                    // tick() uses Event::NONE which has no semantic meaning and won't match transitions
-                    sm.tick();
-                }
-
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test185::State::Pass;
-            }();
-            testDescription = "Send delay interval elapses before dispatch (JIT)";
-            break;
-
-        // W3C SCXML 6.2: test186 requires delayed send processing
-        case 186:
-            testPassed = []() {
-                RSM::Generated::test186::test186 sm;
-                sm.initialize();
-
-                // W3C SCXML 6.2: Process scheduled events until completion or timeout
-                auto startTime = std::chrono::steady_clock::now();
-                const auto timeout = std::chrono::seconds(2);
-
-                while (!sm.isInFinalState()) {
-                    // Check for timeout
-                    if (std::chrono::steady_clock::now() - startTime > timeout) {
-                        break;
-                    }
-
-                    // Sleep briefly to allow scheduled events to become ready
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-                    // W3C SCXML 6.2: Poll scheduler and process ready events without external event
-                    // tick() uses Event::NONE which has no semantic meaning and won't match transitions
-                    sm.tick();
-                }
-
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test186::State::Pass;
-            }();
-            testDescription = "Send arguments evaluated at send time not dispatch (JIT)";
-            break;
-
-            // W3C SCXML C.1: test189 validates internal vs external queue priority
-        case 189:
-            testPassed = []() {
-                RSM::Generated::test189::test189 sm;
-                sm.initialize();
-                // W3C SCXML C.1 (test189): Internal queue (#_internal) has priority over external queue
-                // Event2 sent to external queue, Event1 sent to internal queue
-                // Expected: Event1 processed first (Pass state), not Event2 (Fail state)
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test189::State::Pass;
-            }();
-            testDescription = "Internal queue priority over external queue (W3C C.1 JIT)";
-            break;
-
-        // W3C SCXML C.1: test190 validates targetexpr with system variables
-        case 190:
-            testPassed = []() {
-                RSM::Generated::test190::test190 sm;
-                sm.initialize();
-                // W3C SCXML C.1 (test190): targetexpr using _sessionid system variable
-                // Validates external queue routing with dynamic target expression
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test190::State::Pass;
-            }();
-            testDescription = "External queue with targetexpr and _sessionid (W3C C.1 JIT)";
-            break;
-
-        // W3C SCXML 6.2.4: test193 validates type attribute for queue routing
-        case 193:
-            testPassed = []() {
-                RSM::Generated::test193::test193 sm;
-                sm.initialize();
-                // W3C SCXML 6.2.4 (test193): type="http://www.w3.org/TR/scxml/#SCXMLEventProcessor" routes to external
-                // queue Event "internal" goes to internal queue, event "event1" with type attribute goes to external
-                // queue Expected: internal event processed first, transitions to s1, then event1 leads to Pass
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test193::State::Pass;
-            }();
-            testDescription = "Type attribute routes events to external queue (W3C 6.2.4 JIT)";
-            break;
-
-        // W3C SCXML 6.2 (test194): Invalid target raises error.execution
-        case 194:
-            testPassed = []() {
-                RSM::Generated::test194::test194 sm;
-                sm.initialize();
-                // W3C SCXML 6.2 (test194): Invalid target "!invalid" must raise error.execution
-                // Expected: error.execution transitions to Pass, timeout transitions to Fail
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test194::State::Pass;
-            }();
-            testDescription = "Invalid target raises error.execution (W3C 6.2 JIT)";
-            break;
-
-        // W3C SCXML 6.2 (test200): SCXML event processor support
-        case 200:
-            testPassed = []() {
-                RSM::Generated::test200::test200 sm;
-                sm.initialize();
-                // W3C SCXML 6.2 (test200): Processor must support http://www.w3.org/TR/scxml/#SCXMLEventProcessor
-                // Expected: event1 sent with SCXML processor type transitions to Pass
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test200::State::Pass;
-            }();
-            testDescription = "SCXML event processor support (W3C 6.2 JIT)";
-            break;
-
         // W3C SCXML 6.2 (test198): Default event processor type
-        // Note: Uses Interpreter wrapper due to _event.origintype metadata requirement
+        // Uses Interpreter wrapper due to _event.origintype metadata requirement
         case 198:
 
         // W3C SCXML 6.2 (test199): Unsupported send type raises error.execution
-        // Note: Uses Interpreter wrapper due to TypeRegistry validation requirement
+        // Uses Interpreter wrapper due to TypeRegistry validation requirement
         case 199:
 
         // W3C SCXML 6.2 (test201): BasicHTTP event processor (optional)
-        // Note: Uses Interpreter wrapper due to unsupported optional event processor type
+        // Uses Interpreter wrapper due to unsupported optional event processor type
         case 201:
-
-        // W3C SCXML 6.3: test208 requires delayed send cancellation processing
-        case 208:
-            testPassed = []() {
-                RSM::Generated::test208::test208 sm;
-                sm.initialize();
-
-                // W3C SCXML 6.3: Process scheduled events until completion or timeout
-                auto startTime = std::chrono::steady_clock::now();
-                const auto timeout = std::chrono::seconds(2);
-
-                while (!sm.isInFinalState()) {
-                    if (std::chrono::steady_clock::now() - startTime > timeout) {
-                        break;
-                    }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                    sm.tick();
-                }
-
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test208::State::Pass;
-            }();
-            testDescription = "Cancel delayed send by sendid (W3C 6.3 JIT)";
-            break;
-
-        // W3C SCXML 6.4: test276 - static invoke with param passing to child (JIT)
-        case 276:
-            testPassed = []() {
-                RSM::Generated::test276::test276 sm;
-                sm.initialize();
-
-                // W3C SCXML 6.4: Process child-to-parent events
-                // tick() processes external queue containing events sent from child via #_parent
-                sm.tick();
-
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test276::State::Pass;
-            }();
-            testDescription = "Static invoke with param passing and #_parent (W3C 6.4 JIT)";
-            break;
-
-        // W3C SCXML 5.3: test277 - datamodel initialization failure raises error.execution (JIT)
-        case 277:
-            testPassed = []() {
-                RSM::Generated::test277::test277 sm;
-                sm.initialize();
-
-                // W3C SCXML 5.3: First tick initializes JSEngine and raises error.execution
-                sm.tick();
-
-                // Second tick processes error.execution event and transitions to S1
-                sm.tick();
-
-                // Third tick processes S1 guard (Var1 == 1) and transitions to Pass/Fail
-                sm.tick();
-
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test277::State::Pass;
-            }();
-            testDescription = "Datamodel init error.execution (W3C 5.3 JIT)";
-            break;
-
-        // W3C SCXML 5.10: test278 - global datamodel scope (state-level datamodel accessible globally)
-        case 278:
-            testPassed = []() {
-                RSM::Generated::test278::test278 sm;
-                sm.initialize();
-
-                // W3C SCXML 5.10: Variable Var1 defined in state s1's datamodel is globally accessible
-                // Initial state is s0, which checks Var1 == 1 (should pass)
-                sm.tick();
-
-                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test278::State::Pass;
-            }();
-            testDescription = "Global scope datamodel access (W3C 5.10 JIT)";
-            break;
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
         case 187:
+        case 189:
+        case 190:
         case 191:
         case 192:
         case 205:

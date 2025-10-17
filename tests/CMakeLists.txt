@@ -536,6 +536,7 @@ target_include_directories(w3c_test_cli
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/rsm/include
         ${CMAKE_SOURCE_DIR}/tests
+        ${CMAKE_SOURCE_DIR}/tests/w3c  # JIT test registry headers
         ${STATIC_W3C_OUTPUT_DIR}  # Include generated static test headers
         ${LIBXMLXX_INCLUDE_DIRS}
         /usr/include/libxml2
