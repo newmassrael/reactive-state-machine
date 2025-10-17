@@ -17,6 +17,7 @@
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
+#include "common/BindingHelper.h"
 #include "common/DataModelHelper.h"
 #include "common/SendHelper.h"
 #include "factory/NodeFactory.h"
@@ -62,6 +63,13 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     // Step 4: Convert RSM::SCXMLModel to simplified format for code generation
     SCXMLModel model;
     model.name = modelName;
+
+    // W3C SCXML 5.3: Extract binding mode ("early" or "late")
+    model.bindingMode = rsmModel->getBinding();
+    if (model.bindingMode.empty()) {
+        model.bindingMode = "early";  // W3C SCXML 5.3: Default is early binding
+    }
+    LOG_DEBUG("StaticCodeGenerator: Model '{}' uses {} binding", model.name, model.bindingMode);
 
     // W3C SCXML 3.3: Resolve initial state recursively for composite states
     // If root initial is a composite state with its own initial, follow the chain
@@ -154,6 +162,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
             DataModelVariable var;
             var.name = helperVar.name;
             var.initialValue = helperVar.initialValue;
+            var.stateName = state->getId();  // W3C SCXML 5.3: Track state for late binding
             model.dataModel.push_back(var);
             dataModelVarNames.insert(var.name);
             LOG_DEBUG("StaticCodeGenerator: Extracted state-level datamodel variable '{}' from state '{}'", var.name,
@@ -1313,6 +1322,11 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                     }
                     ss << indent << "transitionTaken = true;\n";
 
+                    // W3C SCXML 3.5: Unconditional transitions execute immediately and stop further processing
+                    if (trans.guard.empty() && firstTransition) {
+                        ss << indent << "break;\n";
+                    }
+
                     // Close blocks only at the end of all transitions
                     if (isLastTransition) {
                         // Check if first transition had JSEngine guard
@@ -1852,7 +1866,16 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         bool needsParallelInit = state.isParallel && !state.childRegions.empty();
         bool hasInvoke = !state.invokes.empty();
 
-        if (hasEntryActions || needsParallelInit || hasInvoke) {
+        // W3C SCXML 5.3: Check for state-local datamodel variables (late binding)
+        bool hasStateLocalVars = false;
+        for (const auto &var : model.dataModel) {
+            if (var.stateName == state.name) {
+                hasStateLocalVars = true;
+                break;
+            }
+        }
+
+        if (hasEntryActions || needsParallelInit || hasInvoke || hasStateLocalVars) {
             ss << "            case State::" << capitalize(state.name) << ":\n";
 
             // W3C SCXML 3.4: Initialize parallel region states first (before entry actions)
@@ -1863,6 +1886,45 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                     ss << "                parallel_" << state.name << "_region" << i
                        << "State_ = State::" << capitalize(regionName) << ";\n";
                 }
+            }
+
+            // W3C SCXML 5.3: Initialize state-local datamodel variables on state entry
+            // Use BindingHelper (Single Source of Truth) for binding semantics
+            if (hasStateLocalVars && model.needsJSEngine()) {
+                ss << "                {\n";
+                ss << "                    this->ensureJSEngine();\n";
+                ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                for (const auto &var : model.dataModel) {
+                    if (var.stateName == state.name) {
+                        bool hasExpr = !var.initialValue.empty();
+                        // State-local variables are always initialized on entry (isFirstEntry=true for state-local)
+                        // Note: State-local variables only exist when state is active, so re-initialization on
+                        // each entry is semantically equivalent to first-entry-only initialization
+                        if (RSM::BindingHelper::shouldAssignValueOnStateEntry(model.bindingMode, true, hasExpr)) {
+                            std::string initExpr = var.initialValue;
+                            ss << "                    auto initExpr_" << var.name
+                               << " = jsEngine.evaluateExpression(sessionId_.value(), \""
+                               << escapeStringLiteral(initExpr) << "\").get();\n";
+                            ss << "                    if (::RSM::JSEngine::isSuccess(initExpr_" << var.name
+                               << ")) {\n";
+                            ss << "                        jsEngine.setVariable(sessionId_.value(), \"" << var.name
+                               << "\", initExpr_" << var.name << ".getInternalValue());\n";
+                            ss << "                    }\n";
+                        } else {
+                            // Early binding or no expr: create with undefined
+                            std::string initExpr = "undefined";
+                            ss << "                    auto initExpr_" << var.name
+                               << " = jsEngine.evaluateExpression(sessionId_.value(), \""
+                               << escapeStringLiteral(initExpr) << "\").get();\n";
+                            ss << "                    if (::RSM::JSEngine::isSuccess(initExpr_" << var.name
+                               << ")) {\n";
+                            ss << "                        jsEngine.setVariable(sessionId_.value(), \"" << var.name
+                               << "\", initExpr_" << var.name << ".getInternalValue());\n";
+                            ss << "                    }\n";
+                        }
+                    }
+                }
+                ss << "                }\n";
             }
 
             // Then execute entry actions
@@ -2134,12 +2196,25 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "        jsEngine.createSession(sessionId_.value());\n";
         ss << "\n";
 
-        // Initialize ALL datamodel variables in JSEngine (Interpreter Engine architecture)
-        for (const auto &var : model.dataModel) {
-            // Generate initialization expression (use "undefined" if no initial value)
-            std::string initExpr = var.initialValue.empty() ? "undefined" : var.initialValue;
+        // W3C SCXML 5.3: Initialize datamodel variables according to binding mode
+        // Use BindingHelper (Single Source of Truth) for binding semantics
+        bool shouldAssignValue = RSM::BindingHelper::shouldAssignValueAtDocumentLoad(model.bindingMode);
 
-            // Evaluate expression and set variable using evaluateExpression + setVariable pattern
+        for (const auto &var : model.dataModel) {
+            bool hasExpr = !var.initialValue.empty();
+
+            // Determine initialization expression
+            // Use BindingHelper to ensure W3C SCXML 5.3 compliance with Interpreter engine
+            std::string initExpr;
+            if (shouldAssignValue && hasExpr) {
+                // Early binding with expr: use the expression
+                initExpr = var.initialValue;
+            } else {
+                // Late binding or no expr: use undefined
+                initExpr = "undefined";
+            }
+
+            // Generate initialization code
             ss << "            auto initExpr_" << var.name << " = jsEngine.evaluateExpression(sessionId_.value(), \""
                << escapeStringLiteral(initExpr) << "\").get();\n";
             ss << "            if (!::RSM::JSEngine::isSuccess(initExpr_" << var.name << ")) {\n";

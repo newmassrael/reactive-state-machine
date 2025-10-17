@@ -205,12 +205,14 @@ struct DataModelVariable {
     std::string name;
     std::string initialValue;  // Initial expression (e.g., "0", "'hello'")
     std::string type;          // Variable type hint (optional)
+    std::string stateName;     // W3C SCXML 5.3: State name for late binding (empty = root datamodel)
 };
 
 class SCXMLModel {
 public:
     std::string name;
     std::string initial;
+    std::string bindingMode;  // W3C SCXML 5.3: "early" or "late" (default "early")
     std::vector<State> states;
     std::vector<Transition> transitions;
     std::vector<DataModelVariable> dataModel;  // Data model variables

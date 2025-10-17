@@ -1,4 +1,5 @@
 #include "runtime/StateMachine.h"
+#include "common/BindingHelper.h"
 #include "common/Logger.h"
 #include "common/StringUtils.h"
 #include "common/TransitionHelper.h"
@@ -2017,21 +2018,31 @@ bool StateMachine::enterState(const std::string &stateId) {
     assert(hierarchyManager_ && "SCXML violation: hierarchy manager required for state management");
 
     // W3C SCXML 5.3: Late binding - assign values to state's data items when state is entered
+    // W3C SCXML 5.3: Handle late binding initialization on state entry
+    // Use BindingHelper (Single Source of Truth) for binding semantics
     if (model_) {
         const std::string &binding = model_->getBinding();
-        bool isLateBinding = (binding == "late");
+        bool isFirstEntry = (initializedStates_.find(stateId) == initializedStates_.end());
 
-        if (isLateBinding && initializedStates_.find(stateId) == initializedStates_.end()) {
-            // Late binding: Assign values to this state's data items now (on first entry)
+        if (isFirstEntry) {
+            // First entry to this state - check if we need to initialize variables
             auto stateNode = model_->findStateById(stateId);
             if (stateNode) {
                 const auto &stateDataItems = stateNode->getDataItems();
                 if (!stateDataItems.empty()) {
-                    LOG_DEBUG("StateMachine: Late binding - assigning values to {} data items for state '{}'",
-                              stateDataItems.size(), stateId);
+                    LOG_DEBUG("StateMachine: First entry to state '{}' - checking {} data items for late binding",
+                              stateId, stateDataItems.size());
+
                     for (const auto &item : stateDataItems) {
-                        initializeDataItem(item, true);  // assignValue=true
+                        bool hasExpr = !item->getExpr().empty();
+
+                        // Use BindingHelper to determine if value should be assigned on state entry
+                        if (BindingHelper::shouldAssignValueOnStateEntry(binding, isFirstEntry, hasExpr)) {
+                            // Late binding: assign value now
+                            initializeDataItem(item, true);  // assignValue=true
+                        }
                     }
+
                     initializedStates_.insert(stateId);  // Mark state as initialized
                 }
             }
@@ -2778,33 +2789,28 @@ bool StateMachine::setupJSEnvironment() {
     LOG_DEBUG("StateMachine: Registered with JSEngine for In() function support");
 
     // W3C SCXML 5.3: Initialize data model with binding mode support (early/late binding)
+    // Use BindingHelper (Single Source of Truth) for binding semantics
     if (model_) {
         // Collect all data items (top-level + state-level) for global scope
         const auto allDataItems = collectAllDataItems();
-        LOG_INFO("StateMachine: Initializing {} total data items (global scope with {} binding)", allDataItems.size(),
-                 model_->getBinding());
-
-        // Get binding mode: "early" (default) or "late"
         const std::string &binding = model_->getBinding();
-        bool isEarlyBinding = (binding.empty() || binding == "early");
+        LOG_INFO("StateMachine: Initializing {} total data items (global scope with {} binding)", allDataItems.size(),
+                 binding.empty() ? "early (default)" : binding);
 
-        if (isEarlyBinding) {
-            // Early binding (default): Initialize all variables with values at document load
-            LOG_DEBUG("StateMachine: Using early binding - all variables initialized with values at init");
-            for (const auto &dataInfo : allDataItems) {
-                initializeDataItem(dataInfo.dataItem, true);  // assignValue=true
-            }
+        // Use BindingHelper to determine initialization strategy
+        // This ensures W3C SCXML 5.3 compliance through shared logic with JIT engine
+        bool shouldAssignValue = BindingHelper::shouldAssignValueAtDocumentLoad(binding);
+
+        for (const auto &dataInfo : allDataItems) {
+            // Always call initializeDataItem (handles expr/src/content/undefined)
+            // The assignValue flag controls whether to evaluate expr/src/content or use undefined
+            initializeDataItem(dataInfo.dataItem, shouldAssignValue);
+        }
+
+        if (BindingHelper::isLateBinding(binding)) {
+            LOG_DEBUG("StateMachine: Late binding mode - values will be assigned on state entry");
         } else {
-            // W3C SCXML B.2.2: Late binding - create variables with undefined at init, assign values on state entry
-            // "MUST create data model elements at initialization time"
-            // "MUST assign the specified initial values to data elements only when the state containing them is first
-            // entered"
-            LOG_DEBUG("StateMachine: Using late binding - creating variables with undefined (values assigned on state "
-                      "entry)");
-            for (const auto &dataInfo : allDataItems) {
-                initializeDataItem(dataInfo.dataItem, false);  // assignValue=false (defer value assignment)
-            }
-            // Note: Value assignment will happen in enterState() when each state is entered
+            LOG_DEBUG("StateMachine: Early binding mode - all values assigned at init");
         }
     } else {
         LOG_DEBUG("StateMachine: No model available for data model initialization");
