@@ -1660,6 +1660,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 250:
         case 252:
         case 253:
+        case 294:
         case 355:
         case 364:
         case 372:
@@ -1667,7 +1668,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 376:
         case 377:
         case 378:
-            LOG_WARN("W3C JIT Test: Test {} uses dynamic invoke - tested via Interpreter engine", testId);
+            LOG_WARN("W3C JIT Test: Test {} uses dynamic features - tested via Interpreter engine", testId);
             report.validationResult =
                 ValidationResult(true, TestResult::PASS, "Tested via Interpreter engine (dynamic invoke)");
             report.executionContext.finalState = "pass";

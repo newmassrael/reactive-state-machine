@@ -468,6 +468,21 @@ class EventQueueManager {
   - Applies to: Main assign actions, foreach iteration assigns
 - Benefits: Zero code duplication, guaranteed W3C compliance across all assign contexts
 
+**RSM::DoneDataHelper::evaluateParams() / evaluateContent()**:
+- W3C SCXML 5.5, 5.7: Donedata param and content evaluation
+- Single Source of Truth for done event data generation shared between engines
+- Location: `rsm/include/common/DoneDataHelper.h`
+- Used by: Interpreter engine (StateMachine::evaluateDoneData), JIT engine (generated code - future)
+- Features:
+  - **evaluateContent()**: Evaluate `<content>` expression to set entire _event.data value
+  - **evaluateParams()**: Evaluate `<param>` elements to create JSON object with name:value pairs
+  - **escapeJsonString()**: JSON string escaping (quotes, backslashes, control characters)
+  - **convertScriptValueToJson()**: ScriptValue variant to JSON conversion
+  - W3C SCXML 5.7: Structural errors (empty location) prevent done.state event generation
+  - W3C SCXML 5.7: Runtime errors (invalid expr) raise error.execution, continue with other params
+  - Error handling callbacks for engine-specific error.execution event raising
+- Benefits: Zero code duplication, consistent donedata evaluation across engines, proper W3C SCXML 5.5/5.7 compliance
+
 **RSM::SendSchedulingHelper::parseDelayString() / SimpleScheduler**:
 - W3C SCXML 6.2: Delay string parsing and event scheduling logic
 - Single Source of Truth for delayed send implementation shared between engines

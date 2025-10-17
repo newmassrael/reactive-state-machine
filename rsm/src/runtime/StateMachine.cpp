@@ -1,5 +1,6 @@
 #include "runtime/StateMachine.h"
 #include "common/BindingHelper.h"
+#include "common/DoneDataHelper.h"
 #include "common/Logger.h"
 #include "common/StringUtils.h"
 #include "common/TransitionHelper.h"
@@ -3775,57 +3776,9 @@ void StateMachine::handleCompoundStateFinalChild(const std::string &finalStateId
     }
 }
 
-// Helper: Escape special characters in JSON strings
-std::string StateMachine::escapeJsonString(const std::string &str) {
-    std::ostringstream escaped;
-    for (char c : str) {
-        switch (c) {
-        case '"':
-            escaped << "\\\"";
-            break;
-        case '\\':
-            escaped << "\\\\";
-            break;
-        case '\n':
-            escaped << "\\n";
-            break;
-        case '\r':
-            escaped << "\\r";
-            break;
-        case '\t':
-            escaped << "\\t";
-            break;
-        case '\b':
-            escaped << "\\b";
-            break;
-        case '\f':
-            escaped << "\\f";
-            break;
-        default:
-            escaped << c;
-            break;
-        }
-    }
-    return escaped.str();
-}
-
-// Helper: Convert ScriptValue to JSON representation
-std::string StateMachine::convertScriptValueToJson(const ScriptValue &value, bool quoteStrings) {
-    if (std::holds_alternative<std::string>(value)) {
-        const std::string &str = std::get<std::string>(value);
-        if (quoteStrings) {
-            return "\"" + escapeJsonString(str) + "\"";
-        }
-        return str;
-    } else if (std::holds_alternative<double>(value)) {
-        return std::to_string(std::get<double>(value));
-    } else if (std::holds_alternative<int64_t>(value)) {
-        return std::to_string(std::get<int64_t>(value));
-    } else if (std::holds_alternative<bool>(value)) {
-        return std::get<bool>(value) ? "true" : "false";
-    }
-    return "null";
-}
+// W3C SCXML 5.5: Helper functions moved to DoneDataHelper (Zero Duplication)
+// - escapeJsonString() -> DoneDataHelper::escapeJsonString()
+// - convertScriptValueToJson() -> DoneDataHelper::convertScriptValueToJson()
 
 /**
  * W3C SCXML 5.5 & 5.7: Evaluate donedata and return JSON event data
@@ -3854,6 +3807,7 @@ std::string StateMachine::convertScriptValueToJson(const ScriptValue &value, boo
  * @return false if structural error (prevents done.state), true otherwise
  */
 bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string &outEventData) {
+    // W3C SCXML 5.5: Initialize output
     outEventData = "";
 
     if (!model_) {
@@ -3867,98 +3821,29 @@ bool StateMachine::evaluateDoneData(const std::string &finalStateId, std::string
 
     const auto &doneData = finalState->getDoneData();
 
-    // Check if donedata has content
+    // W3C SCXML 5.5: Evaluate content using shared DoneDataHelper (Zero Duplication)
     if (!doneData.getContent().empty()) {
-        // W3C SCXML 5.5: <content> sets the entire _event.data value
-        std::string content = doneData.getContent();
-        LOG_DEBUG("W3C SCXML 5.5: Evaluating donedata content: '{}'", content);
-
-        // Evaluate content as expression
-        auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, content);
-        auto result = future.get();
-
-        if (RSM::JSEngine::isSuccess(result)) {
-            // Convert result to JSON string using helper
-            const auto &value = result.getInternalValue();
-            outEventData = convertScriptValueToJson(value, false);
-
-            // For objects/arrays (null case), use original content as fallback
-            if (outEventData == "null" && !std::holds_alternative<ScriptNull>(value)) {
-                outEventData = content;
-            }
-            return true;
-        } else {
-            LOG_ERROR("W3C SCXML 5.5: Failed to evaluate donedata content: {}", result.getErrorMessage());
-
-            // W3C SCXML 5.10: Raise error.execution event for expression evaluation failure
-            if (eventRaiser_) {
-                eventRaiser_->raiseEvent("error.execution", result.getErrorMessage());
-            }
-
-            // W3C SCXML 5.5: Return empty data (not literal content) when evaluation fails
-            outEventData = "";
-            return true;
-        }
+        LOG_DEBUG("W3C SCXML 5.5: Evaluating donedata content: '{}'", doneData.getContent());
+        return DoneDataHelper::evaluateContent(
+            RSM::JSEngine::instance(), sessionId_, doneData.getContent(), outEventData, [this](const std::string &msg) {
+                LOG_ERROR("W3C SCXML 5.5: Failed to evaluate donedata content: {}", msg);
+                if (eventRaiser_) {
+                    eventRaiser_->raiseEvent("error.execution", msg);
+                }
+            });
     }
 
-    // Check if donedata has params
+    // W3C SCXML 5.5: Evaluate params using shared DoneDataHelper (Zero Duplication)
     const auto &params = doneData.getParams();
     if (!params.empty()) {
-        // W3C SCXML 5.5: <param> elements create an object with name:value pairs
         LOG_DEBUG("W3C SCXML 5.5: Evaluating {} donedata params", params.size());
-
-        std::ostringstream jsonBuilder;
-        jsonBuilder << "{";
-
-        bool first = true;
-        for (const auto &param : params) {
-            const std::string &paramName = param.first;
-            const std::string &paramExpr = param.second;
-
-            // W3C SCXML 5.7: Empty location is invalid (structural error)
-            // Must raise error.execution and prevent done.state event generation
-            if (paramExpr.empty()) {
-                LOG_ERROR("W3C SCXML 5.7: Empty param location/expression for param '{}'", paramName);
-
-                if (eventRaiser_) {
-                    eventRaiser_->raiseEvent("error.execution", "Empty param location or expression: " + paramName);
-                }
-
-                // W3C SCXML 5.7: Return false to skip done.state event generation
-                return false;
-            }
-
-            // Evaluate param expression
-            auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, paramExpr);
-            auto result = future.get();
-
-            if (RSM::JSEngine::isSuccess(result)) {
-                // W3C SCXML 5.7: Successfully evaluated param
-                if (!first) {
-                    jsonBuilder << ",";
-                }
-                first = false;
-
-                const auto &value = result.getInternalValue();
-                // Use helper to convert value to JSON with proper escaping
-                jsonBuilder << "\"" << escapeJsonString(paramName) << "\":" << convertScriptValueToJson(value, true);
-            } else {
-                // W3C SCXML 5.7: Invalid location or expression (runtime error)
-                // Must raise error.execution and ignore this param, but continue with others
-                LOG_ERROR("W3C SCXML 5.7: Failed to evaluate param '{}' expr/location '{}': {}", paramName, paramExpr,
-                          result.getErrorMessage());
-
-                if (eventRaiser_) {
-                    eventRaiser_->raiseEvent("error.execution",
-                                             "Invalid param location or expression: " + paramName + " = " + paramExpr);
-                }
-                // Continue to next param without adding this one
-            }
-        }
-
-        jsonBuilder << "}";
-        outEventData = jsonBuilder.str();
-        return true;
+        return DoneDataHelper::evaluateParams(RSM::JSEngine::instance(), sessionId_, params, outEventData,
+                                              [this](const std::string &msg) {
+                                                  LOG_ERROR("W3C SCXML 5.7: {}", msg);
+                                                  if (eventRaiser_) {
+                                                      eventRaiser_->raiseEvent("error.execution", msg);
+                                                  }
+                                              });
     }
 
     // No donedata

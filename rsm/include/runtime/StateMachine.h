@@ -582,9 +582,7 @@ private:
     void handleCompoundStateFinalChild(const std::string &finalStateId);
     bool evaluateDoneData(const std::string &finalStateId, std::string &outEventData);
 
-    // Helper methods for donedata evaluation
-    static std::string escapeJsonString(const std::string &str);
-    static std::string convertScriptValueToJson(const ScriptValue &value, bool quoteStrings);
+    // W3C SCXML 5.5: Helper methods moved to DoneDataHelper (Zero Duplication)
 };
 
 // Template implementation
