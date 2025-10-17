@@ -1665,6 +1665,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 302:  // W3C SCXML 5.8: script evaluation at load time
         case 303:  // W3C SCXML 5.9: script execution in entry actions
         case 304:  // W3C SCXML 5.8: script-declared variables accessible in data model
+        case 307:  // W3C SCXML B.2.2: late binding with log validation
         case 355:
         case 364:
         case 372:
