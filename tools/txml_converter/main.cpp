@@ -76,9 +76,21 @@ int main(int argc, char **argv) {
             isManualTest = (metadata.find("manual: True") != std::string::npos);
         }
 
+        // Check if this is a sub SCXML file (child state machine invoked by parent)
+        // W3C SCXML 6.2/6.4: Sub SCXML files don't have pass/fail states
+        std::string filename = inputPath.filename().string();
+        bool isSubSCXML = (filename.find("sub") != std::string::npos);
+
         // Convert TXML to SCXML
         RSM::W3C::TXMLConverter converter;
-        std::string scxmlContent = converter.convertTXMLToSCXML(txmlContent, isManualTest);
+        std::string scxmlContent;
+
+        if (isSubSCXML) {
+            // Sub SCXML files send events to parent via #_parent, no pass/fail validation
+            scxmlContent = converter.convertTXMLToSCXMLWithoutValidation(txmlContent);
+        } else {
+            scxmlContent = converter.convertTXMLToSCXML(txmlContent, isManualTest);
+        }
 
         // Output result
         if (writeToStdout) {

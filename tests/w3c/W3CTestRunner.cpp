@@ -54,6 +54,7 @@
 #include "test226_sm.h"
 #include "test239_sm.h"
 #include "test276_sm.h"
+#include "test277_sm.h"
 
 namespace RSM::W3C {
 
@@ -1840,6 +1841,26 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test276::State::Pass;
             }();
             testDescription = "Static invoke with param passing and #_parent (W3C 6.4 JIT)";
+            break;
+
+        // W3C SCXML 5.3: test277 - datamodel initialization failure raises error.execution (JIT)
+        case 277:
+            testPassed = []() {
+                RSM::Generated::test277::test277 sm;
+                sm.initialize();
+
+                // W3C SCXML 5.3: First tick initializes JSEngine and raises error.execution
+                sm.tick();
+
+                // Second tick processes error.execution event and transitions to S1
+                sm.tick();
+
+                // Third tick processes S1 guard (Var1 == 1) and transitions to Pass/Fail
+                sm.tick();
+
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test277::State::Pass;
+            }();
+            testDescription = "Datamodel init error.execution (W3C 5.3 JIT)";
             break;
 
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper

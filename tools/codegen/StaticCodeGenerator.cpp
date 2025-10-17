@@ -693,6 +693,11 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     ss << generateStateEnum(states);
     ss << "\n";
 
+    // W3C SCXML 5.3: Add error.execution to events if JSEngine is used (for datamodel init failures)
+    if (model.needsJSEngine() && events.find("error.execution") == events.end()) {
+        events.insert("error.execution");
+    }
+
     // Generate Event enum
     ss << generateEventEnum(events);
     ss << "\n";
@@ -802,6 +807,28 @@ std::string StaticCodeGenerator::generateStrategyInterface(const std::string &cl
 std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events,
                                                       const std::vector<StaticInvokeInfo> &staticInvokes) {
     std::stringstream ss;
+
+    // W3C SCXML 5.3: Datamodel initialization error handling
+    // Pattern: Deferred error.execution raising to ensure event priority correctness
+    // Execution Flow:
+    //   1. ensureJSEngine() triggers lazy initialization, sets datamodelInitFailed_ on error
+    //   2. Raise error.execution and return early (defers to next tick)
+    //   3. Next tick processes error.execution with higher priority than onentry events
+    // Rationale: Prevents onentry raised events (e.g., "foo") from being processed before
+    //            error.execution, which could cause wildcard transitions to match incorrectly
+    if (model.needsJSEngine()) {
+        ss << "        // W3C SCXML 5.3: Ensure JSEngine initialized to detect datamodel errors\n";
+        ss << "        this->ensureJSEngine();\n";
+        ss << "\n";
+        ss << "        // W3C SCXML 5.3: Raise error.execution and defer to next tick\n";
+        ss << "        // Deferred processing ensures error.execution has priority over onentry events\n";
+        ss << "        if (datamodelInitFailed_) {\n";
+        ss << "            datamodelInitFailed_ = false;  // Clear flag\n";
+        ss << "            engine.raise(Event::Error_execution);\n";
+        ss << "            return false;  // Defer to next tick (prevents wildcard transition mismatch)\n";
+        ss << "        }\n";
+        ss << "\n";
+    }
 
     // W3C SCXML 5.10: Set event data in JSEngine for _event.data access (test176)
     if (model.hasSendParams && model.needsJSEngine()) {
@@ -1650,6 +1677,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     // Add JSEngine initialization flag (to prevent duplicate createSession calls)
     if (model.needsJSEngine()) {
         ss << "    mutable bool jsEngineInitialized_ = false;\n";
+        ss << "    mutable bool datamodelInitFailed_ = false;  // W3C SCXML 5.3: Track initialization errors\n";
     }
 
     // W3C SCXML 5.10: Event data map for send params (test176)
@@ -2095,10 +2123,12 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                << escapeStringLiteral(initExpr) << "\").get();\n";
             ss << "            if (!::RSM::JSEngine::isSuccess(initExpr_" << var.name << ")) {\n";
             ss << "                LOG_ERROR(\"Failed to evaluate expression for variable: " << var.name << "\");\n";
-            ss << "                throw std::runtime_error(\"Datamodel initialization failed\");\n";
+            ss << "                // W3C SCXML 5.3: Mark initialization failure for later error.execution event\n";
+            ss << "                datamodelInitFailed_ = true;\n";
+            ss << "            } else {\n";
+            ss << "                jsEngine.setVariable(sessionId_.value(), \"" << var.name << "\", initExpr_"
+               << var.name << ".getInternalValue());\n";
             ss << "            }\n";
-            ss << "            jsEngine.setVariable(sessionId_.value(), \"" << var.name << "\", initExpr_" << var.name
-               << ".getInternalValue());\n";
         }
 
         ss << "        jsEngineInitialized_ = true;\n";

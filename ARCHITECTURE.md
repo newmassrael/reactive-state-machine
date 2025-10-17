@@ -469,6 +469,27 @@ class EventQueueManager {
   - Automatic filtering of cancelled events
 - Benefits: Zero code duplication, guaranteed W3C compliance, efficient scheduling
 
+**Deferred Error Handling Pattern (W3C SCXML 5.3)**:
+- Purpose: Handle datamodel initialization failures in static JIT context
+- Single Source of Truth: Mirrors Interpreter engine error.execution semantics
+- Location: StaticCodeGenerator.cpp lines 811-831 (code generation pattern)
+- Used by: JIT engine (generated code for JSEngine-using state machines)
+- Implementation:
+  - **Flag-Based Deferred Raising**: `datamodelInitFailed_` flag set during ensureJSEngine()
+  - **Early Return Pattern**: Raise error.execution and return false to defer processing
+  - **Event Priority Guarantee**: Error.execution processed before onentry-raised events
+- Execution Flow:
+  1. `ensureJSEngine()` triggers lazy initialization, sets flag on error
+  2. Check flag, raise error.execution, return false (defers to next tick)
+  3. Next tick processes error.execution with higher priority than queued events
+- Rationale:
+  - Prevents onentry raised events from matching wildcard transitions before error.execution
+  - Maintains W3C SCXML 5.3 requirement: error.execution in internal event queue
+  - Clean separation: Each tick processes one logical step
+  - No race conditions: Flag-based deferred handling avoids event queue conflicts
+- Test: test277 (datamodel init error with onentry "foo" event + wildcard transition)
+- Benefits: Correct event priority handling in static context, Zero Duplication with Interpreter semantics
+
 ### Future Core Components (Planned)
 
 **RSM::Core::StateExecutor**:

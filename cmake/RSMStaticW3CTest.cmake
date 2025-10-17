@@ -4,24 +4,52 @@
 # rsm_generate_static_w3c_test: Generate C++ code for a single W3C test
 #
 # This does NOT create executable - just generates C++ header from TXML
-# Optional third parameter: RESOURCE_DIR (defaults to TEST_NUM if not specified)
+# Automatically discovers and processes sub SCXML files (e.g., test226sub1.txml)
 #
 function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
-    # Optional third parameter for resource directory (for sub-tests like test239sub1)
-    set(RESOURCE_DIR "${TEST_NUM}")
-    if(ARGC GREATER 2)
-        set(RESOURCE_DIR "${ARGV2}")
-    endif()
-    
-    set(TXML_FILE "${CMAKE_SOURCE_DIR}/resources/${RESOURCE_DIR}/test${TEST_NUM}.txml")
+    set(RESOURCE_DIR "${CMAKE_SOURCE_DIR}/resources/${TEST_NUM}")
+    set(TXML_FILE "${RESOURCE_DIR}/test${TEST_NUM}.txml")
     set(SCXML_FILE "${OUTPUT_DIR}/test${TEST_NUM}.scxml")
     set(GENERATED_HEADER "${OUTPUT_DIR}/test${TEST_NUM}_sm.h")
 
-    # Check if TXML file exists
+    # Check if main TXML file exists
     if(NOT EXISTS "${TXML_FILE}")
         message(WARNING "TXML file not found: ${TXML_FILE} - Skipping test ${TEST_NUM}")
         return()
     endif()
+
+    # Auto-discover sub SCXML files (e.g., test226sub1.txml, test226sub2.txml)
+    # W3C SCXML 6.2/6.4: Sub SCXML files are child state machines invoked by parent
+    file(GLOB SUB_TXML_FILES "${RESOURCE_DIR}/test${TEST_NUM}sub*.txml")
+    set(SUB_SCXML_DEPENDENCIES "")
+
+    foreach(SUB_TXML_FILE ${SUB_TXML_FILES})
+        get_filename_component(SUB_TXML_NAME "${SUB_TXML_FILE}" NAME_WE)
+        set(SUB_SCXML_FILE "${OUTPUT_DIR}/${SUB_TXML_NAME}.scxml")
+        set(SUB_HEADER_FILE "${OUTPUT_DIR}/${SUB_TXML_NAME}_sm.h")
+
+        # Convert sub TXML to SCXML (without pass/fail validation via filename detection)
+        add_custom_command(
+            OUTPUT "${SUB_SCXML_FILE}"
+            COMMAND txml-converter "${SUB_TXML_FILE}" "${SUB_SCXML_FILE}"
+            DEPENDS txml-converter "${SUB_TXML_FILE}"
+            COMMENT "Converting ${SUB_TXML_NAME}.txml to SCXML (sub state machine)"
+            VERBATIM
+        )
+
+        # Generate C++ code for sub SCXML
+        add_custom_command(
+            OUTPUT "${SUB_HEADER_FILE}"
+            COMMAND scxml-codegen -o "${OUTPUT_DIR}" "${SUB_SCXML_FILE}"
+            DEPENDS scxml-codegen "${SUB_SCXML_FILE}"
+            COMMENT "Generating C++ code: ${SUB_TXML_NAME}_sm.h"
+            VERBATIM
+        )
+
+        # Add sub SCXML to dependencies and headers
+        list(APPEND SUB_SCXML_DEPENDENCIES "${SUB_SCXML_FILE}")
+        set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${SUB_HEADER_FILE}")
+    endforeach()
 
     # Step 1: TXML -> SCXML conversion with name attribute
     add_custom_command(
@@ -29,7 +57,7 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
         COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
         COMMAND txml-converter "${TXML_FILE}" "${SCXML_FILE}"
         COMMAND sed -i "s/<scxml /<scxml name=\\\"test${TEST_NUM}\\\" /" "${SCXML_FILE}"
-        DEPENDS txml-converter "${TXML_FILE}"
+        DEPENDS txml-converter "${TXML_FILE}" ${SUB_SCXML_DEPENDENCIES}
         COMMENT "Converting TXML to SCXML: test${TEST_NUM}.txml"
         VERBATIM
     )
