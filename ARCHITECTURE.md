@@ -472,7 +472,7 @@ class EventQueueManager {
 - W3C SCXML 5.5, 5.7: Donedata param and content evaluation
 - Single Source of Truth for done event data generation shared between engines
 - Location: `rsm/include/common/DoneDataHelper.h`
-- Used by: Interpreter engine (StateMachine::evaluateDoneData), JIT engine (generated code - future)
+- Used by: Interpreter engine (StateMachine::evaluateDoneData), JIT engine (StaticCodeGenerator::generateDoneDataCode)
 - Features:
   - **evaluateContent()**: Evaluate `<content>` expression to set entire _event.data value
   - **evaluateParams()**: Evaluate `<param>` elements to create JSON object with name:value pairs

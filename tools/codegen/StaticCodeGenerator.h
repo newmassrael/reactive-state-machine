@@ -104,6 +104,33 @@ private:
     // W3C SCXML 3.3: Generate parent state mapping for hierarchical entry
     std::string generateGetParentMethod(const SCXMLModel &model);
 
+    /**
+     * @brief Generate donedata evaluation code for final state transitions
+     *
+     * W3C SCXML 5.5/5.7: Generates C++ code to evaluate donedata (content and params)
+     * when transitioning to a final state. Uses DoneDataHelper for Zero Duplication.
+     *
+     * @param ss Output stream for generated code
+     * @param targetState Target state name to check for donedata
+     * @param model SCXML model containing state information
+     * @param indent Indentation string for generated code
+     *
+     * @details
+     * - Checks if targetState is a final state with donedata
+     * - Generates JSEngine initialization (ensureJSEngine, getInstance)
+     * - Calls DoneDataHelper::evaluateContent() for <content> expressions
+     * - Calls DoneDataHelper::evaluateParams() for <param> elements
+     * - W3C SCXML 5.7: Empty param locations cause structural error (skip transition)
+     * - W3C SCXML 5.9.2: Invalid param expressions raise error.execution
+     * - Integrates error handlers via lambda callbacks
+     *
+     * @note Only generates code if target is final state with non-empty donedata
+     * @see DoneDataHelper::evaluateContent(), DoneDataHelper::evaluateParams()
+     * @see ARCHITECTURE.md: Single Source of Truth principle
+     */
+    void generateDoneDataCode(std::stringstream &ss, const std::string &targetState, const SCXMLModel &model,
+                              const std::string &indent);
+
     // File writing
     bool writeToFile(const std::string &path, const std::string &content);
 
@@ -190,6 +217,12 @@ struct InvokeInfo {
     std::vector<std::tuple<std::string, std::string, std::string>> params;
 };
 
+// W3C SCXML 5.5/5.7: Donedata information for final states
+struct DoneDataInfo {
+    std::string content;                                      // W3C SCXML 5.5: <content> expression
+    std::vector<std::pair<std::string, std::string>> params;  // W3C SCXML 5.7: <param> name->location pairs
+};
+
 struct State {
     std::string name;
     std::string parentState;  // W3C SCXML 3.3: Parent state (empty for root states)
@@ -199,6 +232,7 @@ struct State {
     std::vector<Action> entryActions;       // Actions from <onentry>
     std::vector<Action> exitActions;        // Actions from <onexit>
     std::vector<InvokeInfo> invokes;        // W3C SCXML 6.4: Invoke elements in this state
+    DoneDataInfo doneData;                  // W3C SCXML 5.5/5.7: Donedata for final states
 };
 
 struct DataModelVariable {

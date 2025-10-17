@@ -20,6 +20,7 @@
 #include "common/AssignHelper.h"
 #include "common/BindingHelper.h"
 #include "common/DataModelHelper.h"
+#include "common/DoneDataHelper.h"
 #include "common/SendHelper.h"
 #include "factory/NodeFactory.h"
 #include "model/SCXMLModel.h"
@@ -246,6 +247,24 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
             stateInfo.invokes.push_back(invokeInfo);
             LOG_DEBUG("StaticCodeGenerator: State '{}' has invoke: id='{}', type='{}', src='{}', autoforward={}",
                       stateId, invokeInfo.invokeId, invokeInfo.type, invokeInfo.src, invokeInfo.autoforward);
+        }
+
+        // W3C SCXML 5.5/5.7: Extract donedata for final states
+        if (stateInfo.isFinal) {
+            const auto &doneData = state->getDoneData();
+            stateInfo.doneData.content = doneData.getContent();
+
+            const auto &params = doneData.getParams();
+            for (const auto &param : params) {
+                stateInfo.doneData.params.push_back({param.first, param.second});
+                LOG_DEBUG("StaticCodeGenerator: Final state '{}' has donedata param: name='{}', location='{}'", stateId,
+                          param.first, param.second);
+            }
+
+            if (!stateInfo.doneData.content.empty() || !stateInfo.doneData.params.empty()) {
+                LOG_DEBUG("StaticCodeGenerator: Final state '{}' has donedata: content='{}', {} params", stateId,
+                          stateInfo.doneData.content, stateInfo.doneData.params.size());
+            }
         }
 
         model.states.push_back(stateInfo);
@@ -984,6 +1003,9 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
     for (const auto &stateName : stateNames) {
         ss << "            case State::" << capitalize(stateName) << ":\n";
 
+        // Track if unconditional break was added (for avoiding duplicate breaks)
+        bool hasUnconditionalBreak = false;
+
         auto it = transitionsByState.find(stateName);
         if (it != transitionsByState.end() && !it->second.empty()) {
             // Separate event-based and eventless transitions
@@ -1112,6 +1134,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                         // W3C SCXML: Only change state if targetState exists (not an internal transition)
                         if (!trans.targetState.empty()) {
                             ss << guardIndent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                            // W3C SCXML 5.5/5.7: Generate donedata handling if transitioning to final state
+                            generateDoneDataCode(ss, trans.targetState, model, guardIndent);
                         }
                         ss << guardIndent << "transitionTaken = true;\n";
                     }
@@ -1217,6 +1241,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                         // W3C SCXML: Only change state if targetState exists
                         if (!trans.targetState.empty()) {
                             ss << guardIndent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                            // W3C SCXML 5.5/5.7: Generate donedata handling if transitioning to final state
+                            generateDoneDataCode(ss, trans.targetState, model, guardIndent);
                         }
                         ss << guardIndent << "transitionTaken = true;\n";
                     }
@@ -1321,12 +1347,15 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                     // W3C SCXML: Only change state if targetState exists (not an internal transition)
                     if (!trans.targetState.empty()) {
                         ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
+                        // W3C SCXML 5.5/5.7: Generate donedata handling if transitioning to final state
+                        generateDoneDataCode(ss, trans.targetState, model, indent);
                     }
                     ss << indent << "transitionTaken = true;\n";
 
                     // W3C SCXML 3.5: Unconditional transitions execute immediately and stop further processing
                     if (trans.guard.empty() && firstTransition) {
                         ss << indent << "break;\n";
+                        hasUnconditionalBreak = true;  // Mark that we added unconditional break
                     }
 
                     // Close blocks only at the end of all transitions
@@ -1437,6 +1466,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                                 if (!trans.targetState.empty()) {
                                     ss << guardIndent << "parallel_" << stateName << "_region" << i
                                        << "State_ = State::" << capitalize(trans.targetState) << ";\n";
+                                    // W3C SCXML 5.5/5.7: Generate donedata handling if transitioning to final state
+                                    generateDoneDataCode(ss, trans.targetState, model, guardIndent);
                                 }
 
                                 ss << guardIndent << "transitionTaken = true;\n";
@@ -1516,7 +1547,12 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                 }
             }
 
-            ss << "                break;\n";
+            // Only add break if unconditional break wasn't already added
+            if (!eventlessTransitions.empty() && !hasUnconditionalBreak) {
+                ss << "                break;\n";
+            } else if (eventlessTransitions.empty()) {
+                ss << "                break;\n";
+            }
         } else {
             // States without transitions (e.g., final states) must explicitly break
             ss << "                break;\n";
@@ -3159,6 +3195,65 @@ std::string StaticCodeGenerator::generateGetParentMethod(const SCXMLModel &model
     ss << "    }\n\n";
 
     return ss.str();
+}
+
+void StaticCodeGenerator::generateDoneDataCode(std::stringstream &ss, const std::string &targetState,
+                                               const SCXMLModel &model, const std::string &indent) {
+    // Find the target state in model
+    const State *finalState = nullptr;
+    for (const auto &state : model.states) {
+        if (state.name == targetState && state.isFinal) {
+            finalState = &state;
+            break;
+        }
+    }
+
+    // Only generate code if target is a final state with donedata
+    if (!finalState || (finalState->doneData.content.empty() && finalState->doneData.params.empty())) {
+        return;
+    }
+
+    ss << indent << "// W3C SCXML 5.5/5.7: Evaluate donedata for final state\n";
+    ss << indent << "{\n";
+
+    const std::string innerIndent = indent + "    ";
+
+    // Initialize JSEngine once for all donedata operations
+    ss << innerIndent << "this->ensureJSEngine();\n";
+    ss << innerIndent << "auto& jsEngine = ::RSM::JSEngine::instance();\n";
+    ss << innerIndent << "std::string eventData;\n";
+
+    // W3C SCXML 5.5: Handle <content> expression
+    if (!finalState->doneData.content.empty()) {
+        ss << innerIndent << "::RSM::DoneDataHelper::evaluateContent(\n";
+        ss << innerIndent << "    jsEngine, sessionId_, \"" << escapeStringLiteral(finalState->doneData.content)
+           << "\", eventData,\n";
+        ss << innerIndent << "    [&engine](const std::string& msg) {\n";
+        ss << innerIndent << "        engine.raise(Event::Error_execution);\n";
+        ss << innerIndent << "    });\n";
+    }
+
+    // W3C SCXML 5.7: Handle <param> elements
+    if (!finalState->doneData.params.empty()) {
+        ss << innerIndent << "std::vector<std::pair<std::string, std::string>> params = {\n";
+
+        for (const auto &param : finalState->doneData.params) {
+            ss << innerIndent << "    {\"" << escapeStringLiteral(param.first) << "\", \""
+               << escapeStringLiteral(param.second) << "\"},\n";
+        }
+
+        ss << innerIndent << "};\n";
+        ss << innerIndent << "if (!::RSM::DoneDataHelper::evaluateParams(\n";
+        ss << innerIndent << "        jsEngine, sessionId_, params, eventData,\n";
+        ss << innerIndent << "        [&engine](const std::string& msg) {\n";
+        ss << innerIndent << "            engine.raise(Event::Error_execution);\n";
+        ss << innerIndent << "        })) {\n";
+        ss << innerIndent << "    // W3C SCXML 5.7: Structural error, skip transition\n";
+        ss << innerIndent << "    break;\n";
+        ss << innerIndent << "}\n";
+    }
+
+    ss << indent << "}\n";
 }
 
 bool StaticCodeGenerator::writeToFile(const std::string &path, const std::string &content) {

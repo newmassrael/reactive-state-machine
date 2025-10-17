@@ -1661,6 +1661,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 252:
         case 253:
         case 294:
+        case 298:  // W3C SCXML 5.7/5.9.2: invalid param location in donedata
         case 355:
         case 364:
         case 372:
