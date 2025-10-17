@@ -73,8 +73,9 @@ protected:
         }
     }
 
+public:
     /**
-     * @brief Raise an external event (W3C SCXML C.1)
+     * @brief Raise an external event (W3C SCXML C.1, 6.2)
      *
      * External events are placed at the back of the external event queue.
      * They are processed after all internal events have been consumed.
@@ -82,6 +83,7 @@ protected:
      * Used by:
      * - <send> without target (W3C SCXML 6.2)
      * - <send> with external targets (not #_internal)
+     * - <send target="#_parent"> from child state machines (W3C SCXML 6.2)
      *
      * W3C SCXML C.1 (test189): External queue has lower priority than internal queue.
      *
@@ -99,6 +101,7 @@ protected:
         }
     }
 
+protected:
     /**
      * @brief Execute entry actions for a state (W3C SCXML 3.7)
      *
@@ -423,6 +426,18 @@ public:
      */
     void setCompletionCallback(std::function<void()> callback) {
         completionCallback_ = callback;
+    }
+
+    /**
+     * @brief Get access to policy for parameter passing (W3C SCXML 6.4)
+     *
+     * Used by parent state machines to pass invoke parameters to child state machines.
+     * Allows setting datamodel variables before calling initialize().
+     *
+     * @return Reference to policy instance
+     */
+    StatePolicy &getPolicy() {
+        return policy_;
     }
 };
 

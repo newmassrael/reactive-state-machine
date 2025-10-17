@@ -87,6 +87,35 @@ public:
     }
 
     /**
+     * @brief Send event to parent state machine (Single Source of Truth)
+     *
+     * W3C SCXML 6.2: Handles <send target="#_parent"> semantics for child-to-parent
+     * event communication in invoked state machines.
+     *
+     * Single Source of Truth for #_parent event routing shared between:
+     * - Interpreter engine (ParentEventTarget)
+     * - JIT engine (StaticCodeGenerator generated code)
+     *
+     * This template function enables compile-time type-safe parent event routing
+     * in statically generated code while maintaining zero-overhead abstraction.
+     *
+     * @tparam ParentStateMachine Parent state machine type (CRTP)
+     * @tparam EventType Parent's Event enum type
+     * @param parent Pointer to parent state machine (nullptr-safe)
+     * @param event Event to send to parent
+     * @return true if event was sent successfully, false if parent is null
+     */
+    template <typename ParentStateMachine, typename EventType>
+    static bool sendToParent(ParentStateMachine *parent, EventType event) {
+        if (parent) {
+            // W3C SCXML 6.2: Send to parent's external event queue
+            parent->raiseExternal(event);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * @brief Store sendid in idlocation variable (Single Source of Truth)
      *
      * W3C SCXML 6.2.4 (test 183): The idlocation attribute specifies a variable

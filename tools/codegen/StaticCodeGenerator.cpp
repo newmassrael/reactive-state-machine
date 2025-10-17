@@ -234,16 +234,67 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 trans.targetState = targets.empty() ? "" : targets[0];  // Empty for internal transitions
                 trans.guard = transition->getGuard();                   // Extract guard condition
 
-                // Extract actions from transition (including AssignAction for internal transitions)
+                // W3C SCXML 3.5: Extract actions from transition (executed during transition)
                 for (const auto &actionNode : transition->getActionNodes()) {
-                    if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
-                        const std::string &content = scriptAction->getContent();
-                        auto extractedFuncs = extractFunctionNames(content, funcRegex);
-                        trans.actions.insert(trans.actions.end(), extractedFuncs.begin(), extractedFuncs.end());
-                    } else if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
-                        // Extract assign actions (for internal transitions like p0's event1)
-                        Action act(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr());
-                        trans.transitionActions.push_back(act);
+                    std::string actionType = actionNode->getActionType();
+
+                    if (actionType == "script") {
+                        if (auto scriptAction = std::dynamic_pointer_cast<RSM::ScriptAction>(actionNode)) {
+                            const std::string &content = scriptAction->getContent();
+                            auto extractedFuncs = extractFunctionNames(content, funcRegex);
+                            trans.actions.insert(trans.actions.end(), extractedFuncs.begin(), extractedFuncs.end());
+                        }
+                    } else if (actionType == "assign") {
+                        if (auto assignAction = std::dynamic_pointer_cast<RSM::AssignAction>(actionNode)) {
+                            Action act(Action::ASSIGN, assignAction->getLocation(), assignAction->getExpr());
+                            trans.transitionActions.push_back(act);
+                        }
+                    } else if (actionType == "send") {
+                        // W3C SCXML 3.5: Send actions in transitions (test226, test276)
+                        if (auto sendAction = std::dynamic_pointer_cast<RSM::SendAction>(actionNode)) {
+                            std::string event = sendAction->getEvent();
+                            std::string target = sendAction->getTarget();
+                            std::string targetExpr = sendAction->getTargetExpr();
+                            std::string eventExpr = sendAction->getEventExpr();
+                            std::string delay = sendAction->getDelay();
+                            std::string delayExpr = sendAction->getDelayExpr();
+
+                            // W3C SCXML 6.2: Detect send to parent (requires parent pointer and template)
+                            if (target == "#_parent") {
+                                model.hasSendToParent = true;
+                                LOG_DEBUG("StaticCodeGenerator: Detected #_parent in transition action");
+                            }
+
+                            Action sendActionResult(Action::SEND, event, target, targetExpr, eventExpr, delay,
+                                                    delayExpr);
+                            // W3C SCXML 5.10: Extract send params for event data
+                            for (const auto &param : sendAction->getParamsWithExpr()) {
+                                sendActionResult.sendParams.push_back({param.name, param.expr});
+                            }
+                            sendActionResult.sendContent = sendAction->getContent();
+                            sendActionResult.sendContentExpr = sendAction->getContentExpr();
+                            sendActionResult.sendId = sendAction->getSendId();
+                            sendActionResult.sendIdLocation = sendAction->getIdLocation();
+                            sendActionResult.sendType = sendAction->getType();
+                            trans.transitionActions.push_back(sendActionResult);
+                        }
+                    } else if (actionType == "raise") {
+                        // W3C SCXML 3.5: Raise actions in transitions
+                        if (auto raiseAction = std::dynamic_pointer_cast<RSM::RaiseAction>(actionNode)) {
+                            trans.transitionActions.push_back(Action(Action::RAISE, raiseAction->getEvent()));
+                        }
+                    } else if (actionType == "log") {
+                        // W3C SCXML 3.5: Log actions in transitions
+                        if (auto logAction = std::dynamic_pointer_cast<RSM::LogAction>(actionNode)) {
+                            trans.transitionActions.push_back(Action(Action::LOG, logAction->getExpr()));
+                        }
+                    } else if (actionType == "cancel") {
+                        // W3C SCXML 6.3: Cancel actions in transitions
+                        if (auto cancelAction = std::dynamic_pointer_cast<RSM::CancelAction>(actionNode)) {
+                            std::string sendId = cancelAction->getSendId();
+                            std::string sendIdExpr = cancelAction->getSendIdExpr();
+                            trans.transitionActions.push_back(Action(Action::CANCEL, sendId, sendIdExpr));
+                        }
                     }
                 }
 
@@ -266,6 +317,11 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 detectFeatures(action.iterationActions);
             } else if (action.type == Action::SEND) {
                 model.hasSend = true;
+                // W3C SCXML 6.2: Detect send to parent (requires parent pointer and template)
+                if (action.param2 == "#_parent") {  // param2 is target
+                    model.hasSendToParent = true;
+                    LOG_DEBUG("StaticCodeGenerator: Detected #_parent in detectFeatures");
+                }
                 // W3C SCXML 6.2: Detect send with delay (requires EventScheduler)
                 if (!action.param5.empty() || !action.param6.empty()) {
                     model.hasSendWithDelay = true;
@@ -295,6 +351,11 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     for (const auto &state : model.states) {
         detectFeatures(state.entryActions);
         detectFeatures(state.exitActions);
+    }
+
+    // W3C SCXML 3.5: Detect features in transition actions
+    for (const auto &transition : model.transitions) {
+        detectFeatures(transition.transitionActions);
     }
 
     // Detect complex datamodel (arrays, typeof)
@@ -343,6 +404,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         }
     }
 
+    // ARCHITECTURE.md All-or-Nothing: Use Interpreter wrapper if dynamic invokes OR JSEngine needed
     if (hasDynamicInvokes) {
         LOG_INFO("StaticCodeGenerator: Dynamic invoke detected in '{}' - generating Interpreter wrapper", model.name);
         std::stringstream ss;
@@ -405,6 +467,52 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 childIncludes.insert(childInclude);
                 LOG_DEBUG("StaticCodeGenerator: Child '{}' generated successfully", childFileName);
 
+                // W3C SCXML 6.2: Check if child uses #_parent by reading generated header
+                // ARCHITECTURE.md All-or-Nothing: Check if child is Interpreter wrapper (uses JSEngine/dynamic
+                // features)
+                bool childUsesParent = false;
+                bool childIsInterpreterWrapper = false;
+                {
+                    fs::path childHeaderPath = fs::path(outputDir) / (childFileName + "_sm.h");
+                    LOG_DEBUG("StaticCodeGenerator: Checking child header: {}", childHeaderPath.string());
+                    if (fs::exists(childHeaderPath)) {
+                        LOG_DEBUG("StaticCodeGenerator: Child header exists");
+                        std::ifstream childHeaderFile(childHeaderPath);
+                        if (childHeaderFile.is_open()) {
+                            std::string line;
+                            while (std::getline(childHeaderFile, line)) {
+                                // Detect template-based parent pointer (indicates #_parent usage)
+                                if (line.find("template<typename ParentStateMachine>") != std::string::npos) {
+                                    childUsesParent = true;
+                                    LOG_DEBUG("StaticCodeGenerator: Child '{}' uses #_parent (found template)",
+                                              childFileName);
+                                }
+                                // Detect Interpreter wrapper (All-or-Nothing principle)
+                                if (line.find("#include \"runtime/StateMachine.h\"") != std::string::npos ||
+                                    line.find("std::shared_ptr<::RSM::StateMachine> interpreter_") !=
+                                        std::string::npos ||
+                                    line.find("W3C SCXML 6.4: Dynamic invoke detected") != std::string::npos) {
+                                    childIsInterpreterWrapper = true;
+                                    LOG_DEBUG("StaticCodeGenerator: Child '{}' is Interpreter wrapper", childFileName);
+                                }
+                            }
+                        }
+                    } else {
+                        LOG_WARN("StaticCodeGenerator: Child header does not exist: {}", childHeaderPath.string());
+                    }
+                }
+                LOG_DEBUG("StaticCodeGenerator: childUsesParent = {}, childIsInterpreterWrapper = {}", childUsesParent,
+                          childIsInterpreterWrapper);
+
+                // ARCHITECTURE.md All-or-Nothing: If child uses Interpreter, parent must too
+                if (childIsInterpreterWrapper) {
+                    LOG_WARN("StaticCodeGenerator: Child '{}' uses Interpreter wrapper - parent '{}' must also use "
+                             "Interpreter (All-or-Nothing)",
+                             childFileName, model.name);
+                    std::stringstream ss;
+                    return generateInterpreterWrapper(ss, model, rsmModel, scxmlPath, outputDir);
+                }
+
                 // Track static invoke info for member generation
                 std::string invokeId = invoke.invokeId;
                 if (invokeId.empty()) {
@@ -421,6 +529,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
                 info.stateName = state.name;
                 info.autoforward = invoke.autoforward;
                 info.finalizeContent = invoke.finalizeContent;
+                info.childNeedsParent = childUsesParent;  // W3C SCXML 6.2: Set parent requirement flag
                 staticInvokes.push_back(info);
             }
         }
@@ -573,6 +682,12 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
 
     // Namespace - each test gets its own nested namespace to avoid conflicts
     ss << "namespace RSM::Generated::" << model.name << " {\n\n";
+
+    // W3C SCXML 6.2: Forward declaration (template if child sends to parent)
+    if (model.hasSendToParent) {
+        ss << "template<typename ParentStateMachine>\n";
+    }
+    ss << "class " << model.name << ";\n\n";
 
     // Generate State enum
     ss << generateStateEnum(states);
@@ -1463,6 +1578,17 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
 
     // Generate State Policy class
     ss << "// State policy for " << model.name << "\n";
+    // W3C SCXML 6.2: Determine template parameter type
+    bool anyChildNeedsParent = std::any_of(staticInvokes.begin(), staticInvokes.end(),
+                                           [](const StaticInvokeInfo &info) { return info.childNeedsParent; });
+
+    if (model.hasSendToParent) {
+        // This model sends to parent - needs ParentStateMachine template for parent pointer
+        ss << "template<typename ParentStateMachine>\n";
+    } else if (anyChildNeedsParent) {
+        // This model has children that need parent - needs SelfType for CRTP
+        ss << "template<typename SelfType>\n";
+    }
     ss << "struct " << model.name << "Policy {\n";
     ss << "    using State = ::RSM::Generated::" << model.name << "::State;\n";
     ss << "    using Event = ::RSM::Generated::" << model.name << "::Event;\n\n";
@@ -1571,8 +1697,15 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         if (!staticInvokes.empty()) {
             ss << "    // W3C SCXML 6.4: Static invoke child state machines\n";
             for (const auto &invokeInfo : staticInvokes) {
-                ss << "    mutable std::shared_ptr<::RSM::Generated::" << invokeInfo.childName
-                   << "::" << invokeInfo.childName << "> child_" << invokeInfo.invokeId << "_;\n";
+                // W3C SCXML 6.2: If child uses #_parent, declare with template parameter
+                if (invokeInfo.childNeedsParent) {
+                    // Use SelfType from CRTP pattern
+                    ss << "    mutable std::shared_ptr<::RSM::Generated::" << invokeInfo.childName
+                       << "::" << invokeInfo.childName << "<SelfType>> child_" << invokeInfo.invokeId << "_;\n";
+                } else {
+                    ss << "    mutable std::shared_ptr<::RSM::Generated::" << invokeInfo.childName
+                       << "::" << invokeInfo.childName << "> child_" << invokeInfo.invokeId << "_;\n";
+                }
             }
             ss << "\n";
 
@@ -1601,6 +1734,12 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "\n";
         // Note: Dynamic invoke handling moved to early return (line 433-435)
         // ARCHITECTURE.md: All-or-Nothing strategy prevents reaching this code with dynamic invokes
+    }
+
+    // W3C SCXML 6.2: Parent pointer member when this model sends to parent
+    if (model.hasSendToParent) {
+        ss << "    // W3C SCXML 6.2: Parent state machine pointer for #_parent support\n";
+        ss << "    ParentStateMachine* parent_ = nullptr;\n\n";
     }
 
     // JSEngine lazy initialization and cleanup (RAII + Lazy Init pattern)
@@ -1731,8 +1870,25 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                            << ", src=" << invoke.src << "\");\n";
                         ss << "                    \n";
                         ss << "                    // Instantiate and store child state machine in Policy member\n";
-                        ss << "                    child_" << invokeId
-                           << "_ = std::make_shared<::RSM::Generated::" << childName << "::" << childName << ">();\n";
+                        // W3C SCXML 6.2: Find if this child needs parent pointer (#_parent usage)
+                        bool childNeedsParent = false;
+                        for (const auto &staticInvoke : staticInvokes) {
+                            if (staticInvoke.invokeId == invokeId) {
+                                childNeedsParent = staticInvoke.childNeedsParent;
+                                break;
+                            }
+                        }
+
+                        // If child uses #_parent, pass parent pointer via template
+                        if (childNeedsParent) {
+                            ss << "                    child_" << invokeId
+                               << "_ = std::make_shared<::RSM::Generated::" << childName << "::" << childName
+                               << "<SelfType>>(static_cast<SelfType*>(&engine));\n";
+                        } else {
+                            ss << "                    child_" << invokeId
+                               << "_ = std::make_shared<::RSM::Generated::" << childName << "::" << childName
+                               << ">();\n";
+                        }
                         ss << "                    \n";
                         ss << "                    // W3C SCXML 6.4: Set completion callback for done.invoke event\n";
                         ss << "                    child_" << invokeId << "_->setCompletionCallback([this]() {\n";
@@ -1741,6 +1897,25 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                            << " completed, pending done.invoke event\");\n";
                         ss << "                    });\n";
                         ss << "                    \n";
+
+                        // W3C SCXML 6.4: Pass params to child state machine
+                        if (!invoke.params.empty()) {
+                            ss << "                    // W3C SCXML 6.4: Pass params to child state machine\n";
+                            for (const auto &param : invoke.params) {
+                                std::string paramName = std::get<0>(param);
+                                std::string paramExpr = std::get<1>(param);
+                                // std::string paramLocation = std::get<2>(param);  // Not used for static invokes
+
+                                // For static params (no JSEngine), evaluate simple expressions
+                                // Complex expressions would need JSEngine evaluation
+                                if (!paramExpr.empty()) {
+                                    ss << "                    child_" << invokeId << "_->getPolicy()." << paramName
+                                       << " = " << paramExpr << ";\n";
+                                }
+                            }
+                            ss << "                    \n";
+                        }
+
                         ss << "                    // W3C SCXML 6.4.6: Handle invoke failure with error.execution\n";
                         ss << "                    try {\n";
                         ss << "                        child_" << invokeId << "_->initialize();\n";
@@ -1929,6 +2104,22 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "        jsEngineInitialized_ = true;\n";
         ss << "    }\n";
 
+        // W3C SCXML 6.4: Helper to set param in JSEngine for static invoke
+        ss << "\n";
+        ss << "public:\n";
+        ss << "    // Helper: Set param in JSEngine for static invoke (W3C SCXML 6.4)\n";
+        ss << "    void setParamInJSEngine(const std::string& paramName, const std::string& paramExpr) {\n";
+        ss << "        ensureJSEngine();\n";
+        ss << "        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+        ss << "        auto valueResult = jsEngine.evaluateExpression(sessionId_.value(), paramExpr).get();\n";
+        ss << "        if (::RSM::JSEngine::isSuccess(valueResult)) {\n";
+        ss << "            jsEngine.setVariable(sessionId_.value(), paramName, valueResult.getInternalValue());\n";
+        ss << "        } else {\n";
+        ss << "            LOG_ERROR(\"Failed to evaluate param expression for {}: {}\", paramName, paramExpr);\n";
+        ss << "        }\n";
+        ss << "    }\n";
+        ss << "private:\n";
+
         // W3C SCXML 5.10: Helper to set event data in JSEngine for _event.data access
         if (model.hasSendParams) {
             ss << "\n";
@@ -1952,10 +2143,39 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
 
     // Generate user-facing class using StaticExecutionEngine
     ss << "// User-facing state machine class\n";
-    ss << "class " << model.name << " : public ::RSM::Static::StaticExecutionEngine<" << model.name << "Policy> {\n";
+
+    // W3C SCXML 6.2: Template on ParentStateMachine if child uses #_parent (Zero Overhead)
+    LOG_DEBUG("StaticCodeGenerator::generateClass - hasSendToParent: {}", model.hasSendToParent);
+    // W3C SCXML 6.2: Reuse anyChildNeedsParent computed earlier in Policy template section
+
+    if (model.hasSendToParent) {
+        ss << "template<typename ParentStateMachine>\n";
+    }
+
+    // W3C SCXML 6.2: Class inheritance based on Policy template type
+    if (model.hasSendToParent) {
+        // Child sends to parent: Policy<ParentStateMachine>
+        ss << "class " << model.name << " : public ::RSM::Static::StaticExecutionEngine<" << model.name
+           << "Policy<ParentStateMachine>> {\n";
+    } else if (anyChildNeedsParent) {
+        // Parent has children needing parent: Policy<SelfType> (CRTP)
+        ss << "class " << model.name << " : public ::RSM::Static::StaticExecutionEngine<" << model.name << "Policy<"
+           << model.name << ">> {\n";
+    } else {
+        ss << "class " << model.name << " : public ::RSM::Static::StaticExecutionEngine<" << model.name
+           << "Policy> {\n";
+    }
     ss << "public:\n";
-    ss << "    " << model.name << "() = default;\n";
-    ss << "\n";
+
+    // W3C SCXML 6.2: Constructor with parent pointer for #_parent support
+    if (model.hasSendToParent) {
+        ss << "    // W3C SCXML 6.2: Parent state machine pointer for #_parent support (Zero Overhead)\n";
+        ss << "    explicit " << model.name << "(ParentStateMachine* parent) { this->policy_.parent_ = parent; }\n";
+        ss << "\n";
+    } else {
+        ss << "    " << model.name << "() = default;\n";
+        ss << "\n";
+    }
     ss << "    ~" << model.name << "() {\n";
     ss << "        // W3C SCXML 6.4: Cleanup child state machines on destruction\n";
 
@@ -1967,6 +2187,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     }
 
     ss << "    }\n";
+
+    // Note: parent_ is now in Policy, not in class
     ss << "};\n";
 
     return ss.str();
@@ -2080,7 +2302,17 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 ss << "                    // Target is valid (including #_internal for internal events)\n";
                 ss << "                }\n";
             } else if (!target.empty()) {
-                // Static target validation (only when targetExpr is not present)
+                // W3C SCXML 6.2: Handle #_parent target (send event to parent state machine)
+                if (target == "#_parent") {
+                    ss << "                // W3C SCXML 6.2: Send event to parent state machine (Single Source of "
+                          "Truth: SendHelper)\n";
+                    ss << "                ::RSM::SendHelper::sendToParent(parent_, ParentStateMachine::Event::"
+                       << capitalize(event) << ");\n";
+                    // Skip further processing for #_parent target
+                    break;
+                }
+
+                // Static target validation (only when targetExpr is not present and not #_parent)
                 ss << "                // W3C SCXML 6.2 (tests 159, 194): Validate send target using SendHelper\n";
                 ss << "                if (::RSM::SendHelper::isInvalidTarget(\"" << target << "\")) {\n";
                 ss << "                    // W3C SCXML 5.10: Invalid target raises error.execution and stops "

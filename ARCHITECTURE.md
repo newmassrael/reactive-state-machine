@@ -171,12 +171,21 @@ Generated code works for ALL SCXML (W3C 100%)
 | `<send type="BasicHTTP"/>` | ❌ No | Yes | Optional processor, TypeRegistry validation |
 | `<invoke src="child.scxml"/>` | ✅ Yes | No | Static child SCXML, compile-time known |
 | `<invoke srcexpr="pathVar"/>` | ❌ No | Yes | Dynamic SCXML loading at runtime |
+| `<send target="#_parent"/>` | ✅ Yes | No | Literal target, CRTP parent pointer |
+| `<param name="x" expr="1"/>` | ✅ Yes | No | Static param, direct member access |
 
 #### Current Implementation Gap
 
 **Important Distinction**:
 - **Logical Possibility**: Can this feature be implemented statically? (Design decision)
 - **Current Support**: Does StaticCodeGenerator currently support this? (Implementation status)
+
+**Critical Rule**: If a feature is **logically implementable at compile-time**, it MUST be classified as Static JIT, regardless of current StaticCodeGenerator implementation status. Missing infrastructure should be implemented, not bypassed with Interpreter wrappers.
+
+**Decision Priority**:
+1. **First**: Determine logical implementability (compile-time vs runtime)
+2. **Second**: If logically static but unimplemented → Implement in StaticCodeGenerator
+3. **Last**: Only use Interpreter wrapper if logically requires runtime resolution
 
 **Examples**:
 - `<cancel sendid="foo"/>`: **Logically static** ✅, **implemented** ✅ (test208)
@@ -185,10 +194,21 @@ Generated code works for ALL SCXML (W3C 100%)
   - StaticCodeGenerator parses `<cancel>` and generates `cancelEvent()` call
   - **Status**: Fully implemented in Static JIT with Zero Duplication
 
+- `<send target="#_parent">`: **Logically static** ✅, **IMPLEMENTED** ✅ (test226, test276)
+  - Target is literal string (compile-time known)
+  - **Implementation**: CRTP template pattern for parent pointer passing
+  - **Infrastructure**: SendHelper::sendToParent() for event routing (W3C SCXML 6.2)
+  - **Status**: Fully implemented in Static JIT with Zero Duplication
+  - **Features**:
+    - Type-safe parent event sending via template parameter
+    - W3C SCXML C.1: Uses external event queue (raiseExternal)
+    - Parameter passing via `child->getPolicy().varName = value`
+  - **Test Results**: test226 ✅ test276 ✅ (100% pass rate, Interpreter + JIT)
+
 - `<cancel sendidexpr="_event.sendid"/>`: **Logically dynamic** ❌, **requires Interpreter** 🔴
   - Needs runtime _event metadata access
   - Cannot be determined at compile-time
-  - **Action**: Always use Interpreter wrapper
+  - **Action**: Always use Interpreter wrapper (correct decision)
 
 **Verification Process** (see CLAUDE.md):
 1. Convert TXML to SCXML: `txml-converter test.txml /tmp/test.scxml`
@@ -259,6 +279,22 @@ Generated code works for ALL SCXML (W3C 100%)
     - Mixing JIT and Interpreter within single SCXML creates complexity and violates Zero Duplication principle
     - All-or-Nothing ensures clean separation: either fully static (JIT) or fully dynamic (Interpreter)
     - Maintains full W3C SCXML 6.4 compliance through proven Interpreter engine
+  - **All-or-Nothing Extension**: Child wrapper detection (W3C SCXML 6.4)
+    - Code generator analyzes generated child headers at compile-time
+    - Detection markers: `#include "runtime/StateMachine.h"`, Interpreter wrapper class structure
+    - **Rule**: If child generates as Interpreter wrapper → Parent also uses Interpreter wrapper
+    - **Rationale**: Parent-child communication requires compatible infrastructure (no JIT + Interpreter mix)
+    - **Implementation**: StaticCodeGenerator.cpp Lines 486-507
+  - **Parent-Child Communication** (Static invoke, W3C SCXML 6.2, 6.4):
+    - ✅ `<send target="#_parent">` in child SCXML → JIT engine supported (test226, test276)
+    - **Infrastructure**:
+      - CRTP template pattern: `template<typename ParentSM> class ChildSM`
+      - Parent pointer passing: `explicit ChildSM(ParentSM* parent)`
+      - Event routing: `SendHelper::sendToParent(parent_, ParentSM::Event::EventName)`
+      - W3C SCXML C.1 compliance: Uses `raiseExternal()` for external event queue
+    - **Parameter Passing**: Direct member access via `child->getPolicy().varName = value`
+    - **Test Results**: test226 ✅ test276 ✅ (100% pass rate, Interpreter + JIT)
+    - **Status**: Fully implemented with Zero Duplication
 - ✅ Send with delay → SendSchedulingHelper::SimpleScheduler<Event> (lazy-init)
 
 **Complex Scripting**:
@@ -404,16 +440,21 @@ class EventQueueManager {
   - Fallback to string literal handling
 - Benefits: Zero code duplication, guaranteed consistency between engines
 
-**RSM::SendHelper::validateTarget() / isInvalidTarget()**:
-- W3C SCXML 6.2: Send element target validation logic
-- Single Source of Truth for send action validation shared between engines
+**RSM::SendHelper::validateTarget() / isInvalidTarget() / sendToParent()**:
+- W3C SCXML 6.2: Send element target validation and parent-child event routing
+- Single Source of Truth for send action logic shared between engines
 - Location: `rsm/include/common/SendHelper.h`
 - Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
 - Features:
-  - Target format validation (rejects targets starting with "!")
+  - **validateTarget()**: Target format validation (rejects targets starting with "!")
+  - **isInvalidTarget()**: Boolean check for invalid targets
+  - **sendToParent()**: Parent-child event communication for static invoke (W3C SCXML 6.4)
+    - Type-safe parent event sending via CRTP template parameter
+    - W3C SCXML C.1: Uses `raiseExternal()` for external event queue routing
+    - Zero overhead (inline template function)
+    - Used in: test226, test276 child state machines
   - W3C SCXML 5.10: Invalid targets stop subsequent executable content
-  - Two APIs: validateTarget() with error message, isInvalidTarget() for boolean check
-- Benefits: Zero code duplication, consistent error handling across engines
+- Benefits: Zero code duplication, consistent event routing across engines
 
 **RSM::SendSchedulingHelper::parseDelayString() / SimpleScheduler**:
 - W3C SCXML 6.2: Delay string parsing and event scheduling logic

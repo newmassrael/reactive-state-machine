@@ -475,8 +475,26 @@ rsm_generate_static_w3c_test(223 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(224 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(225 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 
-# W3C SCXML 6.4: test226 - child uses <send target="#_parent"> which requires Interpreter
-# Note: Parent has literal src/param, but child sends events to parent (not yet supported in Static JIT)
+# W3C SCXML 6.2/6.4: test226 - child uses <send target="#_parent"> (now supported in Static JIT)
+# Copy test226sub1.scxml directly (child sends events to parent)
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test226sub1.scxml"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/resources/226/test226sub1.scxml" "${STATIC_W3C_OUTPUT_DIR}/test226sub1.scxml"
+    DEPENDS "${CMAKE_SOURCE_DIR}/resources/226/test226sub1.scxml"
+    COMMENT "Copying test226sub1.scxml"
+    VERBATIM
+)
+# Generate code for test226sub1
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test226sub1_sm.h"
+    COMMAND scxml-codegen -o "${STATIC_W3C_OUTPUT_DIR}" "${STATIC_W3C_OUTPUT_DIR}/test226sub1.scxml"
+    DEPENDS scxml-codegen "${STATIC_W3C_OUTPUT_DIR}/test226sub1.scxml"
+    COMMENT "Generating C++ code: test226sub1_sm.h"
+    VERBATIM
+)
+# Add to generated headers list so it's part of the build
+set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${STATIC_W3C_OUTPUT_DIR}/test226sub1_sm.h")
+rsm_generate_static_w3c_test(226 ${STATIC_W3C_OUTPUT_DIR})
 
 rsm_generate_static_w3c_test(228 ${STATIC_W3C_OUTPUT_DIR})  # inline <content>
 rsm_generate_static_w3c_test(229 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + autoforward
@@ -497,6 +515,28 @@ rsm_generate_static_w3c_test(247 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> +
 rsm_generate_static_w3c_test(250 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + cancellation (manual test)
 rsm_generate_static_w3c_test(252 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + event cancellation after invoke termination
 rsm_generate_static_w3c_test(253 ${STATIC_W3C_OUTPUT_DIR})  # inline <content> + bidirectional SCXML event processor
+
+# W3C SCXML 6.2/6.4: test276 - child uses <send target="#_parent"> (now supported in Static JIT)
+# Copy test276sub1.scxml directly (child sends events to parent with param)
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test276sub1.scxml"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/resources/276/test276sub1.scxml" "${STATIC_W3C_OUTPUT_DIR}/test276sub1.scxml"
+    DEPENDS "${CMAKE_SOURCE_DIR}/resources/276/test276sub1.scxml"
+    COMMENT "Copying test276sub1.scxml"
+    VERBATIM
+)
+# Generate code for test276sub1
+add_custom_command(
+    OUTPUT "${STATIC_W3C_OUTPUT_DIR}/test276sub1_sm.h"
+    COMMAND scxml-codegen -o "${STATIC_W3C_OUTPUT_DIR}" "${STATIC_W3C_OUTPUT_DIR}/test276sub1.scxml"
+    DEPENDS scxml-codegen "${STATIC_W3C_OUTPUT_DIR}/test276sub1.scxml"
+    COMMENT "Generating C++ code: test276sub1_sm.h"
+    VERBATIM
+)
+# Add to generated headers list so it's part of the build
+set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${STATIC_W3C_OUTPUT_DIR}/test276sub1_sm.h")
+rsm_generate_static_w3c_test(276 ${STATIC_W3C_OUTPUT_DIR})
+
 rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (default to first child in document order)
 rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format (space-separated IDs)
 rsm_generate_static_w3c_test(372 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (done.state.parentid after final)

@@ -51,7 +51,9 @@
 #include "test200_sm.h"
 #include "test201_sm.h"
 #include "test208_sm.h"
+#include "test226_sm.h"
 #include "test239_sm.h"
+#include "test276_sm.h"
 
 namespace RSM::W3C {
 
@@ -1825,8 +1827,22 @@ TestReport W3CTestRunner::runJitTest(int testId) {
             testDescription = "Cancel delayed send by sendid (W3C 6.3 JIT)";
             break;
 
+        // W3C SCXML 6.4: test276 - static invoke with param passing to child (JIT)
+        case 276:
+            testPassed = []() {
+                RSM::Generated::test276::test276 sm;
+                sm.initialize();
+
+                // W3C SCXML 6.4: Process child-to-parent events
+                // tick() processes external queue containing events sent from child via #_parent
+                sm.tick();
+
+                return sm.isInFinalState() && sm.getCurrentState() == RSM::Generated::test276::State::Pass;
+            }();
+            testDescription = "Static invoke with param passing and #_parent (W3C 6.4 JIT)";
+            break;
+
         // W3C SCXML 6.4: Dynamic invoke tests - run on Interpreter engine via wrapper
-        // test226 - child uses <send target="#_parent"> which requires Interpreter
         case 187:
         case 191:
         case 192:
@@ -1839,7 +1855,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 223:
         case 224:
         case 225:
-        case 226:  // child uses <send target="#_parent"> (not yet supported in Static JIT)
+        case 226:
         case 228:
         case 229:
         case 230:

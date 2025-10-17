@@ -50,11 +50,12 @@ public:
 
     // Static invoke info for member generation
     struct StaticInvokeInfo {
-        std::string invokeId;         // Unique invoke ID
-        std::string childName;        // Child class name (e.g., test239sub1)
-        std::string stateName;        // Parent state containing this invoke
-        bool autoforward = false;     // W3C SCXML 6.4.1: Autoforward flag
-        std::string finalizeContent;  // W3C SCXML 6.5: Finalize handler script
+        std::string invokeId;           // Unique invoke ID
+        std::string childName;          // Child class name (e.g., test239sub1)
+        std::string stateName;          // Parent state containing this invoke
+        bool autoforward = false;       // W3C SCXML 6.4.1: Autoforward flag
+        std::string finalizeContent;    // W3C SCXML 6.5: Finalize handler script
+        bool childNeedsParent = false;  // W3C SCXML 6.2: Child uses #_parent
     };
 
     std::string generateProcessEvent(const SCXMLModel &model, const std::set<std::string> &events,
@@ -221,6 +222,7 @@ public:
     bool hasSend = false;               // Uses <send> action
     bool hasSendWithDelay = false;      // Uses <send delay> or <send delayexpr> (W3C SCXML 6.2)
     bool hasSendParams = false;         // Uses <send> with <param> elements (event data)
+    bool hasSendToParent = false;       // Uses <send target="#_parent"> (W3C SCXML 6.2)
 
     // Helper: Determine if JSEngine is needed
     bool needsJSEngine() const {
@@ -232,9 +234,19 @@ public:
         return hasSendWithDelay;
     }
 
+    // Helper: Check if any state has invoke elements
+    bool hasInvoke() const {
+        for (const auto &state : states) {
+            if (!state.invokes.empty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Helper: Determine if stateful Policy is needed (ARCHITECTURE.md)
     bool needsStatefulPolicy() const {
-        return needsJSEngine() || needsEventScheduler() || hasSendParams || !dataModel.empty();
+        return needsJSEngine() || needsEventScheduler() || hasSendParams || !dataModel.empty() || hasInvoke();
     }
 };
 
