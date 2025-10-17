@@ -51,6 +51,58 @@ env SPDLOG_LEVEL=warn build/tools/codegen/scxml-codegen /tmp/test_verify/testXXX
 - ❌ Wrong: Testing `build/tests/w3c_static_generated/testXXX.scxml` (doesn't exist until registered)
 - ✅ Correct: Convert from `resources/XXX/testXXX.txml` first
 
+### Adding W3C Tests with Pure Static Generation
+**When**: Static code generation succeeds (all features are static, no dynamic expressions)
+
+**Required Steps**:
+1. **Add to `tests/CMakeLists.txt`**:
+   - Use `rsm_generate_static_w3c_test(TEST_NUM ${STATIC_W3C_OUTPUT_DIR})`
+   - Add W3C SCXML specification reference comment
+   - Example:
+     ```cmake
+     rsm_generate_static_w3c_test(279 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.2.2: early binding variable initialization
+     ```
+
+2. **Create JIT Test Registry File** `tests/w3c/jit_tests/TestXXX.h`:
+   - Follow SimpleJitTest pattern for standard tests
+   - Include W3C SCXML specification reference in docstring
+   - Example:
+     ```cpp
+     #pragma once
+     #include "SimpleJitTest.h"
+     #include "testXXX_sm.h"
+
+     namespace RSM::W3C::JitTests {
+
+     /**
+      * @brief W3C SCXML X.Y.Z: Feature description
+      *
+      * Detailed test description referencing W3C SCXML spec.
+      */
+     struct TestXXX : public SimpleJitTest<TestXXX, XXX> {
+         static constexpr const char *DESCRIPTION = "Feature name (W3C X.Y.Z JIT)";
+         using SM = RSM::Generated::testXXX::testXXX;
+     };
+
+     // Auto-register
+     inline static JitTestRegistrar<TestXXX> registrar_TestXXX;
+
+     }  // namespace RSM::W3C::JitTests
+     ```
+
+3. **Add to `tests/w3c/jit_tests/AllJitTests.h`**:
+   - Include new test header in appropriate section
+   - Example:
+     ```cpp
+     #include "Test278.h"
+     #include "Test279.h"  // Add here
+     ```
+
+4. **Result**:
+   - Static code generated to `build/tests/w3c_static_generated/testXXX_sm.h`
+   - JIT test auto-registered via `JitTestRegistrar`
+   - Both Interpreter and JIT tests pass with pure static code
+
 ### Adding W3C Tests Requiring Interpreter Wrappers
 **When**: Static code generation fails (no initial state, dynamic invoke, parallel initial state format, etc.)
 
@@ -115,7 +167,9 @@ env SPDLOG_LEVEL=warn build/tools/codegen/scxml-codegen /tmp/test_verify/testXXX
 - [ ] **Phase Markers**: No "Phase 1/2/3/4" in code or comments?
 - [ ] **W3C References**: All comments use W3C SCXML specification references?
 - [ ] **StaticCodeGenerator**: Direct file editing used (no regex)?
-- [ ] **Test Integration**: New tests properly registered in CMakeLists.txt and W3CTestRunner.cpp?
+- [ ] **Test Integration**:
+  - [ ] Static tests: CMakeLists.txt + JIT registry (TestXXX.h + AllJitTests.h)?
+  - [ ] Wrapper tests: CMakeLists.txt + W3CTestRunner.cpp dynamic invoke section?
 - [ ] **Implementation Completeness**: No TODO, no partial features, no placeholders?
 - [ ] **Git Quality**: Semantic commits with professional descriptions?
 
