@@ -36,6 +36,7 @@
 #include "Test280.h"
 #include "Test286.h"
 #include "Test287.h"
+#include "Test301.h"
 
 // Scheduled tests (event scheduler polling)
 #include "Test175.h"
