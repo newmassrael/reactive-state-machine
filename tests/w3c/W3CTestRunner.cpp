@@ -1663,6 +1663,8 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 294:
         case 298:  // W3C SCXML 5.7/5.9.2: invalid param location in donedata
         case 302:  // W3C SCXML 5.8: script evaluation at load time
+        case 303:  // W3C SCXML 5.9: script execution in entry actions
+        case 304:  // W3C SCXML 5.8: script-declared variables accessible in data model
         case 355:
         case 364:
         case 372:
