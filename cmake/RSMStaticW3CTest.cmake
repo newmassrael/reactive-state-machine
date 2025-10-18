@@ -56,7 +56,7 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
         OUTPUT "${SCXML_FILE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
         COMMAND txml-converter "${TXML_FILE}" "${SCXML_FILE}"
-        COMMAND bash -c "if grep -q '<scxml[^>]*name=' \"${SCXML_FILE}\"; then sed -i 's/\\(<scxml[^>]*\\)name=\"[^\"]*\"/\\1name=\"test${TEST_NUM}\"/' \"${SCXML_FILE}\"; else sed -i 's/<scxml /<scxml name=\"test${TEST_NUM}\" /' \"${SCXML_FILE}\"; fi"
+        COMMAND bash -c "perl -i -0pe 's/(<scxml[^>]*?)\\s+name=\"[^\"]*\"/$1/g' \"${SCXML_FILE}\" && sed -i 's/<scxml /<scxml name=\"test${TEST_NUM}\" /' \"${SCXML_FILE}\""
         DEPENDS txml-converter "${TXML_FILE}" ${SUB_SCXML_DEPENDENCIES}
         COMMENT "Converting TXML to SCXML: test${TEST_NUM}.txml"
         VERBATIM
