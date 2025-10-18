@@ -938,20 +938,24 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
         ss << "\n";
     }
 
-    // W3C SCXML 5.10: Set _event variable in JSEngine (test176, test318, test331)
+    // W3C SCXML 5.10: Set _event variable in JSEngine (test176, test318, test331, test332)
     if (model.needsJSEngine()) {
-        ss << "        // W3C SCXML 5.10: Set _event variable in JSEngine (name + data + type)\n";
+        ss << "        // W3C SCXML 5.10: Set _event variable in JSEngine (name + data + type + sendid)\n";
         if (model.hasSendParams || model.needsJSEngine()) {
             ss << "        if (!pendingEventName_.empty() || !pendingEventData_.empty()) {\n";
-            ss << "            LOG_DEBUG(\"JIT processTransition: Setting _event (name='{}', data='{}', type='{}')\", "
-                  "pendingEventName_, pendingEventData_, pendingEventType_);\n";
-            ss << "            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_);\n";
+            ss << "            LOG_DEBUG(\"JIT processTransition: Setting _event (name='{}', data='{}', type='{}', "
+                  "sendId='{}')\", "
+                  "pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_);\n";
+            ss << "            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, "
+                  "pendingEventSendId_);\n";
             ss << "        }\n";
         } else {
             ss << "        if (!pendingEventName_.empty()) {\n";
-            ss << "            LOG_DEBUG(\"JIT processTransition: Setting _event (name='{}', type='{}')\", "
-                  "pendingEventName_, pendingEventType_);\n";
-            ss << "            setCurrentEventInJSEngine(pendingEventName_, \"\", pendingEventType_);\n";
+            ss << "            LOG_DEBUG(\"JIT processTransition: Setting _event (name='{}', type='{}', "
+                  "sendId='{}')\", "
+                  "pendingEventName_, pendingEventType_, pendingEventSendId_);\n";
+            ss << "            setCurrentEventInJSEngine(pendingEventName_, \"\", pendingEventType_, "
+                  "pendingEventSendId_);\n";
             ss << "        }\n";
         }
         ss << "\n";
@@ -1756,12 +1760,14 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
     // W3C SCXML 5.10: Clear event name and data after transition completes
     if (model.needsJSEngine()) {
         ss << "        \n";
-        ss << "        // W3C SCXML 5.10: Clear event name, data, and type after transition processing completes\n";
+        ss << "        // W3C SCXML 5.10: Clear event name, data, type, and sendid after transition processing "
+              "completes\n";
         ss << "        pendingEventName_.clear();\n";
         if (model.hasSendParams || model.needsJSEngine()) {
             ss << "        pendingEventData_.clear();\n";
         }
         ss << "        pendingEventType_.clear();\n";
+        ss << "        pendingEventSendId_.clear();\n";
     }
 
     ss << "        return transitionTaken;\n";
@@ -1967,6 +1973,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         }
         ss << "    // W3C SCXML 5.10.1: Event type storage for _event.type access (test331)\n";
         ss << "    mutable ::std::string pendingEventType_;\n";
+        ss << "    // W3C SCXML 5.10.1: Event sendid storage for _event.sendid access (test332)\n";
+        ss << "    mutable ::std::string pendingEventSendId_;\n";
         ss << "    // W3C SCXML 6.2: Flag to mark next event as external (from send)\n";
         ss << "    mutable bool nextEventIsExternal_ = false;\n";
     }
@@ -2532,18 +2540,19 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         // ARCHITECTURE.md: Zero Duplication - Uses EventHelper for cross-engine consistency
         if (model.needsJSEngine()) {
             ss << "\n";
-            ss << "    // Helper: Set _event variable in JSEngine (W3C SCXML 5.10 - test176, test318)\n";
+            ss << "    // Helper: Set _event variable in JSEngine (W3C SCXML 5.10 - test176, test318, test332)\n";
             ss << "    void setCurrentEventInJSEngine(const std::string& eventName, const std::string& eventData = "
-                  "\"\", const std::string& eventType = \"\") {\n";
+                  "\"\", const std::string& eventType = \"\", const std::string& sendId = \"\") {\n";
             ss << "        if (eventName.empty()) return;\n";
             ss << "        ensureJSEngine();\n";
             ss << "        // W3C SCXML 5.10.1: Determine event type if not provided\n";
             ss << "        std::string actualType = eventType.empty() ? this->getEventType(eventName) : eventType;\n";
-            ss << "        LOG_DEBUG(\"JIT setCurrentEventInJSEngine: name='{}', data='{}', type='{}'\", eventName, "
-                  "eventData, actualType);\n";
+            ss << "        LOG_DEBUG(\"JIT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}'\", "
+                  "eventName, "
+                  "eventData, actualType, sendId);\n";
             ss << "        // W3C SCXML 5.10: Set _event variable in JavaScript context\n";
             ss << "        ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData, "
-                  "actualType);\n";
+                  "actualType, sendId);\n";
             ss << "    }\n";
         }
     }
@@ -2674,26 +2683,23 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             std::string eventExpr = action.param4;
             std::string idLocation = action.sendIdLocation;
 
-            // W3C SCXML 6.2.4: Generate unique sendid and store in idlocation if specified (test183)
+            // W3C SCXML 6.2.4: Generate unique sendid and store in idlocation if specified (test183, test332)
+            // Wrap in block to avoid sendId variable redeclaration when multiple sends exist
+            ss << "                {\n";
+            ss << "                std::string sendId = ::RSM::SendHelper::generateSendId();\n";
             if (!idLocation.empty()) {
-                ss << "                // W3C SCXML 6.2.4: Generate sendid and store in idlocation (test183)\n";
+                ss << "                // W3C SCXML 6.2.4: Store sendid in idlocation (test183, test332)\n";
                 ss << "                // Using SendHelper for Zero Duplication (shared with interpreter)\n";
-                ss << "                {\n";
                 if (model.needsJSEngine()) {
-                    ss << "                    this->ensureJSEngine();\n";
-                    ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
-                    ss << "                    // Generate unique sendid using shared helper (Single Source of "
-                          "Truth)\n";
-                    ss << "                    std::string sendId = ::RSM::SendHelper::generateSendId();\n";
-                    ss << "                    // Store sendid in idlocation variable using shared helper\n";
-                    ss << "                    ::RSM::SendHelper::storeInIdLocation(jsEngine, sessionId_.value(), \""
+                    ss << "                this->ensureJSEngine();\n";
+                    ss << "                auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                    ss << "                // Store sendid in idlocation variable using shared helper\n";
+                    ss << "                ::RSM::SendHelper::storeInIdLocation(jsEngine, sessionId_.value(), \""
                        << idLocation << "\", sendId);\n";
                 } else {
                     // Static mode: direct variable assignment (JSEngine not available)
-                    ss << "                    std::string sendId = ::RSM::SendHelper::generateSendId();\n";
-                    ss << "                    " << idLocation << " = sendId;\n";
+                    ss << "                " << idLocation << " = sendId;\n";
                 }
-                ss << "                }\n";
             }
 
             // W3C SCXML 6.2: Handle targetexpr (dynamic target evaluation) - Test 173
@@ -2718,6 +2724,11 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                     ss << "                    std::string dynamicTarget = " << targetExpr << ";\n";
                 }
                 ss << "                    if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {\n";
+                if (model.needsJSEngine()) {
+                    ss << "                        // W3C SCXML 5.10.1: Store sendid for error.execution event "
+                          "(test332)\n";
+                    ss << "                        pendingEventSendId_ = sendId;\n";
+                }
                 ss << "                        // W3C SCXML 5.10: Invalid target raises error.execution and stops "
                       "execution\n";
                 ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
@@ -2732,6 +2743,7 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                           "Truth: SendHelper)\n";
                     ss << "                ::RSM::SendHelper::sendToParent(parent_, ParentStateMachine::Event::"
                        << capitalize(event) << ");\n";
+                    ss << "                }\n";  // Close sendId block before break
                     // Skip further processing for #_parent target
                     break;
                 }
@@ -2739,6 +2751,10 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 // Static target validation (only when targetExpr is not present and not #_parent)
                 ss << "                // W3C SCXML 6.2 (tests 159, 194): Validate send target using SendHelper\n";
                 ss << "                if (::RSM::SendHelper::isInvalidTarget(\"" << target << "\")) {\n";
+                if (model.needsJSEngine()) {
+                    ss << "                    // W3C SCXML 5.10.1: Store sendid for error.execution event (test332)\n";
+                    ss << "                    pendingEventSendId_ = sendId;\n";
+                }
                 ss << "                    // W3C SCXML 5.10: Invalid target raises error.execution and stops "
                       "subsequent executable content\n";
                 ss << "                    " << engineVar << ".raise(Event::Error_execution);\n";
@@ -3001,6 +3017,7 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 }
             }
         }
+        ss << "                }\n";  // Close sendId block (W3C SCXML 5.10.1 - test332)
         break;
     case Action::CANCEL:
         // W3C SCXML 6.3: Cancel scheduled send event by sendid
