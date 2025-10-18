@@ -53,6 +53,7 @@
 #include "Test330.h"
 #include "Test331.h"
 #include "Test332.h"
+#include "Test333.h"
 
 // Scheduled tests (event scheduler polling)
 #include "Test175.h"
