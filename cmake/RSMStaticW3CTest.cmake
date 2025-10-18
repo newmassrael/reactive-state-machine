@@ -22,6 +22,7 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
     # W3C SCXML 6.2/6.4: Sub SCXML files are child state machines invoked by parent
     file(GLOB SUB_TXML_FILES "${RESOURCE_DIR}/test${TEST_NUM}sub*.txml")
     set(SUB_SCXML_DEPENDENCIES "")
+    set(SUB_HEADER_DEPENDENCIES "")
 
     foreach(SUB_TXML_FILE ${SUB_TXML_FILES})
         get_filename_component(SUB_TXML_NAME "${SUB_TXML_FILE}" NAME_WE)
@@ -48,7 +49,8 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
 
         # Add sub SCXML to dependencies and headers
         list(APPEND SUB_SCXML_DEPENDENCIES "${SUB_SCXML_FILE}")
-        set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${SUB_HEADER_FILE}")
+        list(APPEND SUB_HEADER_DEPENDENCIES "${SUB_HEADER_FILE}")
+        set(GENERATED_W3C_HEADERS ${GENERATED_W3C_HEADERS} "${SUB_HEADER_FILE}" PARENT_SCOPE)
     endforeach()
 
     # Step 1: TXML -> SCXML conversion with name attribute
@@ -63,10 +65,11 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
     )
 
     # Step 2: SCXML -> C++ code generation
+    # W3C SCXML 6.2/6.4: Parent header must depend on child headers (template detection)
     add_custom_command(
         OUTPUT "${GENERATED_HEADER}"
         COMMAND scxml-codegen -o "${OUTPUT_DIR}" "${SCXML_FILE}"
-        DEPENDS scxml-codegen "${SCXML_FILE}"
+        DEPENDS scxml-codegen "${SCXML_FILE}" ${SUB_HEADER_DEPENDENCIES}
         COMMENT "Generating C++ code: test${TEST_NUM}_sm.h"
         VERBATIM
     )
