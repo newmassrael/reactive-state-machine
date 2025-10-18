@@ -934,6 +934,14 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
         ss << "            pendingEventType_ = this->getEventType(pendingEventName_);\n";
         ss << "            LOG_DEBUG(\"JIT processTransition: Set pendingEventName='{}', pendingEventType='{}'\", "
               "pendingEventName_, pendingEventType_);\n";
+        if (model.needsEventScheduler() && (model.hasSendParams || model.needsJSEngine())) {
+            ss << "            // W3C SCXML 5.10: Retrieve event data from scheduled event map (test186)\n";
+            ss << "            auto it = scheduledEventData_.find(event);\n";
+            ss << "            if (it != scheduledEventData_.end()) {\n";
+            ss << "                pendingEventData_ = it->second;\n";
+            ss << "                scheduledEventData_.erase(it);  // Clean up after retrieval\n";
+            ss << "            }\n";
+        }
         ss << "        }\n";
         ss << "\n";
     }
@@ -983,7 +991,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
             ss << "            std::string eventData;\n";
             ss << "            while (eventScheduler_.popReadyEvent(scheduledEvent, eventData)) {\n";
             ss << "                if (!eventData.empty()) {\n";
-            ss << "                    pendingEventData_ = eventData;\n";
+            ss << "                    // W3C SCXML 5.10: Store event data in map for later retrieval (test186)\n";
+            ss << "                    scheduledEventData_[scheduledEvent] = eventData;\n";
             ss << "                }\n";
             ss << "                engine.raise(scheduledEvent);\n";
             ss << "            }\n";
@@ -1983,6 +1992,10 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     if (model.needsEventScheduler()) {
         ss << "    // W3C SCXML 6.2: Event scheduler for delayed send (lazy-init)\n";
         ss << "    mutable ::RSM::SendSchedulingHelper::SimpleScheduler<Event> eventScheduler_;\n";
+        if (model.hasSendParams || model.needsJSEngine()) {
+            ss << "    // W3C SCXML 5.10: Event data map for scheduled events with params (test186)\n";
+            ss << "    mutable ::std::map<Event, ::std::string> scheduledEventData_;\n";
+        }
     }
 
     // W3C SCXML 5.10: Current event metadata (for invoke finalize)
