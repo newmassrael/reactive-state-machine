@@ -1339,21 +1339,44 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                                              (guardExpr.find("_event") != std::string::npos);
                         bool isFunctionCall = (guardExpr.find("()") != std::string::npos);
 
-                        // Add else if this is not the first guarded transition
-                        if (!firstTransition) {
-                            ss << "                } else {\n";
+                        // Check if first transition also uses JSEngine (to reuse jsEngine variable)
+                        bool firstUsesJSEngine = false;
+                        if (!firstTransition && !eventlessTransitions.empty() &&
+                            !eventlessTransitions[0].guard.empty()) {
+                            std::string firstGuard = eventlessTransitions[0].guard;
+                            firstUsesJSEngine = model.needsJSEngine() ||
+                                                (firstGuard.find("typeof") != std::string::npos) ||
+                                                (firstGuard.find("_event") != std::string::npos);
                         }
 
                         if (needsJSEngine) {
                             // Interpreter Engine or complex guard → JSEngine evaluation using GuardHelper
                             if (firstTransition) {
+                                // First guard: initialize JSEngine in its own scope
                                 ss << indent << "{\n";  // Open scope for JSEngine variables
+                                ss << indent << "    this->ensureJSEngine();\n";
+                                ss << indent << "    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                ss << indent
+                                   << "    if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
+                                   << escapeStringLiteral(guardExpr) << "\")) {\n";
+                                indent += "        ";  // Indent for code inside the if block
+                            } else if (firstUsesJSEngine) {
+                                // Subsequent guard: reuse jsEngine from first guard (avoid redefinition)
+                                ss << "                    } else {\n";
+                                ss << "                        if (::RSM::GuardHelper::evaluateGuard(jsEngine, "
+                                      "sessionId_.value(), \""
+                                   << escapeStringLiteral(guardExpr) << "\")) {\n";
+                                indent = "                            ";  // Indent for code inside the nested if block
+                            } else {
+                                // Subsequent guard: first didn't use JSEngine, so initialize it now
+                                ss << "                } else {\n";
+                                ss << "                    this->ensureJSEngine();\n";
+                                ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                                ss << "                    if (::RSM::GuardHelper::evaluateGuard(jsEngine, "
+                                      "sessionId_.value(), \""
+                                   << escapeStringLiteral(guardExpr) << "\")) {\n";
+                                indent = "                        ";  // Indent for code inside the if block
                             }
-                            ss << indent << "    this->ensureJSEngine();\n";
-                            ss << indent << "    auto& jsEngine = ::RSM::JSEngine::instance();\n";
-                            ss << indent << "    if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), \""
-                               << escapeStringLiteral(guardExpr) << "\")) {\n";
-                            indent += "        ";  // Indent for code inside the if block
                         } else if (isFunctionCall) {
                             // JIT Engine: Extract function name from guard expression
                             if (firstTransition) {
@@ -1426,10 +1449,22 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                         }
 
                         if (firstHasJSEngine) {
-                            // Close the inner if/else chain (align with the 'if' statement)
-                            ss << "                    }\n";
-                            // Close the outer scope block
-                            ss << "                }\n";
+                            // Check if last transition also has a guard (nested if/else) or is unguarded (simple else)
+                            bool lastHasGuard =
+                                !eventlessTransitions.empty() && !eventlessTransitions.back().guard.empty();
+
+                            if (lastHasGuard) {
+                                // Scenario: { ensureJS; if (...) {} else { if (...) {} } }
+                                // Close the nested 'if' and the 'else' block
+                                ss << "                        }\n";  // Close nested 'if' from line 1363
+                                ss << "                    }\n";      // Close 'else' from line 1362
+                            } else {
+                                // Scenario: { ensureJS; if (...) {} else {...} }
+                                // Close only the 'else' block (no nested if to close)
+                                ss << "                }\n";  // Close 'else' from line 1404
+                            }
+                            // Close the outer scope block (both scenarios)
+                            ss << "                }\n";  // Close '{' from line 1354
                         } else if (!firstTransition) {
                             // No JSEngine, just close the if/else chain
                             ss << "                }\n";
