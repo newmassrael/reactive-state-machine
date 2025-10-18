@@ -2484,27 +2484,29 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             // JSEngine-based assignment: evaluate expression and set variable
             ss << "                {\n";  // Extra scope to avoid "jump to case label" error
             ss << "                    // W3C SCXML 5.3, 5.4: Validate assignment location using shared AssignHelper\n";
-            ss << "                    if (!::RSM::AssignHelper::isValidLocation(\"" << action.param1 << "\")) {\n";
+            ss << "                    if (::RSM::AssignHelper::isValidLocation(\"" << action.param1 << "\")) {\n";
+            ss << "                        // Location is valid, proceed with assignment\n";
+            ss << "                        this->ensureJSEngine();\n";
+            ss << "                        auto& jsEngine = ::RSM::JSEngine::instance();\n";
+            ss << "                        {\n";
+            ss << "                            // W3C SCXML 5.3: Execute assignment as JavaScript expression to "
+                  "preserve object references\n";
+            ss << "                            // Using direct assignment (location = expr) instead of "
+                  "getInternalValue() for reference semantics\n";
+            ss << "                            auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), \""
+               << action.param1 << " = (" << escapeStringLiteral(action.param2) << ")\").get();\n";
+            ss << "                            if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
+            ss << "                                LOG_ERROR(\"Failed to evaluate assignment expression: "
+               << action.param1 << " = (" << escapeStringLiteral(action.param2) << ")\");\n";
+            ss << "                                " << engineVar << ".raise(Event::Error_execution);\n";
+            ss << "                            }\n";
+            ss << "                        }\n";
+            ss << "                    } else {\n";
+            ss << "                        // W3C SCXML 5.3/5.4/B.2: Invalid or read-only location\n";
             ss << "                        LOG_ERROR(\"W3C SCXML 5.3: {}\", "
                   "::RSM::AssignHelper::getInvalidLocationErrorMessage(\""
                << action.param1 << "\"));\n";
             ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
-            ss << "                        break;  // W3C SCXML 5.10: Stop processing subsequent executable content\n";
-            ss << "                    }\n";
-            ss << "                    this->ensureJSEngine();\n";
-            ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
-            ss << "                    {\n";
-            ss << "                        auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), \""
-               << escapeStringLiteral(action.param2) << "\").get();\n";
-            ss << "                        if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
-            ss << "                            LOG_ERROR(\"Failed to evaluate expression for assign: "
-               << escapeStringLiteral(action.param2) << "\");\n";
-            ss << "                            " << engineVar << ".raise(Event::Error_execution);\n";
-            ss << "                            break;  // W3C SCXML 5.10: Stop processing subsequent executable "
-                  "content\n";
-            ss << "                        }\n";
-            ss << "                        jsEngine.setVariable(sessionId_.value(), \"" << action.param1
-               << "\", exprResult.getInternalValue());\n";
             ss << "                    }\n";
             ss << "                }\n";
         } else {
