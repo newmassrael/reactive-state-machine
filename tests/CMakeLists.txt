@@ -524,6 +524,7 @@ rsm_generate_static_w3c_test(322 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2.1: _
 rsm_generate_static_w3c_test(323 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2.1: _name system variable binding
 rsm_generate_static_w3c_test(324 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2.2: _name system variable immutability
 rsm_generate_static_w3c_test(325 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10: _ioprocessors system variable binding
+rsm_generate_static_w3c_test(326 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2.3: _ioprocessors system variable immutability
 
 rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (default to first child in document order)
 rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format (space-separated IDs)
