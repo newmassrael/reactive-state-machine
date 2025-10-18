@@ -521,6 +521,7 @@ rsm_generate_static_w3c_test(318 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10: _e
 rsm_generate_static_w3c_test(319 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.1: _event system variable initially unbound
 rsm_generate_static_w3c_test(321 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10.1: _sessionid system variable binding
 rsm_generate_static_w3c_test(322 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2.1: _sessionid immutability
+rsm_generate_static_w3c_test(323 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2.1: _name system variable binding
 
 rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (default to first child in document order)
 rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format (space-separated IDs)
