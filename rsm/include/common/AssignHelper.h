@@ -20,37 +20,57 @@ namespace RSM {
 class AssignHelper {
 public:
     /**
-     * @brief Validates assignment location per W3C SCXML 5.3/5.4
+     * @brief Validates assignment location per W3C SCXML 5.3/5.4 and B.2
      *
      * @param location The location attribute value from <assign> element
-     * @return true if location is valid (non-empty), false if invalid (empty)
+     * @return true if location is valid and writable, false if invalid or read-only
+     *
+     * W3C SCXML B.2: System variables (_sessionid, _event, _name, _ioprocessors)
+     * are read-only and cannot be assigned to. Attempting to assign triggers error.execution.
      *
      * Usage:
      * ```cpp
      * // Interpreter engine (ActionExecutorImpl.cpp)
      * if (!AssignHelper::isValidLocation(location)) {
-     *     eventRaiser_->raiseEvent("error.execution", "Assignment location cannot be empty");
+     *     eventRaiser_->raiseEvent("error.execution", "Invalid or read-only location");
      *     return false;
      * }
      *
      * // Static Code Generator (generated code)
-     * if (!AssignHelper::isValidLocation("")) {
-     *     engine.raiseInternalEvent("error.execution");
-     *     return;
+     * if (!AssignHelper::isValidLocation("_sessionid")) {
+     *     engine.raise(Event::Error_execution);
+     *     break;
      * }
      * ```
      */
     static bool isValidLocation(const std::string &location) {
-        return !location.empty();
+        // W3C SCXML 5.3/5.4: Empty location is invalid
+        if (location.empty()) {
+            return false;
+        }
+
+        // W3C SCXML B.2: System variables are read-only (cannot be assigned)
+        if (location == "_sessionid" || location == "_event" || location == "_name" || location == "_ioprocessors") {
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * @brief Returns error message for invalid location (W3C SCXML 5.3/5.4)
+     * @brief Returns error message for invalid location (W3C SCXML 5.3/5.4, B.2)
      *
-     * @return Standard error message for empty/invalid location
+     * @param location The location attribute value from <assign> element
+     * @return Descriptive error message for empty location or system variable violation
      */
-    static const char *getInvalidLocationErrorMessage() {
-        return "Assignment location cannot be empty";
+    static std::string getInvalidLocationErrorMessage(const std::string &location) {
+        if (location.empty()) {
+            return "Assignment location cannot be empty";
+        }
+        if (location == "_sessionid" || location == "_event" || location == "_name" || location == "_ioprocessors") {
+            return "Cannot assign to read-only system variable: " + location;
+        }
+        return "Invalid assignment location: " + location;
     }
 };
 

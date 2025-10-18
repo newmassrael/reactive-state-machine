@@ -2486,7 +2486,8 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             ss << "                    // W3C SCXML 5.3, 5.4: Validate assignment location using shared AssignHelper\n";
             ss << "                    if (!::RSM::AssignHelper::isValidLocation(\"" << action.param1 << "\")) {\n";
             ss << "                        LOG_ERROR(\"W3C SCXML 5.3: {}\", "
-                  "::RSM::AssignHelper::getInvalidLocationErrorMessage());\n";
+                  "::RSM::AssignHelper::getInvalidLocationErrorMessage(\""
+               << action.param1 << "\"));\n";
             ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
             ss << "                        break;  // W3C SCXML 5.10: Stop processing subsequent executable content\n";
             ss << "                    }\n";
@@ -3034,7 +3035,8 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                         ss << "                                    if (!::RSM::AssignHelper::isValidLocation(\""
                            << iterAction.param1 << "\")) {\n";
                         ss << "                                        LOG_ERROR(\"W3C SCXML 5.3: {}\", "
-                              "::RSM::AssignHelper::getInvalidLocationErrorMessage());\n";
+                              "::RSM::AssignHelper::getInvalidLocationErrorMessage(\""
+                           << iterAction.param1 << "\"));\n";
                         ss << "                                        return false;  // W3C SCXML 4.6: Stop foreach "
                               "execution on error\n";
                         ss << "                                    }\n";

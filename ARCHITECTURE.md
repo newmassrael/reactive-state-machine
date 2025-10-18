@@ -548,16 +548,19 @@ class EventQueueManager {
 - Benefits: Zero code duplication, consistent event routing across engines
 
 **RSM::AssignHelper::isValidLocation() / getInvalidLocationErrorMessage()**:
-- W3C SCXML 5.3, 5.4: Assignment location validation
+- W3C SCXML 5.3, 5.4, B.2: Assignment location validation and system variable immutability
 - Single Source of Truth for assign action validation shared between engines
 - Location: `rsm/include/common/AssignHelper.h`
 - Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
 - Features:
-  - **isValidLocation()**: Empty location detection (rejects empty strings)
+  - **isValidLocation()**: Empty location detection + read-only system variable validation
+    - Rejects empty strings (W3C SCXML 5.3/5.4)
+    - Blocks assignment to _sessionid, _event, _name, _ioprocessors (W3C SCXML B.2)
   - **getInvalidLocationErrorMessage()**: Standard error message generation
   - W3C SCXML 5.10: Invalid locations raise error.execution and stop subsequent executable content
   - Applies to: Main assign actions, foreach iteration assigns
-- Benefits: Zero code duplication, guaranteed W3C compliance across all assign contexts
+  - Test coverage: test311-314 (empty/invalid), test322 (system variable immutability)
+- Benefits: Zero code duplication, guaranteed W3C B.2 compliance across all assign contexts
 
 **RSM::DoneDataHelper::evaluateParams() / evaluateContent()**:
 - W3C SCXML 5.5, 5.7: Donedata param and content evaluation

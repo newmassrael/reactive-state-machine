@@ -89,10 +89,10 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
     // W3C SCXML 5.3, 5.4: Empty location check (shared with JIT via AssignHelper)
     // ARCHITECTURE.md: Zero Duplication - Use shared AssignHelper for cross-engine consistency
     if (!AssignHelper::isValidLocation(location)) {
-        LOG_ERROR("Cannot assign to empty location");
+        LOG_ERROR("W3C SCXML 5.3/5.4/B.2: {}", AssignHelper::getInvalidLocationErrorMessage(location));
         // W3C SCXML 5.4: Raise error.execution for invalid location
         if (eventRaiser_) {
-            eventRaiser_->raiseEvent("error.execution", AssignHelper::getInvalidLocationErrorMessage());
+            eventRaiser_->raiseEvent("error.execution", AssignHelper::getInvalidLocationErrorMessage(location));
         }
         return false;
     }
