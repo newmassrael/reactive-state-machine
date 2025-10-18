@@ -10,6 +10,11 @@
 
 ### StaticCodeGenerator
 - Never use regex in StaticCodeGenerator, always modify directly with file editor
+- **ECMAScript Expression Handling**: StaticCodeGenerator uses Static Hybrid approach
+  - Detects ECMAScript features (`typeof`, `_event`, `In()`) automatically
+  - Generates JSEngine-embedded code for expression evaluation
+  - Maintains static state machine structure (enums, switch statements)
+  - See ARCHITECTURE.md "Static Hybrid: ECMAScript Expression Handling" for philosophy
 
 ### Code Comments and Documentation
 - **No Phase Markers**: Never use "Phase 1", "Phase 2", "Phase 3", "Phase 4" in production code comments or documentation

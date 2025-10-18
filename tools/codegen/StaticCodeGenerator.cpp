@@ -415,15 +415,55 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
         }
     }
 
-    // Detect typeof and _event in guards (requires JSEngine)
-    for (const auto &trans : model.transitions) {
-        if (trans.guard.find("typeof") != std::string::npos) {
+    // Helper function to detect ECMAScript features in expressions
+    auto detectECMAScriptFeatures = [&model](const std::string &expr) {
+        if (expr.find("typeof") != std::string::npos) {
             model.hasComplexDatamodel = true;
         }
-        // W3C SCXML 5.10: _event.data access requires JSEngine (test179)
-        if (trans.guard.find("_event") != std::string::npos) {
+        // W3C SCXML 5.10: _event access requires JSEngine (test179, test319)
+        if (expr.find("_event") != std::string::npos) {
             model.hasComplexECMAScript = true;
         }
+        // W3C SCXML 5.9.2: In() predicate requires JSEngine (test310)
+        if (expr.find("In(") != std::string::npos) {
+            model.hasComplexECMAScript = true;
+        }
+    };
+
+    // Helper function to recursively check actions for ECMAScript features
+    std::function<void(const std::vector<Action> &)> checkActionsForECMAScript;
+    checkActionsForECMAScript = [&](const std::vector<Action> &actions) {
+        for (const auto &action : actions) {
+            if (action.type == Action::IF) {
+                // Check all branch conditions
+                for (const auto &branch : action.branches) {
+                    if (!branch.condition.empty()) {
+                        detectECMAScriptFeatures(branch.condition);
+                    }
+                    // Recursively check actions in each branch
+                    checkActionsForECMAScript(branch.actions);
+                }
+            } else if (action.type == Action::FOREACH) {
+                // Check foreach iteration actions
+                checkActionsForECMAScript(action.iterationActions);
+            } else if (action.type == Action::ASSIGN && !action.param2.empty()) {
+                // Check assign expressions
+                detectECMAScriptFeatures(action.param2);
+            }
+        }
+    };
+
+    // Detect typeof and _event in transition guards (requires JSEngine)
+    for (const auto &trans : model.transitions) {
+        if (!trans.guard.empty()) {
+            detectECMAScriptFeatures(trans.guard);
+        }
+    }
+
+    // Detect ECMAScript features in state actions
+    for (const auto &state : model.states) {
+        checkActionsForECMAScript(state.entryActions);
+        checkActionsForECMAScript(state.exitActions);
     }
 
     LOG_INFO("StaticCodeGenerator: Feature detection - forEach: {}, complexDatamodel: {}, needsJSEngine: {}",
@@ -2794,29 +2834,119 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
         }
         break;
     case Action::IF:
-        // Generate if/elseif/else branches
-        for (size_t i = 0; i < action.branches.size(); ++i) {
-            const auto &branch = action.branches[i];
+        // W3C SCXML 5.9: Conditional expressions in <if> elements
+        // ARCHITECTURE.md: Static Hybrid approach for ECMAScript conditionals
+        // - Simple conditionals (x > 0): Direct C++ evaluation
+        // - ECMAScript features (typeof, _event, In()): JSEngine evaluation
+        {
+            bool needsJSEval = model.needsJSEngine();
 
-            if (i == 0) {
-                // First branch is if
-                ss << "                if (" << branch.condition << ") {\n";
-            } else if (branch.isElseBranch) {
-                // Else branch
-                ss << "                } else {\n";
-            } else {
-                // Elseif branches
-                ss << "                } else if (" << branch.condition << ") {\n";
+            for (size_t i = 0; i < action.branches.size(); ++i) {
+                const auto &branch = action.branches[i];
+
+                if (branch.isElseBranch) {
+                    // Else branch - no condition evaluation needed
+                    if (needsJSEval) {
+                        ss << "                    } else {\n";
+                    } else {
+                        ss << "                } else {\n";
+                    }
+                } else {
+                    // If or elseif branch - evaluate condition
+                    if (needsJSEval) {
+                        // W3C SCXML 5.9: ECMAScript datamodel - evaluate via JSEngine
+                        // ARCHITECTURE.md: Zero Duplication - Use shared GuardHelper for conditional evaluation
+                        if (i == 0) {
+                            ss << "                // W3C SCXML 5.9: Conditional expression via GuardHelper "
+                                  "(ECMAScript datamodel)\n";
+                            ss << "                {\n";
+                            ss << "                    this->ensureJSEngine();\n";
+                            ss << "                    auto& jsEngine = ::RSM::JSEngine::instance();\n";
+                            ss << "                    if (::RSM::GuardHelper::evaluateGuard(jsEngine, "
+                                  "sessionId_.value(), \""
+                               << escapeStringLiteral(branch.condition) << "\")) {\n";
+                        } else {
+                            ss << "                    } else {\n";
+                            ss << "                        if (::RSM::GuardHelper::evaluateGuard(jsEngine, "
+                                  "sessionId_.value(), \""
+                               << escapeStringLiteral(branch.condition) << "\")) {\n";
+                        }
+                    } else {
+                        // Static mode: Direct C++ evaluation
+                        if (i == 0) {
+                            ss << "                if (" << branch.condition << ") {\n";
+                        } else {
+                            ss << "                } else if (" << branch.condition << ") {\n";
+                        }
+                    }
+                }
+
+                // Generate actions in this branch
+                for (const auto &branchAction : branch.actions) {
+                    if (needsJSEval) {
+                        // JSEngine mode: actions go inside "if (condValue)" block
+                        // Need to add 4 spaces to each line from generateActionCode output
+                        std::stringstream tempStream;
+                        generateActionCode(tempStream, branchAction, engineVar, events, model);
+
+                        // Add 4 spaces to each line
+                        std::string content = tempStream.str();
+                        if (!content.empty()) {
+                            size_t pos = 0;
+                            while (pos < content.length()) {
+                                size_t nextPos = content.find('\n', pos);
+                                if (nextPos == std::string::npos) {
+                                    // Last line without newline
+                                    ss << "    " << content.substr(pos) << "\n";
+                                    break;
+                                } else {
+                                    // Line with newline - include the newline
+                                    ss << "    " << content.substr(pos, nextPos - pos + 1);
+                                    pos = nextPos + 1;
+                                }
+                            }
+                        }
+                    } else {
+                        // Static mode: normal indentation
+                        generateActionCode(ss, branchAction, engineVar, events, model);
+                    }
+                }
             }
 
-            // Generate actions in this branch
-            for (const auto &branchAction : branch.actions) {
-                generateActionCode(ss, branchAction, engineVar, events, model);
-            }
-        }
+            // Close all open braces
+            if (!action.branches.empty()) {
+                if (needsJSEval) {
+                    // W3C SCXML 5.9: Close nested JSEngine conditional structure
+                    // Structure: { JSEngine { if (cond1) { ... } else { if (cond2) { ... } else { ... } } } }
 
-        if (!action.branches.empty()) {
-            ss << "                }\n";
+                    // Count how many if (condValue) blocks need closing
+                    // - Each non-else branch opens "if (condValue) {"
+                    // - Each else branch after the first opens "} else {"
+                    // - The final else branch doesn't open "if (condValue)"
+
+                    size_t numIfBlocks = 0;
+                    for (const auto &branch : action.branches) {
+                        if (!branch.isElseBranch) {
+                            numIfBlocks++;
+                        }
+                    }
+
+                    // Close the last if (condValue) block (if not else)
+                    if (!action.branches.back().isElseBranch) {
+                        ss << "                    }\n";
+                    }
+
+                    // Close each intermediate else block (one for each branch except the first)
+                    for (size_t i = 1; i < action.branches.size(); ++i) {
+                        ss << "                    }\n";
+                    }
+
+                    // Close the JSEngine initialization scope
+                    ss << "                }\n";
+                } else {
+                    ss << "                }\n";
+                }
+            }
         }
         break;
     case Action::FOREACH:

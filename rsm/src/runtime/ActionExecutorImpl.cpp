@@ -11,6 +11,7 @@
 #include "common/Constants.h"
 #include "common/ForeachHelper.h"
 #include "common/ForeachValidator.h"
+#include "common/GuardHelper.h"
 #include "common/Logger.h"
 #include "common/SendHelper.h"
 #include "common/SendSchedulingHelper.h"
@@ -688,25 +689,15 @@ bool ActionExecutorImpl::executeIfAction(const IfAction &action) {
 }
 
 bool ActionExecutorImpl::evaluateCondition(const std::string &condition) {
+    // W3C SCXML 5.9: Conditional expressions in <if> elements
+    // ARCHITECTURE.md: Zero Duplication - Use shared GuardHelper for conditional evaluation
     if (condition.empty()) {
         return true;  // Empty condition is always true
     }
 
     try {
-        auto result = JSEngine::instance().evaluateExpression(sessionId_, condition).get();
-
-        if (!result.isSuccess()) {
-            // W3C SCXML 5.9: Condition evaluation error must raise error.execution
-            LOG_ERROR("W3C SCXML 5.9: Failed to evaluate condition '{}': {}", condition, result.getErrorMessage());
-
-            if (eventRaiser_) {
-                eventRaiser_->raiseEvent("error.execution", "Failed to evaluate condition: " + condition);
-            }
-            return false;
-        }
-
-        // Use integrated JSEngine result conversion API
-        return JSEngine::resultToBool(result);
+        auto &jsEngine = JSEngine::instance();
+        return GuardHelper::evaluateGuard(jsEngine, sessionId_, condition);
     } catch (const std::exception &e) {
         // W3C SCXML 5.9: Exception during condition evaluation must raise error.execution
         LOG_ERROR("W3C SCXML 5.9: Exception evaluating condition '{}': {}", condition, e.what());

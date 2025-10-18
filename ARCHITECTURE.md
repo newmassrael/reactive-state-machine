@@ -106,6 +106,7 @@ Generated code works for ALL SCXML (W3C 100%)
 - ✅ **Static Attributes**: `<send id="foo">`, `<cancel sendid="foo">`, `delay="1s"`
 - ✅ **Static Expressions**: Simple guards (`x > 0`), assignments (`x = 5`)
 - ✅ **Compile-Time Constants**: All values deterministic at code generation time
+- ✅ **ECMAScript Expressions via JSEngine Hybrid**: Complex expressions evaluated at runtime via embedded JSEngine
 
 **Examples**:
 ```xml
@@ -124,6 +125,7 @@ Generated code works for ALL SCXML (W3C 100%)
 - Direct C++ function calls with literal string arguments
 - Compile-time constants embedded in generated code
 - Zero runtime overhead for feature detection
+- **Static Hybrid**: Embedded JSEngine for ECMAScript expression evaluation (lazy-initialized, RAII pattern)
 
 #### Interpreter Wrapper (Runtime Resolution Required)
 
@@ -173,6 +175,69 @@ Generated code works for ALL SCXML (W3C 100%)
 | `<invoke srcexpr="pathVar"/>` | ❌ No | Yes | Dynamic SCXML loading at runtime |
 | `<send target="#_parent"/>` | ✅ Yes | No | Literal target, CRTP parent pointer |
 | `<param name="x" expr="1"/>` | ✅ Yes | No | Static param, direct member access |
+| `typeof _event !== 'undefined'` | ✅ Yes (Hybrid) | No | ECMAScript expression, JSEngine evaluation |
+| `<if cond="_event.name">` | ✅ Yes (Hybrid) | No | System variable access, JSEngine evaluation |
+| `In('state1')` | ✅ Yes (Hybrid) | No | W3C SCXML predicate, JSEngine evaluation |
+
+#### Static Hybrid: ECMAScript Expression Handling
+
+**Philosophy**: ECMAScript expressions in SCXML are evaluated at runtime via embedded JSEngine, while maintaining static state machine structure.
+
+**Approach**:
+- **Static Structure**: States, events, transitions compiled to C++ enums and switch statements
+- **Dynamic Expressions**: ECMAScript conditionals, guards, assignments evaluated via JSEngine
+- **Lazy Initialization**: JSEngine session created only when needed (RAII pattern)
+- **Zero Duplication**: Expression evaluation helpers shared between Static and Interpreter engines
+
+**Examples**:
+
+```xml
+<!-- Test 319: System variable existence check -->
+<if cond="typeof _event !== 'undefined'">
+  <raise event="bound"/>
+  <else/>
+  <raise event="unbound"/>
+</if>
+```
+
+**Generated Code** (Static Hybrid):
+```cpp
+struct test319Policy {
+    mutable std::optional<std::string> sessionId_;  // Lazy-init
+    mutable bool jsEngineInitialized_ = false;
+
+    void executeEntryActions(State state, Engine& engine) {
+        if (state == State::S0) {
+            // W3C SCXML 5.9: ECMAScript conditional via JSEngine
+            this->ensureJSEngine();
+            auto& jsEngine = JSEngine::instance();
+            auto result = jsEngine.evaluateExpression(
+                sessionId_.value(),
+                "typeof _event !== \"undefined\""
+            ).get();
+            bool condValue = result.getValue<bool>();
+
+            if (condValue) {
+                engine.raise(Event::Bound);
+            } else {
+                engine.raise(Event::Unbound);
+            }
+        }
+    }
+};
+```
+
+**Detection Strategy**: StaticCodeGenerator automatically detects ECMAScript features:
+- `typeof` operator → `model.hasComplexDatamodel = true`
+- `_event` system variable → `model.hasComplexECMAScript = true`
+- `In()` predicate → `model.hasComplexECMAScript = true`
+- Triggers JSEngine inclusion and hybrid code generation
+
+**Performance Characteristics**:
+- **State Transitions**: Native C++ (enum-based, zero overhead)
+- **Expression Evaluation**: JSEngine (runtime, ~microsecond latency)
+- **Memory**: 8 bytes (State) + JSEngine session (~100KB, lazy-allocated)
+- **Optimization**: Expression results can be cached when deterministic
 
 #### Current Implementation Gap
 
