@@ -758,6 +758,10 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     if (model.hasSendParams) {
         ss << "#include \"common/EventDataHelper.h\"\n";
     }
+    // EventTypeHelper for W3C SCXML 5.10.1 event type classification (Zero Duplication)
+    if (model.needsJSEngine()) {
+        ss << "#include \"common/EventTypeHelper.h\"\n";
+    }
 
     // Add JSEngine and Logger includes if needed for hybrid code generation (OUTSIDE namespace)
     if (model.needsJSEngine()) {
@@ -915,34 +919,39 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
         ss << "        // Deferred processing ensures error.execution has priority over onentry events\n";
         ss << "        if (datamodelInitFailed_) {\n";
         ss << "            datamodelInitFailed_ = false;  // Clear flag\n";
-        ss << "            engine.raise(Event::Error_execution);\n";
+        ss << "            engine.raise(Event::Error_execution, \"Datamodel initialization failed\");\n";
         ss << "            return false;  // Defer to next tick (prevents wildcard transition mismatch)\n";
         ss << "        }\n";
         ss << "\n";
     }
 
-    // W3C SCXML 5.10: Store current event name for _event.name access (test318)
+    // W3C SCXML 5.10: Store current event name and type for _event variable access (test318, test331)
     if (model.needsJSEngine()) {
-        ss << "        // W3C SCXML 5.10: Store event name for _event.name binding\n";
+        std::string policyName = model.name + "Policy";
+        ss << "        // W3C SCXML 5.10: Store event name and type for _event.name and _event.type binding\n";
         ss << "        if (event != Event()) {  // Skip for eventless transitions\n";
-        ss << "            pendingEventName_ = getEventName(event);\n";
+        ss << "            pendingEventName_ = " << policyName << "::getEventName(event);\n";
+        ss << "            pendingEventType_ = this->getEventType(pendingEventName_);\n";
+        ss << "            LOG_DEBUG(\"JIT processTransition: Set pendingEventName='{}', pendingEventType='{}'\", "
+              "pendingEventName_, pendingEventType_);\n";
         ss << "        }\n";
         ss << "\n";
     }
 
-    // W3C SCXML 5.10: Set _event variable in JSEngine (test176, test318)
+    // W3C SCXML 5.10: Set _event variable in JSEngine (test176, test318, test331)
     if (model.needsJSEngine()) {
-        ss << "        // W3C SCXML 5.10: Set _event variable in JSEngine (name + data)\n";
-        if (model.hasSendParams) {
+        ss << "        // W3C SCXML 5.10: Set _event variable in JSEngine (name + data + type)\n";
+        if (model.hasSendParams || model.needsJSEngine()) {
             ss << "        if (!pendingEventName_.empty() || !pendingEventData_.empty()) {\n";
-            ss << "            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_);\n";
-            ss << "            // Keep pendingEventName_ for next state's onentry (W3C SCXML 5.10 - test318)\n";
-            ss << "            // Only clear after state transition completes\n";
-            ss << "            pendingEventData_.clear();  // Clear data immediately\n";
+            ss << "            LOG_DEBUG(\"JIT processTransition: Setting _event (name='{}', data='{}', type='{}')\", "
+                  "pendingEventName_, pendingEventData_, pendingEventType_);\n";
+            ss << "            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_);\n";
             ss << "        }\n";
         } else {
             ss << "        if (!pendingEventName_.empty()) {\n";
-            ss << "            setCurrentEventInJSEngine(pendingEventName_);\n";
+            ss << "            LOG_DEBUG(\"JIT processTransition: Setting _event (name='{}', type='{}')\", "
+                  "pendingEventName_, pendingEventType_);\n";
+            ss << "            setCurrentEventInJSEngine(pendingEventName_, \"\", pendingEventType_);\n";
             ss << "        }\n";
         }
         ss << "\n";
@@ -1039,6 +1048,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
     }
 
     ss << "        (void)engine;\n";
+    ss << "        LOG_DEBUG(\"JIT processTransition: Called with event={}, currentState={}\", "
+          "static_cast<int>(event), static_cast<int>(currentState));\n";
     ss << "        (void)event;\n";
     ss << "        bool transitionTaken = false;\n";
     ss << "        switch (currentState) {\n";
@@ -1100,14 +1111,52 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                 for (const auto &[eventName, transitions] : transitionsByEvent) {
                     // Start event check block
+                    // W3C SCXML 5.9: Use prefix matching for event descriptors (e.g., "error" matches
+                    // "error.execution")
+                    std::string eventComparison;
+                    if (eventName == "*") {
+                        eventComparison = "event != Event::NONE";
+                    } else {
+                        // W3C SCXML 5.9.1: Prefix matching via enum comparison
+                        // Find all Event enums that match this descriptor (prefix match)
+                        std::vector<std::string> matchingEnums;
+                        for (const auto &ev : events) {
+                            // Check if ev starts with eventName or equals eventName
+                            if (ev == eventName || ev.rfind(eventName + ".", 0) == 0) {
+                                matchingEnums.push_back("Event::" + capitalize(ev));
+                            }
+                        }
+
+                        if (matchingEnums.empty()) {
+                            // No matching events found - this shouldn't happen but handle gracefully
+                            eventComparison = "false";
+                        } else if (matchingEnums.size() == 1) {
+                            eventComparison = "event == " + matchingEnums[0];
+                        } else {
+                            // Multiple matches - combine with OR
+                            eventComparison = "(";
+                            for (size_t i = 0; i < matchingEnums.size(); ++i) {
+                                if (i > 0) {
+                                    eventComparison += " || ";
+                                }
+                                eventComparison += "event == " + matchingEnums[i];
+                            }
+                            eventComparison += ")";
+                        }
+                    }
+
                     if (firstEvent) {
-                        ss << baseIndent << "if (event == Event::" << capitalize(eventName) << ") {\n";
+                        ss << baseIndent << "if (" << eventComparison << ") {\n";
                         firstEvent = false;
                     } else {
-                        ss << baseIndent << "} else if (event == Event::" << capitalize(eventName) << ") {\n";
+                        ss << baseIndent << "} else if (" << eventComparison << ") {\n";
                     }
 
                     const std::string eventIndent = baseIndent + "    ";
+
+                    // Add debug log for event matching
+                    ss << eventIndent << "LOG_DEBUG(\"JIT processTransition: Event matched descriptor '" << eventName
+                       << "'\");\n";
 
                     // Generate guard-based transition chain for this event
                     bool firstGuard = true;
@@ -1190,6 +1239,10 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                         // W3C SCXML: Only change state if targetState exists (not an internal transition)
                         if (!trans.targetState.empty()) {
+                            ss << guardIndent
+                               << "LOG_DEBUG(\"JIT processTransition: State transition {} -> {}\", "
+                                  "static_cast<int>(currentState), static_cast<int>(State::"
+                               << capitalize(trans.targetState) << "));\n";
                             ss << guardIndent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
                             // W3C SCXML 5.5/5.7: Generate donedata handling if transitioning to final state
                             generateDoneDataCode(ss, trans.targetState, model, guardIndent);
@@ -1297,6 +1350,10 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                         // W3C SCXML: Only change state if targetState exists
                         if (!trans.targetState.empty()) {
+                            ss << guardIndent
+                               << "LOG_DEBUG(\"JIT processTransition: State transition {} -> {}\", "
+                                  "static_cast<int>(currentState), static_cast<int>(State::"
+                               << capitalize(trans.targetState) << "));\n";
                             ss << guardIndent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
                             // W3C SCXML 5.5/5.7: Generate donedata handling if transitioning to final state
                             generateDoneDataCode(ss, trans.targetState, model, guardIndent);
@@ -1426,6 +1483,10 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                     // W3C SCXML: Only change state if targetState exists (not an internal transition)
                     if (!trans.targetState.empty()) {
+                        ss << indent
+                           << "LOG_DEBUG(\"JIT processTransition: State transition {} -> {}\", "
+                              "static_cast<int>(currentState), static_cast<int>(State::"
+                           << capitalize(trans.targetState) << "));\n";
                         ss << indent << "currentState = State::" << capitalize(trans.targetState) << ";\n";
                         // W3C SCXML 5.5/5.7: Generate donedata handling if transitioning to final state
                         generateDoneDataCode(ss, trans.targetState, model, indent);
@@ -1506,14 +1567,52 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
 
                         for (const auto &[eventName, transitions] : transitionsByEvent) {
                             // Start event check block
+                            // W3C SCXML 5.9: Use prefix matching for event descriptors (e.g., "error" matches
+                            // "error.execution")
+                            std::string eventComparison;
+                            if (eventName == "*") {
+                                eventComparison = "event != Event::NONE";
+                            } else {
+                                // W3C SCXML 5.9.1: Prefix matching via enum comparison
+                                // Find all Event enums that match this descriptor (prefix match)
+                                std::vector<std::string> matchingEnums;
+                                for (const auto &ev : events) {
+                                    // Check if ev starts with eventName or equals eventName
+                                    if (ev == eventName || ev.rfind(eventName + ".", 0) == 0) {
+                                        matchingEnums.push_back("Event::" + capitalize(ev));
+                                    }
+                                }
+
+                                if (matchingEnums.empty()) {
+                                    // No matching events found - this shouldn't happen but handle gracefully
+                                    eventComparison = "false";
+                                } else if (matchingEnums.size() == 1) {
+                                    eventComparison = "event == " + matchingEnums[0];
+                                } else {
+                                    // Multiple matches - combine with OR
+                                    eventComparison = "(";
+                                    for (size_t i = 0; i < matchingEnums.size(); ++i) {
+                                        if (i > 0) {
+                                            eventComparison += " || ";
+                                        }
+                                        eventComparison += "event == " + matchingEnums[i];
+                                    }
+                                    eventComparison += ")";
+                                }
+                            }
+
                             if (firstEvent) {
-                                ss << baseIndent << "if (event == Event::" << capitalize(eventName) << ") {\n";
+                                ss << baseIndent << "if (" << eventComparison << ") {\n";
                                 firstEvent = false;
                             } else {
-                                ss << baseIndent << "} else if (event == Event::" << capitalize(eventName) << ") {\n";
+                                ss << baseIndent << "} else if (" << eventComparison << ") {\n";
                             }
 
                             const std::string eventIndent = baseIndent + "    ";
+
+                            // Add debug log for event matching
+                            ss << eventIndent << "LOG_DEBUG(\"JIT processTransition: Event matched descriptor '"
+                               << eventName << "'\");\n";
 
                             // Generate guard-based transition chain for this event
                             bool firstGuard = true;
@@ -1653,6 +1752,18 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
     ss << "            default:\n";
     ss << "                break;\n";
     ss << "        }\n";
+
+    // W3C SCXML 5.10: Clear event name and data after transition completes
+    if (model.needsJSEngine()) {
+        ss << "        \n";
+        ss << "        // W3C SCXML 5.10: Clear event name, data, and type after transition processing completes\n";
+        ss << "        pendingEventName_.clear();\n";
+        if (model.hasSendParams || model.needsJSEngine()) {
+            ss << "        pendingEventData_.clear();\n";
+        }
+        ss << "        pendingEventType_.clear();\n";
+    }
+
     ss << "        return transitionTaken;\n";
     ss << "    }\n";
 
@@ -1849,10 +1960,15 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
     if (model.needsJSEngine()) {
         ss << "    // W3C SCXML 5.10: Event name storage for _event.name access (test318)\n";
         ss << "    mutable ::std::string pendingEventName_;\n";
-        if (model.hasSendParams) {
+        if (model.hasSendParams || model.needsJSEngine()) {
             ss << "    // W3C SCXML 5.10: Event data storage for _event.data access\n";
+            ss << "    // Required for: <send> params, error.execution event data (W3C SCXML 5.3)\n";
             ss << "    mutable ::std::string pendingEventData_;\n";
         }
+        ss << "    // W3C SCXML 5.10.1: Event type storage for _event.type access (test331)\n";
+        ss << "    mutable ::std::string pendingEventType_;\n";
+        ss << "    // W3C SCXML 6.2: Flag to mark next event as external (from send)\n";
+        ss << "    mutable bool nextEventIsExternal_ = false;\n";
     }
 
     // W3C SCXML 6.2: Add event scheduler for delayed send (lazy-initialized)
@@ -2176,7 +2292,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                         ss << "                        // W3C SCXML 6.4.6: Raise error.execution on invoke failure\n";
                         ss << "                        LOG_ERROR(\"Failed to initialize child " << invokeId
                            << ": {}\", e.what());\n";
-                        ss << "                        engine.raise(Event::Error_execution);\n";
+                        ss << "                        engine.raise(Event::Error_execution, e.what());\n";
                         ss << "                        child_" << invokeId << "_ = nullptr;\n";
                         ss << "                    }\n";
                         ss << "                    \n";
@@ -2378,9 +2494,10 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "            LOG_ERROR(\"Failed to evaluate param expression for {}: {}\", paramName, paramExpr);\n";
         ss << "        }\n";
         ss << "    }\n";
-        ss << "private:\n";
 
         // W3C SCXML 5.10: Helper to convert Event enum to string (test318)
+        // Must be before private: section so processTransition can call it
+        // Always generate if JSEngine is needed (for pendingEventName_), even if no events
         if (model.needsJSEngine()) {
             ss << "\n";
             ss << "    // Helper: Convert Event enum to string for _event.name (W3C SCXML 5.10 - test318)\n";
@@ -2395,18 +2512,38 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
             ss << "    }\n";
         }
 
+        ss << "private:\n";
+
+        // W3C SCXML 5.10: Helper to determine event type (internal/platform/external)
+        if (model.needsJSEngine()) {
+            ss << "\n";
+            ss << "    // Helper: Determine event type using shared EventTypeHelper (W3C SCXML 5.10.1 - test331)\n";
+            ss << "    // ARCHITECTURE.md: Zero Duplication - Uses EventTypeHelper for Single Source of Truth\n";
+            ss << "    std::string getEventType(const std::string& eventName) {\n";
+            ss << "        bool isExternal = nextEventIsExternal_;\n";
+            ss << "        if (nextEventIsExternal_) {\n";
+            ss << "            nextEventIsExternal_ = false;\n";
+            ss << "        }\n";
+            ss << "        return ::RSM::EventTypeHelper::classifyEventType(eventName, isExternal);\n";
+            ss << "    }\n";
+        }
+
         // W3C SCXML 5.10: Helper to set _event variable in JSEngine (test176, test318)
         // ARCHITECTURE.md: Zero Duplication - Uses EventHelper for cross-engine consistency
         if (model.needsJSEngine()) {
             ss << "\n";
             ss << "    // Helper: Set _event variable in JSEngine (W3C SCXML 5.10 - test176, test318)\n";
             ss << "    void setCurrentEventInJSEngine(const std::string& eventName, const std::string& eventData = "
-                  "\"\") {\n";
+                  "\"\", const std::string& eventType = \"\") {\n";
             ss << "        if (eventName.empty()) return;\n";
             ss << "        ensureJSEngine();\n";
+            ss << "        // W3C SCXML 5.10.1: Determine event type if not provided\n";
+            ss << "        std::string actualType = eventType.empty() ? this->getEventType(eventName) : eventType;\n";
+            ss << "        LOG_DEBUG(\"JIT setCurrentEventInJSEngine: name='{}', data='{}', type='{}'\", eventName, "
+                  "eventData, actualType);\n";
             ss << "        // W3C SCXML 5.10: Set _event variable in JavaScript context\n";
             ss << "        ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData, "
-                  "\"internal\");\n";
+                  "actualType);\n";
             ss << "    }\n";
         }
     }
@@ -2496,17 +2633,19 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             ss << "                            auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), \""
                << action.param1 << " = (" << escapeStringLiteral(action.param2) << ")\").get();\n";
             ss << "                            if (!::RSM::JSEngine::isSuccess(exprResult)) {\n";
-            ss << "                                LOG_ERROR(\"Failed to evaluate assignment expression: "
-               << action.param1 << " = (" << escapeStringLiteral(action.param2) << ")\");\n";
-            ss << "                                " << engineVar << ".raise(Event::Error_execution);\n";
+            ss << "                                std::string errorMsg = \"Failed to evaluate assignment expression: "
+               << action.param1 << " = (" << escapeStringLiteral(action.param2) << ")\";\n";
+            ss << "                                LOG_ERROR(\"{}\", errorMsg);\n";
+            ss << "                                " << engineVar << ".raise(Event::Error_execution, errorMsg);\n";
             ss << "                            }\n";
             ss << "                        }\n";
             ss << "                    } else {\n";
             ss << "                        // W3C SCXML 5.3/5.4/B.2: Invalid or read-only location\n";
-            ss << "                        LOG_ERROR(\"W3C SCXML 5.3: {}\", "
+            ss << "                        std::string errorMsg = "
                   "::RSM::AssignHelper::getInvalidLocationErrorMessage(\""
-               << action.param1 << "\"));\n";
-            ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
+               << action.param1 << "\");\n";
+            ss << "                        LOG_ERROR(\"W3C SCXML 5.3: {}\", errorMsg);\n";
+            ss << "                        " << engineVar << ".raise(Event::Error_execution, errorMsg);\n";
             ss << "                    }\n";
             ss << "                }\n";
         } else {

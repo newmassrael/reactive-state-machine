@@ -1,4 +1,5 @@
 #include "runtime/EventRaiserImpl.h"
+#include "common/EventTypeHelper.h"
 #include "common/Logger.h"
 #include "common/StringUtils.h"
 #include <mutex>
@@ -399,15 +400,10 @@ bool EventRaiserImpl::executeEventCallback(const QueuedEvent &event) {
         // W3C SCXML 5.10: Store originType in thread-local for StateMachine to access (test 253, 331, 352, 372)
         currentOriginType_ = event.originType;
 
-        // W3C SCXML 5.10: Store event type in thread-local for StateMachine to access (test 331)
-        // Event type is "platform" for error/done events, otherwise based on priority
-        if (isPlatformEvent(event.eventName)) {
-            currentEventType_ = "platform";
-        } else if (event.priority == EventPriority::INTERNAL) {
-            currentEventType_ = "internal";
-        } else {
-            currentEventType_ = "external";
-        }
+        // W3C SCXML 5.10.1: Store event type in thread-local for StateMachine to access (test 331)
+        // ARCHITECTURE.md: Zero Duplication - Uses EventTypeHelper for Single Source of Truth
+        bool isExternal = (event.priority == EventPriority::EXTERNAL);
+        currentEventType_ = EventTypeHelper::classifyEventType(event.eventName, isExternal);
 
         bool result = callback(event.eventName, event.eventData);
 

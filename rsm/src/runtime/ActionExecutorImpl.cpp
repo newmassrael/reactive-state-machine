@@ -9,6 +9,7 @@
 #include "actions/SendAction.h"
 #include "common/AssignHelper.h"
 #include "common/Constants.h"
+#include "common/EventTypeHelper.h"
 #include "common/ForeachHelper.h"
 #include "common/ForeachValidator.h"
 #include "common/GuardHelper.h"
@@ -374,13 +375,11 @@ void ActionExecutorImpl::setCurrentEvent(const EventMetadata &metadata) {
     currentOriginType_ = metadata.originType;
     currentOriginSessionId_ = metadata.originSessionId;
 
-    // Auto-detect event type if not provided
+    // W3C SCXML 5.10.1: Auto-detect event type if not provided
+    // ARCHITECTURE.md: Zero Duplication - Uses EventTypeHelper for Single Source of Truth
     if (metadata.type.empty()) {
-        if (isPlatformEvent(metadata.name)) {
-            currentEventType_ = "platform";
-        } else {
-            currentEventType_ = "internal";
-        }
+        // Default to false for isExternal since explicit type will be set by EventRaiser if needed
+        currentEventType_ = EventTypeHelper::classifyEventType(metadata.name, false);
     } else {
         currentEventType_ = metadata.type;
     }

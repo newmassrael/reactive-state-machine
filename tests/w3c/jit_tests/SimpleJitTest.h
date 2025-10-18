@@ -32,7 +32,12 @@ public:
         using SM = typename Derived::SM;
         SM sm;
         sm.initialize();
-        return sm.isInFinalState() && sm.getCurrentState() == SM::State::Pass;
+        auto finalState = sm.getCurrentState();
+        bool isFinished = sm.isInFinalState();
+        bool isPass = (finalState == SM::State::Pass);
+        LOG_DEBUG("JIT Test {}: isInFinalState={}, currentState={}, isPass={}", TEST_ID, isFinished,
+                  static_cast<int>(finalState), isPass);
+        return isFinished && isPass;
     }
 
     int getTestId() const override {

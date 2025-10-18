@@ -99,6 +99,11 @@ public:
                 policy_.pendingEventData_ = eventData;
             }
         }
+
+        // W3C SCXML 5.10.1: Mark next event as external for _event.type (test331)
+        if constexpr (requires { policy_.nextEventIsExternal_; }) {
+            policy_.nextEventIsExternal_ = true;
+        }
     }
 
 protected:
