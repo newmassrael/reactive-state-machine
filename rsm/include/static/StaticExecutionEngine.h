@@ -150,17 +150,28 @@ protected:
      * Static methods can also be called through an instance in C++.
      */
     void processEventQueues() {
+        LOG_DEBUG("JIT processEventQueues: Starting internal queue processing");
         // W3C SCXML C.1: Process internal queue first (high priority)
         RSM::Core::JITEventQueue<Event> internalAdapter(internalQueue_);
         RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(internalAdapter, [this](Event event) {
+            LOG_DEBUG("JIT processEventQueues: Processing internal event, currentState={}",
+                      static_cast<int>(currentState_));
             // Process event through transition logic
             State oldState = currentState_;
             // Call through policy instance (works for both static and non-static)
             if (policy_.processTransition(currentState_, event, *this)) {
                 // Transition occurred: execute exit/entry actions
                 if (oldState != currentState_) {
+                    LOG_DEBUG("JIT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
+                              static_cast<int>(currentState_));
                     executeOnExit(oldState);
                     executeOnEntry(currentState_);
+
+                    LOG_DEBUG("JIT processEventQueues: Calling checkEventlessTransitions after state entry");
+                    // W3C SCXML 3.13: Check eventless transitions immediately after state entry
+                    // This ensures guards evaluate BEFORE queued error.execution events are processed
+                    checkEventlessTransitions();
+                    LOG_DEBUG("JIT processEventQueues: Returned from checkEventlessTransitions");
                 }
             }
             return true;  // Continue processing
@@ -177,6 +188,9 @@ protected:
                 if (oldState != currentState_) {
                     executeOnExit(oldState);
                     executeOnEntry(currentState_);
+
+                    // W3C SCXML 3.13: Check eventless transitions immediately after state entry
+                    checkEventlessTransitions();
                 }
             }
             return true;  // Continue processing
@@ -197,6 +211,7 @@ protected:
      * and includes loop detection to prevent infinite cycles.
      */
     void checkEventlessTransitions() {
+        LOG_DEBUG("JIT checkEventlessTransitions: Starting");
         static const int MAX_ITERATIONS = 100;  // Safety limit
         int iterations = 0;
 
@@ -206,9 +221,13 @@ protected:
 
         while (iterations++ < MAX_ITERATIONS) {
             State oldState = currentState_;
+            LOG_DEBUG("JIT checkEventlessTransitions: Iteration {}, currentState={}", iterations,
+                      static_cast<int>(currentState_));
 
             // Call processTransition with default event for eventless transitions
             if (policy_.processTransition(currentState_, Event(), *this)) {
+                LOG_DEBUG("JIT checkEventlessTransitions: Transition taken from {} to {}", static_cast<int>(oldState),
+                          static_cast<int>(currentState_));
                 if (oldState != currentState_) {
                     executeOnExit(oldState);
                     executeOnEntry(currentState_);
@@ -268,8 +287,12 @@ public:
             executeOnEntry(state);
         }
 
+        // W3C SCXML 3.13: Process queues which internally calls checkEventlessTransitions after each transition
+        LOG_DEBUG("JIT initialize: After entry actions, before processEventQueues");
         processEventQueues();
-        checkEventlessTransitions();
+        LOG_DEBUG("JIT initialize: After processEventQueues, before final checkEventlessTransitions");
+        checkEventlessTransitions();  // Final check for any remaining eventless transitions
+        LOG_DEBUG("JIT initialize: After final checkEventlessTransitions");
     }
 
     /**
