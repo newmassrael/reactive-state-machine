@@ -378,13 +378,23 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
 
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        LOG_DEBUG("JSEngine: Queue operation - before enqueue: size={}", requestQueue_.size());
         requestQueue_.push(std::move(request));
-        LOG_DEBUG("JSEngine: Queue operation - after enqueue: size={}", requestQueue_.size());
     }
     queueCondition_.notify_one();
 
     return future;
+}
+
+std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, const std::string &eventName,
+                                                const std::string &eventData, const std::string &eventType) {
+    // For JIT engine: Create simple Event object from string parameters
+    auto event = std::make_shared<Event>(eventName, eventType);
+    if (!eventData.empty()) {
+        event->setRawJsonData(eventData);
+    }
+
+    // Delegate to Event object version
+    return setCurrentEvent(sessionId, event);
 }
 
 std::future<JSResult> JSEngine::setupSystemVariables(const std::string &sessionId, const std::string &sessionName,

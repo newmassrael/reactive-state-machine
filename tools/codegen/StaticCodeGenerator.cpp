@@ -881,13 +881,30 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
         ss << "\n";
     }
 
-    // W3C SCXML 5.10: Set event data in JSEngine for _event.data access (test176)
-    if (model.hasSendParams && model.needsJSEngine()) {
-        ss << "        // W3C SCXML 5.10: Set pending event data in JSEngine\n";
-        ss << "        if (!pendingEventData_.empty()) {\n";
-        ss << "            setEventDataInJSEngine(pendingEventData_);\n";
-        ss << "            pendingEventData_.clear();\n";
+    // W3C SCXML 5.10: Store current event name for _event.name access (test318)
+    if (model.needsJSEngine()) {
+        ss << "        // W3C SCXML 5.10: Store event name for _event.name binding\n";
+        ss << "        if (event != Event()) {  // Skip for eventless transitions\n";
+        ss << "            pendingEventName_ = getEventName(event);\n";
         ss << "        }\n";
+        ss << "\n";
+    }
+
+    // W3C SCXML 5.10: Set _event variable in JSEngine (test176, test318)
+    if (model.needsJSEngine()) {
+        ss << "        // W3C SCXML 5.10: Set _event variable in JSEngine (name + data)\n";
+        if (model.hasSendParams) {
+            ss << "        if (!pendingEventName_.empty() || !pendingEventData_.empty()) {\n";
+            ss << "            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_);\n";
+            ss << "            // Keep pendingEventName_ for next state's onentry (W3C SCXML 5.10 - test318)\n";
+            ss << "            // Only clear after state transition completes\n";
+            ss << "            pendingEventData_.clear();  // Clear data immediately\n";
+            ss << "        }\n";
+        } else {
+            ss << "        if (!pendingEventName_.empty()) {\n";
+            ss << "            setCurrentEventInJSEngine(pendingEventName_);\n";
+            ss << "        }\n";
+        }
         ss << "\n";
     }
 
@@ -1753,10 +1770,14 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "    mutable bool datamodelInitFailed_ = false;  // W3C SCXML 5.3: Track initialization errors\n";
     }
 
-    // W3C SCXML 5.10: Event data map for send params (test176)
-    if (model.hasSendParams && model.needsJSEngine()) {
-        ss << "    // W3C SCXML 5.10: Event data storage for _event.data access\n";
-        ss << "    mutable ::std::string pendingEventData_;\n";
+    // W3C SCXML 5.10: Event data and name for _event variable access (test176, test318)
+    if (model.needsJSEngine()) {
+        ss << "    // W3C SCXML 5.10: Event name storage for _event.name access (test318)\n";
+        ss << "    mutable ::std::string pendingEventName_;\n";
+        if (model.hasSendParams) {
+            ss << "    // W3C SCXML 5.10: Event data storage for _event.data access\n";
+            ss << "    mutable ::std::string pendingEventData_;\n";
+        }
     }
 
     // W3C SCXML 6.2: Add event scheduler for delayed send (lazy-initialized)
@@ -2284,21 +2305,33 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "    }\n";
         ss << "private:\n";
 
-        // W3C SCXML 5.10: Helper to set event data in JSEngine for _event.data access
-        if (model.hasSendParams) {
+        // W3C SCXML 5.10: Helper to convert Event enum to string (test318)
+        if (model.needsJSEngine()) {
             ss << "\n";
-            ss << "    // Helper: Set event data in JSEngine for _event.data access (W3C SCXML 5.10)\n";
-            ss << "    void setEventDataInJSEngine(const std::string& eventData) {\n";
-            ss << "        if (eventData.empty()) return;\n";
-            ss << "        ensureJSEngine();\n";
-            ss << "        auto& jsEngine = ::RSM::JSEngine::instance();\n";
-            ss << "        // Create _event object with data property\n";
-            ss << "        std::string eventScript = \"(function() { _event = { data: \" + eventData + \" }; "
-                  "})();\";\n";
-            ss << "        auto result = jsEngine.executeScript(sessionId_.value(), eventScript).get();\n";
-            ss << "        if (!::RSM::JSEngine::isSuccess(result)) {\n";
-            ss << "            LOG_ERROR(\"Failed to set _event.data in JSEngine\");\n";
+            ss << "    // Helper: Convert Event enum to string for _event.name (W3C SCXML 5.10 - test318)\n";
+            ss << "    static std::string getEventName(Event event) {\n";
+            ss << "        switch (event) {\n";
+            ss << "            case Event::NONE: return \"\";\n";
+            for (const auto &eventName : events) {
+                ss << "            case Event::" << capitalize(eventName) << ": return \"" << eventName << "\";\n";
+            }
+            ss << "            default: return \"\";\n";
             ss << "        }\n";
+            ss << "    }\n";
+        }
+
+        // W3C SCXML 5.10: Helper to set _event variable in JSEngine (test176, test318)
+        // ARCHITECTURE.md: Zero Duplication - Uses EventHelper for cross-engine consistency
+        if (model.needsJSEngine()) {
+            ss << "\n";
+            ss << "    // Helper: Set _event variable in JSEngine (W3C SCXML 5.10 - test176, test318)\n";
+            ss << "    void setCurrentEventInJSEngine(const std::string& eventName, const std::string& eventData = "
+                  "\"\") {\n";
+            ss << "        if (eventName.empty()) return;\n";
+            ss << "        ensureJSEngine();\n";
+            ss << "        // W3C SCXML 5.10: Set _event variable in JavaScript context\n";
+            ss << "        ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData, "
+                  "\"internal\");\n";
             ss << "    }\n";
         }
     }

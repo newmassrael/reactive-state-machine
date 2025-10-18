@@ -182,8 +182,22 @@ Generated code works for ALL SCXML (W3C 100%)
 
 **Critical Rule**: If a feature is **logically implementable at compile-time**, it MUST be classified as Static JIT, regardless of current StaticCodeGenerator implementation status. Missing infrastructure should be implemented, not bypassed with Interpreter wrappers.
 
+**Static-First Principle**: All SCXML features should be statically implementable UNLESS they require external world communication (HTTP requests, network I/O, file system access, etc.). Since all SCXML metadata exists in the parsed document, any feature that operates solely on this metadata can be resolved at compile-time through parsing and code generation.
+
+**Logical Implementability Criteria**:
+- **✅ Static**: Feature operates on SCXML document metadata (states, events, transitions, datamodel variables)
+  - Examples: `_event.name`, `_event.type`, event matching, transition guards, state hierarchy
+  - All information available after parsing SCXML file
+  - Can be generated as compile-time C++ code
+- **❌ Runtime-Only**: Feature requires external world interaction or runtime-only data
+  - Examples: `<send target="http://...">`, file I/O, network communication, dynamic `srcexpr` URLs
+  - Information not available at compile-time
+  - Requires Interpreter engine for runtime resolution
+
 **Decision Priority**:
 1. **First**: Determine logical implementability (compile-time vs runtime)
+   - Does feature operate solely on SCXML metadata? → Static
+   - Does feature require external world communication? → Runtime
 2. **Second**: If logically static but unimplemented → Implement in StaticCodeGenerator
 3. **Last**: Only use Interpreter wrapper if logically requires runtime resolution
 
@@ -205,8 +219,20 @@ Generated code works for ALL SCXML (W3C 100%)
     - Parameter passing via `child->getPolicy().varName = value`
   - **Test Results**: test226 ✅ test276 ✅ (100% pass rate, Interpreter + JIT)
 
+- `_event.name` / `_event.type`: **Logically static** ✅, **IMPLEMENTED** ✅ (test318)
+  - **Static-First Principle Example**: Event metadata from SCXML document, no external communication
+  - All event names defined in SCXML file (compile-time known)
+  - **Implementation**: EventHelper for W3C SCXML 5.10 _event variable binding
+  - **Code Generation**:
+    - `pendingEventName_` member variable stores current event
+    - `getEventName()` converts Event enum to string
+    - `setCurrentEventInJSEngine()` binds `_event = {name, type, data}` in JavaScript context
+  - **Status**: Fully implemented in Static JIT with Zero Duplication
+  - **Test Results**: test318 ✅ (100% pass rate, Interpreter + JIT)
+  - **Design Decision**: Initially considered Interpreter wrapper, but recognized _event.name is SCXML metadata → implemented in StaticCodeGenerator per Static-First Principle
+
 - `<cancel sendidexpr="_event.sendid"/>`: **Logically dynamic** ❌, **requires Interpreter** 🔴
-  - Needs runtime _event metadata access
+  - Needs runtime _event metadata access for dynamic expression
   - Cannot be determined at compile-time
   - **Action**: Always use Interpreter wrapper (correct decision)
 

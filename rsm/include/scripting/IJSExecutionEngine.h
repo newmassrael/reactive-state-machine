@@ -69,15 +69,6 @@ public:
     // === SCXML-specific Features ===
 
     /**
-     * @brief Set the current event for a session (_event variable)
-     * @param sessionId Target session context
-     * @param event Current event to set
-     * @return Future indicating success/failure
-     */
-    virtual std::future<JSResult> setCurrentEvent(const std::string &sessionId,
-                                                  const std::shared_ptr<Event> &event) = 0;
-
-    /**
      * @brief Setup SCXML system variables for a session
      * @param sessionId Target session context
      * @param sessionName Human-readable session name

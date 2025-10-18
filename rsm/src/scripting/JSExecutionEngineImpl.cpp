@@ -164,21 +164,6 @@ std::future<JSResult> JSExecutionEngineImpl::getVariable(const std::string &sess
     return future;
 }
 
-std::future<JSResult> JSExecutionEngineImpl::setCurrentEvent(const std::string &sessionId,
-                                                             const std::shared_ptr<Event> &event) {
-    auto request = std::make_unique<ExecutionRequest>(ExecutionRequest::SET_CURRENT_EVENT, sessionId);
-    request->event = event;
-    auto future = request->promise.get_future();
-
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        requestQueue_.push(std::move(request));
-    }
-    queueCondition_.notify_one();
-
-    return future;
-}
-
 std::future<JSResult> JSExecutionEngineImpl::setupSystemVariables(const std::string &sessionId,
                                                                   const std::string &sessionName,
                                                                   const std::vector<std::string> &ioProcessors) {

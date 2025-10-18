@@ -54,7 +54,6 @@ public:
                                       const ScriptValue &value) override;
     std::future<JSResult> getVariable(const std::string &sessionId, const std::string &name) override;
 
-    std::future<JSResult> setCurrentEvent(const std::string &sessionId, const std::shared_ptr<Event> &event) override;
     std::future<JSResult> setupSystemVariables(const std::string &sessionId, const std::string &sessionName,
                                                const std::vector<std::string> &ioProcessors) override;
 

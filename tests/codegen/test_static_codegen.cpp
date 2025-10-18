@@ -605,9 +605,9 @@ TEST_F(StaticCodeGenTest, GeneratesSendWithContent) {
     EXPECT_TRUE(content.find("mutable ::std::string pendingEventData_") != std::string::npos)
         << "Should have pendingEventData_ for event data storage";
 
-    // Should have setEventDataInJSEngine helper
-    EXPECT_TRUE(content.find("setEventDataInJSEngine") != std::string::npos)
-        << "Should have setEventDataInJSEngine helper method";
+    // Should have setCurrentEventInJSEngine helper
+    EXPECT_TRUE(content.find("setCurrentEventInJSEngine") != std::string::npos)
+        << "Should have setCurrentEventInJSEngine helper method";
 
     // Should pass content as event data in raise call
     EXPECT_TRUE(content.find("engine.raise(Event::Event1, \"123\")") != std::string::npos)

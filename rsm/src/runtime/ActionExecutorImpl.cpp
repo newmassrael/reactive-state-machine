@@ -405,9 +405,10 @@ void ActionExecutorImpl::clearCurrentEvent() {
     // Clear _event variable in JavaScript context by setting null event
     if (isSessionReady()) {
         try {
-            auto result = JSEngine::instance().setCurrentEvent(sessionId_, nullptr).get();
+            std::shared_ptr<Event> nullEvent;
+            auto result = JSEngine::instance().setCurrentEvent(sessionId_, nullEvent).get();
             if (!result.isSuccess()) {
-                LOG_DEBUG("Failed to clear current event: Clear event failed");
+                LOG_DEBUG("Failed to clear current event");
             }
         } catch (const std::exception &e) {
             LOG_DEBUG("Error clearing current event: {}", e.what());

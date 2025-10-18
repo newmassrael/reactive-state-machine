@@ -517,6 +517,7 @@ rsm_generate_static_w3c_test(311 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: e
 rsm_generate_static_w3c_test(312 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: assignment error handling
 rsm_generate_static_w3c_test(313 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: assign illegal expression error.execution
 rsm_generate_static_w3c_test(314 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: delayed evaluation of assign illegal expression
+rsm_generate_static_w3c_test(318 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10: _event variable binding and persistence
 
 rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (default to first child in document order)
 rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format (space-separated IDs)

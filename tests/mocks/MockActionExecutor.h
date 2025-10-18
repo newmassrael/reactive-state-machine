@@ -106,7 +106,6 @@ public:
      * @brief Set whether event raising should succeed
      * @param success True for success, false for failure
      */
-    // REMOVED: setEventRaisingResult was deprecated and violated SCXML fire-and-forget model
 
     /**
      * @brief Set result for expression evaluation
@@ -156,7 +155,6 @@ private:
     // Test configuration
     bool scriptExecutionResult_ = true;
     bool variableAssignmentResult_ = true;
-    // REMOVED: eventRaisingResult_ was legacy variable for deprecated setEventRaisingResult method
     std::map<std::string, std::string> expressionResults_;
     std::map<std::string, bool> variableExistence_;
     std::map<std::string, bool> conditionResults_;

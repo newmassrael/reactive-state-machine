@@ -125,8 +125,6 @@ void MockActionExecutor::setVariableAssignmentResult(bool success) {
     variableAssignmentResult_ = success;
 }
 
-// REMOVED: setEventRaisingResult method was deprecated and violated SCXML fire-and-forget model
-
 void MockActionExecutor::setExpressionResult(const std::string &expression, const std::string &result) {
     expressionResults_[expression] = result;
 }

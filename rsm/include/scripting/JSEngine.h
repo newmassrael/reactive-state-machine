@@ -192,12 +192,27 @@ public:
     // === SCXML-specific Features ===
 
     /**
-     * @brief Set the current event for a session (_event variable)
+     * @brief Set current event object in JavaScript context (W3C SCXML 5.10)
+     *
+     * Overload 1: For Interpreter engine with Event objects
      * @param sessionId Target session
-     * @param event Current event to set
+     * @param event Event object with full metadata (name, type, data, sendid, origin, etc.)
      * @return Future indicating success/failure
      */
     std::future<JSResult> setCurrentEvent(const std::string &sessionId, const std::shared_ptr<Event> &event);
+
+    /**
+     * @brief Set current event object in JavaScript context (W3C SCXML 5.10)
+     *
+     * Overload 2: For JIT engine with string literals
+     * @param sessionId Target session
+     * @param eventName Event name (compile-time constant)
+     * @param eventData Event data as JSON string (compile-time constant)
+     * @param eventType Event type (default: "internal")
+     * @return Future indicating success/failure
+     */
+    std::future<JSResult> setCurrentEvent(const std::string &sessionId, const std::string &eventName,
+                                          const std::string &eventData = "", const std::string &eventType = "internal");
 
     /**
      * @brief Setup SCXML system variables for a session

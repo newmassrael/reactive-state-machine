@@ -138,11 +138,12 @@ bool SCXMLEngineImpl::hasSession(const ::std::string &sessionId) const {
 
 ::std::future<ExecutionResult> SCXMLEngineImpl::setCurrentEvent(const ::std::string &sessionId,
                                                                 ::std::shared_ptr<Event> event) {
-    auto internalEvent = event;
-    auto jsFuture = RSM::JSEngine::instance().setCurrentEvent(sessionId, internalEvent);
-    return ::std::async(::std::launch::deferred, [this, jsFuture = ::std::move(jsFuture)]() mutable {
-        auto jsResult = jsFuture.get();
-        return convertResult(jsResult);
+    return ::std::async(::std::launch::deferred, [sessionId, event]() -> ExecutionResult {
+        auto jsResult = JSEngine::instance().setCurrentEvent(sessionId, event).get();
+        ExecutionResult result;
+        result.success = jsResult.isSuccess();
+        result.errorMessage = jsResult.isSuccess() ? "" : "Failed to set current event";
+        return result;
     });
 }
 

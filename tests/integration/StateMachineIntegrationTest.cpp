@@ -247,7 +247,6 @@ TEST_F(StateMachineIntegrationTest, EventSystemIntegration) {
     EXPECT_TRUE(initResult.isSuccess());
 
     // Simulate event reception and processing using C++ API (SCXML W3C compliance)
-    // Create and set event using the proper setCurrentEvent API
     auto eventSetup = engine_->setCurrentEvent(sessionId_, std::make_shared<Event>("testEvent", "platform")).get();
     EXPECT_TRUE(eventSetup.isSuccess());
 

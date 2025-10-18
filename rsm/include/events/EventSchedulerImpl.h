@@ -192,9 +192,6 @@ private:
     // This prevents deadlock when shutdown is called from callback worker thread
     static thread_local bool isInSchedulerThread_;
 
-    // Send ID generation - REMOVED: Now using UniqueIdGenerator
-    // std::atomic<uint64_t> sendIdCounter_{0}; // DEPRECATED: Consolidated to UniqueIdGenerator
-
     // Sequence number for FIFO ordering of events with same executeAt time
     std::atomic<uint64_t> eventSequenceCounter_{0};
 
