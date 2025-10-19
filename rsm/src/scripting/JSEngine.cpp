@@ -387,7 +387,7 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
 
 std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, const std::string &eventName,
                                                 const std::string &eventData, const std::string &eventType,
-                                                const std::string &sendId) {
+                                                const std::string &sendId, const std::string &origin) {
     // For JIT engine: Create simple Event object from string parameters
     auto event = std::make_shared<Event>(eventName, eventType);
     if (!eventData.empty()) {
@@ -396,6 +396,10 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
     // W3C SCXML 5.10.1: Set sendid if provided (test332)
     if (!sendId.empty()) {
         event->setSendId(sendId);
+    }
+    // W3C SCXML 5.10.1: Set origin if provided (test336)
+    if (!origin.empty()) {
+        event->setOrigin(origin);
     }
 
     // Delegate to Event object version

@@ -30,6 +30,18 @@ namespace fs = std::filesystem;
 
 namespace RSM::Codegen {
 
+// W3C SCXML 5.10.1: Event metadata field name constants
+// Used for detecting _event field access in guards and expressions
+namespace EventFields {
+constexpr const char *ORIGIN = "_event.origin";
+constexpr const char *ORIGIN_TYPE = "_event.origintype";
+constexpr const char *SEND_ID = "_event.sendid";
+constexpr const char *INVOKE_ID = "_event.invokeid";
+constexpr const char *TYPE = "_event.type";
+constexpr const char *DATA = "_event.data";
+constexpr const char *NAME = "_event.name";
+}  // namespace EventFields
+
 bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::string &outputDir) {
     // Step 1: Validate input
     if (scxmlPath.empty()) {
@@ -433,6 +445,7 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     // Helper function to recursively check actions for ECMAScript features
     std::function<void(const std::vector<Action> &)> checkActionsForECMAScript;
     checkActionsForECMAScript = [&](const std::vector<Action> &actions) {
+        LOG_DEBUG("Checking {} actions for ECMAScript features", actions.size());
         for (const auto &action : actions) {
             if (action.type == Action::IF) {
                 // Check all branch conditions
@@ -449,15 +462,21 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
             } else if (action.type == Action::ASSIGN && !action.param2.empty()) {
                 // Check assign expressions
                 detectECMAScriptFeatures(action.param2);
+            } else if (action.type == Action::SEND && !action.param3.empty()) {
+                // Check send targetexpr (param3) for _event references
+                LOG_DEBUG("Checking SEND targetexpr for ECMAScript: {}", action.param3);
+                detectECMAScriptFeatures(action.param3);
             }
         }
     };
 
-    // Detect typeof and _event in transition guards (requires JSEngine)
+    // Detect typeof and _event in transition guards and actions (requires JSEngine)
     for (const auto &trans : model.transitions) {
         if (!trans.guard.empty()) {
             detectECMAScriptFeatures(trans.guard);
         }
+        // Check transition actions for ECMAScript features
+        checkActionsForECMAScript(trans.transitionActions);
     }
 
     // Detect ECMAScript features in state actions
@@ -661,11 +680,11 @@ bool StaticCodeGenerator::generate(const std::string &scxmlPath, const std::stri
     for (const auto &trans : model.transitions) {
         // Check for _event.origintype, _event.sendid, _event.invokeid, _event.origin, etc.
         // But not _event.data or _event.name which static engine can handle
-        if (trans.guard.find("_event.origintype") != std::string::npos ||
-            trans.guard.find("_event.sendid") != std::string::npos ||
-            trans.guard.find("_event.invokeid") != std::string::npos ||
-            trans.guard.find("_event.origin") != std::string::npos ||
-            trans.guard.find("_event.type") != std::string::npos) {
+        if (trans.guard.find(EventFields::ORIGIN_TYPE) != std::string::npos ||
+            trans.guard.find(EventFields::SEND_ID) != std::string::npos ||
+            trans.guard.find(EventFields::INVOKE_ID) != std::string::npos ||
+            trans.guard.find(EventFields::ORIGIN) != std::string::npos ||
+            trans.guard.find(EventFields::TYPE) != std::string::npos) {
             hasEventMetadata = true;
             break;
         }
@@ -919,7 +938,8 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
         ss << "        // Deferred processing ensures error.execution has priority over onentry events\n";
         ss << "        if (datamodelInitFailed_) {\n";
         ss << "            datamodelInitFailed_ = false;  // Clear flag\n";
-        ss << "            engine.raise(Event::Error_execution, \"Datamodel initialization failed\");\n";
+        ss << "            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, \"Datamodel "
+              "initialization failed\"));\n";
         ss << "            return false;  // Defer to next tick (prevents wildcard transition mismatch)\n";
         ss << "        }\n";
         ss << "\n";
@@ -955,7 +975,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                   "sendId='{}')\", "
                   "pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_);\n";
             ss << "            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, "
-                  "pendingEventSendId_);\n";
+                  "pendingEventSendId_, pendingEventOrigin_);\n";
             ss << "        }\n";
         } else {
             ss << "        if (!pendingEventName_.empty()) {\n";
@@ -963,7 +983,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
                   "sendId='{}')\", "
                   "pendingEventName_, pendingEventType_, pendingEventSendId_);\n";
             ss << "            setCurrentEventInJSEngine(pendingEventName_, \"\", pendingEventType_, "
-                  "pendingEventSendId_);\n";
+                  "pendingEventSendId_, pendingEventOrigin_);\n";
             ss << "        }\n";
         }
         ss << "\n";
@@ -976,7 +996,7 @@ std::string StaticCodeGenerator::generateProcessEvent(const SCXMLModel &model, c
             ss << "        if (pendingDoneInvoke_" << invokeInfo.invokeId << "_) {\n";
             ss << "            pendingDoneInvoke_" << invokeInfo.invokeId << "_ = false;\n";
             ss << "            LOG_DEBUG(\"Raising done.invoke for " << invokeInfo.invokeId << "\");\n";
-            ss << "            engine.raise(Event::Done_invoke);\n";
+            ss << "            engine.raise(typename Engine::EventWithMetadata(Event::Done_invoke));\n";
             ss << "        }\n";
         }
         ss << "\n";
@@ -1984,6 +2004,10 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
         ss << "    mutable ::std::string pendingEventType_;\n";
         ss << "    // W3C SCXML 5.10.1: Event sendid storage for _event.sendid access (test332)\n";
         ss << "    mutable ::std::string pendingEventSendId_;\n";
+        ss << "    // W3C SCXML 5.10.1: Event origin storage for _event.origin access (test336)\n";
+        ss << "    mutable ::std::string pendingEventOrigin_;\n";
+        ss << "    // W3C SCXML 5.10.1: Event origintype storage for _event.origintype access\n";
+        ss << "    mutable ::std::string pendingEventOriginType_;\n";
         ss << "    // W3C SCXML 6.2: Flag to mark next event as external (from send)\n";
         ss << "    mutable bool nextEventIsExternal_ = false;\n";
     }
@@ -2307,13 +2331,15 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                         ss << "                        if (child_" << invokeId << "_->isInFinalState()) {\n";
                         ss << "                            LOG_INFO(\"Child " << invokeId
                            << " immediately completed, raising done.invoke\");\n";
-                        ss << "                            engine.raise(Event::Done_invoke);\n";
+                        ss << "                            engine.raise(typename "
+                              "Engine::EventWithMetadata(Event::Done_invoke));\n";
                         ss << "                        }\n";
                         ss << "                    } catch (const std::exception& e) {\n";
                         ss << "                        // W3C SCXML 6.4.6: Raise error.execution on invoke failure\n";
                         ss << "                        LOG_ERROR(\"Failed to initialize child " << invokeId
                            << ": {}\", e.what());\n";
-                        ss << "                        engine.raise(Event::Error_execution, e.what());\n";
+                        ss << "                        engine.raise(typename "
+                              "Engine::EventWithMetadata(Event::Error_execution, e.what()));\n";
                         ss << "                        child_" << invokeId << "_ = nullptr;\n";
                         ss << "                    }\n";
                         ss << "                    \n";
@@ -2392,7 +2418,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                         ss << "                if (child_" << invokeId << "_) {\n";
                         ss << "                    LOG_DEBUG(\"Stopping static invoke: id=" << invokeId << "\");\n";
                         ss << "                    // W3C SCXML 6.4: Send cancel.invoke platform event\n";
-                        ss << "                    engine.raise(Event::Cancel_invoke);\n";
+                        ss << "                    engine.raise(typename "
+                              "Engine::EventWithMetadata(Event::Cancel_invoke));\n";
                         ss << "                    child_" << invokeId
                            << "_.reset();  // Destroy child state machine\n";
                         ss << "                }\n";
@@ -2406,7 +2433,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                         ss << "                        LOG_DEBUG(\"Stopping dynamic invoke: id=" << invokeId
                            << "\");\n";
                         ss << "                        // W3C SCXML 6.4: Send cancel.invoke platform event\n";
-                        ss << "                        engine.raise(Event::Cancel_invoke);\n";
+                        ss << "                        engine.raise(typename "
+                              "Engine::EventWithMetadata(Event::Cancel_invoke));\n";
                         ss << "                        interpreterEngines_.erase(it);  // Destroy Interpreter "
                               "instance\n";
                         ss << "                    }\n";
@@ -2555,7 +2583,8 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
             ss << "\n";
             ss << "    // Helper: Set _event variable in JSEngine (W3C SCXML 5.10 - test176, test318, test332)\n";
             ss << "    void setCurrentEventInJSEngine(const std::string& eventName, const std::string& eventData = "
-                  "\"\", const std::string& eventType = \"\", const std::string& sendId = \"\") {\n";
+                  "\"\", const std::string& eventType = \"\", const std::string& sendId = \"\", "
+                  "const std::string& origin = \"\") {\n";
             ss << "        if (eventName.empty()) return;\n";
             ss << "        ensureJSEngine();\n";
             ss << "        // W3C SCXML 5.10.1: Determine event type if not provided\n";
@@ -2565,7 +2594,7 @@ std::string StaticCodeGenerator::generateClass(const SCXMLModel &model,
                   "eventData, actualType, sendId);\n";
             ss << "        // W3C SCXML 5.10: Set _event variable in JavaScript context\n";
             ss << "        ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData, "
-                  "actualType, sendId);\n";
+                  "actualType, sendId, origin);\n";
             ss << "    }\n";
         }
     }
@@ -2629,7 +2658,8 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                                              const std::set<std::string> &events, const SCXMLModel &model) {
     switch (action.type) {
     case Action::RAISE:
-        ss << "                " << engineVar << ".raise(Event::" << capitalize(action.param1) << ");\n";
+        ss << "                " << engineVar
+           << ".raise(typename Engine::EventWithMetadata(Event::" << capitalize(action.param1) << "));\n";
         break;
     case Action::SCRIPT:
         ss << "                " << action.param1 << "();\n";
@@ -2658,7 +2688,8 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
             ss << "                                std::string errorMsg = \"Failed to evaluate assignment expression: "
                << action.param1 << " = (" << escapeStringLiteral(action.param2) << ")\";\n";
             ss << "                                LOG_ERROR(\"{}\", errorMsg);\n";
-            ss << "                                " << engineVar << ".raise(Event::Error_execution, errorMsg);\n";
+            ss << "                                " << engineVar
+               << ".raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));\n";
             ss << "                            }\n";
             ss << "                        }\n";
             ss << "                    } else {\n";
@@ -2667,7 +2698,8 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                   "::RSM::AssignHelper::getInvalidLocationErrorMessage(\""
                << action.param1 << "\");\n";
             ss << "                        LOG_ERROR(\"W3C SCXML 5.3: {}\", errorMsg);\n";
-            ss << "                        " << engineVar << ".raise(Event::Error_execution, errorMsg);\n";
+            ss << "                        " << engineVar
+               << ".raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));\n";
             ss << "                    }\n";
             ss << "                }\n";
         } else {
@@ -2728,13 +2760,20 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                     ss << "                    if (!::RSM::JSEngine::isSuccess(targetResult)) {\n";
                     ss << "                        LOG_ERROR(\"Failed to get variable for targetexpr: "
                        << escapeStringLiteral(targetExpr) << "\");\n";
-                    ss << "                        return;\n";
+                    ss << "                        " << engineVar
+                       << ".raise(typename Engine::EventWithMetadata(Event::Error_execution));\n";
                     ss << "                    }\n";
                     ss << "                    std::string dynamicTarget = "
                           "::RSM::JSEngine::resultToString(targetResult);\n";
                 } else {
-                    // Static: direct variable reference
-                    ss << "                    std::string dynamicTarget = " << targetExpr << ";\n";
+                    // Static: use policy pending event fields for _event references
+                    // W3C SCXML 5.10.1: _event.origin access in static context
+                    if (targetExpr == EventFields::ORIGIN) {
+                        ss << "                    std::string dynamicTarget = pendingEventOrigin_;\n";
+                    } else {
+                        // Direct variable reference for other cases
+                        ss << "                    std::string dynamicTarget = " << targetExpr << ";\n";
+                    }
                 }
                 ss << "                    if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {\n";
                 if (model.needsJSEngine()) {
@@ -2742,10 +2781,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                           "(test332)\n";
                     ss << "                        pendingEventSendId_ = sendId;\n";
                 }
-                ss << "                        // W3C SCXML 5.10: Invalid target raises error.execution and stops "
-                      "execution\n";
-                ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
-                ss << "                        return;\n";
+                ss << "                        // W3C SCXML 5.10: Invalid target raises error.execution\n";
+                ss << "                        " << engineVar
+                   << ".raise(typename Engine::EventWithMetadata(Event::Error_execution));\n";
                 ss << "                    }\n";
                 ss << "                    // Target is valid (including #_internal for internal events)\n";
                 ss << "                }\n";
@@ -2770,7 +2808,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                 }
                 ss << "                    // W3C SCXML 5.10: Invalid target raises error.execution and stops "
                       "subsequent executable content\n";
-                ss << "                    " << engineVar << ".raise(Event::Error_execution);\n";
+                // W3C SCXML 5.10.1: Pass sendId in EventWithMetadata for test332
+                ss << "                    " << engineVar
+                   << ".raise(typename Engine::EventWithMetadata(Event::Error_execution, \"\", \"\", sendId));\n";
                 ss << "                    return;  // Stop execution of subsequent actions in this "
                       "entry/exit/transition\n";
                 ss << "                }\n";
@@ -2805,12 +2845,14 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                     if (firstEvent) {
                         ss << "                    if (eventName == \"" << eventName << "\") {\n";
                         {
-                            ss << "                        " << engineVar << ".raise(Event::" << eventEnum << ");\n";
+                            ss << "                        " << engineVar
+                               << ".raise(typename Engine::EventWithMetadata(Event::" << eventEnum << "));\n";
                         }
                         firstEvent = false;
                     } else {
                         ss << "                    } else if (eventName == \"" << eventName << "\") {\n";
-                        ss << "                        " << engineVar << ".raise(Event::" << eventEnum << ");\n";
+                        ss << "                        " << engineVar
+                           << ".raise(typename Engine::EventWithMetadata(Event::" << eventEnum << "));\n";
                     }
                 }
                 if (!firstEvent) {
@@ -2938,8 +2980,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                                 // Truth)
                                 ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
                                    << "\")) {\n";
-                                ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
-                                   << ", eventData);\n";
+                                ss << "                        " << engineVar
+                                   << ".raise(typename Engine::EventWithMetadata(Event::" << capitalize(event)
+                                   << ", eventData));\n";
                                 ss << "                    } else {\n";
                                 ss << "                        " << engineVar
                                    << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
@@ -2959,8 +3002,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                                 // Truth)
                                 ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target
                                    << "\")) {\n";
-                                ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
-                                   << ", \"" << escapeStringLiteral(action.sendContent) << "\");\n";
+                                ss << "                    " << engineVar
+                                   << ".raise(typename Engine::EventWithMetadata(Event::" << capitalize(event) << ", \""
+                                   << escapeStringLiteral(action.sendContent) << "\"));\n";
                                 ss << "                } else {\n";
                                 ss << "                    " << engineVar
                                    << ".raiseExternal(Event::" << capitalize(event) << ", \""
@@ -2983,7 +3027,8 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                             ss << "                    } else {\n";
                             ss << "                        LOG_ERROR(\"Failed to evaluate content expr: "
                                << escapeStringLiteral(action.sendContentExpr) << "\");\n";
-                            ss << "                        " << engineVar << ".raise(Event::Error_execution);\n";
+                            ss << "                        " << engineVar
+                               << ".raise(typename Engine::EventWithMetadata(Event::Error_execution));\n";
                             ss << "                        eventData = \"\";\n";
                             ss << "                    }\n";
                             // W3C SCXML 6.2.4: Check type attribute for queue routing (test193)
@@ -2996,8 +3041,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                                 // Truth)
                                 ss << "                    if (::RSM::SendHelper::isInternalTarget(\"" << target
                                    << "\")) {\n";
-                                ss << "                        " << engineVar << ".raise(Event::" << capitalize(event)
-                                   << ", eventData);\n";
+                                ss << "                        " << engineVar
+                                   << ".raise(typename Engine::EventWithMetadata(Event::" << capitalize(event)
+                                   << ", eventData));\n";
                                 ss << "                    } else {\n";
                                 ss << "                        " << engineVar
                                    << ".raiseExternal(Event::" << capitalize(event) << ", eventData);\n";
@@ -3015,8 +3061,9 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
                                 // Truth)
                                 ss << "                if (::RSM::SendHelper::isInternalTarget(\"" << target
                                    << "\")) {\n";
-                                ss << "                    " << engineVar << ".raise(Event::" << capitalize(event)
-                                   << ");\n";
+                                ss << "                    " << engineVar
+                                   << ".raise(typename Engine::EventWithMetadata(Event::" << capitalize(event)
+                                   << "));\n";
                                 ss << "                } else {\n";
                                 ss << "                    " << engineVar
                                    << ".raiseExternal(Event::" << capitalize(event) << ");\n";
@@ -3235,7 +3282,8 @@ void StaticCodeGenerator::generateActionCode(std::stringstream &ss, const Action
 
             if (hasErrorExecution) {
                 ss << "                } catch (const std::runtime_error&) {\n";
-                ss << "                    " << engineVar << ".raise(Event::Error_execution);\n";
+                ss << "                    " << engineVar
+                   << ".raise(typename Engine::EventWithMetadata(Event::Error_execution));\n";
                 ss << "                }\n";
             }
         }
@@ -3600,7 +3648,7 @@ void StaticCodeGenerator::generateDoneDataCode(std::stringstream &ss, const std:
         ss << innerIndent << "    jsEngine, sessionId_, \"" << escapeStringLiteral(finalState->doneData.content)
            << "\", eventData,\n";
         ss << innerIndent << "    [&engine](const std::string& msg) {\n";
-        ss << innerIndent << "        engine.raise(Event::Error_execution);\n";
+        ss << innerIndent << "        engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));\n";
         ss << innerIndent << "    });\n";
     }
 
@@ -3617,7 +3665,7 @@ void StaticCodeGenerator::generateDoneDataCode(std::stringstream &ss, const std:
         ss << innerIndent << "if (!::RSM::DoneDataHelper::evaluateParams(\n";
         ss << innerIndent << "        jsEngine, sessionId_, params, eventData,\n";
         ss << innerIndent << "        [&engine](const std::string& msg) {\n";
-        ss << innerIndent << "            engine.raise(Event::Error_execution);\n";
+        ss << innerIndent << "            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));\n";
         ss << innerIndent << "        })) {\n";
         ss << innerIndent << "    // W3C SCXML 5.7: Structural error, skip transition\n";
         ss << innerIndent << "    break;\n";

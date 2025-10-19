@@ -9,6 +9,7 @@
 #include "actions/SendAction.h"
 #include "common/AssignHelper.h"
 #include "common/Constants.h"
+#include "common/EventMetadataHelper.h"
 #include "common/EventTypeHelper.h"
 #include "common/ForeachHelper.h"
 #include "common/ForeachValidator.h"
@@ -522,25 +523,14 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
             event->setRawJsonData(currentEventData_);
         }
 
-        // W3C SCXML 5.10: Set sendid for error events from failed send actions
-        if (!currentSendId_.empty()) {
-            event->setSendId(currentSendId_);
-        }
-
-        // W3C SCXML 5.10: Set invokeid for events from invoked child processes (test 338)
-        if (!currentInvokeId_.empty()) {
-            event->setInvokeId(currentInvokeId_);
-        }
-
-        // W3C SCXML 5.10: Set origintype for event processor identification (test 253, 331, 352, 372)
-        if (!currentOriginType_.empty()) {
-            event->setOriginType(currentOriginType_);
-        }
-
-        // W3C SCXML 5.10: Set origin session ID for _event.origin (test 336)
-        if (!currentOriginSessionId_.empty()) {
-            event->setOrigin(currentOriginSessionId_);
-        }
+        // W3C SCXML 5.10: Set event metadata using EventMetadataHelper (Single Source of Truth)
+        // ARCHITECTURE.md: Zero Duplication Principle - shared logic with JIT engine
+        RSM::Common::EventMetadataHelper::setEventMetadata(*event,
+                                                           currentOriginSessionId_,  // origin (test336)
+                                                           currentOriginType_,  // originType (test253, 331, 352, 372)
+                                                           currentSendId_,      // sendId (test332)
+                                                           currentInvokeId_     // invokeId (test338)
+        );
 
         auto result = JSEngine::instance().setCurrentEvent(sessionId_, event).get();
         return result.isSuccess();

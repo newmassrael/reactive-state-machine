@@ -210,11 +210,12 @@ public:
      * @param eventData Event data as JSON string (compile-time constant)
      * @param eventType Event type (default: "internal")
      * @param sendId Send ID for events triggered by <send> (W3C SCXML 5.10.1, test332)
+     * @param origin Origin URL for bidirectional communication (W3C SCXML 5.10.1, test336)
      * @return Future indicating success/failure
      */
     std::future<JSResult> setCurrentEvent(const std::string &sessionId, const std::string &eventName,
                                           const std::string &eventData = "", const std::string &eventType = "internal",
-                                          const std::string &sendId = "");
+                                          const std::string &sendId = "", const std::string &origin = "");
 
     /**
      * @brief Setup SCXML system variables for a session

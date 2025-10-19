@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common/EventMetadataHelper.h"
+#include "common/EventTypeHelper.h"
 #include "common/Logger.h"
 #include "core/EventMetadata.h"
 #include "core/EventProcessingAlgorithms.h"
@@ -34,10 +36,51 @@ public:
     using State = typename StatePolicy::State;
     using Event = typename StatePolicy::Event;
 
+    /**
+     * @brief Event with metadata for W3C SCXML 5.10 compliance
+     *
+     * Wraps Event enum with metadata (origin, sendid, data, type) to support
+     * _event.origin, _event.sendid, _event.data, _event.type fields.
+     *
+     * @example Constructor Pattern (required for nested template types)
+     * @code
+     * // Create event with data and sendId
+     * engine.raise(EventWithMetadata(Event::Error_execution, errorMsg, "", sendId));
+     *
+     * // Create external event with all metadata
+     * externalQueue_.raise(EventWithMetadata(
+     *     Event::Foo,         // event
+     *     "data",             // data
+     *     "#_internal",       // origin
+     *     sendId,             // sendId
+     *     "external"          // type
+     * ));
+     * @endcode
+     */
+    struct EventWithMetadata {
+        Event event;
+        std::string data;
+        std::string origin;      // W3C SCXML 5.10.1: _event.origin
+        std::string sendId;      // W3C SCXML 5.10.1: _event.sendid
+        std::string type;        // W3C SCXML 5.10.1: _event.type
+        std::string originType;  // W3C SCXML 5.10.1: _event.origintype
+        std::string invokeId;    // W3C SCXML 5.10.1: _event.invokeid
+
+        // Default constructor for aggregate initialization
+        EventWithMetadata() = default;
+
+        // Constructor with positional parameters (event, data, origin, sendId, type, originType, invokeId)
+        EventWithMetadata(Event e, const std::string &d = "", const std::string &o = "", const std::string &s = "",
+                          const std::string &t = "", const std::string &ot = "", const std::string &i = "")
+            : event(e), data(d), origin(o), sendId(s), type(t), originType(ot), invokeId(i) {}
+    };
+
 private:
     State currentState_;
-    RSM::Core::EventQueueManager<Event> internalQueue_;  // W3C SCXML C.1: Internal event queue (high priority)
-    RSM::Core::EventQueueManager<Event> externalQueue_;  // W3C SCXML C.1: External event queue (low priority)
+    RSM::Core::EventQueueManager<EventWithMetadata>
+        internalQueue_;  // W3C SCXML C.1: Internal event queue (high priority)
+    RSM::Core::EventQueueManager<EventWithMetadata>
+        externalQueue_;  // W3C SCXML C.1: External event queue (low priority)
     bool isRunning_ = false;
     std::function<void()> completionCallback_;  // W3C SCXML 6.4: Callback for done.invoke
 
@@ -46,31 +89,31 @@ protected:
 
 protected:
     /**
-     * @brief Raise an internal event (W3C SCXML 3.14.1)
+     * @brief Raise an internal event with metadata (W3C SCXML C.1)
      *
-     * Internal events are placed at the back of the internal event queue.
-     * They are processed before external events but after currently queued
-     * internal events (FIFO ordering).
+     * Preferred API for raising events with complete metadata.
+     * Uses EventWithMetadata struct for better readability and extensibility.
      *
-     * Used by:
-     * - <raise> element (W3C SCXML 3.14.1)
-     * - <send> with target="#_internal" (W3C SCXML C.1)
+     * @param metadata Complete event metadata including all W3C SCXML 5.10.1 fields
      *
-     * Delegates to Core::EventQueueManager for W3C compliance.
+     * @example Constructor Pattern (required for nested template types)
+     * @code
+     * // Raise error.execution with data and sendId
+     * engine.raise(typename Engine::EventWithMetadata(
+     *     Event::Error_execution,  // event
+     *     errorMsg,                // data
+     *     "#_internal",            // origin
+     *     sendId,                  // sendId
+     *     "platform"               // type
+     * ));
      *
-     * @param event Event to raise internally
-     * @param eventData Optional event data as JSON string (W3C SCXML 5.10)
+     * // Raise simple event
+     * engine.raise(typename Engine::EventWithMetadata(Event::Done_invoke));
+     * @endcode
      */
-    void raise(Event event, const std::string &eventData = "") {
-        internalQueue_.raise(event);  // W3C SCXML C.1: High priority queue
-
-        // W3C SCXML 5.10: Store event data for _event.data access (test176)
-        // Note: pendingEventData_ is only present in policies with send params
-        if constexpr (requires { policy_.pendingEventData_; }) {
-            if (!eventData.empty()) {
-                policy_.pendingEventData_ = eventData;
-            }
-        }
+    void raise(EventWithMetadata metadata) {
+        // W3C SCXML C.1: Enqueue event with metadata
+        internalQueue_.raise(std::move(metadata));
     }
 
 public:
@@ -90,15 +133,9 @@ public:
      * @param event Event to raise externally
      * @param eventData Optional event data as JSON string (W3C SCXML 5.10)
      */
-    void raiseExternal(Event event, const std::string &eventData = "") {
-        externalQueue_.raise(event);  // W3C SCXML C.1: Low priority queue
-
-        // W3C SCXML 5.10: Store event data for _event.data access
-        if constexpr (requires { policy_.pendingEventData_; }) {
-            if (!eventData.empty()) {
-                policy_.pendingEventData_ = eventData;
-            }
-        }
+    void raiseExternal(Event event, const std::string &eventData = "", const std::string &origin = "") {
+        // W3C SCXML C.1: Enqueue event with metadata (origin, data, sendid, type)
+        externalQueue_.raise(EventWithMetadata(event, eventData, origin, "", "external"));
 
         // W3C SCXML 5.10.1: Mark next event as external for _event.type (test331)
         if constexpr (requires { policy_.nextEventIsExternal_; }) {
@@ -157,49 +194,63 @@ protected:
     void processEventQueues() {
         LOG_DEBUG("JIT processEventQueues: Starting internal queue processing");
         // W3C SCXML C.1: Process internal queue first (high priority)
-        RSM::Core::JITEventQueue<Event> internalAdapter(internalQueue_);
-        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(internalAdapter, [this](Event event) {
-            LOG_DEBUG("JIT processEventQueues: Processing internal event, currentState={}",
-                      static_cast<int>(currentState_));
-            // Process event through transition logic
-            State oldState = currentState_;
-            // Call through policy instance (works for both static and non-static)
-            if (policy_.processTransition(currentState_, event, *this)) {
-                // Transition occurred: execute exit/entry actions
-                if (oldState != currentState_) {
-                    LOG_DEBUG("JIT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
-                              static_cast<int>(currentState_));
-                    executeOnExit(oldState);
-                    executeOnEntry(currentState_);
+        RSM::Core::JITEventQueue<EventWithMetadata> internalAdapter(internalQueue_);
+        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
+            internalAdapter, [this](const EventWithMetadata &eventWithMeta) {
+                // W3C SCXML 5.10: Set pending event fields from metadata using EventMetadataHelper
+                // ARCHITECTURE.md: Zero Duplication - shared logic with EventMetadataHelper
+                Event event = eventWithMeta.event;
+                RSM::Common::EventMetadataHelper::populatePolicyFromMetadata<StatePolicy, Event>(policy_,
+                                                                                                 eventWithMeta);
 
-                    LOG_DEBUG("JIT processEventQueues: Calling checkEventlessTransitions after state entry");
-                    // W3C SCXML 3.13: Check eventless transitions immediately after state entry
-                    // This ensures guards evaluate BEFORE queued error.execution events are processed
-                    checkEventlessTransitions();
-                    LOG_DEBUG("JIT processEventQueues: Returned from checkEventlessTransitions");
+                LOG_DEBUG("JIT processEventQueues: Processing internal event, currentState={}",
+                          static_cast<int>(currentState_));
+                // Process event through transition logic
+                State oldState = currentState_;
+                // Call through policy instance (works for both static and non-static)
+                if (policy_.processTransition(currentState_, event, *this)) {
+                    // Transition occurred: execute exit/entry actions
+                    if (oldState != currentState_) {
+                        LOG_DEBUG("JIT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
+                                  static_cast<int>(currentState_));
+                        executeOnExit(oldState);
+                        executeOnEntry(currentState_);
+
+                        LOG_DEBUG("JIT processEventQueues: Calling checkEventlessTransitions after state entry");
+                        // W3C SCXML 3.13: Check eventless transitions immediately after state entry
+                        // This ensures guards evaluate BEFORE queued error.execution events are processed
+                        checkEventlessTransitions();
+                        LOG_DEBUG("JIT processEventQueues: Returned from checkEventlessTransitions");
+                    }
                 }
-            }
-            return true;  // Continue processing
-        });
+                return true;  // Continue processing
+            });
 
         // W3C SCXML C.1: Process external queue second (low priority)
-        RSM::Core::JITEventQueue<Event> externalAdapter(externalQueue_);
-        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(externalAdapter, [this](Event event) {
-            // Process event through transition logic
-            State oldState = currentState_;
-            // Call through policy instance (works for both static and non-static)
-            if (policy_.processTransition(currentState_, event, *this)) {
-                // Transition occurred: execute exit/entry actions
-                if (oldState != currentState_) {
-                    executeOnExit(oldState);
-                    executeOnEntry(currentState_);
+        RSM::Core::JITEventQueue<EventWithMetadata> externalAdapter(externalQueue_);
+        RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
+            externalAdapter, [this](const EventWithMetadata &eventWithMeta) {
+                // W3C SCXML 5.10: Set pending event fields from metadata using EventMetadataHelper
+                // ARCHITECTURE.md: Zero Duplication - shared logic with EventMetadataHelper
+                Event event = eventWithMeta.event;
+                RSM::Common::EventMetadataHelper::populatePolicyFromMetadata<StatePolicy, Event>(policy_,
+                                                                                                 eventWithMeta);
 
-                    // W3C SCXML 3.13: Check eventless transitions immediately after state entry
-                    checkEventlessTransitions();
+                // Process event through transition logic
+                State oldState = currentState_;
+                // Call through policy instance (works for both static and non-static)
+                if (policy_.processTransition(currentState_, event, *this)) {
+                    // Transition occurred: execute exit/entry actions
+                    if (oldState != currentState_) {
+                        executeOnExit(oldState);
+                        executeOnEntry(currentState_);
+
+                        // W3C SCXML 3.13: Check eventless transitions immediately after state entry
+                        checkEventlessTransitions();
+                    }
                 }
-            }
-            return true;  // Continue processing
-        });
+                return true;  // Continue processing
+            });
     }
 
     /**
@@ -222,7 +273,7 @@ protected:
 
         // W3C SCXML 3.13: Use shared algorithm (Single Source of Truth)
         // Note: Eventless transitions can raise new internal events, use internal queue
-        RSM::Core::JITEventQueue<Event> adapter(internalQueue_);
+        RSM::Core::JITEventQueue<EventWithMetadata> adapter(internalQueue_);
 
         while (iterations++ < MAX_ITERATIONS) {
             State oldState = currentState_;
@@ -238,16 +289,23 @@ protected:
                     executeOnEntry(currentState_);
 
                     // W3C SCXML 3.12.1: Process any new internal events
-                    RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(adapter, [this](Event event) {
-                        State oldEventState = currentState_;
-                        if (policy_.processTransition(currentState_, event, *this)) {
-                            if (oldEventState != currentState_) {
-                                executeOnExit(oldEventState);
-                                executeOnEntry(currentState_);
+                    RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
+                        adapter, [this](const EventWithMetadata &eventWithMeta) {
+                            // W3C SCXML 5.10: Set pending event fields from metadata using EventMetadataHelper
+                            // ARCHITECTURE.md: Zero Duplication - shared logic with EventMetadataHelper
+                            Event event = eventWithMeta.event;
+                            RSM::Common::EventMetadataHelper::populatePolicyFromMetadata<StatePolicy, Event>(
+                                policy_, eventWithMeta);
+
+                            State oldEventState = currentState_;
+                            if (policy_.processTransition(currentState_, event, *this)) {
+                                if (oldEventState != currentState_) {
+                                    executeOnExit(oldEventState);
+                                    executeOnEntry(currentState_);
+                                }
                             }
-                        }
-                        return true;
-                    });
+                            return true;
+                        });
 
                     // Continue loop to check for more eventless transitions
                 } else {

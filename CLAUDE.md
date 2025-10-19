@@ -6,6 +6,20 @@
 - **Single Source of Truth**: Duplicate implementations prohibited, shared Helper classes required
   - Examples: SendHelper, TransitionHelper, ForeachHelper, GuardHelper
 
+### No Workarounds or Band-Aid Solutions
+- **Temporary Fixes Prohibited**: Never implement quick fixes that mask root causes
+- **Analyze Before Acting**: When facing compilation/runtime errors, identify the true source of the problem
+- **Root Cause Analysis Required**: Understand WHY something fails before attempting to fix it
+- **Evidence-Based Solutions**: Use log analysis, debugger output, and W3C SCXML spec to guide fixes
+- **Architecture Compliance**: Solutions must align with ARCHITECTURE.md principles, not work around them
+- **Examples**:
+  - ❌ Bad: Adding optional parameters to avoid circular dependencies
+  - ✅ Good: Fixing circular dependencies with forward declarations or restructuring
+  - ❌ Bad: "Let's add a flag to skip this validation"
+  - ✅ Good: "The validation fails because X, let's fix X properly"
+  - ❌ Bad: Changing function signatures to avoid template instantiation errors
+  - ✅ Good: Understanding why template instantiation fails and fixing the underlying design issue
+
 ## Code Modification Rules
 
 ### StaticCodeGenerator

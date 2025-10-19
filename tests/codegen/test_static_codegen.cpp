@@ -609,9 +609,10 @@ TEST_F(StaticCodeGenTest, GeneratesSendWithContent) {
     EXPECT_TRUE(content.find("setCurrentEventInJSEngine") != std::string::npos)
         << "Should have setCurrentEventInJSEngine helper method";
 
-    // Should pass content as event data in raise call
-    EXPECT_TRUE(content.find("engine.raise(Event::Event1, \"123\")") != std::string::npos)
-        << "Should pass content data \"123\" to raise()";
+    // Should pass content as event data in raise call using EventWithMetadata
+    EXPECT_TRUE(content.find("engine.raise(typename Engine::EventWithMetadata(Event::Event1, \"123\"))") !=
+                std::string::npos)
+        << "Should pass content data \"123\" to raise() using EventWithMetadata constructor";
 
     // Should detect _event in guard condition and use JSEngine
     EXPECT_TRUE(content.find("::RSM::GuardHelper::evaluateGuard") != std::string::npos)
@@ -672,9 +673,10 @@ TEST_F(StaticCodeGenTest, GeneratesSendWithParams) {
     // Should add param to map
     EXPECT_TRUE(content.find("params[\"aParam\"]") != std::string::npos) << "Should add aParam to params map";
 
-    // Should pass eventData to raise
-    EXPECT_TRUE(content.find("engine.raise(Event::Event1, eventData)") != std::string::npos)
-        << "Should pass eventData from params to raise()";
+    // Should pass eventData to raise using EventWithMetadata
+    EXPECT_TRUE(content.find("engine.raise(typename Engine::EventWithMetadata(Event::Event1, eventData))") !=
+                std::string::npos)
+        << "Should pass eventData from params to raise() using EventWithMetadata constructor";
 }
 
 int main(int argc, char **argv) {
