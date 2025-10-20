@@ -22,6 +22,9 @@
 {% if model.needs_event_data_helper %}
 #include "common/EventDataHelper.h"
 {% endif %}
+{% if model.needs_donedata_helper %}
+#include "common/DoneDataHelper.h"
+{% endif %}
 {% if model.needs_jsengine %}
 #include "common/EventTypeHelper.h"
 #include <optional>

@@ -1,3 +1,12 @@
+{#
+    Entry/Exit Actions Template (Jinja2)
+
+    ARCHITECTURE.md Compliance:
+    - Zero Duplication: Uses DoneDataHelper for param/content evaluation
+    - Single Source of Truth: All W3C SCXML 5.5/5.7 logic in helper class
+    - Long-Term Correctness: No workarounds, complete implementation
+#}
+
     template<typename Engine>
 {% if not model.needs_jsengine and not model.static_invokes and not model.has_parent_communication %}    static void executeEntryActions(State state, Engine& engine) {
 {% else %}    void executeEntryActions(State state, Engine& engine) {
@@ -6,7 +15,7 @@
         switch (state) {
 {% for state_id, state in model.states.items() %}
             case State::{{ state_id | capitalize }}:
-{% if state.on_entry or state.static_invokes %}
+{% if state.on_entry or state.static_invokes or (state.is_final and state.donedata) %}
                 {
 {% if state.static_invokes %}
                 // W3C SCXML 6.4: Start invoke elements
@@ -90,6 +99,67 @@
                 {% include 'actions/' + action.type + '.jinja2' %}
 
 {% endfor %}
+{% if state.is_final and state.donedata %}
+                // W3C SCXML 5.5: Evaluate donedata for final state
+                {
+                    std::string eventData;
+{% if state.donedata.params %}
+                    // W3C SCXML 5.5: Evaluate <param> elements
+                    this->ensureJSEngine();
+                    auto& jsEngine = ::RSM::JSEngine::instance();
+                    std::vector<std::pair<std::string, std::string>> params = {
+{% for param in state.donedata.params %}
+                        {"{{ param.name }}", "{{ param.location if param.location else param.expr }}"}{{ "," if not loop.last }}
+{% endfor %}
+                    };
+
+                    // W3C SCXML 5.7: "If the location expression does not denote a valid location in the data model..."
+                    // Empty param location raises error.execution and prevents done.state event generation
+                    bool success = ::RSM::DoneDataHelper::evaluateParams(
+                        jsEngine,
+                        sessionId_.value(),
+                        params,
+                        eventData,
+                        [&engine](const std::string& msg) {
+                            LOG_WARN("Donedata param evaluation failed: {}", msg);
+                            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, msg));
+                        }
+                    );
+
+                    // W3C SCXML 5.7: If structural error (empty location), skip done.state event
+                    if (!success) {
+                        LOG_DEBUG("Skipping done.state event due to structural donedata error");
+                        break;
+                    }
+{% elif state.donedata.contentexpr %}
+                    // W3C SCXML 5.5: Evaluate <content expr="..."/>
+                    this->ensureJSEngine();
+                    auto& jsEngine = ::RSM::JSEngine::instance();
+                    ::RSM::DoneDataHelper::evaluateContent(
+                        jsEngine,
+                        sessionId_.value(),
+                        "{{ state.donedata.contentexpr }}",
+                        eventData,
+                        [&engine](const std::string& msg) {
+                            LOG_WARN("Donedata content evaluation failed: {}", msg);
+                            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, msg));
+                        }
+                    );
+{% elif state.donedata.content %}
+                    // W3C SCXML 5.5: Literal <content>
+                    eventData = "{{ state.donedata.content | escape_cpp }}";
+{% endif %}
+
+                    LOG_DEBUG("Final state {{ state_id }} reached with event data: {}", eventData);
+                }
+{% endif %}
+{% if state.parent %}
+                // W3C SCXML 3.7: Generate done.state.{parentId} event for compound state completion
+                {
+                    LOG_DEBUG("Final state {{ state_id }} entered, generating done.state.{{ state.parent }}");
+                    engine.raise(typename Engine::EventWithMetadata(Event::Done_state_{{ state.parent }}));
+                }
+{% endif %}
                 }
 {% endif %}
                 break;

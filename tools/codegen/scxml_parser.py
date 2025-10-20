@@ -46,6 +46,7 @@ class State:
     datamodel: List[Dict] = field(default_factory=list)
     invokes: List[Dict] = field(default_factory=list)
     static_invokes: List[Dict] = field(default_factory=list)  # Static invoke info for member generation
+    donedata: Optional[Dict] = None  # W3C SCXML 5.5: Donedata for final states
 
 
 @dataclass
@@ -270,6 +271,11 @@ class SCXMLParser:
             for exit_elem in ns_findall(final_elem, 'onexit'):
                 state.on_exit.extend(self._parse_executable_content(exit_elem))
 
+            # Parse <donedata> for final states (W3C SCXML 5.5)
+            donedata_elem = ns_find(final_elem, 'donedata')
+            if donedata_elem is not None:
+                state.donedata = self._parse_donedata(donedata_elem)
+
             self.model.states[final_id] = state
 
         # Parse <parallel> elements
@@ -493,6 +499,32 @@ class SCXMLParser:
             actions.append(action)
 
         return actions
+
+    def _parse_donedata(self, donedata_elem) -> Dict:
+        """Parse <donedata> element (W3C SCXML 5.5)"""
+        donedata = {
+            'params': [],
+            'content': '',
+            'contentexpr': ''
+        }
+
+        # Parse <param> elements
+        for param_elem in ns_findall(donedata_elem, 'param'):
+            param = {
+                'name': param_elem.get('name', ''),
+                'expr': param_elem.get('expr', ''),
+                'location': param_elem.get('location', '')
+            }
+            donedata['params'].append(param)
+
+        # Parse <content> element
+        content_elem = ns_find(donedata_elem, 'content')
+        if content_elem is not None:
+            donedata['contentexpr'] = content_elem.get('expr', '')
+            if content_elem.text:
+                donedata['content'] = content_elem.text.strip()
+
+        return donedata
 
     def _parse_invoke(self, invoke_elem) -> Dict:
         """Parse <invoke> element (W3C SCXML 6.4)"""

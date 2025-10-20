@@ -16,6 +16,48 @@
 - **Open World Features** (runtime-only): `<invoke srcexpr>`, `<invoke contentExpr>` → Entire SCXML runs on Interpreter
 - **Implemented Closed World**: `<invoke><content>` (logically static, fully implemented in test338) → Generates static AOT code with inline child extraction
 
+## Development Principles
+
+### Long-Term Correctness Over Short-Term Convenience
+
+**Core Principle**: Always prioritize architecturally correct solutions over expedient workarounds, regardless of token consumption or remaining work.
+
+**Philosophy**:
+- **No Shortcuts**: Never implement temporary fixes or band-aid solutions to save tokens or time
+- **Complete Implementation**: Always implement features fully and correctly, even if it requires significant refactoring
+- **Architecture First**: Architectural integrity is non-negotiable - workarounds create technical debt that compounds over time
+- **Zero Tolerance for Workarounds**: If a solution doesn't align with architecture principles, it's the wrong solution
+
+**Mandatory Practices**:
+1. **Root Cause Analysis Required**: When facing implementation challenges, always identify and fix the root cause
+2. **No "Good Enough" Solutions**: Partial implementations or hacky workarounds are explicitly prohibited
+3. **Refactor When Needed**: If correct implementation requires refactoring existing code, do it
+4. **Token Budget is Secondary**: Architectural correctness takes priority over token efficiency
+5. **Time Pressure is Not an Excuse**: Rush leads to technical debt; take the time to do it right
+
+**Examples**:
+- ❌ Bad: Adding optional parameters to avoid fixing circular dependencies
+- ✅ Good: Restructuring code to eliminate circular dependencies properly
+- ❌ Bad: "Let's implement done.state generation in a simple way to save tokens"
+- ✅ Good: Analyze Interpreter's complete implementation and replicate it exactly
+- ❌ Bad: Using wrapper approach because proper implementation seems complex
+- ✅ Good: Implementing the feature fully in AOT engine, even if it requires infrastructure work
+
+**Rationale**:
+- Technical debt compounds exponentially - what saves 10 minutes today costs hours later
+- Workarounds create maintenance burden and confusion for future developers
+- Architectural integrity is the foundation of long-term project success
+- Short-term pain of proper implementation prevents long-term agony of technical debt
+
+**Decision Framework**:
+When choosing between approaches:
+1. Is it architecturally correct? (If NO → find different approach)
+2. Does it follow Zero Duplication Principle? (If NO → refactor to use helpers)
+3. Does it maintain All-or-Nothing Strategy? (If NO → rethink boundaries)
+4. Will this require refactoring later? (If YES → do it right now)
+
+**This principle overrides all other considerations including token usage, implementation time, and perceived complexity.**
+
 ## Core Architecture
 
 ### Code Generator: Python + Jinja2 (Production)
@@ -623,7 +665,10 @@ class EventQueueManager {
   - **convertScriptValueToJson()**: ScriptValue variant to JSON conversion
   - W3C SCXML 5.7: Structural errors (empty location) prevent done.state event generation
   - W3C SCXML 5.7: Runtime errors (invalid expr) raise error.execution, continue with other params
-  - Error handling callbacks for engine-specific error.execution event raising
+  - **Error handling callbacks**: Lambda pattern allows engine-specific error.execution event raising
+    - Interpreter: `[this](const std::string& msg) { eventRaiser_->raiseEvent("error.execution", msg); }`
+    - AOT: `[&engine](const std::string& msg) { engine.raise(Event::Error_execution); }`
+  - Test coverage: test343 (W3C 5.10.1 - empty param location validation)
 - Benefits: Zero code duplication, consistent donedata evaluation across engines, proper W3C SCXML 5.5/5.7 compliance
 
 **RSM::SendSchedulingHelper::parseDelayString() / SimpleScheduler**:

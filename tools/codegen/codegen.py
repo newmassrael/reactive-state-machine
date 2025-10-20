@@ -83,6 +83,7 @@ class CodeGenerator:
         model.needs_guard_helper = False
         model.needs_send_helper = False
         model.needs_event_data_helper = False
+        model.needs_donedata_helper = False
 
         # Event metadata fields
         model.needs_event_name = False
@@ -127,6 +128,17 @@ class CodeGenerator:
             model.needs_assign_helper = True
             model.needs_foreach = True
             model.needs_guard_helper = True
+
+        # W3C SCXML 5.5: Detect donedata in final states
+        for state in model.states.values():
+            if state.is_final and state.donedata is not None:
+                model.needs_donedata_helper = True
+                # Donedata params may fail, so need error.execution event
+                model.events.add('error.execution')
+                # Donedata needs JSEngine for param/content expression evaluation
+                if state.donedata.get('params') or state.donedata.get('contentexpr'):
+                    model.needs_jsengine = True
+                break
 
     def _analyze_action(self, action, model):
         """Analyze single action for feature detection"""
