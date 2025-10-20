@@ -331,8 +331,31 @@ protected:
                     break;
                 }
             } else {
-                // No eventless transition available - stop
-                break;
+                // No eventless transition available - check internal queue before stopping
+                // W3C SCXML 6.4: Entry actions may raise done.invoke events
+                bool processedInternalEvent = false;
+                RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
+                    adapter, [this, &processedInternalEvent](const EventWithMetadata &eventWithMeta) {
+                        Event event = eventWithMeta.event;
+                        RSM::Common::EventMetadataHelper::populatePolicyFromMetadata<StatePolicy, Event>(policy_,
+                                                                                                         eventWithMeta);
+
+                        State oldEventState = currentState_;
+                        if (policy_.processTransition(currentState_, event, *this)) {
+                            processedInternalEvent = true;
+                            if (oldEventState != currentState_) {
+                                executeOnExit(oldEventState);
+                                executeOnEntry(currentState_);
+                            }
+                        }
+                        return true;
+                    });
+
+                if (!processedInternalEvent) {
+                    // No internal events and no eventless transitions - stop
+                    break;
+                }
+                // Internal event was processed, continue loop
             }
         }
 
@@ -374,6 +397,25 @@ public:
         LOG_DEBUG("AOT initialize: After processEventQueues, before final checkEventlessTransitions");
         checkEventlessTransitions();  // Final check for any remaining eventless transitions
         LOG_DEBUG("AOT initialize: After final checkEventlessTransitions");
+    }
+
+    /**
+     * @brief Step the state machine (process pending events)
+     *
+     * W3C SCXML 6.4: For parent-child communication, parents must explicitly
+     * step child state machines after sending events to ensure synchronous processing.
+     *
+     * This method processes all pending events in both internal and external queues.
+     */
+    void step() {
+        processEventQueues();
+        checkEventlessTransitions();
+
+        // W3C SCXML 6.4: Invoke completion callback if in final state
+        if (isInFinalState() && completionCallback_) {
+            LOG_DEBUG("AOT step: Invoking completion callback for done.invoke");
+            completionCallback_();
+        }
     }
 
     /**

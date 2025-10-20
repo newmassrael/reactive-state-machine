@@ -285,8 +285,13 @@ class CodeGenerator:
             # Render template
             output = template.render(model=model)
 
+            # Use input filename (without extension) for output filename
+            # W3C SCXML 6.4: Multiple tests may use same SCXML name attribute (e.g., test338 and test347 both use "machineName")
+            # Using input filename ensures unique output files (test338_machineName_sm.h vs test347_machineName_sm.h)
+            input_stem = Path(scxml_path).stem  # e.g., "test338_machineName" from "test338_machineName.scxml"
+
             # Write output file
-            output_path = Path(output_dir) / f"{model.name}_sm.h"
+            output_path = Path(output_dir) / f"{input_stem}_sm.h"
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             with open(output_path, 'w') as f:
@@ -297,7 +302,7 @@ class CodeGenerator:
             # W3C SCXML 6.4: Write child state machines metadata for CMake
             # Outputs list of child SCXML files that need to be generated
             if model.static_invokes:
-                children_file = Path(output_dir) / f"{model.name}_children.txt"
+                children_file = Path(output_dir) / f"{input_stem}_children.txt"
                 with open(children_file, 'w') as f:
                     for invoke_info in model.static_invokes:
                         child_name = invoke_info.get('child_name', '')
