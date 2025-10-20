@@ -8,7 +8,7 @@
 #}
 
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.has_parent_communication %}    static void executeEntryActions(State state, Engine& engine) {
+{% if not model.needs_jsengine and not model.static_invokes and not model.has_parent_communication and not model.needs_event_scheduler %}    static void executeEntryActions(State state, Engine& engine) {
 {% else %}    void executeEntryActions(State state, Engine& engine) {
 {% endif %}
         (void)engine;
@@ -153,7 +153,7 @@
                     LOG_DEBUG("Final state {{ state_id }} reached with event data: {}", eventData);
                 }
 {% endif %}
-{% if state.parent %}
+{% if state.is_final and state.parent %}
                 // W3C SCXML 3.7: Generate done.state.{parentId} event for compound state completion
                 {
                     LOG_DEBUG("Final state {{ state_id }} entered, generating done.state.{{ state.parent }}");

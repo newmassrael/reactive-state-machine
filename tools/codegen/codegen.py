@@ -224,7 +224,7 @@ class CodeGenerator:
                 var['type'] = 'runtime'
                 model.needs_jsengine = True
 
-    def generate(self, scxml_path: str, output_dir: str) -> bool:
+    def generate(self, scxml_path: str, output_dir: str, as_child: bool = False) -> bool:
         """
         Generate C++ code from SCXML file
 
@@ -239,6 +239,10 @@ class CodeGenerator:
             # Parse SCXML
             parser = SCXMLParser()
             model = parser.parse_file(scxml_path)
+
+            # W3C SCXML 6.4: Force template generation for invoked children
+            if as_child:
+                model.has_parent_communication = True
 
             print(f"Generating code for: {model.name}")
             print(f"  States: {len(model.states)}")
@@ -289,6 +293,18 @@ class CodeGenerator:
                 f.write(output)
 
             print(f"  ✓ Generated: {output_path}")
+
+            # W3C SCXML 6.4: Write child state machines metadata for CMake
+            # Outputs list of child SCXML files that need to be generated
+            if model.static_invokes:
+                children_file = Path(output_dir) / f"{model.name}_children.txt"
+                with open(children_file, 'w') as f:
+                    for invoke_info in model.static_invokes:
+                        child_name = invoke_info.get('child_name', '')
+                        if child_name:
+                            f.write(f"{child_name}\n")
+                print(f"  ✓ Child metadata: {children_file}")
+
             return True
 
         except Exception as e:
@@ -438,6 +454,8 @@ def main():
                         help='Output directory for generated files')
     parser.add_argument('-t', '--template-dir', default=None,
                         help='Template directory (default: ./templates)')
+    parser.add_argument('--as-child', action='store_true',
+                        help='Generate as invoked child (force template generation)')
 
     args = parser.parse_args()
 
@@ -448,7 +466,7 @@ def main():
 
     # Generate code
     generator = CodeGenerator(template_dir=args.template_dir)
-    success = generator.generate(args.scxml_file, args.output_dir)
+    success = generator.generate(args.scxml_file, args.output_dir, as_child=args.as_child)
 
     return 0 if success else 1
 

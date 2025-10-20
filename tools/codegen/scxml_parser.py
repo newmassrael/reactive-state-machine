@@ -602,6 +602,8 @@ class SCXMLParser:
         - ECMAScript operators (typeof, In(), etc.)
         - _event metadata access
         - Complex expressions
+        - C++ reserved keywords that would cause compilation errors
+        - Invalid ECMAScript syntax (W3C SCXML 5.9: error.execution on evaluation failure)
         """
         if not expr:
             return False
@@ -617,6 +619,25 @@ class SCXMLParser:
         for field in self.EVENT_METADATA_FIELDS:
             if field in expr:
                 self.model.has_event_metadata = True
+                return True
+
+        # W3C SCXML 5.9: Expressions that cannot be evaluated as boolean or cause errors
+        # Check for C++ reserved keywords that would be invalid if directly embedded in C++ code
+        # These must be evaluated by JSEngine to properly raise error.execution
+        cpp_reserved = ['return', 'break', 'continue', 'goto', 'switch', 'case', 'default',
+                        'if', 'else', 'while', 'do', 'for', 'class', 'struct', 'typedef',
+                        'using', 'namespace', 'template', 'typename', 'static', 'extern',
+                        'inline', 'virtual', 'operator', 'new', 'delete', 'this', 'throw',
+                        'try', 'catch', 'public', 'private', 'protected']
+
+        # Check if expression is exactly a reserved word or starts with reserved word followed by non-identifier char
+        expr_stripped = expr.strip()
+        for keyword in cpp_reserved:
+            # Exact match or keyword followed by non-alphanumeric (e.g., "return ", "return;")
+            if expr_stripped == keyword or (expr_stripped.startswith(keyword) and
+                                            len(expr_stripped) > len(keyword) and
+                                            not expr_stripped[len(keyword)].isalnum() and
+                                            expr_stripped[len(keyword)] != '_'):
                 return True
 
         return False

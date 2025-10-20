@@ -38,10 +38,10 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
             VERBATIM
         )
 
-        # Generate C++ code for sub SCXML
+        # Generate C++ code for sub SCXML (as invoked child)
         add_custom_command(
             OUTPUT "${SUB_HEADER_FILE}"
-            COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SUB_SCXML_FILE}" -o "${OUTPUT_DIR}"
+            COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SUB_SCXML_FILE}" -o "${OUTPUT_DIR}" --as-child
             DEPENDS "${SUB_SCXML_FILE}"
             COMMENT "Generating C++ code: ${SUB_TXML_NAME}_sm.h"
             VERBATIM
@@ -58,19 +58,22 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
         OUTPUT "${SCXML_FILE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
         COMMAND txml-converter "${TXML_FILE}" "${SCXML_FILE}"
-        COMMAND bash -c "perl -i -0pe 's/(<scxml[^>]*?)\\s+name=\"[^\"]*\"/$1/g' \"${SCXML_FILE}\" && sed -i 's/<scxml /<scxml name=\"test${TEST_NUM}\" /' \"${SCXML_FILE}\""
+        COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/fix_scxml_name.py" "${SCXML_FILE}" "test${TEST_NUM}"
         DEPENDS txml-converter "${TXML_FILE}" ${SUB_SCXML_DEPENDENCIES}
         COMMENT "Converting TXML to SCXML: test${TEST_NUM}.txml"
         VERBATIM
     )
 
-    # Step 2: SCXML -> C++ code generation
+    # Step 2: SCXML -> C++ code generation (parent + inline children)
     # W3C SCXML 6.2/6.4: Parent header must depend on child headers (template detection)
+    # Uses Python helper script to generate parent and process inline content children
+    set(CHILDREN_METADATA "${OUTPUT_DIR}/test${TEST_NUM}_children.txt")
     add_custom_command(
         OUTPUT "${GENERATED_HEADER}"
         COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SCXML_FILE}" -o "${OUTPUT_DIR}"
+        COMMAND bash -c "if [ -f \"${CHILDREN_METADATA}\" ]; then while IFS= read -r child; do [ -n \"$child\" ] && python3 \"${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py\" \"${OUTPUT_DIR}/$child.scxml\" -o \"${OUTPUT_DIR}\" --as-child; done < \"${CHILDREN_METADATA}\"; fi"
         DEPENDS "${SCXML_FILE}" ${SUB_HEADER_DEPENDENCIES}
-        COMMENT "Generating C++ code: test${TEST_NUM}_sm.h"
+        COMMENT "Generating C++ code: test${TEST_NUM}_sm.h (with inline children)"
         VERBATIM
     )
 

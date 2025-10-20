@@ -146,8 +146,13 @@ private:
     // W3C SCXML 3.12: Helper method for hierarchical transition checking
     // Matches Interpreter engine's processStateTransitions() logic
     template<typename Engine>
-    bool tryTransitionInState(State checkState, Event event, State& currentState, bool& transitionTaken, Engine& engine) {
-        (void)engine;  // May be used in transition actions
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static bool tryTransitionInState([[maybe_unused]] State checkState, [[maybe_unused]] Event event,
+                                      [[maybe_unused]] State& currentState, [[maybe_unused]] bool& transitionTaken,
+                                      [[maybe_unused]] Engine& engine) {
+{% else %}    bool tryTransitionInState([[maybe_unused]] State checkState, [[maybe_unused]] Event event,
+                              [[maybe_unused]] State& currentState, [[maybe_unused]] bool& transitionTaken,
+                              [[maybe_unused]] Engine& engine) {
+{% endif %}
         switch (checkState) {
 {% for state_id, state in model.states.items() %}
         case State::{{ state_id | capitalize }}:
