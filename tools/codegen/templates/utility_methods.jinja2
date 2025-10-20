@@ -1,4 +1,18 @@
 {% if model.needs_jsengine %}
+    // W3C SCXML 5.9: Safe guard evaluation with error.execution on failure
+    // ARCHITECTURE.md: Zero Duplication - Wraps shared GuardHelper with AOT-specific error handling
+    template<typename Engine>
+    bool safeEvaluateGuard(::RSM::JSEngine& jsEngine, const std::string& sessionId,
+                           const std::string& guardExpr, Engine& engine) const {
+        try {
+            return ::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId, guardExpr);
+        } catch (const std::exception& e) {
+            LOG_ERROR("W3C SCXML 5.9: Guard evaluation failed: '{}' - {}", guardExpr, e.what());
+            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, "Guard evaluation failed"));
+            return false;
+        }
+    }
+
     // Helper: Set param in JSEngine for static invoke (W3C SCXML 6.4)
     void setParamInJSEngine(const std::string& paramName, const std::string& paramExpr) {
         ensureJSEngine();

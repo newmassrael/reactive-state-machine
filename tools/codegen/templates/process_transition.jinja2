@@ -184,7 +184,7 @@ private:
 {% if model.needs_jsengine %}
                 this->ensureJSEngine();
                 auto& jsEngine = ::RSM::JSEngine::instance();
-                if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}")) {
+                if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}", engine)) {
 {% else %}
                 if ({{ transition.cond }}) {
 {% endif %}
@@ -227,14 +227,14 @@ private:
 {% if transition.cond %}
 {% if first_trans.value %}
 {% if model.needs_jsengine %}
-                if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}")) {
+                if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}", engine)) {
 {% else %}
             if ({{ transition.cond }}) {
 {% endif %}
 {% set first_trans.value = False %}
 {% else %}
 {% if model.needs_jsengine and first_uses_jsengine %}
-                } else if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}")) {
+                } else if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}", engine)) {
 {% else %}
             } else if ({{ transition.cond }}) {
 {% endif %}
