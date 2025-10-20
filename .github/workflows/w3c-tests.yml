@@ -63,6 +63,11 @@ jobs:
         echo "::add-matcher::.github/problem-matchers/gcc.json"
         echo "::add-matcher::.github/problem-matchers/cmake.json"
 
+    - name: Install Python Dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        pip install -r tools/codegen/requirements.txt
+
     - name: Cache CMake Build
       uses: actions/cache@v4
       with:
@@ -209,21 +214,21 @@ jobs:
 
           # Count tests by engine type (using classname)
           interpreter_total=$(grep -oP 'classname="W3C_Interpreter"' w3c_test_results.xml | wc -l)
-          jit_total=$(grep -oP 'classname="W3C_JIT"' w3c_test_results.xml | wc -l)
+          aot_total=$(grep -oP 'classname="W3C_AOT"' w3c_test_results.xml | wc -l)
 
           # Count passed tests by engine type (no failure tags)
           interpreter_passed=$(grep 'classname="W3C_Interpreter"' w3c_test_results.xml | grep -v '<failure' | wc -l)
-          jit_passed=$(grep 'classname="W3C_JIT"' w3c_test_results.xml | grep -v '<failure' | wc -l)
+          aot_passed=$(grep 'classname="W3C_AOT"' w3c_test_results.xml | grep -v '<failure' | wc -l)
 
           interpreter_failed=$((interpreter_total - interpreter_passed))
-          jit_failed=$((jit_total - jit_passed))
+          aot_failed=$((aot_total - aot_passed))
 
           # Display engine-specific statistics
           echo "| Engine | Total | Passed | Failed |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|--------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Interpreter | $interpreter_total | $interpreter_passed | $interpreter_failed |" >> $GITHUB_STEP_SUMMARY
-          if [ $jit_total -gt 0 ]; then
-            echo "| JIT | $jit_total | $jit_passed | $jit_failed |" >> $GITHUB_STEP_SUMMARY
+          if [ $aot_total -gt 0 ]; then
+            echo "| AOT | $aot_total | $aot_passed | $aot_failed |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "| **Total** | **$total** | **$passed** | **$((failures + errors))** |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

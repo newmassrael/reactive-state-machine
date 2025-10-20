@@ -10,7 +10,7 @@ namespace RSM {
  *
  * Single Source of Truth for send action validation logic shared between:
  * - Interpreter engine (ActionExecutorImpl)
- * - JIT engine (StaticCodeGenerator)
+ * - AOT engine (StaticCodeGenerator)
  *
  * W3C SCXML References:
  * - 6.2: Send element semantics
@@ -22,7 +22,7 @@ public:
      * @brief Check if target validation failed (for error.execution detection)
      *
      * Single Source of Truth for target validation logic.
-     * Used by JIT engine to determine if error.execution should be raised,
+     * Used by AOT engine to determine if error.execution should be raised,
      * which stops execution of subsequent executable content per W3C SCXML 5.10.
      *
      * W3C SCXML 6.2: Target values starting with "!" are invalid.
@@ -39,7 +39,7 @@ public:
      * @brief Check if target should use internal event queue (W3C SCXML C.1)
      *
      * Single Source of Truth for internal queue routing logic.
-     * Used by JIT engine to determine which queue to use for raise operations.
+     * Used by AOT engine to determine which queue to use for raise operations.
      *
      * W3C SCXML C.1 (test189): Events with target="#_internal" must go to
      * the internal event queue, which has higher priority than external queue.
@@ -75,7 +75,7 @@ public:
     /**
      * @brief Generate unique sendid (Single Source of Truth)
      *
-     * Used by both Interpreter and JIT engines to ensure consistent sendid format.
+     * Used by both Interpreter and AOT engines to ensure consistent sendid format.
      * Delegates to centralized UniqueIdGenerator for thread-safe, collision-free IDs.
      *
      * W3C SCXML 6.2: Each send action must have a unique sendid for tracking.
@@ -94,7 +94,7 @@ public:
      *
      * Single Source of Truth for #_parent event routing shared between:
      * - Interpreter engine (ParentEventTarget)
-     * - JIT engine (StaticCodeGenerator generated code)
+     * - AOT engine (StaticCodeGenerator generated code)
      *
      * This template function enables compile-time type-safe parent event routing
      * in statically generated code while maintaining zero-overhead abstraction.
@@ -123,7 +123,7 @@ public:
      *
      * This method encapsulates the idlocation storage logic shared between:
      * - Interpreter engine (ActionExecutorImpl::executeSendAction)
-     * - JIT engine (StaticCodeGenerator::generateActionCode for SEND)
+     * - AOT engine (StaticCodeGenerator::generateActionCode for SEND)
      *
      * @param jsEngine JSEngine instance for variable operations
      * @param sessionId Session identifier

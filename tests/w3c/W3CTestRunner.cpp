@@ -18,8 +18,8 @@
 #include <optional>
 #include <thread>
 
-// JIT Test Registry (new modular system)
-#include "jit_tests/AllJitTests.h"
+// AOT Test Registry (new modular system)
+#include "aot_tests/AllAotTests.h"
 
 // Include generated static test headers for Interpreter engine fallback
 // These tests require Interpreter wrappers due to dynamic features or metadata requirements
@@ -616,13 +616,13 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
             if (xmlFile) {
                 // Separate reports by engine type
                 std::vector<TestReport> interpreterReports;
-                std::vector<TestReport> jitReports;
+                std::vector<TestReport> aotReports;
 
                 for (const auto &report : allReports_) {
                     if (report.engineType == "interpreter") {
                         interpreterReports.push_back(report);
-                    } else if (report.engineType == "jit") {
-                        jitReports.push_back(report);
+                    } else if (report.engineType == "aot") {
+                        aotReports.push_back(report);
                     }
                 }
 
@@ -644,7 +644,7 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
                 };
 
                 auto [interpFailures, interpErrors, interpTime] = calculateEngineStats(interpreterReports);
-                auto [jitFailures, jitErrors, jitTime] = calculateEngineStats(jitReports);
+                auto [aotFailures, aotErrors, aotTime] = calculateEngineStats(aotReports);
 
                 // Write XML with separate testsuites
                 xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" << std::endl;
@@ -679,16 +679,16 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
                     xmlFile << "  </testsuite>" << std::endl;
                 }
 
-                // JIT engine testsuite
-                if (!jitReports.empty()) {
-                    xmlFile << "  <testsuite name=\"W3C_SCXML_JIT\" "
-                            << "tests=\"" << jitReports.size() << "\" "
-                            << "failures=\"" << jitFailures << "\" "
-                            << "errors=\"" << jitErrors << "\" "
-                            << "time=\"" << jitTime << "\">" << std::endl;
+                // AOT engine testsuite
+                if (!aotReports.empty()) {
+                    xmlFile << "  <testsuite name=\"W3C_SCXML_AOT\" "
+                            << "tests=\"" << aotReports.size() << "\" "
+                            << "failures=\"" << aotFailures << "\" "
+                            << "errors=\"" << aotErrors << "\" "
+                            << "time=\"" << aotTime << "\">" << std::endl;
 
-                    for (const auto &report : jitReports) {
-                        xmlFile << "    <testcase classname=\"W3C_JIT\" "
+                    for (const auto &report : aotReports) {
+                        xmlFile << "    <testcase classname=\"W3C_AOT\" "
                                 << "name=\"Test_" << report.testId << "\" "
                                 << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
 
@@ -1338,19 +1338,19 @@ std::vector<TestReport> W3CTestRunner::runAllMatchingTests(int testId) {
                     reporter_->reportTestResult(report);
                 }
 
-                // Run jit engine test for each variant (unsupported tests will return FAIL)
+                // Run AOT engine test for each variant (unsupported tests will return FAIL)
                 try {
-                    LOG_INFO("W3C Test {}: Running jit engine test for variant", testId);
-                    TestReport jitReport = runJitTest(testId);
+                    LOG_INFO("W3C Test {}: Running AOT engine test for variant", testId);
+                    TestReport aotReport = runAotTest(testId);
                     // Preserve the variant suffix from interpreter test report (last added report)
                     if (!matchingReports.empty()) {
-                        jitReport.testId = matchingReports.back().testId;
+                        aotReport.testId = matchingReports.back().testId;
                     }
-                    matchingReports.push_back(jitReport);
-                    reporter_->reportTestResult(jitReport);
-                    LOG_INFO("W3C Test {}: JIT engine test completed for variant", testId);
+                    matchingReports.push_back(aotReport);
+                    reporter_->reportTestResult(aotReport);
+                    LOG_INFO("W3C Test {}: AOT engine test completed for variant", testId);
                 } catch (const std::exception &e) {
-                    LOG_ERROR("W3C Test {}: JIT engine test failed for variant: {}", testId, e.what());
+                    LOG_ERROR("W3C Test {}: AOT engine test failed for variant: {}", testId, e.what());
                     // Don't throw - continue with other variants
                 }
             } catch (const std::exception &e) {
@@ -1546,14 +1546,14 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
     }
 }
 
-TestReport W3CTestRunner::runJitTest(int testId) {
+TestReport W3CTestRunner::runAotTest(int testId) {
     // Try registry-based test first (new modular system)
-    auto registryTest = RSM::W3C::JitTests::JitTestRegistry::instance().createTest(testId);
+    auto registryTest = RSM::W3C::AotTests::AotTestRegistry::instance().createTest(testId);
     if (registryTest) {
         TestReport report;
         report.timestamp = std::chrono::system_clock::now();
         report.testId = std::to_string(testId);
-        report.engineType = "jit";
+        report.engineType = "aot";
 
         auto startTime = std::chrono::steady_clock::now();
 
@@ -1572,13 +1572,13 @@ TestReport W3CTestRunner::runJitTest(int testId) {
                 report.executionContext.finalState = "fail";
             }
 
-            LOG_INFO("JIT Test {} ({}): {} in {}ms", testId, testDescription, testPassed ? "PASS" : "FAIL",
+            LOG_INFO("AOT Test {} ({}): {} in {}ms", testId, testDescription, testPassed ? "PASS" : "FAIL",
                      duration.count());
 
             return report;
 
         } catch (const std::exception &e) {
-            LOG_ERROR("JIT Test {} failed with exception: {}", testId, e.what());
+            LOG_ERROR("AOT Test {} failed with exception: {}", testId, e.what());
             report.validationResult = ValidationResult(false, TestResult::ERROR, e.what());
             report.executionContext.finalState = "error";
             return report;
@@ -1589,7 +1589,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
     report.testId = std::to_string(testId);
-    report.engineType = "jit";  // JIT engine execution (static generated code)
+    report.engineType = "aot";  // AOT engine execution (static generated code)
 
     auto startTime = std::chrono::steady_clock::now();
 
@@ -1597,10 +1597,10 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         bool testPassed = false;
         std::string testDescription;
 
-        // Macro to define a JIT test case with automatic state machine initialization
-        // Usage: JIT_TEST_CASE(test_number, "description")
+        // Macro to define an AOT test case with automatic state machine initialization
+        // Usage: AOT_TEST_CASE(test_number, "description")
         // Requires: Corresponding testXXX_sm.h include and CMake test generation
-#define JIT_TEST_CASE(num, desc)                                                                                       \
+#define AOT_TEST_CASE(num, desc)                                                                                       \
     case num:                                                                                                          \
         testPassed = []() {                                                                                            \
             RSM::Generated::test##num::test##num sm;                                                                   \
@@ -1668,7 +1668,7 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 307:  // W3C SCXML B.2.2: late binding with log validation
         case 309:  // W3C SCXML 5.9.2: invalid boolean expressions treated as false
         case 310:  // W3C SCXML 5.9.1: In() predicate in conditional expressions
-            LOG_WARN("W3C JIT Test: Test {} uses In() predicate - tested via Interpreter engine", testId);
+            LOG_WARN("W3C AOT Test: Test {} uses In() predicate - tested via Interpreter engine", testId);
             report.validationResult =
                 ValidationResult(true, TestResult::PASS, "Tested via Interpreter engine (In() predicate)");
             report.executionContext.finalState = "pass";
@@ -1680,21 +1680,21 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         case 376:
         case 377:
         case 378:
-            LOG_WARN("W3C JIT Test: Test {} uses dynamic features - tested via Interpreter engine", testId);
+            LOG_WARN("W3C AOT Test: Test {} uses dynamic features - tested via Interpreter engine", testId);
             report.validationResult =
                 ValidationResult(true, TestResult::PASS, "Tested via Interpreter engine (dynamic invoke)");
             report.executionContext.finalState = "pass";
             return report;
 
         default:
-            LOG_WARN("W3C JIT Test: Test {} not yet implemented in jit engine", testId);
+            LOG_WARN("W3C AOT Test: Test {} not yet implemented in AOT engine", testId);
             report.validationResult =
-                ValidationResult(false, TestResult::FAIL, "Test not yet implemented in jit engine");
+                ValidationResult(false, TestResult::FAIL, "Test not yet implemented in AOT engine");
             report.executionContext.finalState = "fail";
             return report;
         }
 
-#undef JIT_TEST_CASE  // Clean up macro after use
+#undef AOT_TEST_CASE  // Clean up macro after use
 
         auto endTime = std::chrono::steady_clock::now();
         report.executionContext.executionTime =
@@ -1706,13 +1706,13 @@ TestReport W3CTestRunner::runJitTest(int testId) {
 
         // Set validation result
         if (testPassed) {
-            report.validationResult = ValidationResult(true, TestResult::PASS, "JIT engine test passed");
+            report.validationResult = ValidationResult(true, TestResult::PASS, "AOT engine test passed");
             report.executionContext.finalState = "pass";
-            LOG_DEBUG("W3C JIT Test: Test {} PASS ({}ms)", testId, report.executionContext.executionTime.count());
+            LOG_DEBUG("W3C AOT Test: Test {} PASS ({}ms)", testId, report.executionContext.executionTime.count());
         } else {
-            report.validationResult = ValidationResult(true, TestResult::FAIL, "JIT engine test failed");
+            report.validationResult = ValidationResult(true, TestResult::FAIL, "AOT engine test failed");
             report.executionContext.finalState = "fail";
-            LOG_DEBUG("W3C JIT Test: Test {} FAIL ({}ms)", testId, report.executionContext.executionTime.count());
+            LOG_DEBUG("W3C AOT Test: Test {} FAIL ({}ms)", testId, report.executionContext.executionTime.count());
         }
 
         return report;
@@ -1722,10 +1722,10 @@ TestReport W3CTestRunner::runJitTest(int testId) {
         report.executionContext.executionTime =
             std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
         report.validationResult =
-            ValidationResult(false, TestResult::ERROR, "JIT engine exception: " + std::string(e.what()));
+            ValidationResult(false, TestResult::ERROR, "AOT engine exception: " + std::string(e.what()));
         report.executionContext.finalState = "error";
         report.executionContext.errorMessage = e.what();
-        LOG_ERROR("W3C JIT Test: Exception in test {}: {}", testId, e.what());
+        LOG_ERROR("W3C AOT Test: Exception in test {}: {}", testId, e.what());
         return report;
     }
 }

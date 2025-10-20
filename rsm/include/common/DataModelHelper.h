@@ -9,7 +9,7 @@ namespace RSM {
  * @brief Helper functions for W3C SCXML datamodel extraction
  *
  * Single Source of Truth for datamodel variable extraction logic shared between:
- * - StaticCodeGenerator (JIT engine code generation)
+ * - StaticCodeGenerator (AOT engine code generation)
  * - Future Interpreter engine datamodel handling
  *
  * W3C SCXML References:

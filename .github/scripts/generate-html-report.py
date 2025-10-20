@@ -290,7 +290,7 @@ def generate_html(data):
     for suite in data['testsuites']:
         suite_passed = suite['tests'] - suite['failures'] - suite['errors']
         suite_pass_rate = (suite_passed / suite['tests'] * 100) if suite['tests'] > 0 else 0
-        engine_name = "Interpreter" if "Interpreter" in suite['name'] else "JIT"
+        engine_name = "Interpreter" if "Interpreter" in suite['name'] else "AOT"
         
         html += f"""
             <div class="summary-card">

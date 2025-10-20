@@ -204,7 +204,7 @@ public:
     /**
      * @brief Set current event object in JavaScript context (W3C SCXML 5.10)
      *
-     * Overload 2: For JIT engine with string literals
+     * Overload 2: For AOT engine with string literals
      * @param sessionId Target session
      * @param eventName Event name (compile-time constant)
      * @param eventData Event data as JSON string (compile-time constant)

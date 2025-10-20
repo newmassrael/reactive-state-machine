@@ -186,15 +186,15 @@ protected:
      * priority than external queue (no target or external targets).
      *
      * Uses shared EventProcessingAlgorithms for W3C-compliant processing.
-     * This ensures Interpreter and JIT engines use identical logic.
+     * This ensures Interpreter and AOT engines use identical logic.
      *
      * Supports both static (stateless) and non-static (stateful) policies.
      * Static methods can also be called through an instance in C++.
      */
     void processEventQueues() {
-        LOG_DEBUG("JIT processEventQueues: Starting internal queue processing");
+        LOG_DEBUG("AOT processEventQueues: Starting internal queue processing");
         // W3C SCXML C.1: Process internal queue first (high priority)
-        RSM::Core::JITEventQueue<EventWithMetadata> internalAdapter(internalQueue_);
+        RSM::Core::AOTEventQueue<EventWithMetadata> internalAdapter(internalQueue_);
         RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
             internalAdapter, [this](const EventWithMetadata &eventWithMeta) {
                 // W3C SCXML 5.10: Set pending event fields from metadata using EventMetadataHelper
@@ -203,7 +203,7 @@ protected:
                 RSM::Common::EventMetadataHelper::populatePolicyFromMetadata<StatePolicy, Event>(policy_,
                                                                                                  eventWithMeta);
 
-                LOG_DEBUG("JIT processEventQueues: Processing internal event, currentState={}",
+                LOG_DEBUG("AOT processEventQueues: Processing internal event, currentState={}",
                           static_cast<int>(currentState_));
                 // Process event through transition logic
                 State oldState = currentState_;
@@ -211,23 +211,23 @@ protected:
                 if (policy_.processTransition(currentState_, event, *this)) {
                     // Transition occurred: execute exit/entry actions
                     if (oldState != currentState_) {
-                        LOG_DEBUG("JIT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
+                        LOG_DEBUG("AOT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
                                   static_cast<int>(currentState_));
                         executeOnExit(oldState);
                         executeOnEntry(currentState_);
 
-                        LOG_DEBUG("JIT processEventQueues: Calling checkEventlessTransitions after state entry");
+                        LOG_DEBUG("AOT processEventQueues: Calling checkEventlessTransitions after state entry");
                         // W3C SCXML 3.13: Check eventless transitions immediately after state entry
                         // This ensures guards evaluate BEFORE queued error.execution events are processed
                         checkEventlessTransitions();
-                        LOG_DEBUG("JIT processEventQueues: Returned from checkEventlessTransitions");
+                        LOG_DEBUG("AOT processEventQueues: Returned from checkEventlessTransitions");
                     }
                 }
                 return true;  // Continue processing
             });
 
         // W3C SCXML C.1: Process external queue second (low priority)
-        RSM::Core::JITEventQueue<EventWithMetadata> externalAdapter(externalQueue_);
+        RSM::Core::AOTEventQueue<EventWithMetadata> externalAdapter(externalQueue_);
         RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
             externalAdapter, [this](const EventWithMetadata &eventWithMeta) {
                 // W3C SCXML 5.10: Set pending event fields from metadata using EventMetadataHelper
@@ -261,28 +261,28 @@ protected:
      * internal events have been processed.
      *
      * Uses shared EventProcessingAlgorithms for W3C-compliant processing.
-     * This ensures Interpreter and JIT engines use identical logic.
+     * This ensures Interpreter and AOT engines use identical logic.
      *
      * Uses iteration instead of recursion to prevent stack overflow
      * and includes loop detection to prevent infinite cycles.
      */
     void checkEventlessTransitions() {
-        LOG_DEBUG("JIT checkEventlessTransitions: Starting");
+        LOG_DEBUG("AOT checkEventlessTransitions: Starting");
         static const int MAX_ITERATIONS = 100;  // Safety limit
         int iterations = 0;
 
         // W3C SCXML 3.13: Use shared algorithm (Single Source of Truth)
         // Note: Eventless transitions can raise new internal events, use internal queue
-        RSM::Core::JITEventQueue<EventWithMetadata> adapter(internalQueue_);
+        RSM::Core::AOTEventQueue<EventWithMetadata> adapter(internalQueue_);
 
         while (iterations++ < MAX_ITERATIONS) {
             State oldState = currentState_;
-            LOG_DEBUG("JIT checkEventlessTransitions: Iteration {}, currentState={}", iterations,
+            LOG_DEBUG("AOT checkEventlessTransitions: Iteration {}, currentState={}", iterations,
                       static_cast<int>(currentState_));
 
             // Call processTransition with default event for eventless transitions
             if (policy_.processTransition(currentState_, Event(), *this)) {
-                LOG_DEBUG("JIT checkEventlessTransitions: Transition taken from {} to {}", static_cast<int>(oldState),
+                LOG_DEBUG("AOT checkEventlessTransitions: Transition taken from {} to {}", static_cast<int>(oldState),
                           static_cast<int>(currentState_));
                 if (oldState != currentState_) {
                     executeOnExit(oldState);
@@ -351,11 +351,11 @@ public:
         }
 
         // W3C SCXML 3.13: Process queues which internally calls checkEventlessTransitions after each transition
-        LOG_DEBUG("JIT initialize: After entry actions, before processEventQueues");
+        LOG_DEBUG("AOT initialize: After entry actions, before processEventQueues");
         processEventQueues();
-        LOG_DEBUG("JIT initialize: After processEventQueues, before final checkEventlessTransitions");
+        LOG_DEBUG("AOT initialize: After processEventQueues, before final checkEventlessTransitions");
         checkEventlessTransitions();  // Final check for any remaining eventless transitions
-        LOG_DEBUG("JIT initialize: After final checkEventlessTransitions");
+        LOG_DEBUG("AOT initialize: After final checkEventlessTransitions");
     }
 
     /**
@@ -462,7 +462,7 @@ public:
     /**
      * @brief Tick scheduler and process ready internal events (W3C SCXML 6.2)
      *
-     * For single-threaded JIT engines with delayed send support.
+     * For single-threaded AOT engines with delayed send support.
      * This method polls the event scheduler and processes any ready scheduled events
      * without injecting an external event. Should be called periodically in a polling
      * loop to allow delayed sends to fire at the correct time.

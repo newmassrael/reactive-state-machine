@@ -9,7 +9,7 @@ namespace RSM {
  *
  * Single Source of Truth for data binding semantics shared between:
  * - Interpreter engine (StateMachine)
- * - JIT engine (StaticCodeGenerator)
+ * - AOT engine (StaticCodeGenerator)
  *
  * W3C SCXML References:
  * - 5.3: Data Model and Data Manipulation

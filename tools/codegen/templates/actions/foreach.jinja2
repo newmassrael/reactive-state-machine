@@ -1,4 +1,4 @@
-// Foreach loop (JIT: delegated to JSEngine)
+// Foreach loop (AOT: delegated to JSEngine)
 try {
     ::RSM::Validation::validateForeachAttributes("{{ action.array }}", "{{ action.item }}");
 {% if action.actions and action.actions | length > 0 %}

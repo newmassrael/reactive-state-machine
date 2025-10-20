@@ -13,7 +13,7 @@ namespace RSM::ForeachHelper {
  * Handles variable declaration and type preservation for foreach loop variables.
  * If the variable doesn't exist, it will be declared with 'var' keyword.
  * This is the Single Source of Truth for foreach variable setting logic,
- * shared between Interpreter and JIT engines.
+ * shared between Interpreter and AOT engines.
  *
  * @param jsEngine Reference to JSEngine instance
  * @param sessionId JSEngine session ID
@@ -98,7 +98,7 @@ inline std::vector<std::string> evaluateForeachArray(JSEngine &jsEngine, const s
  * @brief Sets foreach iteration variables (item and optional index)
  *
  * Uses the shared setLoopVariable logic to ensure consistency between
- * Interpreter and JIT engines (ARCHITECTURE.md: Logic Commonization).
+ * Interpreter and AOT engines (ARCHITECTURE.md: Logic Commonization).
  *
  * @param jsEngine Reference to JSEngine instance
  * @param sessionId JSEngine session ID
@@ -151,7 +151,7 @@ inline void executeForeachWithoutBody(JSEngine &jsEngine, const std::string &ses
  * @brief Executes a foreach loop with custom action body and W3C 4.6 compliant error handling
  *
  * This is the Single Source of Truth for foreach error handling logic,
- * eliminating code duplication between Interpreter and JIT engines.
+ * eliminating code duplication between Interpreter and AOT engines.
  *
  * W3C SCXML 4.6 Compliance:
  * "If the evaluation of any child element of foreach causes an error,
@@ -185,7 +185,7 @@ inline void executeForeachWithoutBody(JSEngine &jsEngine, const std::string &ses
  * );
  * @endcode
  *
- * @example JIT Engine usage (generated code):
+ * @example AOT Engine usage (generated code):
  * @code
  * bool success = ::RSM::ForeachHelper::executeForeachWithActions(
  *     jsEngine, sessionId_.value(), "Var3", "Var2", "",

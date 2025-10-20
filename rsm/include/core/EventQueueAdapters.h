@@ -7,7 +7,7 @@
 namespace RSM::Core {
 
 /**
- * @brief JIT 엔진용 내부 이벤트 큐 어댑터
+ * @brief AOT 엔진용 내부 이벤트 큐 어댑터
  *
  * EventQueueManager<Event>를 EventProcessingAlgorithms에서 사용 가능한
  * 통일된 인터페이스로 래핑.
@@ -17,7 +17,7 @@ namespace RSM::Core {
  * @example
  * @code
  * EventQueueManager<Event> eventQueue_;
- * JITEventQueue<Event> adapter(eventQueue_);
+ * AOTEventQueue<Event> adapter(eventQueue_);
  *
  * EventProcessingAlgorithms::processInternalEventQueue(
  *     adapter,
@@ -25,13 +25,13 @@ namespace RSM::Core {
  * );
  * @endcode
  */
-template <typename EventType> class JITEventQueue {
+template <typename EventType> class AOTEventQueue {
 public:
     /**
      * @brief Constructor
      * @param queue EventQueueManager 참조
      */
-    explicit JITEventQueue(EventQueueManager<EventType> &queue) : queue_(queue) {}
+    explicit AOTEventQueue(EventQueueManager<EventType> &queue) : queue_(queue) {}
 
     /**
      * @brief 큐에 이벤트가 있는지 확인

@@ -157,7 +157,7 @@ std::string InternalEventTarget::buildEventData(const EventDescriptor &event) co
     }
 
     // W3C SCXML 5.10: Build event data from params (Single Source of Truth)
-    // Use EventDataHelper for consistent JSON construction (Interpreter + JIT)
+    // Use EventDataHelper for consistent JSON construction (Interpreter + AOT)
     if (event.data.empty() && !event.params.empty()) {
         return EventDataHelper::buildJsonFromParams(event.params);
     }

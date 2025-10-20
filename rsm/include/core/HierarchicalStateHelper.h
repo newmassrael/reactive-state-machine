@@ -12,7 +12,7 @@ namespace RSM::Core {
  * @brief Helper for hierarchical state operations (W3C SCXML 3.3)
  *
  * Single Source of Truth for hierarchical state logic shared between:
- * - StaticExecutionEngine (JIT engine)
+ * - StaticExecutionEngine (AOT engine)
  * - StateMachine (Interpreter engine)
  *
  * Ensures zero duplication per ARCHITECTURE.md principles.

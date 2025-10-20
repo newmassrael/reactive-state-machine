@@ -14,7 +14,7 @@ namespace RSM {
  *
  * Single Source of Truth for send action delay logic shared between:
  * - Interpreter engine (ActionExecutorImpl)
- * - JIT engine (StaticCodeGenerator)
+ * - AOT engine (StaticCodeGenerator)
  *
  * W3C SCXML References:
  * - 6.2: Send element delay/delayexpr semantics
@@ -30,7 +30,7 @@ public:
      * W3C SCXML 6.2: Delay formats - "5s", "100ms", "2min", ".5s", "0.5s"
      *
      * Single Source of Truth for delay parsing logic.
-     * Used by both Interpreter and JIT engines to ensure consistent timing.
+     * Used by both Interpreter and AOT engines to ensure consistent timing.
      *
      * @param delayStr Delay specification (e.g., "5s", "100ms", "2min")
      * @return Delay in milliseconds, 0 if invalid or empty
@@ -69,7 +69,7 @@ public:
      * @brief Scheduled event structure for delayed send
      *
      * Stores event with its scheduled fire time and optional sendid for cancellation.
-     * Used by JIT engine to implement W3C SCXML delayed event delivery.
+     * Used by AOT engine to implement W3C SCXML delayed event delivery.
      *
      * W3C SCXML 6.2.5: sendid enables event cancellation via <cancel sendidexpr="..."/>
      * W3C SCXML 5.10: eventData stores _event.data for param elements (test186)
@@ -91,12 +91,12 @@ public:
     };
 
     /**
-     * @brief Simple event scheduler for JIT-generated state machines
+     * @brief Simple event scheduler for AOT-generated state machines
      *
      * Provides basic delayed event delivery without full EventSchedulerImpl overhead.
      * Follows "You don't pay for what you don't use" philosophy.
      *
-     * Thread-safety: Not thread-safe (JIT state machines are single-threaded)
+     * Thread-safety: Not thread-safe (AOT state machines are single-threaded)
      * Performance: O(log n) insert, O(log n) pop
      */
     template <typename EventType> class SimpleScheduler {

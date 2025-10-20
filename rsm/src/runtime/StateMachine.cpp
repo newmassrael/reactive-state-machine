@@ -1018,7 +1018,7 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
             eventMatches = eventDescriptors.empty();
         } else {
             // W3C SCXML 3.12: Check if ANY descriptor matches the event
-            // Use TransitionHelper for Single Source of Truth (Zero Duplication with JIT engine)
+            // Use TransitionHelper for Single Source of Truth (Zero Duplication with AOT engine)
             eventMatches = RSM::TransitionHelper::matchesAnyEventDescriptor(eventDescriptors, eventName);
         }
 
@@ -2799,7 +2799,7 @@ bool StateMachine::setupJSEnvironment() {
                  binding.empty() ? "early (default)" : binding);
 
         // Use BindingHelper to determine initialization strategy
-        // This ensures W3C SCXML 5.3 compliance through shared logic with JIT engine
+        // This ensures W3C SCXML 5.3 compliance through shared logic with AOT engine
         bool shouldAssignValue = BindingHelper::shouldAssignValueAtDocumentLoad(binding);
 
         for (const auto &dataInfo : allDataItems) {

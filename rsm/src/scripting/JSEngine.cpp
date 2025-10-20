@@ -388,7 +388,7 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
 std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, const std::string &eventName,
                                                 const std::string &eventData, const std::string &eventType,
                                                 const std::string &sendId, const std::string &origin) {
-    // For JIT engine: Create simple Event object from string parameters
+    // For AOT engine: Create simple Event object from string parameters
     auto event = std::make_shared<Event>(eventName, eventType);
     if (!eventData.empty()) {
         event->setRawJsonData(eventData);

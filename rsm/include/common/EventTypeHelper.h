@@ -10,11 +10,11 @@ namespace RSM {
  *
  * Single Source of Truth for event type detection shared between:
  * - Interpreter engine (EventRaiserImpl, ActionExecutorImpl)
- * - JIT engine (StaticCodeGenerator)
+ * - AOT engine (StaticCodeGenerator)
  *
  * W3C SCXML 5.10.1: Event type must be "internal", "platform", or "external"
  *
- * ARCHITECTURE.md: Zero Duplication Principle - All jit engine logic MUST
+ * ARCHITECTURE.md: Zero Duplication Principle - All AOT engine logic MUST
  * reuse interpreter engine implementations through shared helper functions.
  */
 class EventTypeHelper {

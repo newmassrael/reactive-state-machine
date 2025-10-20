@@ -9,7 +9,7 @@ namespace RSM::Core {
  *
  * Single Source of Truth for event metadata shared between:
  * - Interpreter engine (StateMachine)
- * - JIT engine (StaticExecutionEngine)
+ * - AOT engine (StaticExecutionEngine)
  *
  * Consolidates all event-related metadata into a single structure to simplify
  * API and reduce parameter coupling. All fields are optional (empty string = not set).

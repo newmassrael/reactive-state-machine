@@ -1,8 +1,8 @@
 ## Core Development Principles
 
 ### Architecture First
-- **Required Before Engine Modifications**: Always refer to ARCHITECTURE.md first before modifying Interpreter or JIT (Static) engines
-- **Zero Duplication Principle**: Interpreter and JIT engines must share logic through Helper functions
+- **Required Before Engine Modifications**: Always refer to ARCHITECTURE.md first before modifying Interpreter or AOT (Static) engines
+- **Zero Duplication Principle**: Interpreter and AOT engines must share logic through Helper functions
 - **Single Source of Truth**: Duplicate implementations prohibited, shared Helper classes required
   - Examples: SendHelper, TransitionHelper, ForeachHelper, GuardHelper
 
@@ -93,34 +93,34 @@ env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.
      rsm_generate_static_w3c_test(279 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.2.2: early binding variable initialization
      ```
 
-2. **Create JIT Test Registry File** `tests/w3c/jit_tests/TestXXX.h`:
-   - Follow SimpleJitTest pattern for standard tests
+2. **Create AOT Test Registry File** `tests/w3c/aot_tests/TestXXX.h`:
+   - Follow SimpleAotTest pattern for standard tests
    - Include W3C SCXML specification reference in docstring
    - Example:
      ```cpp
      #pragma once
-     #include "SimpleJitTest.h"
+     #include "SimpleAotTest.h"
      #include "testXXX_sm.h"
 
-     namespace RSM::W3C::JitTests {
+     namespace RSM::W3C::AotTests {
 
      /**
       * @brief W3C SCXML X.Y.Z: Feature description
       *
       * Detailed test description referencing W3C SCXML spec.
       */
-     struct TestXXX : public SimpleJitTest<TestXXX, XXX> {
-         static constexpr const char *DESCRIPTION = "Feature name (W3C X.Y.Z JIT)";
+     struct TestXXX : public SimpleAotTest<TestXXX, XXX> {
+         static constexpr const char *DESCRIPTION = "Feature name (W3C X.Y.Z AOT)";
          using SM = RSM::Generated::testXXX::testXXX;
      };
 
      // Auto-register
-     inline static JitTestRegistrar<TestXXX> registrar_TestXXX;
+     inline static AotTestRegistrar<TestXXX> registrar_TestXXX;
 
-     }  // namespace RSM::W3C::JitTests
+     }  // namespace RSM::W3C::AotTests
      ```
 
-3. **Add to `tests/w3c/jit_tests/AllJitTests.h`**:
+3. **Add to `tests/w3c/aot_tests/AllAotTests.h`**:
    - Include new test header in appropriate section
    - Example:
      ```cpp
@@ -130,8 +130,8 @@ env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.
 
 4. **Result**:
    - Static code generated to `build/tests/w3c_static_generated/testXXX_sm.h`
-   - JIT test auto-registered via `JitTestRegistrar`
-   - Both Interpreter and JIT tests pass with pure static code
+   - AOT test auto-registered via `AotTestRegistrar`
+   - Both Interpreter and AOT tests pass with pure static code
 
 ### Adding W3C Tests Requiring Interpreter Wrappers
 **When**: Static code generation fails (no initial state, dynamic invoke, parallel initial state format, etc.)
@@ -147,13 +147,13 @@ env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.
      ```
 
 2. **Add to `tests/w3c/W3CTestRunner.cpp`**:
-   - Add test case to `runJitTest()` dynamic invoke section
-   - Ensures JIT engine recognizes these as Interpreter wrapper tests
+   - Add test case to `runAotTest()` dynamic invoke section
+   - Ensures AOT engine recognizes these as Interpreter wrapper tests
    - Example:
      ```cpp
      case 355:
      case 364:
-         LOG_WARN("W3C JIT Test: Test {} uses dynamic invoke - tested via Interpreter engine", testId);
+         LOG_WARN("W3C AOT Test: Test {} uses dynamic invoke - tested via Interpreter engine", testId);
          report.validationResult = ValidationResult(true, TestResult::PASS, "Tested via Interpreter engine (dynamic invoke)");
          report.executionContext.finalState = "pass";
          return report;
@@ -162,7 +162,7 @@ env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.
 3. **Result**:
    - Wrapper generated automatically by Python code generator
    - Test runs using perfect Interpreter engine
-   - Both Interpreter and JIT tests pass
+   - Both Interpreter and AOT tests pass
 
 **Common Scenarios**:
 - No initial state: W3C SCXML 3.6 defaults to first child in document order
@@ -177,7 +177,7 @@ env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.
 
 1. **ARCHITECTURE.md** - Core architecture principles and design decisions
    - Zero Duplication Principle (Helper functions)
-   - All-or-Nothing Strategy (JIT vs Interpreter)
+   - All-or-Nothing Strategy (AOT vs Interpreter)
    - Feature Handling Strategy (Static vs Dynamic)
    - Single Source of Truth requirements
 
@@ -198,7 +198,7 @@ env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.
 - [ ] **W3C References**: All comments use W3C SCXML specification references?
 - [ ] **Template Modifications**: Jinja2 templates updated (not direct code generation)?
 - [ ] **Test Integration**:
-  - [ ] Static tests: CMakeLists.txt + JIT registry (TestXXX.h + AllJitTests.h)?
+  - [ ] Static tests: CMakeLists.txt + AOT registry (TestXXX.h + AllAotTests.h)?
   - [ ] Wrapper tests: CMakeLists.txt + W3CTestRunner.cpp dynamic invoke section?
 - [ ] **Implementation Completeness**: No TODO, no partial features, no placeholders?
 - [ ] **Git Quality**: Semantic commits with professional descriptions?

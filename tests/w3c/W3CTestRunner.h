@@ -202,11 +202,11 @@ public:
     std::vector<TestReport> runAllMatchingTests(int testId);
 
     /**
-     * @brief Run a single test with jit engine (static generated code)
+     * @brief Run a single test with AOT engine (static generated code)
      * @param testId Test ID number (e.g., 144, 147)
-     * @return TestReport with engineType="jit"
+     * @return TestReport with engineType="aot"
      */
-    TestReport runJitTest(int testId);
+    TestReport runAotTest(int testId);
 
     /**
      * @brief Run filtered tests

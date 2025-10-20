@@ -8,7 +8,7 @@ namespace RSM::Core {
 /**
  * @brief W3C SCXML 이벤트 처리 알고리즘 (Single Source of Truth)
  *
- * Interpreter와 JIT 엔진의 모든 이벤트 처리 로직을 템플릿 기반으로 공유.
+ * Interpreter와 AOT 엔진의 모든 이벤트 처리 로직을 템플릿 기반으로 공유.
  *
  * 설계 원칙:
  * 1. 알고리즘만 공유, 자료구조는 각 엔진 최적화 유지
@@ -24,20 +24,20 @@ public:
      * @brief W3C SCXML 3.12.1: 내부 이벤트 큐 처리 (FIFO)
      *
      * Macrostep 완료 시 모든 내부 이벤트를 FIFO 순서로 소진.
-     * Interpreter와 JIT 엔진 모두 동일한 알고리즘 사용.
+     * Interpreter와 AOT 엔진 모두 동일한 알고리즘 사용.
      *
      * @tparam EventQueue 이벤트 큐 타입
      *   요구 메서드: bool hasEvents() const, EventType popNext()
      * @tparam EventHandler 이벤트 처리 콜백 타입
      *   시그니처: bool handler(EventType event)
      *
-     * @param queue 내부 이벤트 큐 (JITEventQueue 또는 InterpreterEventQueue)
+     * @param queue 내부 이벤트 큐 (AOTEventQueue 또는 InterpreterEventQueue)
      * @param handler 이벤트 처리 함수 (false 반환 시 처리 중단)
      *
-     * @example JIT 엔진:
+     * @example AOT 엔진:
      * @code
-     * JITEventQueue jitQueue(eventQueue_);
-     * processInternalEventQueue(jitQueue, [this](Event e) {
+     * AOTEventQueue aotQueue(eventQueue_);
+     * processInternalEventQueue(aotQueue, [this](Event e) {
      *     return processInternalEvent(e);
      * });
      * @endcode
@@ -130,7 +130,7 @@ public:
      * @brief W3C SCXML 3.3 / D.1: Complete Macrostep 처리
      *
      * 외부 이벤트 처리 → 내부 이벤트 소진 → Eventless transitions.
-     * Interpreter와 JIT 엔진의 핵심 이벤트 처리 패턴.
+     * Interpreter와 AOT 엔진의 핵심 이벤트 처리 패턴.
      *
      * @tparam StateMachine 상태 머신 타입
      * @tparam Event 이벤트 타입

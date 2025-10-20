@@ -43,7 +43,7 @@ private:
         if (eventName.empty()) return;
         ensureJSEngine();
         std::string actualType = eventType.empty() ? this->getEventType(eventName) : eventType;
-        LOG_DEBUG("JIT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}'",
+        LOG_DEBUG("AOT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}'",
                   eventName, eventData, actualType, sendId);
         ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData,
                                                     actualType, sendId, origin);

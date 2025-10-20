@@ -107,9 +107,9 @@ private:
 };
 
 /**
- * @brief JIT engine parallel state manager adapter
+ * @brief AOT engine parallel state manager adapter
  *
- * Adapts JIT's Policy class (containing parallel region state variables) to the unified
+ * Adapts AOT's Policy class (containing parallel region state variables) to the unified
  * interface required by ParallelProcessingAlgorithms.
  *
  * Implementation notes:
@@ -123,9 +123,9 @@ private:
  *         - processEvent(State regionState, Event event) method
  *         - isFinalState(State regionState) method
  *
- * @example Usage in generated JIT code:
+ * @example Usage in generated AOT code:
  * @code
- * RSM::Core::JITParallelStateManager<MyStateMachinePolicy> adapter(policy_, State::ParallelState);
+ * RSM::Core::AOTParallelStateManager<MyStateMachinePolicy> adapter(policy_, State::ParallelState);
  * std::vector<State> regions = { State::Region1, State::Region2 };
  * RSM::Core::ParallelProcessingAlgorithms::enterAllRegions(
  *     adapter,
@@ -133,7 +133,7 @@ private:
  * );
  * @endcode
  */
-template <typename Policy> class JITParallelStateManager {
+template <typename Policy> class AOTParallelStateManager {
 public:
     using State = typename Policy::State;
 
@@ -142,7 +142,7 @@ public:
      * @param policy Reference to Policy instance containing parallel state data
      * @param parallelState The parallel state enum value (for region variable access)
      */
-    JITParallelStateManager(Policy &policy, State parallelState) : policy_(policy), parallelState_(parallelState) {}
+    AOTParallelStateManager(Policy &policy, State parallelState) : policy_(policy), parallelState_(parallelState) {}
 
     /**
      * @brief Enter a parallel region (W3C SCXML 3.4)

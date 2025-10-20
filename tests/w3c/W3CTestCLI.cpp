@@ -379,7 +379,7 @@ int main(int argc, char *argv[]) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
 
-            // Get all reports from reporter (includes interpreter and JIT)
+            // Get all reports from reporter (includes interpreter and AOT)
             allReports = runner.getReporter()->getAllReports();
 
             // Complete test run reporting
@@ -403,8 +403,8 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            // Run jit engine tests for all test IDs (including variants)
-            LOG_INFO("W3C CLI: Running jit engine tests for all {} tests (including variants)", allTestIds.size());
+            // Run AOT engine tests for all test IDs (including variants)
+            LOG_INFO("W3C CLI: Running AOT engine tests for all {} tests (including variants)", allTestIds.size());
             for (const std::string &testIdStr : allTestIds) {
                 try {
                     // Extract numeric portion from testId (e.g., "403a" -> 403)
@@ -422,38 +422,38 @@ int main(int argc, char *argv[]) {
                     }
 
                     int testId = std::stoi(numericPart);
-                    RSM::W3C::TestReport jitReport = runner.runJitTest(testId);
+                    RSM::W3C::TestReport aotReport = runner.runAotTest(testId);
                     // Preserve the original testId (with variant suffix if present)
-                    jitReport.testId = testIdStr;
-                    allReports.push_back(jitReport);
-                    runner.getReporter()->reportTestResult(jitReport);
+                    aotReport.testId = testIdStr;
+                    allReports.push_back(aotReport);
+                    runner.getReporter()->reportTestResult(aotReport);
 
-                    // Update summary with JIT results
+                    // Update summary with AOT results
                     summary.totalTests++;
-                    switch (jitReport.validationResult.finalResult) {
+                    switch (aotReport.validationResult.finalResult) {
                     case RSM::W3C::TestResult::PASS:
                         summary.passedTests++;
                         break;
                     case RSM::W3C::TestResult::FAIL:
                         summary.failedTests++;
-                        summary.failedTestIds.push_back(jitReport.testId);
+                        summary.failedTestIds.push_back(aotReport.testId);
                         break;
                     case RSM::W3C::TestResult::ERROR:
                     case RSM::W3C::TestResult::TIMEOUT:
                         summary.errorTests++;
-                        summary.errorTestIds.push_back(jitReport.testId);
+                        summary.errorTestIds.push_back(aotReport.testId);
                         break;
                     }
-                    summary.totalExecutionTime += jitReport.executionContext.executionTime;
+                    summary.totalExecutionTime += aotReport.executionContext.executionTime;
                 } catch (const std::exception &e) {
-                    LOG_ERROR("W3C CLI: JIT engine test {} failed: {}", testIdStr, e.what());
+                    LOG_ERROR("W3C CLI: AOT engine test {} failed: {}", testIdStr, e.what());
 
-                    // Create error report for failed JIT test
+                    // Create error report for failed AOT test
                     RSM::W3C::TestReport errorReport;
                     errorReport.testId = testIdStr;
-                    errorReport.engineType = "jit";
+                    errorReport.engineType = "aot";
                     errorReport.validationResult.finalResult = RSM::W3C::TestResult::ERROR;
-                    errorReport.validationResult.reason = std::string("JIT engine error: ") + e.what();
+                    errorReport.validationResult.reason = std::string("AOT engine error: ") + e.what();
                     errorReport.executionContext.executionTime = std::chrono::milliseconds(0);
 
                     allReports.push_back(errorReport);
@@ -471,7 +471,7 @@ int main(int argc, char *argv[]) {
                 summary.passRate = (static_cast<double>(summary.passedTests) / summary.totalTests) * 100.0;
             }
 
-            // Generate final report with both interpreter and JIT results
+            // Generate final report with both interpreter and AOT results
             runner.getReporter()->generateSummary(summary);
             runner.getReporter()->endTestRun();
         }
@@ -494,14 +494,14 @@ int main(int argc, char *argv[]) {
             std::vector<std::string> errorTestIds;
         };
 
-        EngineStats interpreterStats, jitStats;
+        EngineStats interpreterStats, aotStats;
 
         for (const auto &report : allReports) {
             EngineStats *engineStats = nullptr;
             if (report.engineType == "interpreter") {
                 engineStats = &interpreterStats;
-            } else if (report.engineType == "jit") {
-                engineStats = &jitStats;
+            } else if (report.engineType == "aot") {
+                engineStats = &aotStats;
             }
 
             if (engineStats) {
@@ -539,9 +539,9 @@ int main(int argc, char *argv[]) {
             printf("├──────────────┼─────────┼────────┼────────┼────────┤\n");
             printf("│ Interpreter  │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", interpreterStats.total,
                    interpreterStats.passed, interpreterStats.failed, interpreterStats.errors);
-            if (jitStats.total > 0) {
-                printf("│ JIT          │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", jitStats.total, jitStats.passed,
-                       jitStats.failed, jitStats.errors);
+            if (aotStats.total > 0) {
+                printf("│ AOT          │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", aotStats.total, aotStats.passed,
+                       aotStats.failed, aotStats.errors);
             }
             printf("├──────────────┼─────────┼────────┼────────┼────────┤\n");
             printf("│ Total        │ %-7zu │ %-6zu │ %-6zu │ %-6zu │\n", summary.totalTests, summary.passedTests,
@@ -573,12 +573,12 @@ int main(int argc, char *argv[]) {
                 printf("\n");
             }
 
-            // Show JIT engine failures
-            if (!jitStats.failedTestIds.empty()) {
-                printf("❌ Failed Tests (JIT): ");
-                for (size_t i = 0; i < jitStats.failedTestIds.size(); ++i) {
-                    printf("%s", jitStats.failedTestIds[i].c_str());
-                    if (i < jitStats.failedTestIds.size() - 1) {
+            // Show AOT engine failures
+            if (!aotStats.failedTestIds.empty()) {
+                printf("❌ Failed Tests (AOT): ");
+                for (size_t i = 0; i < aotStats.failedTestIds.size(); ++i) {
+                    printf("%s", aotStats.failedTestIds[i].c_str());
+                    if (i < aotStats.failedTestIds.size() - 1) {
                         printf(", ");
                     }
                 }
@@ -597,12 +597,12 @@ int main(int argc, char *argv[]) {
                 printf("\n");
             }
 
-            // Show JIT engine errors
-            if (!jitStats.errorTestIds.empty()) {
-                printf("🚨 Error Tests (JIT): ");
-                for (size_t i = 0; i < jitStats.errorTestIds.size(); ++i) {
-                    printf("%s", jitStats.errorTestIds[i].c_str());
-                    if (i < jitStats.errorTestIds.size() - 1) {
+            // Show AOT engine errors
+            if (!aotStats.errorTestIds.empty()) {
+                printf("🚨 Error Tests (AOT): ");
+                for (size_t i = 0; i < aotStats.errorTestIds.size(); ++i) {
+                    printf("%s", aotStats.errorTestIds[i].c_str());
+                    if (i < aotStats.errorTestIds.size() - 1) {
                         printf(", ");
                     }
                 }

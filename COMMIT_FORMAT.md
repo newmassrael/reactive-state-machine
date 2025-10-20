@@ -66,11 +66,11 @@ refactor: Eliminate code duplication with shared helper functions
 
 ### Good: Complex Feature (1-3 items)
 ```
-feat: Run jit engine for all 202 W3C tests with variant support
+feat: Run AOT engine for all 202 W3C tests with variant support
 
-- Execute jit engine for all tests (unsupported return FAIL)
-- Preserve variant suffixes (403a, 403b, 403c) in JIT execution
-- Display failed tests separately by engine type (Interpreter/JIT)
+- Execute AOT engine for all tests (unsupported return FAIL)
+- Preserve variant suffixes (403a, 403b, 403c) in AOT execution
+- Display failed tests separately by engine type (Interpreter/AOT)
 ```
 
 ### Good: Concise (1-2 items when sufficient)
@@ -78,7 +78,7 @@ feat: Run jit engine for all 202 W3C tests with variant support
 refactor: Extract TransitionHelper as Single Source of Truth
 
 - Implement W3C SCXML 3.12 event matching in shared helper
-- Eliminate 35 LOC duplication between Interpreter and JIT engines
+- Eliminate 35 LOC duplication between Interpreter and AOT engines
 ```
 
 ### Bad: Too Many Details
@@ -146,7 +146,7 @@ refactor: Remove Phase markers and add code review guidelines
 refactor: Implement ForeachHelper as Single Source of Truth
 
 - Add ForeachHelper::setLoopVariable() with W3C SCXML 4.6 compliance
-- Refactor Interpreter and JIT engines to use shared helper (eliminate 40+ LOC duplication)
+- Refactor Interpreter and AOT engines to use shared helper (eliminate 40+ LOC duplication)
 - Fix test155 type preservation (executeScript vs setVariable for JavaScript type evaluation)
 ```
 
@@ -156,7 +156,7 @@ feat: Add W3C SCXML test190 with runtime expression detection
 
 - Implement dynamic invoke detection in StaticCodeGenerator
 - Generate Interpreter wrapper for tests with runtime expressions
-- All 202 W3C tests pass on both Interpreter and JIT engines
+- All 202 W3C tests pass on both Interpreter and AOT engines
 ```
 
 ### Good: Bug Fix

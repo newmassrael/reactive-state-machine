@@ -1,15 +1,15 @@
-# Architecture: Static (JIT) + Dynamic (Interpreter) SCXML Engine
+# Architecture: Static (AOT) + Dynamic (Interpreter) SCXML Engine
 
 ## Vision
 
 **Goal**: W3C SCXML 1.0 100% compliance through intelligent code generation.
 
-**Philosophy**: "You don't pay for what you don't use" - automatically choose JIT or Interpreter engine based on SCXML features.
+**Philosophy**: "You don't pay for what you don't use" - automatically choose AOT or Interpreter engine based on SCXML features.
 
 **All-or-Nothing Strategy**: Code generator analyzes SCXML and chooses execution engine:
-- **JIT Engine (Static)**: When all features are known at compile-time → generates optimized C++ code
+- **AOT Engine (Static)**: When all features are known at compile-time → generates optimized C++ code
 - **Interpreter Engine (Dynamic)**: When runtime features detected → uses proven Interpreter engine
-- **No Hybrid**: Single SCXML never mixes JIT + Interpreter (clean separation)
+- **No Hybrid**: Single SCXML never mixes AOT + Interpreter (clean separation)
 - **Decision**: Made by code generator during analysis, transparent to user
 
 **Key Trigger**: Dynamic invoke (`<invoke srcexpr>`, `<invoke><content>`, `<invoke contentExpr>`) → Entire SCXML runs on Interpreter
@@ -111,9 +111,9 @@ Generated code works for ALL SCXML (W3C 100%)
 
 ### Static vs Interpreter Decision Criteria
 
-**Critical Principle**: The decision between Static (JIT) and Interpreter wrapper is based on **logical implementability at compile-time**, NOT on current StaticCodeGenerator implementation status.
+**Critical Principle**: The decision between Static (AOT) and Interpreter wrapper is based on **logical implementability at compile-time**, NOT on current StaticCodeGenerator implementation status.
 
-#### Static JIT Generation (Compile-Time Known)
+#### Static AOT Generation (Compile-Time Known)
 
 **Requirements**: All SCXML features can be resolved at compile-time
 
@@ -261,7 +261,7 @@ struct test319Policy {
 - **Logical Possibility**: Can this feature be implemented statically? (Design decision)
 - **Current Support**: Does StaticCodeGenerator currently support this? (Implementation status)
 
-**Critical Rule**: If a feature is **logically implementable at compile-time**, it MUST be classified as Static JIT, regardless of current StaticCodeGenerator implementation status. Missing infrastructure should be implemented, not bypassed with Interpreter wrappers.
+**Critical Rule**: If a feature is **logically implementable at compile-time**, it MUST be classified as Static AOT, regardless of current StaticCodeGenerator implementation status. Missing infrastructure should be implemented, not bypassed with Interpreter wrappers.
 
 **Static-First Principle**: All SCXML features should be statically implementable UNLESS they require external world communication (HTTP requests, network I/O, file system access, etc.). Since all SCXML metadata exists in the parsed document, any feature that operates solely on this metadata can be resolved at compile-time through parsing and code generation.
 
@@ -287,18 +287,18 @@ struct test319Policy {
   - SendSchedulingHelper.cancelEvent() reused across engines
   - scheduleEvent() supports sendId parameter for tracking
   - StaticCodeGenerator parses `<cancel>` and generates `cancelEvent()` call
-  - **Status**: Fully implemented in Static JIT with Zero Duplication
+  - **Status**: Fully implemented in Static AOT with Zero Duplication
 
 - `<send target="#_parent">`: **Logically static** ✅, **IMPLEMENTED** ✅ (test226, test276)
   - Target is literal string (compile-time known)
   - **Implementation**: CRTP template pattern for parent pointer passing
   - **Infrastructure**: SendHelper::sendToParent() for event routing (W3C SCXML 6.2)
-  - **Status**: Fully implemented in Static JIT with Zero Duplication
+  - **Status**: Fully implemented in Static AOT with Zero Duplication
   - **Features**:
     - Type-safe parent event sending via template parameter
     - W3C SCXML C.1: Uses external event queue (raiseExternal)
     - Parameter passing via `child->getPolicy().varName = value`
-  - **Test Results**: test226 ✅ test276 ✅ (100% pass rate, Interpreter + JIT)
+  - **Test Results**: test226 ✅ test276 ✅ (100% pass rate, Interpreter + AOT)
 
 - `_event.name` / `_event.type`: **Logically static** ✅, **IMPLEMENTED** ✅ (test318)
   - **Static-First Principle Example**: Event metadata from SCXML document, no external communication
@@ -308,8 +308,8 @@ struct test319Policy {
     - `pendingEventName_` member variable stores current event
     - `getEventName()` converts Event enum to string
     - `setCurrentEventInJSEngine()` binds `_event = {name, type, data}` in JavaScript context
-  - **Status**: Fully implemented in Static JIT with Zero Duplication
-  - **Test Results**: test318 ✅ (100% pass rate, Interpreter + JIT)
+  - **Status**: Fully implemented in Static AOT with Zero Duplication
+  - **Test Results**: test318 ✅ (100% pass rate, Interpreter + AOT)
   - **Design Decision**: Initially considered Interpreter wrapper, but recognized _event.name is SCXML metadata → implemented in StaticCodeGenerator per Static-First Principle
 
 - `<cancel sendidexpr="_event.sendid"/>`: **Logically dynamic** ❌, **requires Interpreter** 🔴
@@ -322,7 +322,7 @@ struct test319Policy {
 2. Try static generation: `scxml-codegen /tmp/test.scxml -o /tmp/`
 3. Check generated header for wrapper comments:
    - "// W3C SCXML X.X: ... detected - using Interpreter engine" → Interpreter wrapper
-   - No wrapper comments → Static JIT generated
+   - No wrapper comments → Static AOT generated
 
 ### Policy Generation Strategy
 
@@ -375,7 +375,7 @@ struct test319Policy {
 
 **External Communication**:
 - **Invoke** (All-or-Nothing strategy):
-  - ✅ Static child SCXML (`<invoke type="scxml" src="child.scxml">`) → Generated child classes, JIT engine for entire SCXML
+  - ✅ Static child SCXML (`<invoke type="scxml" src="child.scxml">`) → Generated child classes, AOT engine for entire SCXML
   - 🔴 Dynamic invocation (`<invoke srcexpr="...">`, `<invoke><content>`, `<invoke contentExpr="...">`) → **Entire SCXML runs on Interpreter engine**
   - **Decision**: Code generator scans ALL invoke elements in SCXML at generation time
   - **Strategy**: If ANY invoke is dynamic → Generate Interpreter wrapper for ENTIRE SCXML (no hybrid)
@@ -383,24 +383,24 @@ struct test319Policy {
   - **Integration**: Tests requiring Interpreter wrappers must be registered in `tests/CMakeLists.txt` and `tests/w3c/W3CTestRunner.cpp` (see CLAUDE.md for detailed steps)
   - **Rationale**:
     - Dynamic invoke requires runtime SCXML loading and parent-child communication through StateMachine infrastructure
-    - Mixing JIT and Interpreter within single SCXML creates complexity and violates Zero Duplication principle
-    - All-or-Nothing ensures clean separation: either fully static (JIT) or fully dynamic (Interpreter)
+    - Mixing AOT and Interpreter within single SCXML creates complexity and violates Zero Duplication principle
+    - All-or-Nothing ensures clean separation: either fully static (AOT) or fully dynamic (Interpreter)
     - Maintains full W3C SCXML 6.4 compliance through proven Interpreter engine
   - **All-or-Nothing Extension**: Child wrapper detection (W3C SCXML 6.4)
     - Code generator analyzes generated child headers at compile-time
     - Detection markers: `#include "runtime/StateMachine.h"`, Interpreter wrapper class structure
     - **Rule**: If child generates as Interpreter wrapper → Parent also uses Interpreter wrapper
-    - **Rationale**: Parent-child communication requires compatible infrastructure (no JIT + Interpreter mix)
+    - **Rationale**: Parent-child communication requires compatible infrastructure (no AOT + Interpreter mix)
     - **Implementation**: StaticCodeGenerator.cpp Lines 486-507
   - **Parent-Child Communication** (Static invoke, W3C SCXML 6.2, 6.4):
-    - ✅ `<send target="#_parent">` in child SCXML → JIT engine supported (test226, test276)
+    - ✅ `<send target="#_parent">` in child SCXML → AOT engine supported (test226, test276)
     - **Infrastructure**:
       - CRTP template pattern: `template<typename ParentSM> class ChildSM`
       - Parent pointer passing: `explicit ChildSM(ParentSM* parent)`
       - Event routing: `SendHelper::sendToParent(parent_, ParentSM::Event::EventName)`
       - W3C SCXML C.1 compliance: Uses `raiseExternal()` for external event queue
     - **Parameter Passing**: Direct member access via `child->getPolicy().varName = value`
-    - **Test Results**: test226 ✅ test276 ✅ (100% pass rate, Interpreter + JIT)
+    - **Test Results**: test226 ✅ test276 ✅ (100% pass rate, Interpreter + AOT)
     - **Status**: Fully implemented with Zero Duplication
 - ✅ Send with delay → SendSchedulingHelper::SimpleScheduler<Event> (lazy-init)
 
@@ -455,7 +455,7 @@ public:
         }
 
         if (model.hasStaticInvoke()) {
-            // All invokes are static - generate JIT code with child classes
+            // All invokes are static - generate AOT code with child classes
             generateStaticInvokeHandling(model, code);
         }
         
@@ -482,7 +482,7 @@ public:
 
 ### Design Principle: Logic Commonization
 
-**Critical Rule**: All jit engine logic MUST reuse interpreter engine implementations through shared helper functions. This ensures:
+**Critical Rule**: All AOT engine logic MUST reuse interpreter engine implementations through shared helper functions. This ensures:
 - Single source of truth for W3C SCXML semantics
 - Bug fixes automatically benefit both static and interpreter engines
 - Compliance guarantee through proven implementations
@@ -539,7 +539,7 @@ class EventQueueManager {
 - W3C SCXML 4.6: Foreach variable declaration and type preservation
 - Single Source of Truth for foreach variable setting logic
 - Location: `rsm/include/common/ForeachHelper.h`
-- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
+- Used by: Interpreter engine (ActionExecutorImpl), AOT engine (generated code)
 - Features:
   - Variable existence check (`'var' in this`)
   - Automatic declaration with `var` keyword for new variables
@@ -551,7 +551,7 @@ class EventQueueManager {
 - W3C SCXML 6.2: Send element target validation and parent-child event routing
 - Single Source of Truth for send action logic shared between engines
 - Location: `rsm/include/common/SendHelper.h`
-- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
+- Used by: Interpreter engine (ActionExecutorImpl), AOT engine (generated code)
 - Features:
   - **validateTarget()**: Target format validation (rejects targets starting with "!")
   - **isInvalidTarget()**: Boolean check for invalid targets
@@ -567,7 +567,7 @@ class EventQueueManager {
 - W3C SCXML 5.3, 5.4, B.2: Assignment location validation and system variable immutability
 - Single Source of Truth for assign action validation shared between engines
 - Location: `rsm/include/common/AssignHelper.h`
-- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
+- Used by: Interpreter engine (ActionExecutorImpl), AOT engine (generated code)
 - Features:
   - **isValidLocation()**: Empty location detection + read-only system variable validation
     - Rejects empty strings (W3C SCXML 5.3/5.4)
@@ -582,7 +582,7 @@ class EventQueueManager {
 - W3C SCXML 5.5, 5.7: Donedata param and content evaluation
 - Single Source of Truth for done event data generation shared between engines
 - Location: `rsm/include/common/DoneDataHelper.h`
-- Used by: Interpreter engine (StateMachine::evaluateDoneData), JIT engine (StaticCodeGenerator::generateDoneDataCode)
+- Used by: Interpreter engine (StateMachine::evaluateDoneData), AOT engine (StaticCodeGenerator::generateDoneDataCode)
 - Features:
   - **evaluateContent()**: Evaluate `<content>` expression to set entire _event.data value
   - **evaluateParams()**: Evaluate `<param>` elements to create JSON object with name:value pairs
@@ -597,7 +597,7 @@ class EventQueueManager {
 - W3C SCXML 6.2: Delay string parsing and event scheduling logic
 - Single Source of Truth for delayed send implementation shared between engines
 - Location: `rsm/include/common/SendSchedulingHelper.h`
-- Used by: Interpreter engine (ActionExecutorImpl), JIT engine (generated code)
+- Used by: Interpreter engine (ActionExecutorImpl), AOT engine (generated code)
 - Features:
   - Delay format parsing: "5s", "100ms", "2min", "1h", ".5s", "0.5s"
   - SimpleScheduler with O(log n) priority queue for efficient scheduling
@@ -607,10 +607,10 @@ class EventQueueManager {
 - Benefits: Zero code duplication, guaranteed W3C compliance, efficient scheduling
 
 **Deferred Error Handling Pattern (W3C SCXML 5.3)**:
-- Purpose: Handle datamodel initialization failures in static JIT context
+- Purpose: Handle datamodel initialization failures in static AOT context
 - Single Source of Truth: Mirrors Interpreter engine error.execution semantics
 - Location: StaticCodeGenerator.cpp lines 811-831 (code generation pattern)
-- Used by: JIT engine (generated code for JSEngine-using state machines)
+- Used by: AOT engine (generated code for JSEngine-using state machines)
 - Implementation:
   - **Flag-Based Deferred Raising**: `datamodelInitFailed_` flag set during ensureJSEngine()
   - **Early Return Pattern**: Raise error.execution and return false to defer processing
@@ -657,11 +657,11 @@ class EventQueueManager {
 ### Phase 3: W3C SCXML Compliance (Complete ✅)
 - W3C Static Tests: 20/20 (100%) ✅
 - test144: W3C SCXML 3.5.1 document order preservation
-- test150-155: JIT JSEngine integration (foreach, dynamic datamodel)
+- test150-155: AOT JSEngine integration (foreach, dynamic datamodel)
 - test155: Fixed type preservation in foreach loops (numeric addition vs string concatenation)
   - Root cause: `ScriptValue(string)` created STRING type → JavaScript performed string concatenation
   - Solution: Use `executeScript("var = value;")` to let JavaScript evaluate types
-  - ForeachHelper refactored as Single Source of Truth (used by both Interpreter and JIT engines)
+  - ForeachHelper refactored as Single Source of Truth (used by both Interpreter and AOT engines)
 - test158-159: Send action support with error handling
   - SendHelper refactored as Single Source of Truth for target validation
   - W3C SCXML 6.2: Invalid send targets (starting with "!") detected
@@ -680,7 +680,7 @@ class EventQueueManager {
   - W3C SCXML 6.5: Finalize handler code generation
   - W3C SCXML 6.4.1: Autoforward flag support (forward events to children)
   - HierarchicalStateHelper refactored as Single Source of Truth
-  - Zero Duplication: Shared hierarchical entry logic between Interpreter and JIT
+  - Zero Duplication: Shared hierarchical entry logic between Interpreter and AOT
   - Infinite loop protection: Cycle detection for malformed SCXML (MAX_DEPTH=16)
   - Performance optimization: Pre-allocated entry chain (reserve 8 states)
 - Shared helper functions with interpreter engine (ForeachHelper, SendHelper, HierarchicalStateHelper)
@@ -731,7 +731,7 @@ class EventQueueManager {
 | **Total** | **12/202 (6%)** | **202/202 (100%)** | **202/202 (100%)** |
 
 **Note**:
-- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-175, 185-187, 208, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, delayed send (6.2), cancel element (6.3), event data (5.10), invoke with done.invoke events (6.4), hierarchical states, JIT JSEngine integration
+- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-175, 185-187, 208, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, delayed send (6.2), cancel element (6.3), event data (5.10), invoke with done.invoke events (6.4), hierarchical states, AOT JSEngine integration
 - Interpreter engine provides 100% W3C compliance baseline
 - Static generator produces hybrid code with shared semantics from interpreter engine
 

@@ -7,7 +7,7 @@
  * @brief W3C SCXML 3.12 Transition Matching Helper
  *
  * Single Source of Truth for event descriptor matching logic shared between
- * Interpreter engine (runtime) and JIT engine (code generation).
+ * Interpreter engine (runtime) and AOT engine (code generation).
  *
  * W3C SCXML 3.12: Event descriptors can be:
  * - "*" (wildcard) - matches any event
@@ -16,7 +16,7 @@
  *
  * ARCHITECTURE.md: Zero Duplication principle
  * - Interpreter engine: Calls matchesEventDescriptor() at runtime
- * - JIT engine: Generates code that calls matchesEventDescriptor()
+ * - AOT engine: Generates code that calls matchesEventDescriptor()
  */
 
 namespace RSM::TransitionHelper {
@@ -98,7 +98,7 @@ inline bool matchesAnyEventDescriptor(const std::vector<std::string> &descriptor
 /**
  * @brief Check if an event descriptor is a wildcard
  *
- * Used by JIT code generator to optimize wildcard handling.
+ * Used by AOT code generator to optimize wildcard handling.
  * Wildcards are treated as catch-all after specific event checks.
  *
  * @param descriptor Event descriptor to check

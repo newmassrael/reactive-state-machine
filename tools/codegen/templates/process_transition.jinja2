@@ -47,7 +47,7 @@
 {% if model.needs_event_type %}
             pendingEventType_ = this->getEventType(pendingEventName_);
 {% endif %}
-            LOG_DEBUG("JIT processTransition: Set pendingEventName='{}', pendingEventType='{}'", pendingEventName_, pendingEventType_);
+            LOG_DEBUG("AOT processTransition: Set pendingEventName='{}', pendingEventType='{}'", pendingEventName_, pendingEventType_);
         }
 {%- endif %}
 {%- if model.needs_jsengine and (model.needs_event_name or model.needs_event_data) %}
@@ -55,14 +55,14 @@
 
         // W3C SCXML 5.10: Set _event variable in JSEngine
         if (!pendingEventName_.empty() || !pendingEventData_.empty()) {
-            LOG_DEBUG("JIT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}')",
+            LOG_DEBUG("AOT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}')",
                       pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_);
             setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_);
         }
 {%- endif %}
 
         (void)engine;
-        LOG_DEBUG("JIT processTransition: Called with event={}, currentState={}", static_cast<int>(event), static_cast<int>(currentState));
+        LOG_DEBUG("AOT processTransition: Called with event={}, currentState={}", static_cast<int>(event), static_cast<int>(currentState));
         (void)event;
         bool transitionTaken = false;
         switch (currentState) {
@@ -101,12 +101,12 @@
                 if ({{ transition.cond }}) {
 {% endif %}
 {% endif %}
-                    LOG_DEBUG("JIT processTransition: Event matched descriptor '{{ transition.event }}'");
+                    LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ transition.event }}'");
 {% for action in transition.actions %}
 {% include 'actions/' + action.type + '.jinja2' %}
 {% endfor %}
 {% if transition.target %}
-                    LOG_DEBUG("JIT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
+                    LOG_DEBUG("AOT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
                     currentState = State::{{ transition.target | capitalize }};
                     transitionTaken = true;
 {% endif %}
@@ -160,7 +160,7 @@
 {% include 'actions/' + action.type + '.jinja2' %}
 {% endfor %}
 {% if transition.target %}
-                    LOG_DEBUG("JIT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
+                    LOG_DEBUG("AOT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
                     currentState = State::{{ transition.target | capitalize }};
                     transitionTaken = true;
 {% endif %}
@@ -181,7 +181,7 @@
 {% include 'actions/' + action.type + '.jinja2' %}
 {% endfor %}
 {% if transition.target %}
-                    LOG_DEBUG("JIT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
+                    LOG_DEBUG("AOT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
                     currentState = State::{{ transition.target | capitalize }};
                     transitionTaken = true;
 {% endif %}

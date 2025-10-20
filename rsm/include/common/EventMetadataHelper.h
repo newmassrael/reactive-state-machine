@@ -14,7 +14,7 @@ namespace RSM::Common {
  * @brief Helper for W3C SCXML 5.10 event metadata management
  *
  * Provides Single Source of Truth for event metadata operations across
- * Interpreter and JIT (Static) engines, following ARCHITECTURE.md Zero Duplication Principle.
+ * Interpreter and AOT (Static) engines, following ARCHITECTURE.md Zero Duplication Principle.
  *
  * W3C SCXML 5.10: The System Variables (_event object)
  * W3C SCXML 5.10.1: Event Descriptor fields (name, data, type, sendid, origin, origintype, invokeid)
@@ -36,7 +36,7 @@ namespace RSM::Common {
  * );
  * @endcode
  *
- * @example JIT Engine Usage
+ * @example AOT Engine Usage
  * @code
  * EventWithMetadata eventWrapper(Event::Foo, "data", "origin_session", "send_id", "external");
  * EventMetadataHelper::populatePolicyFromMetadata(policy_, eventWrapper);
@@ -85,15 +85,15 @@ public:
     }
 
     /**
-     * @brief Populate JIT engine policy from EventWithMetadata wrapper
+     * @brief Populate AOT engine policy from EventWithMetadata wrapper
      *
-     * Used by JIT (Static) engine to extract metadata from queue and store in policy
+     * Used by AOT (Static) engine to extract metadata from queue and store in policy
      * for _event variable binding. Follows W3C SCXML 5.10 event descriptor semantics.
      *
      * This method uses C++20 concepts to check if policy has the required fields,
      * allowing it to work with policies that may not have all metadata fields.
      *
-     * @tparam Policy JIT engine policy type (must have pendingEvent* fields)
+     * @tparam Policy AOT engine policy type (must have pendingEvent* fields)
      * @param policy Policy instance to populate
      * @param metadata EventWithMetadata wrapper from event queue
      *
@@ -149,7 +149,7 @@ public:
      * Called at the end of processTransition to clear _event binding for next cycle.
      * Follows W3C SCXML 5.10 semantics: _event is bound only during transition processing.
      *
-     * @tparam Policy JIT engine policy type
+     * @tparam Policy AOT engine policy type
      * @param policy Policy instance to clear
      *
      * @note Uses if constexpr to conditionally clear only existing fields

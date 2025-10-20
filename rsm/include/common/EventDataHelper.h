@@ -11,7 +11,7 @@ namespace RSM {
  *
  * Single Source of Truth for event data JSON building shared between:
  * - Interpreter engine (InternalEventTarget::buildEventData)
- * - JIT engine (StaticCodeGenerator - generated send param code)
+ * - AOT engine (StaticCodeGenerator - generated send param code)
  *
  * W3C SCXML References:
  * - 5.10: Event data structure (_event.data)
@@ -25,7 +25,7 @@ public:
      * @brief Build JSON string from evaluated params
      *
      * Single Source of Truth for event data JSON construction.
-     * Used by both Interpreter and JIT engines to ensure consistent behavior.
+     * Used by both Interpreter and AOT engines to ensure consistent behavior.
      *
      * W3C SCXML 5.10: Construct event data from params.
      * W3C Test 178: Support duplicate param names - multiple values stored as array.

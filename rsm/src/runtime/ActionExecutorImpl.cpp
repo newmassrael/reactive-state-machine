@@ -88,7 +88,7 @@ bool ActionExecutorImpl::executeScript(const std::string &script) {
 }
 
 bool ActionExecutorImpl::assignVariable(const std::string &location, const std::string &expr) {
-    // W3C SCXML 5.3, 5.4: Empty location check (shared with JIT via AssignHelper)
+    // W3C SCXML 5.3, 5.4: Empty location check (shared with AOT via AssignHelper)
     // ARCHITECTURE.md: Zero Duplication - Use shared AssignHelper for cross-engine consistency
     if (!AssignHelper::isValidLocation(location)) {
         LOG_ERROR("W3C SCXML 5.3/5.4/B.2: {}", AssignHelper::getInvalidLocationErrorMessage(location));
@@ -100,7 +100,7 @@ bool ActionExecutorImpl::assignVariable(const std::string &location, const std::
     }
 
     // Implementation-specific: Variable name format validation (Interpreter engine only)
-    // Checks regex pattern for valid variable identifiers (not shared with JIT)
+    // Checks regex pattern for valid variable identifiers (not shared with AOT)
     if (!isValidLocation(location)) {
         LOG_ERROR("Invalid variable location: {}", location);
         // W3C SCXML 5.4: Raise error.execution for invalid location
@@ -524,7 +524,7 @@ bool ActionExecutorImpl::ensureCurrentEventSet() {
         }
 
         // W3C SCXML 5.10: Set event metadata using EventMetadataHelper (Single Source of Truth)
-        // ARCHITECTURE.md: Zero Duplication Principle - shared logic with JIT engine
+        // ARCHITECTURE.md: Zero Duplication Principle - shared logic with AOT engine
         RSM::Common::EventMetadataHelper::setEventMetadata(*event,
                                                            currentOriginSessionId_,  // origin (test336)
                                                            currentOriginType_,  // originType (test253, 331, 352, 372)
@@ -1257,7 +1257,7 @@ bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::
         // Transform numeric variable names to JavaScript-compatible identifiers
         std::string jsVarName = transformVariableName(varName);
 
-        // Use shared ForeachHelper logic (eliminates code duplication with JIT engine)
+        // Use shared ForeachHelper logic (eliminates code duplication with AOT engine)
         bool success = ForeachHelper::setLoopVariable(JSEngine::instance(), sessionId_, jsVarName, value);
 
         if (success) {

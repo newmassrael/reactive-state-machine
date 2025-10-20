@@ -83,9 +83,9 @@ private:
 };
 
 /**
- * @brief JIT engine invoke manager adapter
+ * @brief AOT engine invoke manager adapter
  *
- * Adapts JIT's Policy class (containing activeInvokes_ map) to the unified
+ * Adapts AOT's Policy class (containing activeInvokes_ map) to the unified
  * interface required by InvokeProcessingAlgorithms.
  *
  * Implementation notes:
@@ -98,9 +98,9 @@ private:
  *         - std::unordered_map<std::string, ChildSession> activeInvokes_;
  *         - struct ChildSession { finalizeScript, autoforward, parentSessionId, stateMachine }
  *
- * @example Usage in generated JIT code:
+ * @example Usage in generated AOT code:
  * @code
- * RSM::Core::JITInvokeManager<MyStateMachinePolicy> adapter(policy_);
+ * RSM::Core::AOTInvokeManager<MyStateMachinePolicy> adapter(policy_);
  * RSM::Core::InvokeProcessingAlgorithms::processFinalize(
  *     getOriginSessionId(event),
  *     adapter,
@@ -108,13 +108,13 @@ private:
  * );
  * @endcode
  */
-template <typename Policy> class JITInvokeManager {
+template <typename Policy> class AOTInvokeManager {
 public:
     /**
      * @brief Constructor
      * @param policy Reference to Policy instance containing invoke data
      */
-    explicit JITInvokeManager(Policy &policy) : policy_(policy) {}
+    explicit AOTInvokeManager(Policy &policy) : policy_(policy) {}
 
     /**
      * @brief Get finalize script for child session (W3C SCXML 6.5)

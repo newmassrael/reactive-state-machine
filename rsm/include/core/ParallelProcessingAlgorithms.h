@@ -46,9 +46,9 @@ public:
      * );
      * @endcode
      *
-     * @example JIT usage:
+     * @example AOT usage:
      * @code
-     * RSM::Core::JITParallelStateManager<Policy> adapter(policy_);
+     * RSM::Core::AOTParallelStateManager<Policy> adapter(policy_);
      * std::vector<State> regions = { State::Region1, State::Region2 };
      * RSM::Core::ParallelProcessingAlgorithms::enterAllRegions(
      *     adapter,
@@ -76,7 +76,7 @@ public:
      *         Required methods:
      *         - bool processRegionEvent(const RegionId& regionId, const Event& event)
      *
-     * @tparam Event Event type (engine-specific: string for Interpreter, enum for JIT)
+     * @tparam Event Event type (engine-specific: string for Interpreter, enum for AOT)
      * @tparam RegionList Container of region identifiers
      *
      * @param parallelManager Parallel state manager providing region operations
@@ -95,9 +95,9 @@ public:
      * );
      * @endcode
      *
-     * @example JIT usage:
+     * @example AOT usage:
      * @code
-     * RSM::Core::JITParallelStateManager<Policy> adapter(policy_);
+     * RSM::Core::AOTParallelStateManager<Policy> adapter(policy_);
      * std::vector<State> activeRegions = policy_.getActiveRegions(currentState);
      * bool anyTransition = RSM::Core::ParallelProcessingAlgorithms::broadcastEventToRegions(
      *     adapter,
@@ -152,9 +152,9 @@ public:
      * }
      * @endcode
      *
-     * @example JIT usage:
+     * @example AOT usage:
      * @code
-     * RSM::Core::JITParallelStateManager<Policy> adapter(policy_);
+     * RSM::Core::AOTParallelStateManager<Policy> adapter(policy_);
      * std::vector<State> regions = policy_.getParallelRegions(State::ParallelState);
      * bool allFinal = RSM::Core::ParallelProcessingAlgorithms::areAllRegionsInFinalState(
      *     adapter,
@@ -202,9 +202,9 @@ public:
      * );
      * @endcode
      *
-     * @example JIT usage:
+     * @example AOT usage:
      * @code
-     * RSM::Core::JITParallelStateManager<Policy> adapter(policy_);
+     * RSM::Core::AOTParallelStateManager<Policy> adapter(policy_);
      * std::vector<State> regions = { State::Region1, State::Region2 };
      * RSM::Core::ParallelProcessingAlgorithms::exitAllRegions(
      *     adapter,

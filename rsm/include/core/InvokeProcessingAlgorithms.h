@@ -52,9 +52,9 @@ public:
      * );
      * @endcode
      *
-     * @example JIT usage:
+     * @example AOT usage:
      * @code
-     * RSM::Core::JITInvokeManager<Policy> adapter(policy_);
+     * RSM::Core::AOTInvokeManager<Policy> adapter(policy_);
      * RSM::Core::InvokeProcessingAlgorithms::processFinalize(
      *     getOriginSessionId(event),
      *     adapter,
@@ -87,7 +87,7 @@ public:
      * events received by the parent are automatically forwarded to the child.
      * Platform events (starting with "#_") are never forwarded.
      *
-     * @tparam Event Event type (engine-specific: string for Interpreter, enum for JIT)
+     * @tparam Event Event type (engine-specific: string for Interpreter, enum for AOT)
      * @tparam InvokeManager Interface for invoke management
      *         Required methods:
      *         - std::vector<std::shared_ptr<StateMachine>>
@@ -109,9 +109,9 @@ public:
      * );
      * @endcode
      *
-     * @example JIT usage:
+     * @example AOT usage:
      * @code
-     * RSM::Core::JITInvokeManager<Policy> adapter(policy_);
+     * RSM::Core::AOTInvokeManager<Policy> adapter(policy_);
      * RSM::Core::InvokeProcessingAlgorithms::processAutoforward(
      *     event,
      *     sessionId_,
@@ -168,9 +168,9 @@ private:
     }
 
     /**
-     * @brief Extract event name from enum event (JIT)
+     * @brief Extract event name from enum event (AOT)
      *
-     * For JIT engine with enum-based events, this requires a conversion
+     * For AOT engine with enum-based events, this requires a conversion
      * function that must be provided by the engine.
      *
      * @tparam Event Enum event type
@@ -179,7 +179,7 @@ private:
      */
     template <typename Event> static std::string getEventName(const Event &event) {
         // For enum-based events, rely on toString conversion
-        // This will be provided by the generated JIT code
+        // This will be provided by the generated AOT code
         return eventToString(event);
     }
 };
