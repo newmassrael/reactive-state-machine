@@ -4,9 +4,15 @@ std::string sendId = "{{ action.id }}";
 {% else %}
 std::string sendId = ::RSM::SendHelper::generateSendId();
 {% endif %}
+{% if model.needs_jsengine or model.needs_event_origin %}
+// W3C SCXML 5.10.1: Ensure sessionId for origin tracking
+if (!sessionId_.has_value()) {
+    sessionId_ = "session_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+}
+{% endif %}
 {% if action.idlocation %}
 // W3C SCXML 6.2.4: Store sendid in idlocation (test183, test332)
-{% if model.needs_jsengine %}
+{% if model.needs_jsengine or model.needs_event_origin %}
 this->ensureJSEngine();
 auto& jsEngine = ::RSM::JSEngine::instance();
 ::RSM::SendHelper::storeInIdLocation(jsEngine, sessionId_.value(), "{{ action.idlocation }}", sendId);
@@ -15,40 +21,61 @@ auto& jsEngine = ::RSM::JSEngine::instance();
 {% endif %}
 {% endif %}
 
+{% set has_targetexpr = True %}
 {% if action.targetexpr %}
 // W3C SCXML 6.2: Dynamic target evaluation (test173)
-{
-{% if model.needs_jsengine %}
-    this->ensureJSEngine();
-    auto& jsEngine = ::RSM::JSEngine::instance();
-    auto targetResult = jsEngine.getVariable(sessionId_.value(), "{{ action.targetexpr }}").get();
-    if (!::RSM::JSEngine::isSuccess(targetResult)) {
-        LOG_ERROR("Failed to get variable for targetexpr: {{ action.targetexpr }}");
-        engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));
-    }
-    std::string dynamicTarget = ::RSM::JSEngine::resultToString(targetResult);
+std::string dynamicTarget;
+{% if model.needs_jsengine or model.needs_event_origin %}
+this->ensureJSEngine();
+auto& jsEngine = ::RSM::JSEngine::instance();
+auto targetResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ action.targetexpr | escape_cpp }}").get();
+if (!::RSM::JSEngine::isSuccess(targetResult)) {
+    LOG_ERROR("Failed to evaluate targetexpr: {{ action.targetexpr }}");
+    engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));
+}
+dynamicTarget = ::RSM::JSEngine::resultToString(targetResult);
 {% else %}
-    {% if action.targetexpr == '_event.origin' %}
-    std::string dynamicTarget = pendingEventOrigin_;
-    {% else %}
-    std::string dynamicTarget = {{ action.targetexpr }};
-    {% endif %}
+{% if action.targetexpr == '_event.origin' %}
+dynamicTarget = pendingEventOrigin_;
+{% else %}
+dynamicTarget = {{ action.targetexpr }};
 {% endif %}
-    if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {
-{% if model.needs_jsengine %}
-        pendingEventSendId_ = sendId;
 {% endif %}
-        engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, "", "", sendId));
-    }
+if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {
+{% if model.needs_jsengine or model.needs_event_origin %}
+    pendingEventSendId_ = sendId;
+{% endif %}
+    engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, "", "", sendId));
 }
 {% elif action.target %}
 {% if action.target == '#_parent' %}
 // W3C SCXML 6.2: Send to parent state machine with invokeid (test338)
 ::RSM::SendHelper::sendToParent(parent_, ParentStateMachine::Event::{{ action.event | capitalize }}, invokeId_);
+{% elif action.target == '#_child' %}
+// W3C SCXML 6.4.1: Send to invoked child state machine (test347)
+{% if model.static_invokes %}
+{% set invoke_id = model.static_invokes[0].invoke_id %}
+{% set child_name = model.static_invokes[0].child_name %}
+if (child_{{ invoke_id }}_) {
+    // W3C SCXML 6.4.1: Send event to child using child's Event enum
+    using ChildEvent = ::RSM::Generated::{{ child_name }}::Event;
+    LOG_DEBUG("Sending event {{ action.event }} to child {{ invoke_id }}");
+    child_{{ invoke_id }}_->raiseExternal(ChildEvent::{{ action.event | capitalize }});
+    LOG_DEBUG("Processing child {{ invoke_id }} event queues");
+    // W3C SCXML 6.4: Process child's event queues immediately (synchronous communication)
+    child_{{ invoke_id }}_->step();
+    LOG_DEBUG("Child {{ invoke_id }} processing complete, isInFinalState={}", child_{{ invoke_id }}_->isInFinalState());
+} else {
+    LOG_WARN("Child {{ invoke_id }} not initialized, cannot send event");
+}
+{% else %}
+// No static invokes found - this should not happen for #_child target
+LOG_ERROR("Cannot send to #_child: no static invokes in model");
+{% endif %}
 {% else %}
 // W3C SCXML 6.2 (tests 159, 194): Validate send target using SendHelper
 if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
-{% if model.needs_jsengine %}
+{% if model.needs_jsengine or model.needs_event_origin %}
     // W3C SCXML 5.10.1: Store sendid for error.execution event (test332)
     pendingEventSendId_ = sendId;
 {% endif %}
@@ -63,11 +90,11 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
 // W3C SCXML 6.2.4: No target attribute → external queue (to self)
 {% endif %}
 
-{% if action.target != '#_parent' %}
+{% if action.target != '#_parent' and action.target != '#_child' %}
 {% if action.eventexpr %}
 // W3C SCXML 6.2: Dynamic event evaluation (test172)
 {
-{% if model.needs_jsengine %}
+{% if model.needs_jsengine or model.needs_event_origin %}
     this->ensureJSEngine();
     auto& jsEngine = ::RSM::JSEngine::instance();
     auto eventResult = jsEngine.getVariable(sessionId_.value(), "{{ action.eventexpr }}").get();
@@ -90,7 +117,7 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
     {% endif %}
     {% endfor %}
     }
-{% if model.needs_jsengine %}
+{% if model.needs_jsengine or model.needs_event_origin %}
     }
 {% endif %}
 }
@@ -102,7 +129,7 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
     // W3C SCXML 5.10: Evaluate params at send time (test186)
     std::map<std::string, std::vector<std::string>> params;
 {% for param in action.params %}
-{% if model.needs_jsengine %}
+{% if model.needs_jsengine or model.needs_event_origin %}
     {
         this->ensureJSEngine();
         auto& jsEngine = ::RSM::JSEngine::instance();
@@ -121,7 +148,7 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
 {% endif %}
 {% if action.delayexpr %}
     std::string delayStr;
-{% if model.needs_jsengine %}
+{% if model.needs_jsengine or model.needs_event_origin %}
     this->ensureJSEngine();
     auto& jsEngine = ::RSM::JSEngine::instance();
     auto delayResult = jsEngine.getVariable(sessionId_.value(), "{{ action.delayexpr }}").get();
@@ -148,7 +175,7 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
 // W3C SCXML 5.10: Evaluate params at send time (test186)
 std::map<std::string, std::vector<std::string>> params;
 {% for param in action.params %}
-{% if model.needs_jsengine %}
+{% if model.needs_jsengine or model.needs_event_origin %}
 {
     this->ensureJSEngine();
     auto& jsEngine = ::RSM::JSEngine::instance();
@@ -166,24 +193,64 @@ params["{{ param.name }}"].push_back(std::to_string({{ param.expr }}));
 {% endfor %}
 std::string eventData = ::RSM::EventDataHelper::buildJsonFromParams(params);
 {% if action.send_type == 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor' %}
+{% if model.needs_jsengine or model.needs_event_origin %}
+engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData, sessionId_.value_or(""), sendId));
+{% else %}
 engine.raiseExternal(Event::{{ action.event | capitalize }}, eventData);
+{% endif %}
+{% else %}
+{% if action.targetexpr %}
+if (::RSM::SendHelper::isInternalTarget(dynamicTarget)) {
+    engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData));
+} else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+    engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData, sessionId_.value_or(""), sendId));
+{% else %}
+    engine.raiseExternal(Event::{{ action.event | capitalize }}, eventData);
+{% endif %}
+}
 {% else %}
 if (::RSM::SendHelper::isInternalTarget("{{ action.target }}")) {
     engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData));
 } else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+    engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData, sessionId_.value_or(""), sendId));
+{% else %}
     engine.raiseExternal(Event::{{ action.event | capitalize }}, eventData);
+{% endif %}
 }
+{% endif %}
 {% endif %}
 {% elif action.content %}
 // W3C SCXML 5.10: Set event data from <content>
 {% if action.send_type == 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor' %}
+{% if model.needs_jsengine or model.needs_event_origin %}
+engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}", sessionId_.value_or(""), sendId));
+{% else %}
 engine.raiseExternal(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}");
+{% endif %}
+{% else %}
+{% if action.targetexpr %}
+if (::RSM::SendHelper::isInternalTarget(dynamicTarget)) {
+    engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}"));
+} else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+    engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}", sessionId_.value_or(""), sendId));
+{% else %}
+    engine.raiseExternal(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}");
+{% endif %}
+}
 {% else %}
 if (::RSM::SendHelper::isInternalTarget("{{ action.target }}")) {
     engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}"));
 } else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+    engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}", sessionId_.value_or(""), sendId));
+{% else %}
     engine.raiseExternal(Event::{{ action.event | capitalize }}, "{{ action.content | escape_cpp }}");
+{% endif %}
 }
+{% endif %}
 {% endif %}
 {% elif action.contentexpr %}
 // W3C SCXML 5.10: Evaluate content expression
@@ -200,25 +267,65 @@ if (::RSM::SendHelper::isInternalTarget("{{ action.target }}")) {
         eventData = "";
     }
 {% if action.send_type == 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor' %}
+{% if model.needs_jsengine or model.needs_event_origin %}
+    engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData, sessionId_.value_or(""), sendId));
+{% else %}
     engine.raiseExternal(Event::{{ action.event | capitalize }}, eventData);
+{% endif %}
+{% else %}
+{% if action.targetexpr %}
+    if (::RSM::SendHelper::isInternalTarget(dynamicTarget)) {
+        engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData));
+    } else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+        engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData, sessionId_.value_or(""), sendId));
+{% else %}
+        engine.raiseExternal(Event::{{ action.event | capitalize }}, eventData);
+{% endif %}
+    }
 {% else %}
     if (::RSM::SendHelper::isInternalTarget("{{ action.target }}")) {
         engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData));
     } else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+        engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, eventData, sessionId_.value_or(""), sendId));
+{% else %}
         engine.raiseExternal(Event::{{ action.event | capitalize }}, eventData);
+{% endif %}
     }
+{% endif %}
 {% endif %}
 }
 {% else %}
 // W3C SCXML 6.2: Send without data
 {% if action.send_type == 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor' %}
+{% if model.needs_jsengine or model.needs_event_origin %}
+engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "", sessionId_.has_value() ? sessionId_.value() : "", sendId));
+{% else %}
 engine.raiseExternal(Event::{{ action.event | capitalize }});
+{% endif %}
+{% else %}
+{% if action.targetexpr %}
+if (::RSM::SendHelper::isInternalTarget(dynamicTarget)) {
+    engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}));
+} else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+    engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "", sessionId_.has_value() ? sessionId_.value() : "", sendId));
+{% else %}
+    engine.raiseExternal(Event::{{ action.event | capitalize }});
+{% endif %}
+}
 {% else %}
 if (::RSM::SendHelper::isInternalTarget("{{ action.target }}")) {
     engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}));
 } else {
+{% if model.needs_jsengine or model.needs_event_origin %}
+    engine.raiseExternal(typename Engine::EventWithMetadata(Event::{{ action.event | capitalize }}, "", sessionId_.has_value() ? sessionId_.value() : "", sendId));
+{% else %}
     engine.raiseExternal(Event::{{ action.event | capitalize }});
+{% endif %}
 }
+{% endif %}
 {% endif %}
 {% endif %}
 {% endif %}

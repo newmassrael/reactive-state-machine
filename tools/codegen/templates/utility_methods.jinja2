@@ -57,9 +57,10 @@ private:
         if (eventName.empty()) return;
         ensureJSEngine();
         std::string actualType = eventType.empty() ? this->getEventType(eventName) : eventType;
-        LOG_DEBUG("AOT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}', invokeId='{}'",
-                  eventName, eventData, actualType, sendId, invokeId);
+        LOG_DEBUG("AOT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}', origin='{}', invokeId='{}'",
+                  eventName, eventData, actualType, sendId, origin, invokeId);
+        // W3C SCXML 5.10: Wait for setCurrentEvent to complete before proceeding (synchronous)
         ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData,
-                                                    actualType, sendId, origin, invokeId);
+                                                    actualType, sendId, origin, invokeId).get();
     }
 {% endif %}

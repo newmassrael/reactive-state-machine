@@ -68,7 +68,17 @@ class SCXMLModel:
     has_dynamic_invoke: bool = False  # True if any invoke is dynamic (srcexpr, content, etc.)
     has_event_metadata: bool = False
     has_parent_communication: bool = False  # True if <send target="#_parent"> detected
+    has_child_communication: bool = False  # True if <send target="#_child"> detected
     needs_jsengine: bool = False
+
+    # W3C SCXML 5.10: Event metadata field flags
+    needs_event_name: bool = False
+    needs_event_data: bool = False
+    needs_event_type: bool = False
+    needs_event_sendid: bool = False
+    needs_event_origin: bool = False
+    needs_event_origintype: bool = False
+    needs_event_invokeid: bool = False
 
     # Data model variables
     variables: List[Dict] = field(default_factory=list)
@@ -118,10 +128,10 @@ class SCXMLParser:
 
         # Note: Using lxml with QName().localname, no need to strip namespaces
 
-        # Extract model name from <scxml name="..."> or filename
-        name = root.get('name')
-        if not name:
-            name = Path(scxml_path).stem
+        # Use filename for model name to ensure uniqueness
+        # W3C SCXML 6.4: Multiple tests may use same SCXML name attribute (e.g., test338 and test347 both use "machineName")
+        # Using filename (not name attribute) ensures unique namespaces (test338_machineName vs test347_machineName)
+        name = Path(scxml_path).stem
 
         # Create model
         self.model = SCXMLModel(
@@ -346,6 +356,9 @@ class SCXMLParser:
                 # W3C SCXML 6.2: Detect parent communication (<send target="#_parent">)
                 if action['target'] == '#_parent':
                     self.model.has_parent_communication = True
+                # W3C SCXML 6.4.1: Detect child communication (<send target="#_child">)
+                elif action['target'] == '#_child':
+                    self.model.has_child_communication = True
                 action['send_type'] = child.get('type', '')  # Renamed from 'type' to avoid conflict
                 action['delay'] = child.get('delay', '')
                 action['delayexpr'] = child.get('delayexpr', '')
@@ -678,9 +691,14 @@ class SCXMLParser:
                 if invoke.get('has_inline_scxml', False):
                     child_scxml_elem = invoke['content_scxml']
 
-                    # Generate unique child name
-                    child_name = child_scxml_elem.get('name', '')
-                    if not child_name:
+                    # Generate unique child name with parent prefix to avoid conflicts
+                    # W3C SCXML 6.4: Multiple tests may use same inline child name (e.g., test338 and test347 both use "machineName")
+                    original_child_name = child_scxml_elem.get('name', '')
+                    if original_child_name:
+                        # Prefix with parent name for uniqueness: test347_machineName
+                        child_name = f"{self.model.name}_{original_child_name}"
+                    else:
+                        # No name attribute: use parent_childN format
                         child_name = f"{self.model.name}_child{inline_child_count}"
                         inline_child_count += 1
 

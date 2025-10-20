@@ -17,7 +17,8 @@
         if (pendingDoneInvoke_{{ invoke_info.invoke_id }}_) {
             pendingDoneInvoke_{{ invoke_info.invoke_id }}_ = false;
             LOG_DEBUG("Raising done.invoke for {{ invoke_info.invoke_id }}");
-            engine.raise(typename Engine::EventWithMetadata(Event::Done_invoke));
+            // W3C SCXML 6.4.3: done.invoke MUST be placed on external event queue
+            engine.raiseExternal(typename Engine::EventWithMetadata(Event::Done_invoke));
         }
 {% endfor %}
 {% endif %}
@@ -58,13 +59,13 @@
             LOG_DEBUG("AOT processTransition: Set pendingEventName='{}', pendingEventType='{}'", pendingEventName_, pendingEventType_);
         }
 {%- endif %}
-{%- if model.needs_jsengine and (model.needs_event_name or model.needs_event_data) %}
+{%- if model.needs_jsengine and (model.needs_event_name or model.needs_event_data or model.needs_event_origin) %}
 
 
         // W3C SCXML 5.10: Set _event variable in JSEngine
-        if (!pendingEventName_.empty() || !pendingEventData_.empty()) {
-            LOG_DEBUG("AOT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}', invokeId='{}')",
-                      pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventInvokeId_);
+        if (!pendingEventName_.empty() || !pendingEventData_.empty() || !pendingEventOrigin_.empty()) {
+            LOG_DEBUG("AOT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}', origin='{}', invokeId='{}')",
+                      pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_, pendingEventInvokeId_);
             setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_, pendingEventInvokeId_);
         }
 {%- endif %}
