@@ -1,0 +1,242 @@
+
+    template<typename Engine>
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static bool processTransition(State& currentState, Event event, Engine& engine) {
+{% else %}    bool processTransition(State& currentState, Event event, Engine& engine) {
+{% endif %}
+{% if model.static_invokes %}
+        // W3C SCXML 6.4: Check for pending done.invoke events
+{% for invoke_info in model.static_invokes %}
+        if (pendingDoneInvoke_{{ invoke_info.invoke_id }}_) {
+            pendingDoneInvoke_{{ invoke_info.invoke_id }}_ = false;
+            LOG_DEBUG("Raising done.invoke for {{ invoke_info.invoke_id }}");
+            engine.raise(typename Engine::EventWithMetadata(Event::Done_invoke));
+        }
+{% endfor %}
+{% endif %}
+{%- if model.needs_jsengine %}
+        // W3C SCXML 5.3: Ensure JSEngine initialized to detect datamodel errors
+        this->ensureJSEngine();
+
+        // W3C SCXML 5.3: Raise error.execution and defer to next tick
+        if (datamodelInitFailed_) {
+            datamodelInitFailed_ = false;
+            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, "Datamodel initialization failed"));
+            return false;
+        }
+{%- endif %}
+{%- if model.needs_event_scheduler and model.needs_event_data and (model.needs_event_data_helper or model.needs_jsengine) %}
+
+
+        // W3C SCXML 5.10: Retrieve event data from scheduled event map (test186)
+        {
+            auto it = scheduledEventData_.find(event);
+            if (it != scheduledEventData_.end()) {
+                pendingEventData_ = it->second;
+                scheduledEventData_.erase(it);  // Clean up after retrieval
+            }
+        }
+{%- endif %}
+{%- if model.needs_event_name or model.needs_event_type %}
+
+
+        // W3C SCXML 5.10: Store event name and type for _event.name and _event.type binding
+        if (event != Event()) {  // Skip for eventless transitions
+{% if model.needs_event_name %}
+            pendingEventName_ = {{ model.name }}Policy::getEventName(event);
+{% endif %}
+{% if model.needs_event_type %}
+            pendingEventType_ = this->getEventType(pendingEventName_);
+{% endif %}
+            LOG_DEBUG("JIT processTransition: Set pendingEventName='{}', pendingEventType='{}'", pendingEventName_, pendingEventType_);
+        }
+{%- endif %}
+{%- if model.needs_jsengine and (model.needs_event_name or model.needs_event_data) %}
+
+
+        // W3C SCXML 5.10: Set _event variable in JSEngine
+        if (!pendingEventName_.empty() || !pendingEventData_.empty()) {
+            LOG_DEBUG("JIT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}')",
+                      pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_);
+            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_);
+        }
+{%- endif %}
+
+        (void)engine;
+        LOG_DEBUG("JIT processTransition: Called with event={}, currentState={}", static_cast<int>(event), static_cast<int>(currentState));
+        (void)event;
+        bool transitionTaken = false;
+        switch (currentState) {
+{% for state_id, state in model.states.items() %}
+        case State::{{ state_id | capitalize }}:
+{% if state.transitions %}
+{% set event_transitions = [] %}
+{% set eventless_transitions = [] %}
+{% for trans in state.transitions %}
+{% if trans.event %}
+{% set _ = event_transitions.append(trans) %}
+{% else %}
+{% set _ = eventless_transitions.append(trans) %}
+{% endif %}
+{% endfor %}
+{% if event_transitions %}
+{% for transition in event_transitions %}
+{% if transition.event in ['*', '.*', '_*'] %}
+            if (event != Event::NONE) {  // W3C SCXML 3.12: Wildcard matches any event except NONE
+{% else %}
+{% set events = transition.event.split() %}
+{% if events | length > 1 %}
+            if ({% for ev in events %}event == Event::{{ ev | replace('.', '_') | capitalize }}{% if not loop.last %} || {% endif %}{% endfor %}) {
+{% elif transition.prefix_matching_events and transition.prefix_matching_events | length > 1 %}
+            if ({% for ev in transition.prefix_matching_events %}event == Event::{{ ev | replace('.', '_') | capitalize }}{% if not loop.last %} || {% endif %}{% endfor %}) {
+{% else %}
+            if (event == Event::{{ transition.event | replace('.', '_') | capitalize }}) {
+{% endif %}
+{% endif %}
+{% if transition.cond %}
+{% if model.needs_jsengine %}
+                this->ensureJSEngine();
+                auto& jsEngine = ::RSM::JSEngine::instance();
+                if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}")) {
+{% else %}
+                if ({{ transition.cond }}) {
+{% endif %}
+{% endif %}
+                    LOG_DEBUG("JIT processTransition: Event matched descriptor '{{ transition.event }}'");
+{% for action in transition.actions %}
+{% include 'actions/' + action.type + '.jinja2' %}
+{% endfor %}
+{% if transition.target %}
+                    LOG_DEBUG("JIT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
+                    currentState = State::{{ transition.target | capitalize }};
+                    transitionTaken = true;
+{% endif %}
+{% if transition.cond %}
+                }
+{% endif %}
+{% if not loop.last %}
+            } else {% else %}
+            }
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if eventless_transitions %}
+{% set has_any_guard = namespace(value=False) %}
+{% for trans in eventless_transitions %}
+{% if trans.cond %}
+{% set has_any_guard.value = True %}
+{% endif %}
+{% endfor %}
+{% if has_any_guard.value %}
+{% set first_uses_jsengine = eventless_transitions[0].cond and model.needs_jsengine %}
+{% if first_uses_jsengine %}
+            {
+                this->ensureJSEngine();
+                auto& jsEngine = ::RSM::JSEngine::instance();
+{% endif %}
+{% set first_trans = namespace(value=True) %}
+{% for transition in eventless_transitions %}
+{% if transition.cond %}
+{% if first_trans.value %}
+{% if model.needs_jsengine %}
+                if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}")) {
+{% else %}
+            if ({{ transition.cond }}) {
+{% endif %}
+{% set first_trans.value = False %}
+{% else %}
+{% if model.needs_jsengine and first_uses_jsengine %}
+                } else if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}")) {
+{% else %}
+            } else if ({{ transition.cond }}) {
+{% endif %}
+{% endif %}
+{% else %}
+{% if not first_trans.value %}
+                } else {
+{% endif %}
+{% set first_trans.value = False %}
+{% endif %}
+{% for action in transition.actions %}
+{% include 'actions/' + action.type + '.jinja2' %}
+{% endfor %}
+{% if transition.target %}
+                    LOG_DEBUG("JIT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
+                    currentState = State::{{ transition.target | capitalize }};
+                    transitionTaken = true;
+{% endif %}
+{% endfor %}
+{% if eventless_transitions[0].cond %}
+{% if model.needs_jsengine %}
+                }
+            }
+{% else %}
+            }
+{% endif %}
+{% else %}
+                }
+{% endif %}
+{% else %}
+{% for transition in eventless_transitions %}
+{% for action in transition.actions %}
+{% include 'actions/' + action.type + '.jinja2' %}
+{% endfor %}
+{% if transition.target %}
+                    LOG_DEBUG("JIT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
+                    currentState = State::{{ transition.target | capitalize }};
+                    transitionTaken = true;
+{% endif %}
+{% if loop.first %}
+                    // W3C SCXML 3.5: Unconditional eventless transition - stop processing
+                    break;
+{% else %}
+                    break;
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% endif %}
+            break;
+{% endfor %}
+        default:
+            break;
+        }
+
+{% if model.needs_event_scheduler %}
+        // W3C SCXML 6.2: Process ready scheduled events
+        {
+            Event scheduledEvent;
+{% if model.needs_event_data_helper or model.needs_jsengine %}
+            std::string eventData;
+            while (eventScheduler_.popReadyEvent(scheduledEvent, eventData)) {
+                if (!eventData.empty()) {
+                    // W3C SCXML 5.10: Store event data in map for later retrieval (test186)
+                    scheduledEventData_[scheduledEvent] = eventData;
+                }
+                engine.raise(scheduledEvent);
+            }
+{% else %}
+            while (eventScheduler_.popReadyEvent(scheduledEvent)) {
+                engine.raise(scheduledEvent);
+            }
+{% endif %}
+        }
+
+{% endif %}
+{% if model.needs_event_name or model.needs_event_data %}
+        // W3C SCXML 5.10: Clear event fields after processing
+{% if model.needs_event_name %}
+        pendingEventName_.clear();
+{% endif %}
+{% if model.needs_event_data %}
+        pendingEventData_.clear();
+{% endif %}
+{% if model.needs_event_type %}
+        pendingEventType_.clear();
+{% endif %}
+{% if model.needs_event_sendid %}
+        pendingEventSendId_.clear();
+{% endif %}
+{% endif %}
+
+        return transitionTaken;
+    }

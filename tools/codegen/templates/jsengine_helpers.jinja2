@@ -1,0 +1,50 @@
+    // Helper: Ensure session ID is initialized
+    void ensureSessionId() const {
+        if (!sessionId_.has_value()) {
+            sessionId_ = "session_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+        }
+    }
+
+{% if model.needs_jsengine %}
+    // Helper: Ensure JSEngine is initialized (lazy initialization)
+    void ensureJSEngine() const {
+        if (jsEngineInitialized_) return;
+        ensureSessionId();
+        if (!sessionId_.has_value()) return;
+        auto& jsEngine = ::RSM::JSEngine::instance();
+        jsEngine.createSession(sessionId_.value());
+
+{% for var in model.variables %}
+{% if var.expr %}
+        auto initExpr_{{ var.id }} = jsEngine.evaluateExpression(sessionId_.value(), "{{ var.expr | escape_cpp }}").get();
+        if (!::RSM::JSEngine::isSuccess(initExpr_{{ var.id }})) {
+            LOG_ERROR("Failed to evaluate expression for variable: {{ var.id }}");
+            // W3C SCXML 5.3: Mark initialization failure for later error.execution event
+            datamodelInitFailed_ = true;
+        } else {
+            jsEngine.setVariable(sessionId_.value(), "{{ var.id }}", initExpr_{{ var.id }}.getInternalValue());
+        }
+{% elif var.content %}
+        auto initExpr_{{ var.id }} = jsEngine.evaluateExpression(sessionId_.value(), R"({{ var.content | escape_cpp }})").get();
+        if (!::RSM::JSEngine::isSuccess(initExpr_{{ var.id }})) {
+            LOG_ERROR("Failed to evaluate expression for variable: {{ var.id }}");
+            // W3C SCXML 5.3: Mark initialization failure for later error.execution event
+            datamodelInitFailed_ = true;
+        } else {
+            jsEngine.setVariable(sessionId_.value(), "{{ var.id }}", initExpr_{{ var.id }}.getInternalValue());
+        }
+{% elif var.type == 'runtime' %}
+        auto initExpr_{{ var.id }} = jsEngine.evaluateExpression(sessionId_.value(), "undefined").get();
+        if (!::RSM::JSEngine::isSuccess(initExpr_{{ var.id }})) {
+            LOG_ERROR("Failed to evaluate expression for variable: {{ var.id }}");
+            // W3C SCXML 5.3: Mark initialization failure for later error.execution event
+            datamodelInitFailed_ = true;
+        } else {
+            jsEngine.setVariable(sessionId_.value(), "{{ var.id }}", initExpr_{{ var.id }}.getInternalValue());
+        }
+{% endif %}
+{% endfor %}
+
+        jsEngineInitialized_ = true;
+    }
+{% endif %}

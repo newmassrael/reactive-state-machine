@@ -1,0 +1,48 @@
+// Foreach loop (JIT: delegated to JSEngine)
+try {
+    ::RSM::Validation::validateForeachAttributes("{{ action.array }}", "{{ action.item }}");
+{% if action.actions and action.actions | length > 0 %}
+    {
+        // Execute foreach: array={{ action.array }}, item={{ action.item }}, index={{ action.index }}
+        this->ensureJSEngine();
+        auto& jsEngine = ::RSM::JSEngine::instance();
+        // W3C SCXML 4.6: Use ForeachHelper for centralized error handling
+        ::RSM::ForeachHelper::executeForeachWithActions(
+            jsEngine, sessionId_.value(),
+            "{{ action.array }}", "{{ action.item }}", "{{ action.index }}",
+            [&](size_t i) -> bool {
+                (void)i;  // Iteration index available if needed
+{% for body_action in action.actions %}
+{% if body_action.type == 'assign' %}
+                {
+                    // W3C SCXML 5.3, 5.4: Validate assignment location using shared AssignHelper
+                    if (!::RSM::AssignHelper::isValidLocation("{{ body_action.location }}")) {
+                        LOG_ERROR("W3C SCXML 5.3: {}", ::RSM::AssignHelper::getInvalidLocationErrorMessage("{{ body_action.location }}"));
+                        return false;  // W3C SCXML 4.6: Stop foreach execution on error
+                    }
+                    auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ body_action.expr | escape_cpp }}").get();
+                    if (!::RSM::JSEngine::isSuccess(exprResult)) {
+                        LOG_ERROR("Failed to evaluate expression in foreach: {{ body_action.expr | escape_cpp }}");
+                        return false;  // W3C SCXML 4.6: Stop foreach execution on error
+                    }
+                    jsEngine.setVariable(sessionId_.value(), "{{ body_action.location }}", exprResult.getInternalValue());
+                }
+{% endif %}
+{% endfor %}
+                return true;  // Continue to next iteration
+            }
+        );
+    }
+{% else %}
+    {
+        this->ensureJSEngine();
+        auto& jsEngine = ::RSM::JSEngine::instance();
+        ::RSM::ForeachHelper::executeForeachWithoutBody(
+            jsEngine, sessionId_.value(),
+            "{{ action.array }}", "{{ action.item }}", "{{ action.index }}"
+        );
+    }
+{% endif %}
+} catch (const std::runtime_error&) {
+    engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));
+}

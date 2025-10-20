@@ -98,3 +98,6 @@ docker_tsan/docker-tsan-build.log
 # Claude Code local settings
 .claude/
 
+tools/codegen/__pycache__/
+archive/
+claudedocs/python_codegen_validation.md

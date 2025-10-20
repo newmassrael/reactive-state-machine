@@ -1,0 +1,128 @@
+    template<typename Engine>
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static void executeEntryActions(State state, Engine& engine) {
+{% else %}    void executeEntryActions(State state, Engine& engine) {
+{% endif %}
+        (void)engine;
+        switch (state) {
+{% for state_id, state in model.states.items() %}
+            case State::{{ state_id | capitalize }}:
+{% if state.on_entry or state.static_invokes %}
+                {
+{% if state.static_invokes %}
+                // W3C SCXML 6.4: Start invoke elements
+                ensureSessionId();
+                if (!sessionId_.has_value()) return;  // Should not happen
+
+{% for invoke_info in state.static_invokes %}
+                // W3C SCXML 6.4: Static invoke (compile-time child SCXML)
+                // Child SCXML: {{ invoke_info.src }} (generated as {{ invoke_info.child_name }}_sm.h)
+                {
+                    std::string childSessionId = sessionId_.value() + "_" + "{{ invoke_info.invoke_id }}";
+                    LOG_INFO("Starting static invoke: id={{ invoke_info.invoke_id }}, src={{ invoke_info.src }}");
+
+                    // Instantiate and store child state machine in Policy member
+                    child_{{ invoke_info.invoke_id }}_ = std::make_shared<::RSM::Generated::{{ invoke_info.child_name }}::{{ invoke_info.child_name }}<SelfType>>(static_cast<SelfType*>(&engine));
+
+                    // W3C SCXML 6.4: Set completion callback for done.invoke event
+                    child_{{ invoke_info.invoke_id }}_->setCompletionCallback([this]() {
+                        pendingDoneInvoke_{{ invoke_info.invoke_id }}_ = true;
+                        LOG_DEBUG("Child {{ invoke_info.invoke_id }} completed, pending done.invoke event");
+                    });
+
+                    // W3C SCXML 6.4.6: Handle invoke failure with error.execution
+                    try {
+{% if invoke_info.params %}
+                        // W3C SCXML 6.4: Pass params to child state machine (before initialization for eventless transitions)
+{% for param in invoke_info.params %}
+{% if invoke_info.child_needs_jsengine %}
+                        // Child uses JSEngine - initialize JSEngine first, then override param
+                        child_{{ invoke_info.invoke_id }}_->getPolicy().ensureJSEngine();
+                        auto& childJSEngine = ::RSM::JSEngine::instance();
+                        auto childSessionId = child_{{ invoke_info.invoke_id }}_->getPolicy().sessionId_.value();
+                        // Override param value BEFORE initialize() processes eventless transitions
+                        childJSEngine.setVariable(childSessionId, "{{ param.name }}", {{ param.expr }});
+{% else %}
+                        // Child uses pure static datamodel - set C++ member variable before initialize()
+                        child_{{ invoke_info.invoke_id }}_->getPolicy().{{ param.name }} = {{ param.expr }};
+{% endif %}
+{% endfor %}
+
+{% endif %}
+                        child_{{ invoke_info.invoke_id }}_->initialize();
+
+                        // W3C SCXML 6.4: Check if child immediately reached final state
+                        if (child_{{ invoke_info.invoke_id }}_->isInFinalState()) {
+                            LOG_INFO("Child {{ invoke_info.invoke_id }} immediately completed, raising done.invoke");
+                            engine.raise(typename Engine::EventWithMetadata(Event::Done_invoke));
+                        }
+                    } catch (const std::exception& e) {
+                        // W3C SCXML 6.4.6: Raise error.execution on invoke failure
+                        LOG_ERROR("Failed to initialize child {{ invoke_info.invoke_id }}: {}", e.what());
+                        engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, e.what()));
+                        child_{{ invoke_info.invoke_id }}_ = nullptr;
+                    }
+
+                    // W3C SCXML 6.4: Track child session for lifecycle management
+                    ChildSession session;
+                    session.sessionId = childSessionId;
+                    session.invokeId = "{{ invoke_info.invoke_id }}";
+                    session.parentSessionId = sessionId_.value();
+                    session.autoforward = {{ 'true' if invoke_info.autoforward else 'false' }};
+                    session.finalizeScript = "";
+
+                    activeInvokes_["{{ invoke_info.invoke_id }}"] = session;
+                    LOG_DEBUG("Invoke session created: id={}, autoforward={}", "{{ invoke_info.invoke_id }}", session.autoforward);
+                }
+{% endfor %}
+{% endif %}
+{% for action in state.on_entry %}
+                {% set in_entry_exit = true %}
+                {% include 'actions/' + action.type + '.jinja2' %}
+
+{% endfor %}
+                }
+{% endif %}
+                break;
+{% endfor %}
+            default:
+                break;
+        }
+    }
+
+    template<typename Engine>
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static void executeExitActions(State state, Engine& engine) {
+{% else %}    void executeExitActions(State state, Engine& engine) {
+{% endif %}
+        (void)engine;
+        switch (state) {
+{% for state_id, state in model.states.items() %}
+            case State::{{ state_id | capitalize }}:
+{% if state.on_exit or state.static_invokes %}
+                {
+{% if state.static_invokes %}
+                // W3C SCXML 6.4: Cancel invoke elements
+                {% for invoke_info in state.static_invokes %}
+
+                // W3C SCXML 6.4: Cleanup static invoke child
+                if (child_{{ invoke_info.invoke_id }}_) {
+                    LOG_DEBUG("Stopping static invoke: id={{ invoke_info.invoke_id }}");
+                    // W3C SCXML 6.4: Send cancel.invoke platform event
+                    engine.raise(typename Engine::EventWithMetadata(Event::Cancel_invoke));
+                    child_{{ invoke_info.invoke_id }}_.reset();  // Destroy child state machine
+                }
+                activeInvokes_.erase("{{ invoke_info.invoke_id }}");
+{% endfor %}
+{% endif %}
+{% for action in state.on_exit %}
+                {% set in_entry_exit = true %}
+                {% include 'actions/' + action.type + '.jinja2' %}
+
+{% endfor %}
+                }
+{% endif %}
+                break;
+{% endfor %}
+            default:
+                break;
+        }
+    }

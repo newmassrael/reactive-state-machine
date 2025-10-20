@@ -141,7 +141,7 @@ if(BUILD_EXAMPLES)
 endif()
 
 # Installation configuration (using GNUInstallDirs variables)
-install(TARGETS rsm_unified scxml-codegen txml-converter
+install(TARGETS rsm_unified txml-converter
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -152,6 +152,21 @@ install(DIRECTORY
         rsm/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.h"
+)
+
+# Install Python code generator
+install(PROGRAMS tools/codegen/codegen.py
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+    RENAME scxml-codegen
+)
+
+install(FILES tools/codegen/scxml_parser.py
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY tools/codegen/templates
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FILES_MATCHING PATTERN "*.jinja2"
 )
 
 # Package configuration

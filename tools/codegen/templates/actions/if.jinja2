@@ -1,0 +1,30 @@
+// W3C SCXML 3.8.5: <if>
+{% if model.needs_jsengine %}
+this->ensureJSEngine();
+auto& jsEngine = ::RSM::JSEngine::instance();
+if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ action.cond | escape_cpp }}")) {
+{% else %}
+if ({{ action.cond }}) {
+{% endif %}
+    {% for then_action in action.then_actions %}
+    {% with action=then_action %}
+    {% include 'actions/' + then_action.type + '.jinja2' %}
+    {% endwith %}
+    {% endfor %}
+{% for elseif in action.elseif_branches %}
+} else if ({% if model.needs_jsengine %}::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ elseif.cond | escape_cpp }}"){% else %}{{ elseif.cond }}{% endif %}) {
+    {% for elseif_action in elseif.actions %}
+    {% with action=elseif_action %}
+    {% include 'actions/' + elseif_action.type + '.jinja2' %}
+    {% endwith %}
+    {% endfor %}
+{% endfor %}
+{% if action.else_actions %}
+} else {
+    {% for else_action in action.else_actions %}
+    {% with action=else_action %}
+    {% include 'actions/' + else_action.type + '.jinja2' %}
+    {% endwith %}
+    {% endfor %}
+{% endif %}
+}

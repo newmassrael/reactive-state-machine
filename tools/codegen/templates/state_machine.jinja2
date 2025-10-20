@@ -1,0 +1,244 @@
+#pragma once
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include "static/StaticExecutionEngine.h"
+{% if model.static_invokes %}
+
+// Child SCXML headers (static invokes)
+{% for invoke_info in model.static_invokes %}
+#include "{{ invoke_info.child_name }}_sm.h"
+{% endfor %}
+{% endif %}
+{% if model.needs_send_helper %}
+#include "common/SendHelper.h"
+{% endif %}
+{% if model.needs_event_scheduler %}
+#include "common/SendSchedulingHelper.h"
+{% endif %}
+#include "common/TransitionHelper.h"
+{% if model.needs_event_data_helper %}
+#include "common/EventDataHelper.h"
+{% endif %}
+{% if model.needs_jsengine %}
+#include "common/EventTypeHelper.h"
+#include <optional>
+#include "common/Logger.h"
+#include "scripting/JSEngine.h"
+#include "common/AssignHelper.h"
+#include "common/ForeachValidator.h"
+#include "common/ForeachHelper.h"
+#include "common/GuardHelper.h"
+{% endif %}
+
+namespace RSM::Generated::{{ model.name }} {
+
+{% if model.has_parent_communication %}
+template<typename ParentStateMachine>
+{% endif %}
+class {{ model.name }};
+
+{# State enum #}
+enum class State : uint8_t {
+    {% for state_name in model.states | sort %}
+    {{ state_name | capitalize }}{{ "," if not loop.last }}
+    {% endfor %}
+};
+
+{# Event enum #}
+enum class Event : uint8_t {
+    NONE,  // W3C SCXML 6.2: Default event for scheduler polling (no semantic meaning)
+    {% for event_name in model.events | sort %}
+    {{ event_name | replace('.', '_') | capitalize }}{{ "," if not loop.last }}
+    {% endfor %}
+};
+
+{# Policy class #}
+// State policy for {{ model.name }}
+{% if model.has_parent_communication %}
+template<typename ParentStateMachine>
+{% elif model.static_invokes %}
+template<typename SelfType>
+{% endif %}
+struct {{ model.name }}Policy {
+    using State = ::RSM::Generated::{{ model.name }}::State;
+    using Event = ::RSM::Generated::{{ model.name }}::Event;
+
+    {% if model.variables %}
+    // Datamodel variables
+    {% for var in model.variables %}
+    {% if var.type == 'int' %}
+    int {{ var.id }} = {{ var.expr if var.expr else '0' }};
+    {% elif var.type == 'string' %}
+    ::std::string {{ var.id }}{{ ' = ' + var.expr if var.expr else '' }};
+    {% elif var.type == 'bool' %}
+    bool {{ var.id }} = {{ var.expr if var.expr else 'false' }};
+    {% elif var.type == 'runtime' %}
+    // Runtime-evaluated variable (handled by JSEngine): {{ var.id }}
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+    {% if model.has_parent_communication %}
+
+    // W3C SCXML 6.2: Parent state machine pointer for #_parent support
+    ParentStateMachine* parent_ = nullptr;
+    {% endif %}
+
+    {% if model.needs_jsengine or model.static_invokes %}
+    // Session ID for JSEngine/Invoke (lazy-initialized)
+    mutable ::std::optional<::std::string> sessionId_;
+    {% endif %}
+    {% if model.needs_jsengine %}
+    mutable bool jsEngineInitialized_ = false;
+    mutable bool datamodelInitFailed_ = false;  // W3C SCXML 5.3: Track initialization errors
+    {% endif %}
+    {% if model.needs_event_name %}
+    // W3C SCXML 5.10: Event name storage for _event.name access (test318)
+    mutable ::std::string pendingEventName_;
+    {% endif %}
+    {% if model.needs_event_data %}
+    // W3C SCXML 5.10: Event data storage for _event.data access
+    // Required for: <send> params, error.execution event data (W3C SCXML 5.3)
+    mutable ::std::string pendingEventData_;
+    {% endif %}
+    {% if model.needs_event_type %}
+    // W3C SCXML 5.10.1: Event type storage for _event.type access (test331)
+    mutable ::std::string pendingEventType_;
+    {% endif %}
+    {% if model.needs_event_sendid %}
+    // W3C SCXML 5.10.1: Event sendid storage for _event.sendid access (test332)
+    mutable ::std::string pendingEventSendId_;
+    {% endif %}
+    {% if model.needs_event_origin %}
+    // W3C SCXML 5.10.1: Event origin storage for _event.origin access (test336)
+    mutable ::std::string pendingEventOrigin_;
+    {% endif %}
+    {% if model.needs_event_origintype %}
+    // W3C SCXML 5.10.1: Event origintype storage for _event.origintype access
+    mutable ::std::string pendingEventOriginType_;
+    {% endif %}
+    {% if model.needs_external_flag %}
+    // W3C SCXML 6.2: Flag to mark next event as external (from send)
+    mutable bool nextEventIsExternal_ = false;
+    {% endif %}
+    {% if model.static_invokes %}
+    // W3C SCXML 5.10: Current event metadata (originSessionId for finalize)
+    mutable ::RSM::Core::EventMetadata currentEventMetadata_;
+    // W3C SCXML 6.4: Static invoke child state machines
+    {% for invoke_info in model.static_invokes %}
+    mutable std::shared_ptr<::RSM::Generated::{{ invoke_info.child_name }}::{{ invoke_info.child_name }}<SelfType>> child_{{ invoke_info.invoke_id }}_;
+    {% endfor %}
+
+    // W3C SCXML 6.4: Pending done.invoke flags for child completion
+    {% for invoke_info in model.static_invokes %}
+    mutable bool pendingDoneInvoke_{{ invoke_info.invoke_id }}_ = false;
+    {% endfor %}
+
+    // W3C SCXML 6.4: Child session tracking
+    struct ChildSession {
+        std::string sessionId;           // Child's session ID
+        std::string invokeId;            // Invoke element ID
+        std::string parentSessionId;     // Parent's session ID
+        bool autoforward = false;        // W3C 6.4.1: Autoforward events to child
+        std::string finalizeScript;      // W3C 6.5: Finalize handler script
+    };
+
+    // Active child sessions indexed by invokeId
+    mutable std::unordered_map<std::string, ChildSession> activeInvokes_;
+    {% endif %}
+    {% if model.needs_event_scheduler %}
+    // W3C SCXML 6.2: Event scheduler for delayed send (lazy-init)
+    mutable ::RSM::SendSchedulingHelper::SimpleScheduler<Event> eventScheduler_;
+    {% if model.needs_event_data_helper or model.needs_jsengine %}
+    // W3C SCXML 5.10: Event data map for scheduled events with params (test186)
+    mutable ::std::map<Event, ::std::string> scheduledEventData_;
+    {% endif %}
+    {% endif %}
+
+    // Default constructor (lazy initialization, no immediate resource allocation)
+    {{ model.name }}Policy() = default;
+
+    {% if model.needs_jsengine %}
+    // Destructor: Clean up JSEngine session if initialized (RAII pattern)
+    ~{{ model.name }}Policy() {
+        if (sessionId_.has_value()) {
+            auto& jsEngine = ::RSM::JSEngine::instance();
+            jsEngine.destroySession(sessionId_.value());
+        }
+    }
+
+    // Prevent copy/move to maintain session ownership
+    {{ model.name }}Policy(const {{ model.name }}Policy&) = delete;
+    {{ model.name }}Policy& operator=(const {{ model.name }}Policy&) = delete;
+    {{ model.name }}Policy({{ model.name }}Policy&&) = delete;
+    {{ model.name }}Policy& operator=({{ model.name }}Policy&&) = delete;
+    {% endif %}
+
+    static State initialState() {
+        return State::{{ model.initial | capitalize }};
+    }
+
+    static bool isFinalState(State state) {
+        switch (state) {
+            {% for state_id, state in model.states.items() %}
+            {% if state.is_final %}
+            case State::{{ state_id | capitalize }}:
+                return true;
+            {% endif %}
+            {% endfor %}
+            default:
+                return false;
+        }
+    }
+
+    // W3C SCXML 3.3: Parent state mapping (for HierarchicalStateHelper)
+    static std::optional<State> getParent(State state) {
+        switch (state) {
+            {% for state_id, state in model.states.items() %}
+            {% if state.parent %}
+            case State::{{ state_id | capitalize }}:
+                return State::{{ state.parent | capitalize }};
+            {% endif %}
+            {% endfor %}
+            default:
+                return std::nullopt;  // Root state
+        }
+    }
+
+    {% include 'entry_exit_actions.jinja2' %}
+
+    {% include 'process_transition.jinja2' %}
+
+public:
+    {% if model.needs_jsengine or model.static_invokes %}
+    {% include 'jsengine_helpers.jinja2' %}
+    {% endif %}
+
+    {% include 'utility_methods.jinja2' %}
+
+private:
+};
+
+// User-facing state machine class
+{% if model.has_parent_communication %}
+template<typename ParentStateMachine>
+{% endif %}
+class {{ model.name }} : public ::RSM::Static::StaticExecutionEngine<{% if model.has_parent_communication %}{{ model.name }}Policy<ParentStateMachine>{% elif model.static_invokes %}{{ model.name }}Policy<{{ model.name }}>{% else %}{{ model.name }}Policy{% endif %}> {
+public:
+{% if model.has_parent_communication %}
+    // W3C SCXML 6.2: Parent state machine pointer for #_parent support (Zero Overhead)
+    explicit {{ model.name }}(ParentStateMachine* parent) { this->policy_.parent_ = parent; }
+{% else %}
+    {{ model.name }}() = default;
+{% endif %}
+
+    {% if model.has_invoke %}
+    ~{{ model.name }}() {
+        // W3C SCXML 6.4: Cleanup child state machines on destruction
+    }
+    {% endif %}
+};
+
+} // namespace RSM::Generated::{{ model.name }}

@@ -1,0 +1,21 @@
+// W3C SCXML 3.8.8: <log>
+{% if action.expr %}
+{% if '_event.raw' in action.expr or '_event.invokeid' in action.expr %}
+// TODO: log {{ action.expr }}
+{% elif model.needs_jsengine %}
+{
+    this->ensureJSEngine();
+    auto& jsEngine = ::RSM::JSEngine::instance();
+    auto logResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ action.expr | escape_cpp }}").get();
+    if (::RSM::JSEngine::isSuccess(logResult)) {
+        LOG_INFO("{% if action.label %}{{ action.label }}: {% endif %}{}", ::RSM::JSEngine::resultToString(logResult));
+    } else {
+        LOG_ERROR("Failed to evaluate log expression: {{ action.expr }}");
+    }
+}
+{% else %}
+LOG_INFO("{% if action.label %}{{ action.label }}: {% endif %}{}", {{ action.expr }});
+{% endif %}
+{% else %}
+LOG_INFO("{{ action.label }}");
+{% endif %}

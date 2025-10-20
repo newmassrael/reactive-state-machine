@@ -41,8 +41,8 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
         # Generate C++ code for sub SCXML
         add_custom_command(
             OUTPUT "${SUB_HEADER_FILE}"
-            COMMAND scxml-codegen -o "${OUTPUT_DIR}" "${SUB_SCXML_FILE}"
-            DEPENDS scxml-codegen "${SUB_SCXML_FILE}"
+            COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SUB_SCXML_FILE}" -o "${OUTPUT_DIR}"
+            DEPENDS "${SUB_SCXML_FILE}"
             COMMENT "Generating C++ code: ${SUB_TXML_NAME}_sm.h"
             VERBATIM
         )
@@ -68,8 +68,8 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
     # W3C SCXML 6.2/6.4: Parent header must depend on child headers (template detection)
     add_custom_command(
         OUTPUT "${GENERATED_HEADER}"
-        COMMAND scxml-codegen -o "${OUTPUT_DIR}" "${SCXML_FILE}"
-        DEPENDS scxml-codegen "${SCXML_FILE}" ${SUB_HEADER_DEPENDENCIES}
+        COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SCXML_FILE}" -o "${OUTPUT_DIR}"
+        DEPENDS "${SCXML_FILE}" ${SUB_HEADER_DEPENDENCIES}
         COMMENT "Generating C++ code: test${TEST_NUM}_sm.h"
         VERBATIM
     )

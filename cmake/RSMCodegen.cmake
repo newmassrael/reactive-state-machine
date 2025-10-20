@@ -34,8 +34,8 @@ function(rsm_add_state_machine)
     # Add custom command to generate code
     add_custom_command(
         OUTPUT "${GENERATED_HEADER}"
-        COMMAND scxml-codegen -o "${RSM_OUTPUT_DIR}" "${SCXML_ABS_PATH}"
-        DEPENDS "${SCXML_ABS_PATH}" scxml-codegen
+        COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SCXML_ABS_PATH}" -o "${RSM_OUTPUT_DIR}"
+        DEPENDS "${SCXML_ABS_PATH}"
         COMMENT "Generating state machine code from ${SCXML_NAME}.scxml"
         VERBATIM
     )

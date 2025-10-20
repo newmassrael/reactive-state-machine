@@ -1,0 +1,16 @@
+// W3C SCXML 3.8.6: <script>
+{
+    this->ensureJSEngine();
+    auto& jsEngine = ::RSM::JSEngine::instance();
+    {% if action.content %}
+    auto scriptResult = jsEngine.executeScript(sessionId_.value(), R"({{ action.content | escape_cpp }})").get();
+    if (!::RSM::JSEngine::isSuccess(scriptResult)) {
+        std::string errorMsg = "Script execution failed";
+        LOG_ERROR("{}", errorMsg);
+        engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));
+    }
+    {% elif action.src %}
+    // External script loading not implemented
+    LOG_WARN("External script loading (src attribute) not supported");
+    {% endif %}
+}

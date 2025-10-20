@@ -1,0 +1,23 @@
+{
+// W3C SCXML 5.3, 5.4: Validate assignment location using shared AssignHelper
+if (::RSM::AssignHelper::isValidLocation("{{ action.location }}")) {
+    // Location is valid, proceed with assignment
+    this->ensureJSEngine();
+    auto& jsEngine = ::RSM::JSEngine::instance();
+    {
+        // W3C SCXML 5.3: Execute assignment as JavaScript expression to preserve object references
+        // Using direct assignment (location = expr) instead of getInternalValue() for reference semantics
+        auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ action.location }} = ({{ action.expr }})").get();
+        if (!::RSM::JSEngine::isSuccess(exprResult)) {
+            std::string errorMsg = "Failed to evaluate assignment expression: {{ action.location }} = ({{ action.expr }})";
+            LOG_ERROR("{}", errorMsg);
+            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));
+        }
+    }
+} else {
+    // W3C SCXML 5.3/5.4/B.2: Invalid or read-only location
+    std::string errorMsg = ::RSM::AssignHelper::getInvalidLocationErrorMessage("{{ action.location }}");
+    LOG_ERROR("W3C SCXML 5.3: {}", errorMsg);
+    engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));
+}
+}

@@ -1,0 +1,14 @@
+// W3C SCXML 6.3: Cancel delayed send event
+{% if action.sendidexpr %}
+{
+    this->ensureJSEngine();
+    auto& jsEngine = ::RSM::JSEngine::instance();
+    auto sendidResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ action.sendidexpr | escape_cpp }}").get();
+    if (::RSM::JSEngine::isSuccess(sendidResult)) {
+        std::string sendidToCancel = ::RSM::JSEngine::resultToString(sendidResult);
+        eventScheduler_.cancelEvent(sendidToCancel);
+    }
+}
+{% elif action.sendid %}
+eventScheduler_.cancelEvent("{{ action.sendid }}");
+{% endif %}

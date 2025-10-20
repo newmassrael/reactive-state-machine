@@ -22,9 +22,18 @@
 
 ## Code Modification Rules
 
-### StaticCodeGenerator
-- Never use regex in StaticCodeGenerator, always modify directly with file editor
-- **ECMAScript Expression Handling**: StaticCodeGenerator uses Static Hybrid approach
+### Python Code Generator (Production)
+- **Production Tool**: `tools/codegen/codegen.py` - Python + Jinja2 template-based code generator
+- **Templates**: Located in `tools/codegen/templates/` directory
+  - `state_machine.jinja2` - Main state machine structure
+  - `actions/*.jinja2` - Individual action handlers (send, assign, if, foreach, etc.)
+  - `entry_exit_actions.jinja2` - Entry/exit action generation
+  - `process_transition.jinja2` - Transition processing logic
+- **Template Modification Rules**:
+  - Always modify Jinja2 templates, never generate code directly
+  - Test changes by regenerating affected test files
+  - Follow existing template patterns for consistency
+- **ECMAScript Expression Handling**: Uses Static Hybrid approach
   - Detects ECMAScript features (`typeof`, `_event`, `In()`) automatically
   - Generates JSEngine-embedded code for expression evaluation
   - Maintains static state machine structure (enums, switch statements)
@@ -47,19 +56,21 @@
 ### Verifying Static Code Generation Capability
 **Before adding tests to CMakeLists.txt**, verify whether they can use static generation or require Interpreter wrappers.
 
+**Code Generator**: The project uses **Python + Jinja2 code generator** (`tools/codegen/codegen.py`) as the production code generator.
+
 **Correct Verification Method**:
 ```bash
 # 1. Convert TXML to SCXML
 mkdir -p /tmp/test_verify
 build/tools/txml_converter/txml-converter resources/XXX/testXXX.txml /tmp/test_verify/testXXX.scxml
 
-# 2. Try static code generation
-env SPDLOG_LEVEL=warn build/tools/codegen/scxml-codegen /tmp/test_verify/testXXX.scxml -o /tmp/test_verify/
+# 2. Try static code generation with Python codegen
+env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.scxml -o /tmp/test_verify/
 
-# 3. Check for warnings
-# - If "has no initial state - generating Interpreter wrapper" → needs wrapper
-# - If "not found in model" → needs wrapper
-# - If no warnings → static generation OK
+# 3. Check output
+# - If "Generated: /tmp/test_verify/testXXX_sm.h" → static generation OK
+# - If "Reason: ..." message → needs Interpreter wrapper
+# - Check output for: "Needs JSEngine: True/False"
 ```
 
 **What to Look For in SCXML**:
@@ -149,7 +160,7 @@ env SPDLOG_LEVEL=warn build/tools/codegen/scxml-codegen /tmp/test_verify/testXXX
      ```
 
 3. **Result**:
-   - Wrapper generated automatically by StaticCodeGenerator
+   - Wrapper generated automatically by Python code generator
    - Test runs using perfect Interpreter engine
    - Both Interpreter and JIT tests pass
 
@@ -185,7 +196,7 @@ env SPDLOG_LEVEL=warn build/tools/codegen/scxml-codegen /tmp/test_verify/testXXX
 - [ ] **Architecture Adherence**: Zero Duplication achieved via Helper functions?
 - [ ] **Phase Markers**: No "Phase 1/2/3/4" in code or comments?
 - [ ] **W3C References**: All comments use W3C SCXML specification references?
-- [ ] **StaticCodeGenerator**: Direct file editing used (no regex)?
+- [ ] **Template Modifications**: Jinja2 templates updated (not direct code generation)?
 - [ ] **Test Integration**:
   - [ ] Static tests: CMakeLists.txt + JIT registry (TestXXX.h + AllJitTests.h)?
   - [ ] Wrapper tests: CMakeLists.txt + W3CTestRunner.cpp dynamic invoke section?

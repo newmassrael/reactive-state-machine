@@ -16,11 +16,27 @@
 
 ## Core Architecture
 
-### Unified Code Generator (scxml-codegen)
+### Code Generator: Python + Jinja2 (Production)
+
+**Tool**: `tools/codegen/codegen.py` - Python-based code generator with Jinja2 templates
+
+**Architecture**:
+- **Parser**: `scxml_parser.py` - Parses SCXML files into intermediate model
+- **Templates**: `tools/codegen/templates/*.jinja2` - Generate C++ code from model
+  - `state_machine.jinja2` - Main state machine class structure
+  - `actions/*.jinja2` - Individual action handlers (send, assign, if, foreach, etc.)
+  - `entry_exit_actions.jinja2` - State entry/exit action generation
+  - `process_transition.jinja2` - Transition processing logic
+  - `jsengine_helpers.jinja2` - JSEngine lazy initialization
+  - `utility_methods.jinja2` - Helper methods (getEventName, etc.)
+- **Code Generation Flow**: SCXML → Parser → Model → Jinja2 Templates → C++ Header
+
+**Key Features**:
 - **Always generates working C++ code** - never refuses generation
 - **Automatic optimization**: Simple features → static (compile-time), complex features → dynamic (runtime)
 - **Transparent hybrid**: User doesn't choose, generator decides internally
 - **W3C Compliance**: 100% support - all features work (static or dynamic)
+- **Template-based**: Easy to modify and extend via Jinja2 templates
 
 ### Implementation Strategy
 ```cpp

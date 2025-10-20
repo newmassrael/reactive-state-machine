@@ -1,0 +1,51 @@
+{% if model.needs_jsengine %}
+    // Helper: Set param in JSEngine for static invoke (W3C SCXML 6.4)
+    void setParamInJSEngine(const std::string& paramName, const std::string& paramExpr) {
+        ensureJSEngine();
+        auto& jsEngine = ::RSM::JSEngine::instance();
+        auto valueResult = jsEngine.evaluateExpression(sessionId_.value(), paramExpr).get();
+        if (::RSM::JSEngine::isSuccess(valueResult)) {
+            jsEngine.setVariable(sessionId_.value(), paramName, valueResult.getInternalValue());
+        } else {
+            LOG_ERROR("Failed to evaluate param expression for {}: {}", paramName, paramExpr);
+        }
+    }
+{% endif %}
+
+    // Helper: Convert Event enum to string for _event.name (W3C SCXML 5.10)
+    static std::string getEventName(Event event) {
+        switch (event) {
+            case Event::NONE: return "";
+{% for event_name in model.events | sort %}
+            case Event::{{ event_name | replace('.', '_') | capitalize }}: return "{{ event_name }}";
+{% endfor %}
+            default: return "";
+        }
+    }
+
+private:
+{% if model.needs_event_type %}
+    // Helper: Determine event type using shared EventTypeHelper (W3C SCXML 5.10.1)
+    std::string getEventType(const std::string& eventName) {
+        bool isExternal = nextEventIsExternal_;
+        if (nextEventIsExternal_) {
+            nextEventIsExternal_ = false;
+        }
+        return ::RSM::EventTypeHelper::classifyEventType(eventName, isExternal);
+    }
+{% endif %}
+
+{% if model.needs_jsengine and (model.needs_event_name or model.needs_event_data) %}
+    // Helper: Set _event variable in JSEngine (W3C SCXML 5.10)
+    void setCurrentEventInJSEngine(const std::string& eventName, const std::string& eventData = "",
+                                    const std::string& eventType = "", const std::string& sendId = "",
+                                    const std::string& origin = "") {
+        if (eventName.empty()) return;
+        ensureJSEngine();
+        std::string actualType = eventType.empty() ? this->getEventType(eventName) : eventType;
+        LOG_DEBUG("JIT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}'",
+                  eventName, eventData, actualType, sendId);
+        ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData,
+                                                    actualType, sendId, origin);
+    }
+{% endif %}
