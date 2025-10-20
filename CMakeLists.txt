@@ -138,6 +138,7 @@ endif()
 option(BUILD_EXAMPLES "Build the examples" OFF)
 if(BUILD_EXAMPLES)
     add_subdirectory(examples/cmake_function)
+    add_subdirectory(examples/traffic_light)
 endif()
 
 # Installation configuration (using GNUInstallDirs variables)
