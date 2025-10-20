@@ -116,6 +116,32 @@ public:
     }
 
     /**
+     * @brief Send event to parent with invokeid metadata (W3C SCXML 6.4.1)
+     *
+     * W3C SCXML 6.4.1 (test338): When a child sends an event to its parent,
+     * the _event.invokeid field must be set to the invokeid of the invoke
+     * that created the child.
+     *
+     * @param parent Parent state machine pointer
+     * @param event Event to send
+     * @param invokeId Invokeid of the child (from parent's invoke element)
+     * @return true if event was sent successfully, false if parent is null
+     */
+    template <typename ParentStateMachine, typename EventType>
+    static bool sendToParent(ParentStateMachine *parent, EventType event, const std::string &invokeId) {
+        if (parent) {
+            // W3C SCXML 6.4.1: Create event with invokeid metadata
+            typename ParentStateMachine::EventWithMetadata eventWithMetadata(event);
+            eventWithMetadata.invokeId = invokeId;
+
+            // W3C SCXML 6.2: Send to parent's external event queue
+            parent->raiseExternal(eventWithMetadata);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * @brief Store sendid in idlocation variable (Single Source of Truth)
      *
      * W3C SCXML 6.2.4 (test 183): The idlocation attribute specifies a variable

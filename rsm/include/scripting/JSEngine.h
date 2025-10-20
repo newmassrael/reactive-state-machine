@@ -211,11 +211,13 @@ public:
      * @param eventType Event type (default: "internal")
      * @param sendId Send ID for events triggered by <send> (W3C SCXML 5.10.1, test332)
      * @param origin Origin URL for bidirectional communication (W3C SCXML 5.10.1, test336)
+     * @param invokeId Invoke ID for child-to-parent events (W3C SCXML 6.4.1, test338)
      * @return Future indicating success/failure
      */
     std::future<JSResult> setCurrentEvent(const std::string &sessionId, const std::string &eventName,
                                           const std::string &eventData = "", const std::string &eventType = "internal",
-                                          const std::string &sendId = "", const std::string &origin = "");
+                                          const std::string &sendId = "", const std::string &origin = "",
+                                          const std::string &invokeId = "");
 
     /**
      * @brief Setup SCXML system variables for a session

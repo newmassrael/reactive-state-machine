@@ -143,6 +143,24 @@ public:
         }
     }
 
+    /**
+     * @brief Raise external event with full metadata (W3C SCXML 6.4.1)
+     *
+     * Used for child-to-parent communication where invokeid must be preserved.
+     * W3C SCXML 6.4.1 (test338): Events from child to parent must include invokeid.
+     *
+     * @param eventWithMetadata Event with metadata (including invokeid)
+     */
+    void raiseExternal(const EventWithMetadata &eventWithMetadata) {
+        // W3C SCXML C.1: Enqueue event with full metadata
+        externalQueue_.raise(eventWithMetadata);
+
+        // W3C SCXML 5.10.1: Mark next event as external for _event.type (test331)
+        if constexpr (requires { policy_.nextEventIsExternal_; }) {
+            policy_.nextEventIsExternal_ = true;
+        }
+    }
+
 protected:
     /**
      * @brief Execute entry actions for a state (W3C SCXML 3.7)

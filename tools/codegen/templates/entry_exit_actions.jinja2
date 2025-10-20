@@ -1,5 +1,5 @@
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static void executeEntryActions(State state, Engine& engine) {
+{% if not model.needs_jsengine and not model.static_invokes and not model.has_parent_communication %}    static void executeEntryActions(State state, Engine& engine) {
 {% else %}    void executeEntryActions(State state, Engine& engine) {
 {% endif %}
         (void)engine;
@@ -20,8 +20,18 @@
                     std::string childSessionId = sessionId_.value() + "_" + "{{ invoke_info.invoke_id }}";
                     LOG_INFO("Starting static invoke: id={{ invoke_info.invoke_id }}, src={{ invoke_info.src }}");
 
+{% if invoke_info.idlocation %}
+                    // W3C SCXML 6.4.1: Set idlocation variable to invoke id (before child initialization)
+                    this->ensureJSEngine();
+                    auto& jsEngine = ::RSM::JSEngine::instance();
+                    jsEngine.setVariable(sessionId_.value(), "{{ invoke_info.idlocation }}", "{{ invoke_info.invoke_id }}");
+{% endif %}
+
                     // Instantiate and store child state machine in Policy member
                     child_{{ invoke_info.invoke_id }}_ = std::make_shared<::RSM::Generated::{{ invoke_info.child_name }}::{{ invoke_info.child_name }}<SelfType>>(static_cast<SelfType*>(&engine));
+                    
+                    // W3C SCXML 6.4.1: Set child's invokeid for _event.invokeid in parent (test338)
+                    child_{{ invoke_info.invoke_id }}_->getPolicy().invokeId_ = "{{ invoke_info.invoke_id }}";
 
                     // W3C SCXML 6.4: Set completion callback for done.invoke event
                     child_{{ invoke_info.invoke_id }}_->setCompletionCallback([this]() {

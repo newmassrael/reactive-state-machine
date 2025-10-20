@@ -84,6 +84,9 @@ struct {{ model.name }}Policy {
 
     // W3C SCXML 6.2: Parent state machine pointer for #_parent support
     ParentStateMachine* parent_ = nullptr;
+    
+    // W3C SCXML 6.4.1: Invokeid for child-to-parent communication (test338)
+    ::std::string invokeId_;
     {% endif %}
 
     {% if model.needs_jsengine or model.static_invokes %}
@@ -118,6 +121,10 @@ struct {{ model.name }}Policy {
     {% if model.needs_event_origintype %}
     // W3C SCXML 5.10.1: Event origintype storage for _event.origintype access
     mutable ::std::string pendingEventOriginType_;
+    {% endif %}
+    {% if model.needs_event_invokeid %}
+    // W3C SCXML 5.10.1: Event invokeid storage for _event.invokeid access (test338)
+    mutable ::std::string pendingEventInvokeId_;
     {% endif %}
     {% if model.needs_external_flag %}
     // W3C SCXML 6.2: Flag to mark next event as external (from send)

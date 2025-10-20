@@ -43,8 +43,8 @@ auto& jsEngine = ::RSM::JSEngine::instance();
 }
 {% elif action.target %}
 {% if action.target == '#_parent' %}
-// W3C SCXML 6.2: Send to parent state machine (only sendToParent, no self-raise)
-::RSM::SendHelper::sendToParent(parent_, ParentStateMachine::Event::{{ action.event | capitalize }});
+// W3C SCXML 6.2: Send to parent state machine with invokeid (test338)
+::RSM::SendHelper::sendToParent(parent_, ParentStateMachine::Event::{{ action.event | capitalize }}, invokeId_);
 {% else %}
 // W3C SCXML 6.2 (tests 159, 194): Validate send target using SendHelper
 if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {

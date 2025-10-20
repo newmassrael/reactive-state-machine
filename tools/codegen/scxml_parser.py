@@ -240,7 +240,8 @@ class SCXMLParser:
                         'autoforward': invoke.get('autoforward', 'false') == 'true',
                         'finalize_content': '',  # TODO: extract finalize script
                         'src': invoke.get('src', ''),
-                        'params': invoke.get('params', [])
+                        'params': invoke.get('params', []),
+                        'idlocation': invoke.get('idlocation', '')  # W3C SCXML 6.4.1
                     }
                     state.static_invokes.append(static_invoke)
                     self.model.static_invokes.append(static_invoke)
@@ -511,8 +512,19 @@ class SCXMLParser:
         # Parse inline content
         content_elem = invoke_elem.find('{http://www.w3.org/2005/07/scxml}content')
         if content_elem is not None:
-            invoke['content'] = content_elem.get('expr', '')
-            invoke['contentexpr'] = content_elem.get('expr', '')
+            # Check for expr attribute (dynamic content expression)
+            contentexpr = content_elem.get('expr', '')
+            invoke['contentexpr'] = contentexpr
+
+            # Check for inline SCXML child element (static content)
+            child_scxml = content_elem.find('{http://www.w3.org/2005/07/scxml}scxml')
+            if child_scxml is not None:
+                # Store inline SCXML element for later extraction
+                invoke['content_scxml'] = child_scxml
+                invoke['has_inline_scxml'] = True
+            else:
+                invoke['content'] = content_elem.get('expr', '')
+                invoke['has_inline_scxml'] = False
 
         # Parse <param> children
         for param in ns_findall(invoke_elem, 'param'):
@@ -528,13 +540,17 @@ class SCXMLParser:
             invoke['finalize'] = self._parse_executable_content(finalize_elem)
 
         # Classify invoke as static or dynamic (matches C++ generator logic)
-        # Static invoke: type is "scxml", has src, no dynamic features
+        # Static invoke: type is "scxml", has (src OR inline content SCXML), no dynamic features
+        has_static_child = (
+            invoke['src'] != '' or  # External child SCXML file
+            invoke.get('has_inline_scxml', False)  # Inline <content><scxml>...</scxml></content>
+        )
+
         is_static_invoke = (
-            (invoke['type'] == '' or invoke['type'] == 'scxml' or 
+            (invoke['type'] == '' or invoke['type'] == 'scxml' or
              invoke['type'] == 'http://www.w3.org/TR/scxml/') and
-            invoke['src'] != '' and
+            has_static_child and
             invoke['srcexpr'] == '' and
-            invoke['content'] == '' and
             invoke['contentexpr'] == ''
         )
         
@@ -575,56 +591,105 @@ class SCXMLParser:
 
     def _process_static_invokes(self):
         """
-        Process static invoke information - extract child names from src paths
+        Process static invoke information - extract child names from src paths or inline content
 
         Matches C++ generator behavior:
         - Removes "file:" prefix from src
         - Extracts basename without extension
         - Generates unique invoke IDs if not specified
         - Detects if child needs JSEngine (for param passing)
+        - NEW: Extracts inline <content><scxml>...</scxml></content> to separate files
         """
+        from pathlib import Path
+        from lxml import etree
+
         invoke_count = {}  # Track invoke count per state for auto-ID generation
+        inline_child_count = 0  # Track inline children for unique naming
 
-        for static_invoke in self.model.static_invokes:
-            # Extract child name from src (e.g., "file:test276sub1.scxml" -> "test276sub1")
-            src = static_invoke['src']
+        for state in self.model.states.values():
+            for invoke in state.invokes:
+                if not invoke.get('is_static', False):
+                    continue
 
-            # Remove "file:" prefix if present
-            if src.startswith('file:'):
-                src = src[5:]
+                # Find corresponding static_invoke entry
+                matching_static = None
+                for si in state.static_invokes:
+                    if si['src'] == invoke['src']:
+                        matching_static = si
+                        break
 
-            # Extract basename without extension
-            from pathlib import Path
-            child_name = Path(src).stem
-            static_invoke['child_name'] = child_name
+                if not matching_static:
+                    continue
 
-            # Parse child SCXML file to detect if it needs JSEngine
-            # This is needed for correct param passing in invoke template
-            child_needs_jsengine = False
-            try:
-                # Construct child SCXML path relative to parent
-                parent_dir = Path(self.scxml_path).parent if hasattr(self, 'scxml_path') else Path('.')
-                child_scxml_path = parent_dir / f"{child_name}.scxml"
+                # Handle inline <content><scxml> by extracting to separate file
+                if invoke.get('has_inline_scxml', False):
+                    child_scxml_elem = invoke['content_scxml']
 
-                if child_scxml_path.exists():
-                    # Parse child to check needs_jsengine
-                    child_parser = SCXMLParser()
-                    child_parser.parse_file(str(child_scxml_path))
-                    child_needs_jsengine = child_parser.model.needs_jsengine
-            except Exception:
-                # If we can't parse child, assume it needs JSEngine for safety
-                child_needs_jsengine = True
+                    # Generate unique child name
+                    child_name = child_scxml_elem.get('name', '')
+                    if not child_name:
+                        child_name = f"{self.model.name}_child{inline_child_count}"
+                        inline_child_count += 1
 
-            static_invoke['child_needs_jsengine'] = child_needs_jsengine
+                    # Extract to separate file in same directory as parent
+                    parent_dir = Path(self.scxml_path).parent if hasattr(self, 'scxml_path') else Path('.')
+                    child_scxml_path = parent_dir / f"{child_name}.scxml"
 
-            # Generate invoke ID if not specified (matches C++ generator logic)
-            if not static_invoke['invoke_id']:
-                state_name = static_invoke['state_name']
-                if state_name not in invoke_count:
-                    invoke_count[state_name] = 0
+                    # Write inline SCXML to file
+                    with open(child_scxml_path, 'w') as f:
+                        f.write('<?xml version="1.0"?>\n\n')
+                        f.write(etree.tostring(child_scxml_elem, encoding='unicode', pretty_print=True))
 
-                static_invoke['invoke_id'] = f"{state_name}_invoke_{invoke_count[state_name]}"
-                invoke_count[state_name] += 1
+                    # Update static_invoke to reference extracted file
+                    matching_static['src'] = f"{child_name}.scxml"
+                    matching_static['child_name'] = child_name
+
+                    # Parse extracted child to detect JSEngine needs
+                    try:
+                        child_parser = SCXMLParser()
+                        child_model = child_parser.parse_file(str(child_scxml_path))
+                        matching_static['child_needs_jsengine'] = child_model.needs_jsengine
+                    except Exception:
+                        matching_static['child_needs_jsengine'] = True
+
+                # Handle external src (existing logic)
+                elif invoke['src']:
+                    src = invoke['src']
+
+                    # Remove "file:" prefix if present
+                    if src.startswith('file:'):
+                        src = src[5:]
+
+                    # Extract basename without extension
+                    child_name = Path(src).stem
+                    matching_static['child_name'] = child_name
+
+                    # Parse child SCXML file to detect if it needs JSEngine
+                    child_needs_jsengine = False
+                    try:
+                        # Construct child SCXML path relative to parent
+                        parent_dir = Path(self.scxml_path).parent if hasattr(self, 'scxml_path') else Path('.')
+                        child_scxml_path = parent_dir / f"{child_name}.scxml"
+
+                        if child_scxml_path.exists():
+                            # Parse child to check needs_jsengine
+                            child_parser = SCXMLParser()
+                            child_model = child_parser.parse_file(str(child_scxml_path))
+                            child_needs_jsengine = child_model.needs_jsengine
+                    except Exception:
+                        # If we can't parse child, assume it needs JSEngine for safety
+                        child_needs_jsengine = True
+
+                    matching_static['child_needs_jsengine'] = child_needs_jsengine
+
+                # Generate invoke ID if not specified (matches C++ generator logic)
+                if not matching_static['invoke_id']:
+                    state_name = matching_static['state_name']
+                    if state_name not in invoke_count:
+                        invoke_count[state_name] = 0
+
+                    matching_static['invoke_id'] = f"{state_name}_invoke_{invoke_count[state_name]}"
+                    invoke_count[state_name] += 1
 
     def _resolve_deep_initial(self):
         """

@@ -91,6 +91,7 @@ class CodeGenerator:
         model.needs_event_sendid = False
         model.needs_event_origin = False
         model.needs_event_origintype = False
+        model.needs_event_invokeid = False
         model.needs_external_flag = False
 
         # Scan all actions
@@ -116,6 +117,7 @@ class CodeGenerator:
             model.needs_event_sendid = True
             model.needs_event_origin = True
             model.needs_event_origintype = True
+            model.needs_event_invokeid = True
             model.needs_external_flag = True
             # JSEngine raises error.execution for runtime errors
             model.events.add('error.execution')
@@ -149,6 +151,8 @@ class CodeGenerator:
                 model.needs_event_sendid = True
             if '_event.origin' in str(action):
                 model.needs_event_origin = True
+            if '_event.invokeid' in str(action):
+                model.needs_event_invokeid = True
 
         elif action_type == 'cancel':
             # W3C SCXML 6.2: <cancel> requires EventScheduler to cancel delayed events

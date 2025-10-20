@@ -55,9 +55,9 @@
 
         // W3C SCXML 5.10: Set _event variable in JSEngine
         if (!pendingEventName_.empty() || !pendingEventData_.empty()) {
-            LOG_DEBUG("AOT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}')",
-                      pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_);
-            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_);
+            LOG_DEBUG("AOT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}', invokeId='{}')",
+                      pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventInvokeId_);
+            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_, pendingEventInvokeId_);
         }
 {%- endif %}
 
@@ -235,6 +235,9 @@
 {% endif %}
 {% if model.needs_event_sendid %}
         pendingEventSendId_.clear();
+{% endif %}
+{% if model.needs_event_invokeid %}
+        pendingEventInvokeId_.clear();
 {% endif %}
 {% endif %}
 
