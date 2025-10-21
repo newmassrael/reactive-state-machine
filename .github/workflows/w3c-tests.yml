@@ -152,7 +152,7 @@ jobs:
         include_passed: true
         fail_on_failure: false
         check_name: 'W3C SCXML Test Results'
-        summary: '📊 [View Detailed HTML Report](https://newmassrael.github.io/reactive-state-machine/test-results.html)'
+        summary: '📊 [View Detailed HTML Report](https://newmassrael.github.io/reactive-state-machine/test-results/test-results.html)'
         group_suite: true
         annotate_only: false
 
@@ -182,9 +182,8 @@ jobs:
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./gh-pages
-        destination_dir: .
-        keep_files: false
-        force_orphan: true
+        destination_dir: test-results
+        keep_files: true
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
@@ -202,7 +201,7 @@ jobs:
         cd build/tests
         echo "## 📊 W3C SCXML Test Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "🔗 [View Detailed HTML Report](https://newmassrael.github.io/reactive-state-machine/test-results.html)" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 [View Detailed HTML Report](https://newmassrael.github.io/reactive-state-machine/test-results/test-results.html)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
         if [ -f w3c_test_results.xml ]; then

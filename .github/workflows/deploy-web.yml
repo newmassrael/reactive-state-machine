@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'tools/wasm/**'
+      - 'tools/web/**'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
@@ -24,7 +24,7 @@ jobs:
     - name: Prepare Web Files
       run: |
         mkdir -p web_dist
-        cp tools/wasm/index.html web_dist/
+        cp tools/web/index.html web_dist/
         
         # Create README
         cat > web_dist/README.md << 'EOF'
@@ -61,7 +61,7 @@ jobs:
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./web_dist
-        destination_dir: wasm
+        destination_dir: codegen
         keep_files: true
 
     - name: Create Summary
@@ -69,4 +69,4 @@ jobs:
       run: |
         echo "## Web Interface Deployed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Online Tool: https://newmassrael.github.io/reactive-state-machine/wasm/" >> $GITHUB_STEP_SUMMARY
+        echo "Online Tool: https://newmassrael.github.io/reactive-state-machine/codegen/" >> $GITHUB_STEP_SUMMARY

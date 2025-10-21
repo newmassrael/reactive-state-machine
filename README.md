@@ -4,6 +4,10 @@ A high-performance C++ state machine library implementing W3C SCXML 1.0 specific
 
 [![W3C Tests](https://github.com/newmassrael/reactive-state-machine/actions/workflows/w3c-tests.yml/badge.svg)](https://github.com/newmassrael/reactive-state-machine/actions/workflows/w3c-tests.yml)
 
+**Online Tools**:
+- [Code Generator](https://newmassrael.github.io/reactive-state-machine/codegen/) - Generate C++ code from SCXML online
+- [Test Results](https://newmassrael.github.io/reactive-state-machine/test-results/test-results.html) - W3C SCXML compliance report
+
 ---
 
 ## Key Features
@@ -53,6 +57,11 @@ Full specification compliance with dual-engine architecture:
 ---
 
 ## Quick Start
+
+### Try Online (No Installation)
+
+Experiment with SCXML code generation in your browser:
+- [Online Code Generator](https://newmassrael.github.io/reactive-state-machine/codegen/)
 
 ### Installation
 
