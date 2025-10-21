@@ -133,10 +133,25 @@ class SCXMLParser:
         # Using filename (not name attribute) ensures unique namespaces (test338_machineName vs test347_machineName)
         name = Path(scxml_path).stem
 
+        # Get initial attribute (W3C SCXML 3.6)
+        initial = root.get('initial', '')
+
+        # W3C SCXML 3.6: If no initial attribute, default to first child state in document order
+        if not initial:
+            # Find first child state element
+            first_state = ns_find(root, 'state')
+            if first_state is None:
+                first_state = ns_find(root, 'parallel')
+            if first_state is None:
+                first_state = ns_find(root, 'final')
+
+            if first_state is not None:
+                initial = first_state.get('id', '')
+
         # Create model
         self.model = SCXMLModel(
             name=name,
-            initial=root.get('initial', ''),
+            initial=initial,
             binding=root.get('binding', 'early'),
             datamodel_type=root.get('datamodel', 'ecmascript')
         )

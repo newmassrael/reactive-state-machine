@@ -278,6 +278,10 @@ void EventSchedulerImpl::shutdown(bool waitForCompletion) {
             emptyQueue;
         executionQueue_.swap(emptyQueue);
         queueSize_.store(0, std::memory_order_release);
+
+        // Clear per-session queues to release all shared_ptr references
+        sessionQueues_.clear();
+        sessionExecuting_.clear();
     }
 
     LOG_DEBUG("EventSchedulerImpl: Scheduler shutdown complete");
