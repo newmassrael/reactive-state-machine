@@ -68,7 +68,7 @@ public:
      * @brief Set event raiser for dependency injection
      * @param eventRaiser Event raiser implementation
      */
-    void setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser);
+    void setEventRaiser(std::shared_ptr<IEventRaiser> eventRaiser) override;
 
     /**
      * @brief Set immediate mode for event raising (W3C SCXML 3.13 compliance - test 404)

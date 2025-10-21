@@ -119,11 +119,10 @@ endif()
 # libxml++5.0 is handled in rsm/CMakeLists.txt
 find_package(PkgConfig REQUIRED)
 
-# Find Boost library
-find_package(Boost 1.65 REQUIRED)
-
 # Modular Architecture - Add subdirectories
 add_subdirectory(rsm)                 # Unified RSM library with integrated parsing
+
+# Tools - code generation and TXML conversion
 add_subdirectory(tools/codegen)       # Code generation tool
 add_subdirectory(tools/txml_converter)  # TXML to SCXML converter tool
 
@@ -142,7 +141,7 @@ if(BUILD_EXAMPLES)
 endif()
 
 # Installation configuration (using GNUInstallDirs variables)
-install(TARGETS rsm_unified txml-converter
+install(TARGETS rsm_unified scxml-codegen txml-converter
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

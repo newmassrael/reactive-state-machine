@@ -123,13 +123,13 @@ public:
      * @brief W3C SCXML compliance: Process only ONE event from the queue
      * @return true if an event was processed, false if queue is empty
      */
-    bool processNextQueuedEvent();
+    bool processNextQueuedEvent() override;
 
     /**
      * @brief Check if there are queued events waiting to be processed
      * @return true if queue has events, false if empty
      */
-    bool hasQueuedEvents() const;
+    bool hasQueuedEvents() const override;
 
     /**
      * @brief Internal method to raise event with specific priority (for W3C SCXML compliance)

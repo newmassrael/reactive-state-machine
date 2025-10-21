@@ -134,7 +134,7 @@ public:
      * @brief Get current state of the region
      * @return Current state ID (empty if inactive)
      */
-    const std::string &getCurrentState() const;
+    const std::string &getCurrentState() const override;
 
     /**
      * @brief Directly set current state (for W3C SCXML 3.3 deep initial targets)
@@ -144,7 +144,7 @@ public:
      *
      * @param stateId The state ID to set as current
      */
-    void setCurrentState(const std::string &stateId);
+    void setCurrentState(const std::string &stateId) override;
 
     /**
      * @brief Check if region is in error state
@@ -171,7 +171,7 @@ public:
      *
      * @param executionContext Execution context from StateMachine
      */
-    void setExecutionContext(std::shared_ptr<IExecutionContext> executionContext);
+    void setExecutionContext(std::shared_ptr<IExecutionContext> executionContext) override;
 
     /**
      * @brief Set callback for invoke deferring (W3C SCXML 6.4 compliance)
@@ -182,7 +182,7 @@ public:
      * @param callback Function to call with stateId and invoke nodes for deferring
      */
     void setInvokeCallback(
-        std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> callback);
+        std::function<void(const std::string &, const std::vector<std::shared_ptr<IInvokeNode>> &)> callback) override;
 
     /**
      * @brief Set callback for condition evaluation (W3C SCXML transition guard compliance)
@@ -192,7 +192,7 @@ public:
      *
      * @param evaluator Function to call with condition string, returns evaluation result
      */
-    void setConditionEvaluator(std::function<bool(const std::string &)> evaluator);
+    void setConditionEvaluator(std::function<bool(const std::string &)> evaluator) override;
 
     /**
      * @brief Set callback for done.state event generation (W3C SCXML 3.4 compliance)
@@ -209,7 +209,7 @@ public:
      *
      * @param callback Function to call with region ID when region reaches final state
      */
-    void setDoneStateCallback(std::function<void(const std::string &)> callback);
+    void setDoneStateCallback(std::function<void(const std::string &)> callback) override;
 
     /**
      * @brief Set desired initial child state from parent's initial attribute (W3C SCXML 3.3)
@@ -223,7 +223,7 @@ public:
      *
      * @param childStateId The desired initial child state ID for this region
      */
-    void setDesiredInitialChild(const std::string &childStateId);
+    void setDesiredInitialChild(const std::string &childStateId) override;
 
 private:
     // Core state

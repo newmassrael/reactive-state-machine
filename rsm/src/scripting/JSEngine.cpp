@@ -1132,8 +1132,8 @@ bool JSEngine::resultToBool(const JSResult &result) {
     // REUSE: Proven boolean conversion logic from ActionExecutorImpl
     if (std::holds_alternative<bool>(result.value_internal)) {
         return std::get<bool>(result.value_internal);
-    } else if (std::holds_alternative<long>(result.value_internal)) {
-        return std::get<long>(result.value_internal) != 0;
+    } else if (std::holds_alternative<int64_t>(result.value_internal)) {
+        return std::get<int64_t>(result.value_internal) != 0;
     } else if (std::holds_alternative<double>(result.value_internal)) {
         return std::get<double>(result.value_internal) != 0.0;
     } else if (std::holds_alternative<std::string>(result.value_internal)) {

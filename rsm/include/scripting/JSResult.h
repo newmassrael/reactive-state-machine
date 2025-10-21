@@ -105,7 +105,9 @@ public:
             // Request int64_t: convert from double if it's a whole number
             if (std::holds_alternative<double>(value_internal)) {
                 double d = std::get<double>(value_internal);
-                if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
+                const double llong_min_d = static_cast<double>(LLONG_MIN);
+                const double llong_max_d = static_cast<double>(LLONG_MAX);
+                if (d == floor(d) && d >= llong_min_d && d <= llong_max_d) {
                     return static_cast<int64_t>(d);
                 }
             }

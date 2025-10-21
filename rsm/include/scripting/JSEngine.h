@@ -5,6 +5,7 @@
 #include "JSResult.h"
 #include "events/IEventRaiserRegistry.h"
 #include "runtime/ISessionObserver.h"
+#include "quickjs.h"
 #include <atomic>
 #include <condition_variable>
 #include <future>
@@ -21,7 +22,8 @@
 // Forward declarations for QuickJS
 struct JSRuntime;
 struct JSContext;
-struct JSValue;
+// Note: JSValue is typedef'd in quickjs.h (depending on config: uint64_t or struct JSValue*)
+// Do NOT forward declare here as it conflicts with the typedef
 
 // JSValueConst is defined by QuickJS, no need to redefine
 

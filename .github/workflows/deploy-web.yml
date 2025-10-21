@@ -1,0 +1,72 @@
+name: Deploy Web Interface
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools/wasm/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Prepare Web Files
+      run: |
+        mkdir -p web_dist
+        cp tools/wasm/index.html web_dist/
+        
+        # Create README
+        cat > web_dist/README.md << 'EOF'
+        # SCXML Code Generator (Web)
+
+        Online tool for generating optimized C++ code from SCXML state machine definitions.
+
+        ## Features
+
+        - **SCXML Validation**: Validates SCXML against W3C SCXML 1.0 specification
+        - **C++ Code Generation**: Generates type-safe, zero-overhead C++ state machines
+        - **Real-time Feedback**: Instant validation and code generation
+        - **Download**: Export generated code as C++ files
+
+        ## Usage
+
+        1. Paste your SCXML code in the input pane
+        2. Click "Generate C++ Code"
+        3. Download the generated code
+
+        ## Built with
+
+        - **Frontend**: HTML, CSS, JavaScript
+        - **SCXML Engine**: W3C SCXML 1.0 compliant
+
+        ## About reactive-state-machine
+
+        This tool is powered by [reactive-state-machine](https://github.com/newmassrael/reactive-state-machine),
+        a C++ SCXML library with W3C compliance and code generation capabilities.
+        EOF
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./web_dist
+        destination_dir: wasm
+        keep_files: true
+
+    - name: Create Summary
+      if: always()
+      run: |
+        echo "## Web Interface Deployed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Online Tool: https://newmassrael.github.io/reactive-state-machine/wasm/" >> $GITHUB_STEP_SUMMARY

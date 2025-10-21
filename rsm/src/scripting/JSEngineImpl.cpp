@@ -641,7 +641,9 @@ ScriptValue JSEngine::quickJSToJSValue(JSContext *ctx, JSValue qjsValue) {
         LOG_TRACE("JSEngine::quickJSToJSValue - JS_IsNumber=true, extracted double={}", d);
 
         // SCXML W3C compliance: Return as int64_t if it's a whole number within range
-        if (d == floor(d) && d >= LLONG_MIN && d <= LLONG_MAX) {
+        const double llong_min_d = static_cast<double>(LLONG_MIN);
+        const double llong_max_d = static_cast<double>(LLONG_MAX);
+        if (d == floor(d) && d >= llong_min_d && d <= llong_max_d) {
             int64_t int_result = static_cast<int64_t>(d);
             LOG_TRACE("JSEngine::quickJSToJSValue - Converting to int64_t={}", int_result);
             return int_result;

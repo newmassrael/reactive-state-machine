@@ -34,7 +34,7 @@ public:
 
     // Additional accessor methods
     const std::string &getIdLocation() const override;
-    const std::string &getNamelist() const;
+    const std::string &getNamelist() const override;
     const std::string &getContent() const override;
     const std::string &getFinalize() const override;
     const std::vector<std::tuple<std::string, std::string, std::string>> &getParams() const override;

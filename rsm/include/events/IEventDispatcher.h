@@ -10,7 +10,7 @@
 namespace RSM {
 
 // Forward declarations
-class EventDescriptor;
+struct EventDescriptor;
 class IEventTarget;
 
 /**
