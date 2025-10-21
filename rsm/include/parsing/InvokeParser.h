@@ -14,13 +14,13 @@ public:
     InvokeParser(std::shared_ptr<NodeFactory> nodeFactory);
     ~InvokeParser();
 
-    // invoke 요소 파싱
+    // Parse invoke element
     std::shared_ptr<IInvokeNode> parseInvokeNode(const xmlpp::Element *invokeElement);
 
-    // 특정 상태 내의 모든 invoke 요소 파싱
+    // Parse all invoke elements within a specific state
     std::vector<std::shared_ptr<IInvokeNode>> parseInvokesInState(const xmlpp::Element *stateElement);
 
-    // param 요소를 파싱하고 생성된 DataModelItem 반환
+    // Parse param elements and return created DataModelItems
     std::vector<std::shared_ptr<IDataModelItem>>
     parseParamElementsAndCreateDataItems(const xmlpp::Element *invokeElement, std::shared_ptr<IInvokeNode> invokeNode);
 

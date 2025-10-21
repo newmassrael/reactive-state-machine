@@ -7,10 +7,10 @@
 #include <string>
 
 /**
- * @brief <donedata> 요소를 파싱하는 클래스
+ * @brief Class for parsing <donedata> elements
  *
- * 이 클래스는 SCXML의 <donedata> 요소와 그 자식 요소들(<content>, <param>)을 파싱합니다.
- * <donedata>는 <final> 상태가 진입될 때 반환될 데이터를 정의합니다.
+ * This class parses SCXML <donedata> elements and their child elements (<content>, <param>).
+ * <donedata> defines the data to be returned when a <final> state is entered.
  */
 
 namespace RSM {
@@ -18,42 +18,42 @@ namespace RSM {
 class DoneDataParser {
 public:
     /**
-     * @brief 생성자
-     * @param factory 노드 생성을 위한 팩토리 인스턴스
+     * @brief Constructor
+     * @param factory Factory instance for node creation
      */
     explicit DoneDataParser(std::shared_ptr<NodeFactory> factory);
 
     /**
-     * @brief 소멸자
+     * @brief Destructor
      */
     ~DoneDataParser() = default;
 
     /**
-     * @brief <donedata> 요소 파싱
-     * @param doneDataElement <donedata> XML 요소
-     * @param stateNode 대상 상태 노드
-     * @return 파싱 성공 여부
+     * @brief Parse <donedata> element
+     * @param doneDataElement <donedata> XML element
+     * @param stateNode Target state node
+     * @return Parsing success status
      */
     bool parseDoneData(const xmlpp::Element *doneDataElement, IStateNode *stateNode);
 
 private:
     /**
-     * @brief <content> 요소 파싱
-     * @param contentElement <content> XML 요소
-     * @param stateNode 대상 상태 노드
-     * @return 파싱 성공 여부
+     * @brief Parse <content> element
+     * @param contentElement <content> XML element
+     * @param stateNode Target state node
+     * @return Parsing success status
      */
     bool parseContent(const xmlpp::Element *contentElement, IStateNode *stateNode);
 
     /**
-     * @brief <param> 요소 파싱
-     * @param paramElement <param> XML 요소
-     * @param stateNode 대상 상태 노드
-     * @return 파싱 성공 여부
+     * @brief Parse <param> element
+     * @param paramElement <param> XML element
+     * @param stateNode Target state node
+     * @return Parsing success status
      */
     bool parseParam(const xmlpp::Element *paramElement, IStateNode *stateNode);
 
-    std::shared_ptr<NodeFactory> factory_;  // 노드 생성 팩토리
+    std::shared_ptr<NodeFactory> factory_;  // Node creation factory
 };
 
 }  // namespace RSM

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DoneData.h"  // 추가된 헤더
+#include "DoneData.h"  // Added header
 #include "actions/IActionNode.h"
 #include "types.h"
 #include <memory>
@@ -47,20 +47,20 @@ public:
     virtual void setHistoryType(bool isDeep) = 0;
 
     /**
-     * @brief 히스토리 상태 타입 반환
-     * @return 히스토리 타입 (NONE, SHALLOW, DEEP)
+     * @brief Return history state type
+     * @return History type (NONE, SHALLOW, DEEP)
      */
     virtual HistoryType getHistoryType() const = 0;
 
     /**
-     * @brief Shallow 히스토리 여부 확인
-     * @return Shallow 히스토리인지 여부
+     * @brief Check if shallow history
+     * @return Whether it is shallow history
      */
     virtual bool isShallowHistory() const = 0;
 
     /**
-     * @brief Deep 히스토리 여부 확인
-     * @return Deep 히스토리인지 여부
+     * @brief Check if deep history
+     * @return Whether it is deep history
      */
     virtual bool isDeepHistory() const = 0;
 
@@ -76,44 +76,44 @@ public:
     virtual bool isFinalState() const = 0;
 
     /**
-     * @brief DoneData 객체 참조 반환
-     * @return DoneData 객체 참조
+     * @brief Return DoneData object reference
+     * @return DoneData object reference
      */
     virtual const DoneData &getDoneData() const = 0;
 
     /**
-     * @brief DoneData 객체 참조 반환 (수정 가능)
-     * @return DoneData 객체 참조
+     * @brief Return DoneData object reference (mutable)
+     * @return DoneData object reference
      */
     virtual DoneData &getDoneData() = 0;
 
     /**
-     * @brief <donedata>의 <content> 요소 설정
-     * @param content 콘텐츠 문자열
+     * @brief Set <content> element of <donedata>
+     * @param content Content string
      */
     virtual void setDoneDataContent(const std::string &content) = 0;
 
     /**
-     * @brief <donedata>에 <param> 요소 추가
-     * @param name 매개변수 이름
-     * @param location 데이터 모델 위치 경로
+     * @brief Add <param> element to <donedata>
+     * @param name Parameter name
+     * @param location Data model location path
      */
     virtual void addDoneDataParam(const std::string &name, const std::string &location) = 0;
 
     /**
-     * @brief <donedata>의 모든 <param> 요소 제거
+     * @brief Remove all <param> elements from <donedata>
      */
     virtual void clearDoneDataParams() = 0;
 
     /**
-     * @brief initial 요소의 전환 객체 반환
-     * @return initial 전환 객체에 대한 포인터, initial 요소가 없는 경우 nullptr
+     * @brief Return transition object of initial element
+     * @return Pointer to initial transition object, nullptr if no initial element
      */
     virtual std::shared_ptr<ITransitionNode> getInitialTransition() const = 0;
 
     /**
-     * @brief initial 요소의 전환 객체 설정
-     * @param transition 초기 전환 객체
+     * @brief Set transition object of initial element
+     * @param transition Initial transition object
      */
     virtual void setInitialTransition(std::shared_ptr<ITransitionNode> transition) = 0;
 };

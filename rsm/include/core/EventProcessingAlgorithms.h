@@ -6,35 +6,35 @@
 namespace RSM::Core {
 
 /**
- * @brief W3C SCXML 이벤트 처리 알고리즘 (Single Source of Truth)
+ * @brief W3C SCXML event processing algorithms (Single Source of Truth)
  *
- * Interpreter와 AOT 엔진의 모든 이벤트 처리 로직을 템플릿 기반으로 공유.
+ * Share all event processing logic for Interpreter and AOT engines based on templates.
  *
- * 설계 원칙:
- * 1. 알고리즘만 공유, 자료구조는 각 엔진 최적화 유지
- * 2. 템플릿 기반 제로 오버헤드 (인라인 확장)
- * 3. 명확한 인터페이스로 타입 안전성 보장
+ * Design principles:
+ * 1. Share algorithms only, maintain per-engine data structure optimization
+ * 2. Template-based zero overhead (inline expansion)
+ * 3. Ensure type safety with clear interfaces
  *
- * @note 이 클래스의 모든 메서드는 static template 함수로,
- *       컴파일 타임에 인라인 확장되어 런타임 오버헤드가 없음.
+ * @note All methods in this class are static template functions,
+ *       inlined at compile time with no runtime overhead.
  */
 class EventProcessingAlgorithms {
 public:
     /**
-     * @brief W3C SCXML 3.12.1: 내부 이벤트 큐 처리 (FIFO)
+     * @brief W3C SCXML 3.12.1: Process internal event queue (FIFO)
      *
-     * Macrostep 완료 시 모든 내부 이벤트를 FIFO 순서로 소진.
-     * Interpreter와 AOT 엔진 모두 동일한 알고리즘 사용.
+     * Exhaust all internal events in FIFO order when macrostep completes.
+     * Both Interpreter and AOT engines use the same algorithm.
      *
-     * @tparam EventQueue 이벤트 큐 타입
-     *   요구 메서드: bool hasEvents() const, EventType popNext()
-     * @tparam EventHandler 이벤트 처리 콜백 타입
-     *   시그니처: bool handler(EventType event)
+     * @tparam EventQueue Event queue type
+     *   Required methods: bool hasEvents() const, EventType popNext()
+     * @tparam EventHandler Event handler callback type
+     *   Signature: bool handler(EventType event)
      *
-     * @param queue 내부 이벤트 큐 (AOTEventQueue 또는 InterpreterEventQueue)
-     * @param handler 이벤트 처리 함수 (false 반환 시 처리 중단)
+     * @param queue Internal event queue (AOTEventQueue or InterpreterEventQueue)
+     * @param handler Event processing function (stops processing if returns false)
      *
-     * @example AOT 엔진:
+     * @example AOT engine:
      * @code
      * AOTEventQueue aotQueue(eventQueue_);
      * processInternalEventQueue(aotQueue, [this](Event e) {
@@ -42,11 +42,11 @@ public:
      * });
      * @endcode
      *
-     * @example Interpreter 엔진:
+     * @example Interpreter engine:
      * @code
      * InterpreterEventQueue interpQueue(eventRaiser_);
      * processInternalEventQueue(interpQueue, [this](auto) {
-     *     return true;  // EventRaiser가 내부적으로 처리
+     *     return true;  // EventRaiser handles internally
      * });
      * @endcode
      */
@@ -56,7 +56,7 @@ public:
         while (queue.hasEvents()) {
             auto event = queue.popNext();
 
-            // 이벤트 처리 실패 시 중단
+            // Stop if event processing fails
             if (!handler(event)) {
                 LOG_DEBUG("EventProcessingAlgorithms: Event handler returned false, stopping queue processing");
                 break;
@@ -65,24 +65,24 @@ public:
     }
 
     /**
-     * @brief W3C SCXML 3.13: Eventless transitions 체크
+     * @brief W3C SCXML 3.13: Check eventless transitions
      *
-     * 상태 진입 후 이벤트 없이 자동 실행되는 전환을 체크.
-     * 무한 루프 방지를 위한 최대 반복 횟수 제한 포함.
+     * Check transitions that execute automatically without events after state entry.
+     * Includes maximum iteration limit to prevent infinite loops.
      *
-     * @tparam StateMachine 상태 머신 타입
-     *   요구 메서드:
+     * @tparam StateMachine State machine type
+     *   Required methods:
      *   - StateType getCurrentState() const
      *   - bool processEventlessTransition()
      *   - void executeOnExit(StateType)
      *   - void executeOnEntry(StateType)
-     * @tparam EventQueue 내부 이벤트 큐 타입
-     * @tparam InternalEventProcessor 내부 이벤트 처리 함수 타입
+     * @tparam EventQueue Internal event queue type
+     * @tparam InternalEventProcessor Internal event processing function type
      *
-     * @param sm 상태 머신 인스턴스
-     * @param queue 내부 이벤트 큐
-     * @param processInternalEvent 내부 이벤트 처리 함수
-     * @param maxIterations 최대 반복 횟수 (기본 100)
+     * @param sm State machine instance
+     * @param queue Internal event queue
+     * @param processInternalEvent Internal event processing function
+     * @param maxIterations Maximum iteration count (default 100)
      * @return true if any eventless transition occurred, false otherwise
      */
     template <typename StateMachine, typename EventQueue, typename InternalEventProcessor>
@@ -94,7 +94,7 @@ public:
         while (iterations++ < maxIterations) {
             auto oldState = sm.getCurrentState();
 
-            // W3C SCXML 3.13: Eventless transition 시도
+            // W3C SCXML 3.13: Attempt eventless transition
             if (sm.processEventlessTransition()) {
                 auto newState = sm.getCurrentState();
 
@@ -103,16 +103,16 @@ public:
                     sm.executeOnExit(oldState);
                     sm.executeOnEntry(newState);
 
-                    // 새 상태 진입 후 내부 이벤트 처리
+                    // Process internal events after entering new state
                     processInternalEventQueue(queue, processInternalEvent);
 
-                    // 계속해서 eventless transition 체크
+                    // Continue checking eventless transitions
                 } else {
-                    // 상태 변경 없음 - 중단
+                    // No state change - stop
                     break;
                 }
             } else {
-                // Eventless transition 없음 - 중단
+                // No eventless transition - stop
                 break;
             }
         }
@@ -127,37 +127,37 @@ public:
     }
 
     /**
-     * @brief W3C SCXML 3.3 / D.1: Complete Macrostep 처리
+     * @brief W3C SCXML 3.3 / D.1: Process complete macrostep
      *
-     * 외부 이벤트 처리 → 내부 이벤트 소진 → Eventless transitions.
-     * Interpreter와 AOT 엔진의 핵심 이벤트 처리 패턴.
+     * External event processing → Exhaust internal events → Eventless transitions.
+     * Core event processing pattern for Interpreter and AOT engines.
      *
-     * @tparam StateMachine 상태 머신 타입
-     * @tparam Event 이벤트 타입
-     * @tparam EventQueue 내부 이벤트 큐 타입
-     * @tparam InternalEventProcessor 내부 이벤트 처리 함수 타입
+     * @tparam StateMachine State machine type
+     * @tparam Event Event type
+     * @tparam EventQueue Internal event queue type
+     * @tparam InternalEventProcessor Internal event processing function type
      *
-     * @param sm 상태 머신 인스턴스
-     * @param event 외부 이벤트
-     * @param queue 내부 이벤트 큐
-     * @param processInternalEvent 내부 이벤트 처리 함수
-     * @param checkEventless Eventless transitions 체크 여부 (기본 true)
+     * @param sm State machine instance
+     * @param event External event
+     * @param queue Internal event queue
+     * @param processInternalEvent Internal event processing function
+     * @param checkEventless Whether to check eventless transitions (default true)
      */
     template <typename StateMachine, typename Event, typename EventQueue, typename InternalEventProcessor>
     static void processMacrostep(StateMachine &sm, const Event &event, EventQueue &queue,
                                  InternalEventProcessor &&processInternalEvent, bool checkEventless = true) {
         auto oldState = sm.getCurrentState();
 
-        // 1. W3C SCXML 3.12: 외부 이벤트로 전환 시도
+        // 1. W3C SCXML 3.12: Attempt transition with external event
         if (sm.processTransition(event)) {
             auto newState = sm.getCurrentState();
 
-            // 2. 상태 변경 시: exit/entry 실행
+            // 2. On state change: execute exit/entry
             if (oldState != newState) {
                 sm.executeOnExit(oldState);
                 sm.executeOnEntry(newState);
 
-                // 3. W3C SCXML 3.12.1: 내부 이벤트 모두 처리
+                // 3. W3C SCXML 3.12.1: Process all internal events
                 processInternalEventQueue(queue, processInternalEvent);
 
                 // 4. W3C SCXML 3.13: Eventless transitions

@@ -474,7 +474,7 @@ public:
     // Use the resultToXXX methods above instead
 
 private:
-    JSEngine();  // 생성자에서 완전 초기화
+    JSEngine();  // Complete initialization in constructor
     ~JSEngine();
 
     // Non-copyable, non-movable
@@ -593,8 +593,8 @@ private:
     // === Internal Methods ===
     void executionWorker();
     void processExecutionRequest(std::unique_ptr<ExecutionRequest> request);
-    void initializeInternal();            // 공통 초기화 로직
-    void initializeEventRaiserService();  // EventRaiserService 초기화
+    void initializeInternal();            // Common initialization logic
+    void initializeEventRaiserService();  // EventRaiserService initialization
 
     // QuickJS helpers
     JSResult executeScriptInternal(const std::string &sessionId, const std::string &script);

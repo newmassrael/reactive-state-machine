@@ -11,7 +11,7 @@ namespace RSM {
 
 std::shared_ptr<spdlog::logger> Logger::logger_;
 
-// 숨겨진 구현 네임스페이스의 함수들 정의
+// Hidden implementation namespace function definitions
 namespace RSM_LOGGER_PRIVATE_NS {
 
 void ensureLoggerInitialized() {
@@ -19,7 +19,7 @@ void ensureLoggerInitialized() {
         Logger::logger_ = spdlog::stdout_color_mt("RSM");
         Logger::logger_->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
-        // 환경변수 SPDLOG_LEVEL을 확인하여 로그 레벨 설정
+        // Check SPDLOG_LEVEL environment variable to set log level
         const char *env_level = std::getenv("SPDLOG_LEVEL");
         if (env_level) {
             std::string level_str(env_level);
@@ -131,24 +131,24 @@ void doFormatAndLog(spdlog::level::level_enum level, const std::string &message,
 void doInitializeLogger(const std::string &logDir, bool logToFile) {
     if (!Logger::logger_) {
         if (logDir.empty() && !logToFile) {
-            // 기본 초기화
+            // Default initialization
             Logger::logger_ = spdlog::stdout_color_mt("RSM");
             Logger::logger_->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         } else {
-            // 파일 로그 포함 초기화
+            // Initialize with file logging
             std::vector<spdlog::sink_ptr> sinks;
 
-            // 항상 콘솔 출력 추가
+            // Always add console output
             auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
             console_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
             sinks.push_back(console_sink);
 
-            // 파일 로그가 요청된 경우 파일 sink 추가
+            // Add file sink if file logging requested
             if (logToFile && !logDir.empty()) {
-                // 로그 디렉토리 생성
+                // Create log directory
                 std::filesystem::create_directories(logDir);
 
-                // 파일 경로 생성 (rsm.log)
+                // Create file path (rsm.log)
                 std::filesystem::path logPath = std::filesystem::path(logDir) / "rsm.log";
 
                 auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
@@ -156,15 +156,15 @@ void doInitializeLogger(const std::string &logDir, bool logToFile) {
                 sinks.push_back(file_sink);
             }
 
-            // 복합 로거 생성
+            // Create composite logger
             Logger::logger_ = std::make_shared<spdlog::logger>("RSM", sinks.begin(), sinks.end());
             Logger::logger_->set_level(spdlog::level::debug);
 
-            // spdlog registry에 등록
+            // Register with spdlog registry
             spdlog::register_logger(Logger::logger_);
         }
 
-        // 환경변수 SPDLOG_LEVEL을 확인하여 로그 레벨 설정
+        // Check SPDLOG_LEVEL environment variable to set log level
         const char *env_level = std::getenv("SPDLOG_LEVEL");
         if (env_level) {
             std::string level_str(env_level);

@@ -7,11 +7,11 @@
 #include <vector>
 
 /**
- * @brief 파싱 관련 공통 유틸리티 클래스
+ * @brief Common utility class for parsing
  *
- * 이 클래스는 여러 파서 클래스에서 공통으로 사용하는
- * 함수와 상수를 제공합니다. 네임스페이스 처리, 속성 검증,
- * 경로 처리 등을 위한 유틸리티가 포함됩니다.
+ * This class provides functions and constants commonly used
+ * across multiple parser classes. Includes utilities for
+ * namespace handling, attribute validation, path processing, etc.
  */
 
 namespace RSM {
@@ -19,7 +19,7 @@ namespace RSM {
 class ParsingCommon {
 public:
     /**
-     * @brief SCXML 관련 상수
+     * @brief SCXML-related constants
      */
     struct Constants {
         static const std::string SCXML_NAMESPACE;
@@ -29,74 +29,74 @@ public:
     };
 
     /**
-     * @brief 네임스페이스를 고려하여 노드 이름 비교
-     * @param nodeName 검사할 노드 이름
-     * @param baseName 기본 이름 (네임스페이스 없음)
-     * @return 일치 여부
+     * @brief Compare node names considering namespace
+     * @param nodeName Node name to check
+     * @param baseName Base name (without namespace)
+     * @return Whether they match
      */
     static bool matchNodeName(const std::string &nodeName, const std::string &baseName);
 
     /**
-     * @brief 지정된 이름의 자식 요소 찾기 (네임스페이스 고려)
-     * @param element 부모 요소
-     * @param childName 찾을 자식 이름
-     * @return 찾은 자식 요소들
+     * @brief Find child elements with specified name (considering namespace)
+     * @param element Parent element
+     * @param childName Child name to find
+     * @return Found child elements
      */
     static std::vector<const xmlpp::Element *> findChildElements(const xmlpp::Element *element,
                                                                  const std::string &childName);
 
     /**
-     * @brief 지정된 이름의 첫 번째 자식 요소 찾기 (네임스페이스 고려)
-     * @param element 부모 요소
-     * @param childName 찾을 자식 이름
-     * @return 찾은 자식 요소, 없으면 nullptr
+     * @brief Find first child element with specified name (considering namespace)
+     * @param element Parent element
+     * @param childName Child name to find
+     * @return Found child element, nullptr if not found
      */
     static const xmlpp::Element *findFirstChildElement(const xmlpp::Element *element, const std::string &childName);
 
     /**
-     * @brief 요소 또는 상위 요소에서 ID 속성 찾기
-     * @param element 검사할 요소
-     * @return 찾은 ID, 없으면 빈 문자열
+     * @brief Find ID attribute in element or parent element
+     * @param element Element to check
+     * @return Found ID, empty string if not found
      */
     static std::string findElementId(const xmlpp::Element *element);
 
     /**
-     * @brief 속성 값 가져오기 (여러 이름 시도)
-     * @param element 속성을 가진 요소
-     * @param attrNames 시도할 속성 이름 목록
-     * @return 속성 값, 없으면 빈 문자열
+     * @brief Get attribute value (try multiple names)
+     * @param element Element with attributes
+     * @param attrNames List of attribute names to try
+     * @return Attribute value, empty string if not found
      */
     static std::string getAttributeValue(const xmlpp::Element *element, const std::vector<std::string> &attrNames);
 
     /**
-     * @brief 모든 속성을 맵으로 수집
-     * @param element 속성을 가진 요소
-     * @param excludeAttrs 제외할 속성 이름 목록
-     * @return 속성 맵 (이름 -> 값)
+     * @brief Collect all attributes into map
+     * @param element Element with attributes
+     * @param excludeAttrs List of attribute names to exclude
+     * @return Attribute map (name -> value)
      */
     static std::unordered_map<std::string, std::string>
     collectAttributes(const xmlpp::Element *element, const std::vector<std::string> &excludeAttrs = {});
 
     /**
-     * @brief 상대 경로를 절대 경로로 변환
-     * @param basePath 기준 경로
-     * @param relativePath 상대 경로
-     * @return 절대 경로
+     * @brief Convert relative path to absolute path
+     * @param basePath Base path
+     * @param relativePath Relative path
+     * @return Absolute path
      */
     static std::string resolveRelativePath(const std::string &basePath, const std::string &relativePath);
 
     /**
-     * @brief 텍스트 노드의 내용을 추출
-     * @param element 텍스트를 포함하는 요소
-     * @param trimWhitespace 공백 제거 여부
-     * @return 추출된 텍스트
+     * @brief Extract text content from text node
+     * @param element Element containing text
+     * @param trimWhitespace Whether to trim whitespace
+     * @return Extracted text
      */
     static std::string extractTextContent(const xmlpp::Element *element, bool trimWhitespace = true);
 
     /**
-     * @brief XML 요소 이름 추출 (네임스페이스 제거)
-     * @param element XML 요소
-     * @return 네임스페이스 없는 요소 이름
+     * @brief Extract XML element name (remove namespace)
+     * @param element XML element
+     * @return Element name without namespace
      */
     static std::string getLocalName(const xmlpp::Element *element);
 
@@ -107,7 +107,7 @@ public:
     static std::string trimString(const std::string &str);
 
 private:
-    // 인스턴스 생성 방지
+    // Prevent instance creation
     ParsingCommon() = delete;
 };
 

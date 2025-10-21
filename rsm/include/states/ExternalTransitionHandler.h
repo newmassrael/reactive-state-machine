@@ -11,45 +11,45 @@
 namespace RSM {
 
 /**
- * @brief 병렬 상태의 외부 전이 처리를 담당하는 클래스
+ * @brief Class responsible for handling external transitions in parallel states
  *
- * SCXML 병렬 상태에서 외부 전이가 발생할 때 모든 활성 지역을
- * 적절한 순서로 비활성화하는 역할을 담당합니다.
+ * Responsible for deactivating all active regions in proper order
+ * when external transitions occur in SCXML parallel states.
  */
 class ExternalTransitionHandler {
 public:
     /**
-     * @brief 생성자
-     * @param maxConcurrentTransitions 최대 동시 처리 가능한 전이 수
+     * @brief Constructor
+     * @param maxConcurrentTransitions Maximum number of concurrent transitions
      */
     explicit ExternalTransitionHandler(size_t maxConcurrentTransitions = 10);
 
     /**
-     * @brief 외부 전이 처리
-     * @param parallelStateId 병렬 상태 ID
-     * @param targetStateId 대상 상태 ID
-     * @param transitionEvent 전이 이벤트
-     * @return 처리 성공 여부
+     * @brief Handle external transition
+     * @param parallelStateId Parallel state ID
+     * @param targetStateId Target state ID
+     * @param transitionEvent Transition event
+     * @return Success status
      */
     bool handleExternalTransition(const std::string &parallelStateId, const std::string &targetStateId,
                                   const std::string &transitionEvent);
 
     /**
-     * @brief 병렬 상태 등록
-     * @param parallelStateId 병렬 상태 ID
-     * @param regionIds 지역 ID 목록
+     * @brief Register parallel state
+     * @param parallelStateId Parallel state ID
+     * @param regionIds List of region IDs
      */
     void registerParallelState(const std::string &parallelStateId, const std::vector<std::string> &regionIds);
 
     /**
-     * @brief 현재 활성 전이 수 확인
-     * @return 활성 전이 수
+     * @brief Get current active transition count
+     * @return Active transition count
      */
     size_t getActiveTransitionCount() const;
 
     /**
-     * @brief 전이 처리 중인지 확인
-     * @return 처리 중이면 true
+     * @brief Check if processing transitions
+     * @return true if processing
      */
     bool isProcessingTransitions() const;
 
@@ -75,7 +75,7 @@ private:
     mutable std::mutex parallelStatesMutex_;
     std::unordered_map<std::string, ParallelStateInfo> parallelStates_;
 
-    // 내부 헬퍼 메서드들
+    // Internal helper methods
     bool validateTransitionParameters(const std::string &parallelStateId, const std::string &targetStateId,
                                       const std::string &transitionEvent) const;
 

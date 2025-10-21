@@ -6,13 +6,13 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-// 현대적 매크로 기반 private 관리
+// Modern macro-based private management
 #define RSM_LOGGER_PRIVATE_NS __detail
 #define RSM_PRIVATE_CALL(func) RSM_LOGGER_PRIVATE_NS::func
 
 namespace RSM {
 
-// 숨겨진 구현 네임스페이스
+// Hidden implementation namespace
 namespace RSM_LOGGER_PRIVATE_NS {
 void doFormatAndLog(spdlog::level::level_enum level, const std::string &message, const std::source_location &loc);
 void doInitializeLogger(const std::string &logDir, bool logToFile);

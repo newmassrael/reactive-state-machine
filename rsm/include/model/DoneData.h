@@ -10,26 +10,26 @@ namespace RSM {
 class IDataModelItem;
 
 /**
- * @brief <donedata> 요소에 대한 정보를 저장하는 클래스
+ * @brief Class storing information for <donedata> element
  *
- * 이 클래스는 SCXML의 <donedata> 요소 정보를 저장합니다.
- * <donedata>는 <final> 상태가 진입될 때 반환될 데이터를 포함합니다.
+ * This class stores SCXML <donedata> element information.
+ * <donedata> contains data to be returned when entering <final> state.
  */
 class DoneData {
 public:
     /**
-     * @brief 기본 생성자
+     * @brief Default constructor
      */
     DoneData() = default;
 
     /**
-     * @brief 소멸자
+     * @brief Destructor
      */
     ~DoneData() = default;
 
     /**
-     * @brief <content> 요소의 내용 설정
-     * @param content 콘텐츠 문자열
+     * @brief Set content of <content> element
+     * @param content Content string
      */
     void setContent(const std::string &content) {
         content_ = content;
@@ -37,41 +37,41 @@ public:
     }
 
     /**
-     * @brief <content> 요소 내용 반환
-     * @return 콘텐츠 문자열
+     * @brief Return <content> element content
+     * @return Content string
      */
     const std::string &getContent() const {
         return content_;
     }
 
     /**
-     * @brief <param> 요소 추가
-     * @param name 매개변수 이름
-     * @param location 데이터 모델 위치 경로
+     * @brief Add <param> element
+     * @param name Parameter name
+     * @param location Data model location path
      */
     void addParam(const std::string &name, const std::string &location) {
         params_.push_back(std::make_pair(name, location));
     }
 
     /**
-     * @brief <param> 요소 목록 반환
-     * @return 매개변수 이름과 위치 목록
+     * @brief Return <param> element list
+     * @return List of parameter names and locations
      */
     const std::vector<std::pair<std::string, std::string>> &getParams() const {
         return params_;
     }
 
     /**
-     * @brief <donedata> 요소가 비어 있는지 확인
-     * @return 비어 있으면 true, 아니면 false
+     * @brief Check if <donedata> element is empty
+     * @return true if empty, false otherwise
      */
     bool isEmpty() const {
         return !hasContent_ && params_.empty();
     }
 
     /**
-     * @brief <content> 요소가 있는지 확인
-     * @return <content> 요소가 있으면 true, 아니면 false
+     * @brief Check if <content> element exists
+     * @return true if <content> element exists, false otherwise
      */
     bool hasContent() const {
         return hasContent_;
@@ -82,9 +82,9 @@ public:
     }
 
 private:
-    std::string content_;                                      // <content> 요소의 내용
-    std::vector<std::pair<std::string, std::string>> params_;  // <param> 요소 목록 (이름, 위치)
-    bool hasContent_ = false;                                  // <content> 요소 존재 여부
+    std::string content_;                                      // Content of <content> element
+    std::vector<std::pair<std::string, std::string>> params_;  // <param> element list (name, location)
+    bool hasContent_ = false;                                  // Whether <content> element exists
 };
 
 }  // namespace RSM

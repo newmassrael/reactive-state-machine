@@ -8,11 +8,11 @@
 #include <vector>
 
 /**
- * @brief 가드 조건 파싱을 담당하는 클래스
+ * @brief Class responsible for parsing guard conditions
  *
- * 이 클래스는 SCXML 문서의 가드 조건 관련 요소를 파싱하는
- * 기능을 제공합니다. code:guards 요소 내의 code:guard 요소와
- * transition 요소의 가드 속성을 처리합니다.
+ * This class provides functionality to parse guard condition-related elements
+ * in SCXML documents. It handles code:guard elements within code:guards elements
+ * and guard attributes of transition elements.
  */
 
 namespace RSM {
@@ -20,95 +20,95 @@ namespace RSM {
 class GuardParser {
 public:
     /**
-     * @brief 생성자
-     * @param nodeFactory 노드 생성을 위한 팩토리 인스턴스
+     * @brief Constructor
+     * @param nodeFactory Factory instance for node creation
      */
     explicit GuardParser(std::shared_ptr<NodeFactory> nodeFactory);
 
     /**
-     * @brief 소멸자
+     * @brief Destructor
      */
     ~GuardParser();
 
     /**
-     * @brief 가드 노드 파싱
-     * @param guardNode XML 가드 노드
-     * @return 생성된 가드 노드
+     * @brief Parse guard node
+     * @param guardNode XML guard node
+     * @return Created guard node
      */
     std::shared_ptr<IGuardNode> parseGuardNode(const xmlpp::Element *guardNode);
 
     /**
-     * @brief 전환의 가드 속성 파싱
-     * @param transitionNode XML 전환 노드
-     * @param targetState 전환 대상 상태
-     * @return 생성된 가드 노드, 가드 속성이 없으면 nullptr
+     * @brief Parse guard attribute from transition
+     * @param transitionNode XML transition node
+     * @param targetState Transition target state
+     * @return Created guard node, nullptr if no guard attribute
      */
     std::shared_ptr<IGuardNode> parseGuardFromTransition(const xmlpp::Element *transitionNode,
                                                          const std::string &targetState);
 
     /**
-     * @brief 반응형 가드 파싱
-     * @param reactiveGuardNode XML 반응형 가드 노드
-     * @return 생성된 가드 노드
+     * @brief Parse reactive guard
+     * @param reactiveGuardNode XML reactive guard node
+     * @return Created guard node
      */
     std::shared_ptr<IGuardNode> parseReactiveGuard(const xmlpp::Element *reactiveGuardNode);
 
     /**
-     * @brief guards 요소 내의 모든 가드 파싱
-     * @param guardsNode code:guards 요소
-     * @return 파싱된 가드 노드 목록
+     * @brief Parse all guards within guards element
+     * @param guardsNode code:guards element
+     * @return List of parsed guard nodes
      */
     std::vector<std::shared_ptr<IGuardNode>> parseGuardsElement(const xmlpp::Element *guardsNode);
 
     /**
-     * @brief SCXML 문서의 모든 가드 파싱
-     * @param scxmlNode SCXML 루트 노드
-     * @return 파싱된 가드 노드 목록
+     * @brief Parse all guards in SCXML document
+     * @param scxmlNode SCXML root node
+     * @return List of parsed guard nodes
      */
     std::vector<std::shared_ptr<IGuardNode>> parseAllGuards(const xmlpp::Element *scxmlNode);
 
     /**
-     * @brief 요소가 가드 노드인지 확인
-     * @param element XML 요소
-     * @return 가드 노드 여부
+     * @brief Check if element is a guard node
+     * @param element XML element
+     * @return Whether it is a guard node
      */
     bool isGuardNode(const xmlpp::Element *element) const;
 
     /**
-     * @brief 요소가 반응형 가드 노드인지 확인
-     * @param element XML 요소
-     * @return 반응형 가드 노드 여부
+     * @brief Check if element is a reactive guard node
+     * @param element XML element
+     * @return Whether it is a reactive guard node
      */
     bool isReactiveGuardNode(const xmlpp::Element *element) const;
 
 private:
     /**
-     * @brief 의존성 목록 파싱
-     * @param guardNode 가드 노드
-     * @param guardObject 가드 객체
+     * @brief Parse dependency list
+     * @param guardNode Guard node
+     * @param guardObject Guard object
      */
     void parseDependencies(const xmlpp::Element *guardNode, std::shared_ptr<IGuardNode> guardObject);
 
     /**
-     * @brief 외부 구현 요소 파싱
-     * @param guardNode 가드 노드
-     * @param guardObject 가드 객체
+     * @brief Parse external implementation element
+     * @param guardNode Guard node
+     * @param guardObject Guard object
      */
     void parseExternalImplementation(const xmlpp::Element *guardNode, std::shared_ptr<IGuardNode> guardObject);
 
     /**
-     * @brief 네임스페이스 문제 처리
-     * @param nodeName 노드 이름
-     * @param searchName 검색할 이름
-     * @return 노드 이름이 검색 이름과 일치하는지 여부 (네임스페이스 고려)
+     * @brief Handle namespace matching
+     * @param nodeName Node name
+     * @param searchName Name to search for
+     * @return Whether node name matches search name (considering namespace)
      */
     bool matchNodeName(const std::string &nodeName, const std::string &searchName) const;
 
     /**
-     * @brief 조건식과 상태 분리
-     * @param guardNode 가드 노드
-     * @param guardObject 가드 객체
-     * @param target XML target 속성 값
+     * @brief Separate condition expression and state
+     * @param guardNode Guard node
+     * @param guardObject Guard object
+     * @param target XML target attribute value
      */
     void parseTargetAndCondition(const xmlpp::Element *guardNode, std::shared_ptr<IGuardNode> guardObject,
                                  const std::string &target);

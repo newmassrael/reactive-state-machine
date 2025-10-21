@@ -12,10 +12,10 @@
 #include <vector>
 
 /**
- * @brief 상태 노드의 구현 클래스
+ * @brief Implementation class for state node
  *
- * 이 클래스는 상태 차트의 상태 노드를 구현합니다.
- * SCXML 문서의 <state>, <parallel>, <final> 요소에 해당합니다.
+ * This class implements state nodes in a state chart.
+ * Corresponds to <state>, <parallel>, <final> elements in SCXML documents.
  */
 
 namespace RSM {
@@ -23,155 +23,155 @@ namespace RSM {
 class StateNode : public IStateNode {
 public:
     /**
-     * @brief 생성자
-     * @param id 상태 식별자
-     * @param type 상태 타입
+     * @brief Constructor
+     * @param id State identifier
+     * @param type State type
      */
     StateNode(const std::string &id, Type type);
 
     /**
-     * @brief 소멸자
+     * @brief Destructor
      */
     virtual ~StateNode();
 
     /**
-     * @brief 상태 ID 반환
-     * @return 상태 ID
+     * @brief Return state ID
+     * @return State ID
      */
     virtual const std::string &getId() const override;
 
     /**
-     * @brief 상태 타입 반환
-     * @return 상태 타입
+     * @brief Return state type
+     * @return State type
      */
     virtual Type getType() const override;
 
     /**
-     * @brief 부모 상태 설정
-     * @param parent 부모 상태 포인터
+     * @brief Set parent state
+     * @param parent Parent state pointer
      */
     virtual void setParent(IStateNode *parent) override;
 
     /**
-     * @brief 부모 상태 반환
-     * @return 부모 상태 포인터
+     * @brief Return parent state
+     * @return Parent state pointer
      */
     virtual IStateNode *getParent() const override;
 
     /**
-     * @brief 자식 상태 추가
-     * @param child 자식 상태
+     * @brief Add child state
+     * @param child Child state
      */
     virtual void addChild(std::shared_ptr<IStateNode> child) override;
 
     /**
-     * @brief 자식 상태 목록 반환
-     * @return 자식 상태 목록
+     * @brief Return list of child states
+     * @return List of child states
      */
     virtual const std::vector<std::shared_ptr<IStateNode>> &getChildren() const override;
 
     /**
-     * @brief 전환 추가
-     * @param transition 전환 노드
+     * @brief Add transition
+     * @param transition Transition node
      */
     virtual void addTransition(std::shared_ptr<ITransitionNode> transition) override;
 
     /**
-     * @brief 전환 목록 반환
-     * @return 전환 목록
+     * @brief Return list of transitions
+     * @return List of transitions
      */
     virtual const std::vector<std::shared_ptr<ITransitionNode>> &getTransitions() const override;
 
     /**
-     * @brief 데이터 모델 아이템 추가
-     * @param dataItem 데이터 모델 아이템
+     * @brief Add data model item
+     * @param dataItem Data model item
      */
     virtual void addDataItem(std::shared_ptr<IDataModelItem> dataItem) override;
 
     /**
-     * @brief 데이터 모델 아이템 목록 반환
-     * @return 데이터 모델 아이템 목록
+     * @brief Return list of data model items
+     * @return List of data model items
      */
     virtual const std::vector<std::shared_ptr<IDataModelItem>> &getDataItems() const override;
 
     /**
-     * @brief 초기 상태 ID 설정
-     * @param initialState 초기 상태 ID
+     * @brief Set initial state ID
+     * @param initialState Initial state ID
      */
     virtual void setInitialState(const std::string &initialState) override;
 
     /**
-     * @brief 초기 상태 ID 반환
-     * @return 초기 상태 ID
+     * @brief Return initial state ID
+     * @return Initial state ID
      */
     virtual const std::string &getInitialState() const override;
 
     /**
-     * @brief 진입 콜백 설정
-     * @param callback 진입 콜백 이름
+     * @brief Set entry callback
+     * @param callback Entry callback name
      */
     virtual void setOnEntry(const std::string &callback) override;
 
     /**
-     * @brief 진입 콜백 반환
-     * @return 진입 콜백 이름
+     * @brief Return entry callback
+     * @return Entry callback name
      */
     virtual const std::string &getOnEntry() const override;
 
     /**
-     * @brief 종료 콜백 설정
-     * @param callback 종료 콜백 이름
+     * @brief Set exit callback
+     * @param callback Exit callback name
      */
     virtual void setOnExit(const std::string &callback) override;
 
     /**
-     * @brief 종료 콜백 반환
-     * @return 종료 콜백 이름
+     * @brief Return exit callback
+     * @return Exit callback name
      */
     virtual const std::string &getOnExit() const override;
 
     /**
-     * @brief W3C SCXML 3.8: 진입 액션 블록 추가 (각 onentry 핸들러는 별도 블록)
-     * @param block 액션 노드 블록
+     * @brief W3C SCXML 3.8: Add entry action block (each onentry handler is a separate block)
+     * @param block Action node block
      */
     void addEntryActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) override;
 
     /**
-     * @brief W3C SCXML 3.8: 진입 액션 블록들 조회
-     * @return 진입 액션 블록들
+     * @brief W3C SCXML 3.8: Get entry action blocks
+     * @return Entry action blocks
      */
     const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &getEntryActionBlocks() const override;
 
     /**
-     * @brief W3C SCXML 3.9: 종료 액션 블록 추가 (각 onexit 핸들러는 별도 블록)
-     * @param block 액션 노드 블록
+     * @brief W3C SCXML 3.9: Add exit action block (each onexit handler is a separate block)
+     * @param block Action node block
      */
     void addExitActionBlock(std::vector<std::shared_ptr<RSM::IActionNode>> block) override;
 
     /**
-     * @brief W3C SCXML 3.9: 종료 액션 블록들 조회
-     * @return 종료 액션 블록들
+     * @brief W3C SCXML 3.9: Get exit action blocks
+     * @return Exit action blocks
      */
     const std::vector<std::vector<std::shared_ptr<RSM::IActionNode>>> &getExitActionBlocks() const override;
 
     /**
-     * @brief invoke 노드 추가
-     * @param invoke invoke 노드
+     * @brief Add invoke node
+     * @param invoke Invoke node
      */
     virtual void addInvoke(std::shared_ptr<IInvokeNode> invoke) override;
 
     /**
-     * @brief invoke 노드 목록 반환
-     * @return invoke 노드 목록
+     * @brief Return list of invoke nodes
+     * @return List of invoke nodes
      */
     virtual const std::vector<std::shared_ptr<IInvokeNode>> &getInvoke() const override;
 
-    // 히스토리 타입 설정
+    // Set history type
     void setHistoryType(HistoryType type) {
         historyType_ = type;
     }
 
-    // IStateNode 인터페이스 구현
+    // IStateNode interface implementation
     void setHistoryType(bool isDeep) override {
         historyType_ = isDeep ? HistoryType::DEEP : HistoryType::SHALLOW;
     }
@@ -188,50 +188,50 @@ public:
         return historyType_ == HistoryType::DEEP;
     }
 
-    // 반응형 가드 ID 추가 메서드
+    // Method to add reactive guard ID
     void addReactiveGuard(const std::string &guardId) override;
 
-    // IStateNode 인터페이스 구현
+    // IStateNode interface implementation
     const std::vector<std::string> &getReactiveGuards() const override;
 
     bool isFinalState() const override;
 
     /**
-     * @brief DoneData 객체 참조 반환 (상수)
-     * @return DoneData 객체 참조
+     * @brief Return DoneData object reference (const)
+     * @return DoneData object reference
      */
     const DoneData &getDoneData() const override;
 
     /**
-     * @brief DoneData 객체 참조 반환 (수정 가능)
-     * @return DoneData 객체 참조
+     * @brief Return DoneData object reference (mutable)
+     * @return DoneData object reference
      */
     DoneData &getDoneData() override;
 
     /**
-     * @brief <donedata>의 <content> 요소 설정
-     * @param content 콘텐츠 문자열
+     * @brief Set <content> element of <donedata>
+     * @param content Content string
      */
     void setDoneDataContent(const std::string &content) override;
 
     /**
-     * @brief <donedata>에 <param> 요소 추가
-     * @param name 매개변수 이름
-     * @param location 데이터 모델 위치 경로
+     * @brief Add <param> element to <donedata>
+     * @param name Parameter name
+     * @param location Data model location path
      */
     void addDoneDataParam(const std::string &name, const std::string &location) override;
 
     void clearDoneDataParams() override;
 
     /**
-     * @brief initial 요소의 전환 객체 반환
-     * @return initial 전환 객체에 대한 포인터, initial 요소가 없는 경우 nullptr
+     * @brief Return transition object of initial element
+     * @return Pointer to initial transition object, nullptr if no initial element
      */
     virtual std::shared_ptr<ITransitionNode> getInitialTransition() const override;
 
     /**
-     * @brief initial 요소의 전환 객체 설정
-     * @param transition initial 전환 객체
+     * @brief Set transition object of initial element
+     * @param transition Initial transition object
      */
     virtual void setInitialTransition(std::shared_ptr<ITransitionNode> transition) override;
 

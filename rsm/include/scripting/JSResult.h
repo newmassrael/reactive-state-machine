@@ -17,14 +17,14 @@ namespace RSM {
  */
 struct JSResult {
 private:
-    // PRIVATE: 레거시 API 완전 차단 - 직접 접근 불가능
+    // PRIVATE: Legacy API completely blocked - no direct access
     bool success_internal = false;
     ScriptValue value_internal = ScriptUndefined{};
     std::string errorMessage_internal;
 
 public:
-    // ONLY ALLOW: 통합 API를 통한 접근만 허용
-    // 생성자는 static factory methods를 통해서만 사용
+    // ONLY ALLOW: Access only through integrated API
+    // Constructors only used through static factory methods
     static JSResult createSuccess(const ScriptValue &val = ScriptUndefined{}) {
         JSResult result;
         result.success_internal = true;
@@ -39,10 +39,10 @@ public:
         return result;
     }
 
-    // LEGACY API COMPLETELY BLOCKED: 레거시 필드 완전 삭제
-    // success, value, errorMessage 필드는 더 이상 존재하지 않음
+    // LEGACY API COMPLETELY BLOCKED: Legacy fields completely removed
+    // success, value, errorMessage fields no longer exist
 
-    // ONLY THESE METHODS ALLOWED: 통합 API만 사용 가능
+    // ONLY THESE METHODS ALLOWED: Only integrated API can be used
     bool isSuccess() const {
         return success_internal;
     }
@@ -225,7 +225,7 @@ public:
         return value_internal;
     }
 
-    // FRIEND ACCESS: 통합 API에서만 내부 필드 접근 가능
+    // FRIEND ACCESS: Internal field access only from integrated API
     friend class JSEngine;
 };
 

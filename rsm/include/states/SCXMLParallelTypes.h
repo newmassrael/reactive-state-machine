@@ -15,34 +15,34 @@ class IStateNode;
 class IConcurrentRegion;
 
 /**
- * @brief SCXML 병렬 상태 완료 기준
- * SCXML 사양: 병렬 상태는 모든 자식 상태가 최종 상태에 도달할 때 완료됨
+ * @brief SCXML parallel state completion criteria
+ * SCXML specification: Parallel state completes when all child states reach final state
  */
 enum class ParallelCompletionCriteria {
-    ALL_REGIONS_FINAL,      // 모든 지역이 최종 상태 (SCXML 표준)
-    ANY_REGION_FINAL,       // 하나라도 최종 상태 (확장)
-    MAJORITY_REGIONS_FINAL  // 과반수 지역이 최종 상태 (확장)
+    ALL_REGIONS_FINAL,      // All regions in final state (SCXML standard)
+    ANY_REGION_FINAL,       // Any region in final state (extension)
+    MAJORITY_REGIONS_FINAL  // Majority of regions in final state (extension)
 };
 
 /**
- * @brief 지역 완료 정보
- * SCXML 사양에 따른 지역별 상태 추적
+ * @brief Region completion information
+ * Per-region state tracking according to SCXML specification
  */
 struct RegionCompletionInfo {
     std::string regionId;
     bool isInFinalState = false;
-    std::vector<std::string> finalStateIds;  // 지역 내 최종 상태들
+    std::vector<std::string> finalStateIds;  // Final states within region
     std::chrono::steady_clock::time_point completionTime;
     std::chrono::steady_clock::time_point lastUpdateTime;
 
-    // SCXML 추가 정보
-    std::string currentStateId;               // 현재 활성 상태
-    std::vector<std::string> activeStateIds;  // 모든 활성 상태 (복합 상태용)
+    // SCXML additional information
+    std::string currentStateId;               // Currently active state
+    std::vector<std::string> activeStateIds;  // All active states (for compound states)
 };
 
 /**
- * @brief 병렬 상태 완료 정보
- * SCXML done.state 이벤트 생성을 위한 종합 정보
+ * @brief Parallel state completion information
+ * Comprehensive information for generating SCXML done.state events
  */
 struct ParallelStateCompletionInfo {
     std::string parallelStateId;
@@ -53,59 +53,59 @@ struct ParallelStateCompletionInfo {
     std::vector<RegionCompletionInfo> regionCompletions;
     std::chrono::steady_clock::time_point completionTime;
 
-    // SCXML done.state 이벤트 데이터
+    // SCXML done.state event data
     std::string doneEventName;                              // "done.state.{id}"
-    std::unordered_map<std::string, std::string> doneData;  // done 데이터
+    std::unordered_map<std::string, std::string> doneData;  // done data
 };
 
 /**
- * @brief 완료 이벤트 타입
- * SCXML 사양에 따른 이벤트 분류
+ * @brief Completion event type
+ * Event classification according to SCXML specification
  */
 enum class CompletionEventType {
-    PARALLEL_STATE_COMPLETED,  // 병렬 상태 완료 (done.state)
-    REGION_COMPLETED,          // 개별 지역 완료
-    COMPLETION_ERROR           // 완료 처리 오류
+    PARALLEL_STATE_COMPLETED,  // Parallel state completed (done.state)
+    REGION_COMPLETED,          // Individual region completed
+    COMPLETION_ERROR           // Completion processing error
 };
 
 /**
- * @brief 완료 이벤트
- * SCXML done.state 이벤트 표현
+ * @brief Completion event
+ * Representation of SCXML done.state event
  */
 struct CompletionEvent {
     CompletionEventType type;
     std::string parallelStateId;
     std::vector<std::string> completedRegions;
     std::chrono::steady_clock::time_point timestamp;
-    std::string errorMessage;  // 오류 시에만 사용
+    std::string errorMessage;  // Used only for errors
 
-    // SCXML done.state 이벤트 생성
+    // Generate SCXML done.state event
     EventDescriptor toDoneStateEvent() const;
 };
 
 /**
- * @brief 병렬 상태 모니터링 설정
- * SCXML 사양과 확장 기능을 위한 설정
+ * @brief Parallel state monitoring configuration
+ * Configuration for SCXML specification and extension features
  */
 struct ParallelMonitoringConfig {
     ParallelCompletionCriteria criteria = ParallelCompletionCriteria::ALL_REGIONS_FINAL;
 
-    // SCXML 타이밍 설정
-    bool generateDoneEvents = true;        // done.state 이벤트 생성 여부
-    bool validateStateConsistency = true;  // 상태 일관성 검증
+    // SCXML timing settings
+    bool generateDoneEvents = true;        // Whether to generate done.state events
+    bool validateStateConsistency = true;  // Validate state consistency
 
-    // 성능 및 디버깅
-    bool collectDetailedStatistics = false;             // 상세 통계 수집
-    std::chrono::milliseconds monitoringInterval{100};  // 모니터링 주기
+    // Performance and debugging
+    bool collectDetailedStatistics = false;             // Collect detailed statistics
+    std::chrono::milliseconds monitoringInterval{100};  // Monitoring interval
 
-    // 확장 기능
-    std::unordered_map<std::string, double> regionWeights;  // 지역별 가중치
-    double weightedThreshold = 0.8;                         // 가중치 기반 완료 임계값
+    // Extension features
+    std::unordered_map<std::string, double> regionWeights;  // Per-region weights
+    double weightedThreshold = 0.8;                         // Weight-based completion threshold
 };
 
 /**
- * @brief 모니터링 통계
- * SCXML 성능 분석을 위한 통계 정보
+ * @brief Monitoring statistics
+ * Statistical information for SCXML performance analysis
  */
 struct MonitoringStatistics {
     size_t totalRegionsRegistered = 0;
@@ -114,7 +114,7 @@ struct MonitoringStatistics {
     std::chrono::microseconds averageCompletionCheckTime{0};
     bool isCurrentlyComplete = false;
 
-    // SCXML 사양 준수 통계
+    // SCXML specification compliance statistics
     size_t doneEventsGenerated = 0;
     size_t stateConsistencyViolations = 0;
     std::chrono::steady_clock::time_point monitoringStartTime;

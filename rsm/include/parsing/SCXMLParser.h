@@ -18,10 +18,11 @@
 #include <vector>
 
 /**
- * @brief SCXML 파싱을 총괄하는 클래스
+ * @brief Class that orchestrates SCXML parsing
  *
- * 이 클래스는 SCXML 문서의 파싱을 관리하고 조정하는 역할을 합니다.
- * 다양한 요소별 파서를 활용하여 문서를 완전한 객체 모델로 변환합니다.
+ * This class manages and coordinates the parsing of SCXML documents.
+ * It utilizes various element-specific parsers to convert documents
+ * into complete object models.
  */
 
 namespace RSM {
@@ -29,109 +30,109 @@ namespace RSM {
 class SCXMLParser {
 public:
     /**
-     * @brief 생성자
-     * @param nodeFactory 노드 생성을 위한 팩토리 인스턴스
-     * @param xincludeProcessor XInclude 처리를 위한 프로세서 인스턴스 (선택적)
+     * @brief Constructor
+     * @param nodeFactory Factory instance for node creation
+     * @param xincludeProcessor Processor instance for XInclude processing (optional)
      */
     explicit SCXMLParser(std::shared_ptr<NodeFactory> nodeFactory,
                          std::shared_ptr<IXIncludeProcessor> xincludeProcessor = nullptr);
 
     /**
-     * @brief 소멸자
+     * @brief Destructor
      */
     ~SCXMLParser();
 
     /**
-     * @brief SCXML 파일 파싱
-     * @param filename 파싱할 파일 경로
-     * @return 파싱된 SCXML 모델, 실패 시 nullptr
+     * @brief Parse SCXML file
+     * @param filename File path to parse
+     * @return Parsed SCXML model, nullptr on failure
      */
     std::shared_ptr<SCXMLModel> parseFile(const std::string &filename);
 
     /**
-     * @brief SCXML 문자열 파싱
-     * @param content 파싱할 SCXML 문자열
-     * @return 파싱된 SCXML 모델, 실패 시 nullptr
+     * @brief Parse SCXML string
+     * @param content SCXML string to parse
+     * @return Parsed SCXML model, nullptr on failure
      */
     std::shared_ptr<SCXMLModel> parseContent(const std::string &content);
 
     /**
-     * @brief 파싱 오류 확인
-     * @return 오류가 발생했는지 여부
+     * @brief Check for parsing errors
+     * @return Whether errors occurred
      */
     bool hasErrors() const;
 
     /**
-     * @brief 파싱 오류 메시지 반환
-     * @return 오류 메시지 목록
+     * @brief Return parsing error messages
+     * @return List of error messages
      */
     const std::vector<std::string> &getErrorMessages() const;
 
     /**
-     * @brief 파싱 경고 메시지 반환
-     * @return 경고 메시지 목록
+     * @brief Return parsing warning messages
+     * @return List of warning messages
      */
     const std::vector<std::string> &getWarningMessages() const;
 
     /**
-     * @brief 상태 노드 파서 반환
-     * @return 상태 노드 파서
+     * @brief Return state node parser
+     * @return State node parser
      */
     std::shared_ptr<StateNodeParser> getStateNodeParser() const {
         return stateNodeParser_;
     }
 
     /**
-     * @brief 전환 파서 반환
-     * @return 전환 파서
+     * @brief Return transition parser
+     * @return Transition parser
      */
     std::shared_ptr<TransitionParser> getTransitionParser() const {
         return transitionParser_;
     }
 
     /**
-     * @brief 액션 파서 반환
-     * @return 액션 파서
+     * @brief Return action parser
+     * @return Action parser
      */
     std::shared_ptr<ActionParser> getActionParser() const {
         return actionParser_;
     }
 
     /**
-     * @brief 가드 파서 반환
-     * @return 가드 파서
+     * @brief Return guard parser
+     * @return Guard parser
      */
     std::shared_ptr<GuardParser> getGuardParser() const {
         return guardParser_;
     }
 
     /**
-     * @brief 데이터 모델 파서 반환
-     * @return 데이터 모델 파서
+     * @brief Return data model parser
+     * @return Data model parser
      */
     std::shared_ptr<DataModelParser> getDataModelParser() const {
         return dataModelParser_;
     }
 
     /**
-     * @brief InvokeParser 반환
-     * @return Invoke 파서
+     * @brief Return InvokeParser
+     * @return Invoke parser
      */
     std::shared_ptr<InvokeParser> getInvokeParser() const {
         return invokeParser_;
     }
 
     /**
-     * @brief DoneData 파서 반환
-     * @return DoneData 파서
+     * @brief Return DoneData parser
+     * @return DoneData parser
      */
     std::shared_ptr<DoneDataParser> getDoneDataParser() const {
         return doneDataParser_;
     }
 
     /**
-     * @brief XInclude 프로세서 반환
-     * @return XInclude 프로세서
+     * @brief Return XInclude processor
+     * @return XInclude processor
      */
     std::shared_ptr<IXIncludeProcessor> getXIncludeProcessor() const {
         return xincludeProcessor_;
@@ -139,55 +140,55 @@ public:
 
 private:
     /**
-     * @brief XML 문서 파싱 실행
-     * @param doc libxml++ 문서 객체
-     * @return 파싱된 SCXML 모델, 실패 시 nullptr
+     * @brief Execute XML document parsing
+     * @param doc libxml++ document object
+     * @return Parsed SCXML model, nullptr on failure
      */
     std::shared_ptr<SCXMLModel> parseDocument(xmlpp::Document *doc);
 
     /**
-     * @brief SCXML 루트 노드 파싱
-     * @param scxmlNode 루트 노드
-     * @param model 타겟 모델
-     * @return 성공 여부
+     * @brief Parse SCXML root node
+     * @param scxmlNode Root node
+     * @param model Target model
+     * @return Success status
      */
     bool parseScxmlNode(const xmlpp::Element *scxmlNode, std::shared_ptr<SCXMLModel> model);
 
     /**
-     * @brief 컨텍스트 속성 파싱
-     * @param scxmlNode SCXML 노드
-     * @param model 타겟 모델
+     * @brief Parse context properties
+     * @param scxmlNode SCXML node
+     * @param model Target model
      */
     void parseContextProperties(const xmlpp::Element *scxmlNode, std::shared_ptr<SCXMLModel> model);
 
     /**
-     * @brief 의존성 주입 지점 파싱
-     * @param scxmlNode SCXML 노드
-     * @param model 타겟 모델
+     * @brief Parse dependency injection points
+     * @param scxmlNode SCXML node
+     * @param model Target model
      */
     void parseInjectPoints(const xmlpp::Element *scxmlNode, std::shared_ptr<SCXMLModel> model);
 
     /**
-     * @brief 파싱 작업 초기화
+     * @brief Initialize parsing task
      */
     void initParsing();
 
     /**
-     * @brief 오류 메시지 추가
-     * @param message 오류 메시지
+     * @brief Add error message
+     * @param message Error message
      */
     void addError(const std::string &message);
 
     /**
-     * @brief 경고 메시지 추가
-     * @param message 경고 메시지
+     * @brief Add warning message
+     * @param message Warning message
      */
     void addWarning(const std::string &message);
 
     /**
-     * @brief 모델 검증
-     * @param model 검증할 모델
-     * @return 유효한지 여부
+     * @brief Validate model
+     * @param model Model to validate
+     * @return Whether it is valid
      */
     bool validateModel(std::shared_ptr<SCXMLModel> model);
 

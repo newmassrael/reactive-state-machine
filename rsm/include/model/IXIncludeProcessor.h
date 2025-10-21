@@ -5,7 +5,7 @@
 #include <vector>
 
 /**
- * @brief XInclude 처리를 위한 인터페이스
+ * @brief Interface for XInclude processing
  */
 
 namespace RSM {
@@ -13,26 +13,26 @@ namespace RSM {
 class IXIncludeProcessor {
 public:
     /**
-     * @brief 가상 소멸자
+     * @brief Virtual destructor
      */
     virtual ~IXIncludeProcessor() = default;
 
     /**
-     * @brief XInclude 처리 실행
-     * @param doc libxml++ 문서 객체
-     * @return 성공 여부
+     * @brief Execute XInclude processing
+     * @param doc libxml++ document object
+     * @return Success status
      */
     virtual bool process(xmlpp::Document *doc) = 0;
 
     /**
-     * @brief 기본 검색 경로 설정
-     * @param basePath 기본 검색 경로
+     * @brief Set base search path
+     * @param basePath Base search path
      */
     virtual void setBasePath(const std::string &basePath) = 0;
 
     /**
-     * @brief 처리 중 발생한 오류 메시지 반환
-     * @return 오류 메시지 목록
+     * @brief Return error messages that occurred during processing
+     * @return List of error messages
      */
     virtual const std::vector<std::string> &getErrorMessages() const = 0;
 };

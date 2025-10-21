@@ -16,16 +16,16 @@ struct EventDescriptor;
 namespace RSM {
 
 /**
- * @brief 병렬 상태 완료 모니터링의 간소화된 구현체
+ * @brief Simplified implementation of parallel state completion monitoring
  *
- * 여러 병렬 지역의 완료 상태를 추적합니다.
+ * Tracks completion status of multiple parallel regions.
  */
 class ConcurrentCompletionMonitor {
 public:
     explicit ConcurrentCompletionMonitor(const std::string &parallelStateId);
     ~ConcurrentCompletionMonitor();
 
-    // 기본 모니터링 기능만 유지
+    // Keep only basic monitoring functionality
     bool startMonitoring();
     void stopMonitoring();
     bool isMonitoringActive() const;

@@ -7,12 +7,12 @@
 namespace RSM::Core {
 
 /**
- * @brief AOT 엔진용 내부 이벤트 큐 어댑터
+ * @brief Internal event queue adapter for AOT engine
  *
- * EventQueueManager<Event>를 EventProcessingAlgorithms에서 사용 가능한
- * 통일된 인터페이스로 래핑.
+ * Wraps EventQueueManager<Event> with unified interface
+ * usable by EventProcessingAlgorithms.
  *
- * @tparam EventType 이벤트 타입 (보통 enum class Event)
+ * @tparam EventType Event type (usually enum class Event)
  *
  * @example
  * @code
@@ -29,12 +29,12 @@ template <typename EventType> class AOTEventQueue {
 public:
     /**
      * @brief Constructor
-     * @param queue EventQueueManager 참조
+     * @param queue EventQueueManager reference
      */
     explicit AOTEventQueue(EventQueueManager<EventType> &queue) : queue_(queue) {}
 
     /**
-     * @brief 큐에 이벤트가 있는지 확인
+     * @brief Check if queue has events
      * @return true if queue has events
      */
     bool hasEvents() const {
@@ -42,8 +42,8 @@ public:
     }
 
     /**
-     * @brief 큐에서 다음 이벤트를 꺼냄 (FIFO)
-     * @return 꺼낸 이벤트
+     * @brief Pop next event from queue (FIFO)
+     * @return Popped event
      */
     EventType popNext() {
         return queue_.pop();
@@ -54,14 +54,14 @@ private:
 };
 
 /**
- * @brief Interpreter 엔진용 내부 이벤트 큐 어댑터
+ * @brief Internal event queue adapter for Interpreter engine
  *
- * EventRaiserImpl을 EventProcessingAlgorithms에서 사용 가능한
- * 통일된 인터페이스로 래핑.
+ * Wraps EventRaiserImpl with unified interface
+ * usable by EventProcessingAlgorithms.
  *
- * @note EventRaiserImpl은 processNextQueuedEvent()가 내부적으로
- *       이벤트를 콜백으로 처리하므로, popNext()는 실제 이벤트 값을
- *       반환하지 않고 처리 성공 여부만 반환.
+ * @note Since EventRaiserImpl's processNextQueuedEvent() processes
+ *       events internally via callback, popNext() returns only
+ *       processing success status, not actual event value.
  *
  * @example
  * @code
@@ -70,7 +70,7 @@ private:
  *
  * EventProcessingAlgorithms::processInternalEventQueue(
  *     adapter,
- *     [](bool) { return true; }  // EventRaiser가 내부적으로 처리
+ *     [](bool) { return true; }  // EventRaiser handles internally
  * );
  * @endcode
  */
@@ -83,7 +83,7 @@ public:
     explicit InterpreterEventQueue(std::shared_ptr<EventRaiserImpl> raiser) : raiser_(raiser) {}
 
     /**
-     * @brief 큐에 이벤트가 있는지 확인
+     * @brief Check if queue has events
      * @return true if queue has events
      */
     bool hasEvents() const {
@@ -91,12 +91,12 @@ public:
     }
 
     /**
-     * @brief 큐에서 다음 이벤트를 처리
+     * @brief Process next event from queue
      *
-     * EventRaiserImpl::processNextQueuedEvent()를 호출하여
-     * 내부적으로 이벤트를 콜백으로 처리.
+     * Calls EventRaiserImpl::processNextQueuedEvent() to
+     * process events internally via callback.
      *
-     * @return 처리 성공 여부 (실제 이벤트 값은 반환하지 않음)
+     * @return Processing success status (does not return actual event value)
      */
     bool popNext() {
         return raiser_ && raiser_->processNextQueuedEvent();

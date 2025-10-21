@@ -112,28 +112,28 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
     if (JS_IsException(result)) {
         SPDLOG_ERROR("JSEngine::evaluateExpressionInternal - Final JS_Eval failed for expression '{}'", expression);
 
-        // 루트 원인 분석: _event.data.aParam 실패 시 _event 객체 상태 확인
+        // Root cause analysis: Check _event object state when _event.data.aParam fails
         if (expression.find("_event.data") != std::string::npos) {
-            LOG_ERROR("JSEngine: _event.data 접근 실패 - 디버깅 정보:");
+            LOG_ERROR("JSEngine: _event.data access failed - debugging info:");
 
-            // _event 객체 존재 확인
+            // Check _event object existence
             ::JSValue eventCheck = JS_Eval(ctx, "_event", 6, "<debug>", JS_EVAL_TYPE_GLOBAL);
             if (JS_IsException(eventCheck)) {
-                LOG_ERROR("JSEngine: _event 객체가 존재하지 않음");
+                LOG_ERROR("JSEngine: _event object does not exist");
                 JS_FreeValue(ctx, eventCheck);
             } else if (JS_IsUndefined(eventCheck)) {
-                LOG_ERROR("JSEngine: _event이 undefined임");
+                LOG_ERROR("JSEngine: _event is undefined");
                 JS_FreeValue(ctx, eventCheck);
             } else {
-                LOG_DEBUG("JSEngine: _event 객체 존재함");
+                LOG_DEBUG("JSEngine: _event object exists");
 
-                // _event.data 확인
+                // Check _event.data
                 ::JSValue dataCheck = JS_Eval(ctx, "_event.data", 11, "<debug>", JS_EVAL_TYPE_GLOBAL);
                 if (JS_IsException(dataCheck)) {
-                    LOG_ERROR("JSEngine: _event.data 접근 실패");
+                    LOG_ERROR("JSEngine: _event.data access failed");
                     JS_FreeValue(ctx, dataCheck);
                 } else if (JS_IsUndefined(dataCheck)) {
-                    LOG_ERROR("JSEngine: _event.data가 undefined임");
+                    LOG_ERROR("JSEngine: _event.data is undefined");
                     JS_FreeValue(ctx, dataCheck);
                 } else {
                     LOG_DEBUG("JSEngine: _event.data exists");

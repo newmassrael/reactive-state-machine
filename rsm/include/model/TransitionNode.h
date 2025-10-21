@@ -10,10 +10,10 @@
 #include <vector>
 
 /**
- * @brief 전환 노드의 구현 클래스
+ * @brief Implementation class for transition node
  *
- * 이 클래스는 상태 간 전환을 나타냅니다.
- * SCXML 문서의 <transition> 요소에 해당합니다.
+ * This class represents transitions between states.
+ * Corresponds to <transition> element in SCXML documents.
  */
 
 namespace RSM {
@@ -21,79 +21,79 @@ namespace RSM {
 class TransitionNode : public ITransitionNode {
 public:
     /**
-     * @brief 생성자
-     * @param event 전환 이벤트
-     * @param target 타겟 상태 ID
+     * @brief Constructor
+     * @param event Transition event
+     * @param target Target state ID
      */
     TransitionNode(const std::string &event, const std::string &target);
 
     /**
-     * @brief 소멸자
+     * @brief Destructor
      */
     virtual ~TransitionNode();
 
     /**
-     * @brief 이벤트 반환
-     * @return 전환 이벤트
+     * @brief Return event
+     * @return Transition event
      */
     virtual const std::string &getEvent() const override;
 
     /**
-     * @brief 타겟 상태 목록 반환
-     * @return 개별 타겟 상태 ID들의 벡터
+     * @brief Return list of target states
+     * @return Vector of individual target state IDs
      */
     virtual std::vector<std::string> getTargets() const override;
 
     /**
-     * @brief 타겟 상태 추가
-     * @param target 추가할 타겟 상태 ID
+     * @brief Add target state
+     * @param target Target state ID to add
      */
     virtual void addTarget(const std::string &target) override;
 
     /**
-     * @brief 모든 타겟 상태 제거
+     * @brief Remove all target states
      */
     virtual void clearTargets() override;
 
     /**
-     * @brief 타겟이 있는지 확인
-     * @return 타겟이 하나 이상 있으면 true, 없으면 false
+     * @brief Check if targets exist
+     * @return true if one or more targets exist, false otherwise
      */
     virtual bool hasTargets() const override;
 
     /**
-     * @brief 가드 조건 설정
-     * @param guard 가드 조건 ID
+     * @brief Set guard condition
+     * @param guard Guard condition ID
      */
     virtual void setGuard(const std::string &guard) override;
 
     /**
-     * @brief 가드 조건 반환
-     * @return 가드 조건 ID
+     * @brief Return guard condition
+     * @return Guard condition ID
      */
     virtual const std::string &getGuard() const override;
 
     /**
-     * @brief 액션 추가
-     * @param actionNode ActionNode 객체
+     * @brief Add action
+     * @param actionNode ActionNode object
      */
     virtual void addActionNode(std::shared_ptr<RSM::IActionNode> actionNode) override;
 
     /**
-     * @brief ActionNode 목록 반환 (SCXML 사양 준수)
-     * @return ActionNode 객체 목록
+     * @brief Return list of ActionNodes (SCXML specification compliant)
+     * @return List of ActionNode objects
      */
     virtual const std::vector<std::shared_ptr<RSM::IActionNode>> &getActionNodes() const override;
 
     /**
-     * @brief 반응형 여부 설정
-     * @param reactive 반응형 여부
+     * @brief Set reactive status
+     * @param reactive Reactive status
      */
     virtual void setReactive(bool reactive) override;
 
     /**
-     * @brief 반응형 여부 반환
-     * @return 반응형 여부
+     * @brief Return reactive status
+     * @return Reactive status
      */
     virtual bool isReactive() const override;
 
@@ -106,20 +106,20 @@ public:
 
 private:
     /**
-     * @brief 타겟 문자열에서 타겟 ID 목록 파싱
+     * @brief Parse target ID list from target string
      */
     void parseTargets() const;
 
     std::string event_;
     std::string target_;
     std::string guard_;
-    std::vector<std::shared_ptr<RSM::IActionNode>> actionNodes_;  // SCXML 사양 준수 ActionNode 저장
+    std::vector<std::shared_ptr<RSM::IActionNode>> actionNodes_;  // Store ActionNodes (SCXML specification compliant)
     bool reactive_;
     bool internal_;
     std::unordered_map<std::string, std::string> attributes_;
     std::vector<std::string> events_;
     mutable std::vector<std::string> cachedTargets_;
-    mutable bool targetsDirty_;  // 타겟 캐시가 최신 상태인지 표시
+    mutable bool targetsDirty_;  // Indicates whether target cache is up-to-date
 };
 
 }  // namespace RSM

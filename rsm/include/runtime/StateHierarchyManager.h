@@ -19,86 +19,86 @@ class ConcurrentStateNode;
 class HistoryManager;
 
 /**
- * @brief 계층적 상태 관리 시스템
+ * @brief Hierarchical state management system
  *
- * SCXML 복합 상태의 계층적 진입/종료 로직을 담당합니다.
- * 기존 StateMachine과 독립적으로 작동하여 최소 침습적 통합을 지원합니다.
+ * Handles hierarchical entry/exit logic for SCXML compound states.
+ * Operates independently from existing StateMachine to support minimal invasive integration.
  */
 class StateHierarchyManager {
 public:
     /**
-     * @brief 생성자
-     * @param model SCXML 모델 (상태 정보 참조용)
+     * @brief Constructor
+     * @param model SCXML model (for state information reference)
      */
     explicit StateHierarchyManager(std::shared_ptr<SCXMLModel> model);
 
     /**
-     * @brief 소멸자
+     * @brief Destructor
      */
     ~StateHierarchyManager() = default;
 
     /**
-     * @brief 계층적 상태 진입
+     * @brief Hierarchical state entry
      *
-     * 대상 상태가 복합 상태인 경우 자동으로 초기 자식 상태로 진입합니다.
-     * 모든 활성화된 상태들을 내부적으로 추적합니다.
+     * Automatically enters the initial child state if the target state is a compound state.
+     * Tracks all activated states internally.
      *
-     * @param stateId 진입할 상태 ID
-     * @return 성공 여부
+     * @param stateId State ID to enter
+     * @return Success status
      */
     bool enterState(const std::string &stateId);
 
     /**
-     * @brief 현재 가장 깊은 활성 상태 반환
+     * @brief Return current deepest active state
      *
-     * 계층 구조에서 가장 깊이 있는 (자식이 없는) 활성 상태를 반환합니다.
-     * StateMachine::getCurrentState() 호환성을 위해 사용됩니다.
+     * Returns the deepest (leaf) active state in the hierarchy.
+     * Used for StateMachine::getCurrentState() compatibility.
      *
-     * @return 현재 활성 상태 ID
+     * @return Current active state ID
      */
     std::string getCurrentState() const;
 
     /**
-     * @brief 모든 활성 상태 반환
+     * @brief Return all active states
      *
-     * 현재 활성화된 모든 상태의 리스트를 반환합니다.
-     * 계층 순서대로 정렬됩니다 (부모 -> 자식 순).
+     * Returns a list of all currently active states.
+     * Sorted in hierarchical order (parent -> child).
      *
-     * @return 활성 상태 ID 리스트
+     * @return List of active state IDs
      */
     std::vector<std::string> getActiveStates() const;
 
     /**
-     * @brief 특정 상태의 활성 여부 확인
+     * @brief Check if a specific state is active
      *
-     * @param stateId 확인할 상태 ID
-     * @return 활성 상태 여부
+     * @param stateId State ID to check
+     * @return Whether the state is active
      */
     bool isStateActive(const std::string &stateId) const;
 
     /**
-     * @brief 상태 종료
+     * @brief Exit state
      *
-     * 지정된 상태와 그 하위 상태들을 비활성화합니다.
+     * Deactivates the specified state and its descendant states.
      *
-     * @param stateId 종료할 상태 ID
-     * @param executionContext 적절한 종료 액션 실행을 위한 실행 컨텍스트
+     * @param stateId State ID to exit
+     * @param executionContext Execution context for proper exit action execution
      */
     void exitState(const std::string &stateId, std::shared_ptr<IExecutionContext> executionContext = nullptr);
 
     /**
-     * @brief 모든 상태 초기화
+     * @brief Reset all states
      *
-     * 활성 상태 리스트를 모두 비웁니다.
+     * Clears the entire active state list.
      */
     void reset();
 
     /**
-     * @brief 계층적 모드 필요 여부 확인
+     * @brief Check if hierarchical mode is needed
      *
-     * 현재 활성 상태들이 계층적 관리를 필요로 하는지 확인합니다.
+     * Checks whether current active states require hierarchical management.
      *
-     * @return 계층적 모드 필요 여부
+     * @return Whether hierarchical mode is needed
      */
     bool isHierarchicalModeNeeded() const;
 
@@ -197,12 +197,12 @@ public:
     void removeStateFromConfiguration(const std::string &stateId);
 
     /**
-     * @brief 상태를 활성 구성에 추가 (onentry 콜백 없이)
+     * @brief Add state to active configuration (without onentry callback)
      *
-     * W3C SCXML: Deferred onentry execution을 위해 사용
-     * 상태를 configuration에만 추가하고 onentry는 호출하지 않음
+     * W3C SCXML: Used for deferred onentry execution
+     * Only adds state to configuration without calling onentry
      *
-     * @param stateId 추가할 상태 ID
+     * @param stateId State ID to add
      */
     void addStateToConfigurationWithoutOnEntry(const std::string &stateId);
 
@@ -242,8 +242,8 @@ private:
     void updateParallelRegionCurrentStates();
 
     std::shared_ptr<SCXMLModel> model_;
-    std::vector<std::string> activeStates_;      // 활성 상태 리스트 (계층 순서)
-    std::unordered_set<std::string> activeSet_;  // 빠른 검색용 세트
+    std::vector<std::string> activeStates_;      // Active state list (hierarchical order)
+    std::unordered_set<std::string> activeSet_;  // Set for fast lookup
 
     // TSAN FIX: Mutex to protect activeStates_ and activeSet_ from concurrent access
     mutable std::mutex configurationMutex_;
@@ -280,25 +280,25 @@ private:
     void updateRegionExecutionContexts(ConcurrentStateNode *parallelState);
 
     /**
-     * @brief 상태를 활성 구성에 추가
+     * @brief Add state to active configuration
      *
-     * @param stateId 추가할 상태 ID
+     * @param stateId State ID to add
      */
     void addStateToConfiguration(const std::string &stateId);
 
     /**
-     * @brief 복합 상태의 초기 자식 상태 찾기
+     * @brief Find initial child state of compound state
      *
-     * @param stateNode 복합 상태 노드
-     * @return 초기 자식 상태 ID (없으면 빈 문자열)
+     * @param stateNode Compound state node
+     * @return Initial child state ID (empty string if none)
      */
     std::string findInitialChildState(IStateNode *stateNode) const;
 
     /**
-     * @brief 상태 노드가 복합 상태인지 확인
+     * @brief Check if state node is a compound state
      *
-     * @param stateNode 확인할 상태 노드
-     * @return 복합 상태 여부
+     * @param stateNode State node to check
+     * @return Whether it is a compound state
      */
     bool isCompoundState(IStateNode *stateNode) const;
 
