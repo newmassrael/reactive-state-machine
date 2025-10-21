@@ -541,6 +541,7 @@ rsm_generate_static_w3c_test(344 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9: Inv
 rsm_generate_static_w3c_test(346 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.1: System variable protection validation
 rsm_generate_static_w3c_test(347 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.4: SCXML Event I/O processor parent-child communication
 rsm_generate_static_w3c_test(348 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.2: Send event parameter sets event name
+rsm_generate_static_w3c_test(349 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10.1: _event.origin system variable
 
 rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (default to first child in document order)
 rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format (space-separated IDs)
