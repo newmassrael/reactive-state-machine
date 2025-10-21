@@ -52,15 +52,16 @@ private:
 {% if model.needs_jsengine and (model.needs_event_name or model.needs_event_data) %}
     // Helper: Set _event variable in JSEngine (W3C SCXML 5.10)
     void setCurrentEventInJSEngine(const std::string& eventName, const std::string& eventData = "",
-                                    const std::string& eventType = "", const std::string& sendId = "",
-                                    const std::string& origin = "", const std::string& invokeId = "") {
+                                const std::string& eventType = "", const std::string& sendId = "",
+                                const std::string& origin = "", const std::string& originType = "", 
+                                const std::string& invokeId = "") {
         if (eventName.empty()) return;
         ensureJSEngine();
         std::string actualType = eventType.empty() ? this->getEventType(eventName) : eventType;
-        LOG_DEBUG("AOT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}', origin='{}', invokeId='{}'",
-                  eventName, eventData, actualType, sendId, origin, invokeId);
+        LOG_DEBUG("AOT setCurrentEventInJSEngine: name='{}', data='{}', type='{}', sendId='{}', origin='{}', originType='{}', invokeId='{}'",
+                  eventName, eventData, actualType, sendId, origin, originType, invokeId);
         // W3C SCXML 5.10: Wait for setCurrentEvent to complete before proceeding (synchronous)
         ::RSM::JSEngine::instance().setCurrentEvent(sessionId_.value(), eventName, eventData,
-                                                    actualType, sendId, origin, invokeId).get();
+                                                    actualType, sendId, origin, originType, invokeId).get();
     }
 {% endif %}

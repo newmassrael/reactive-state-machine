@@ -388,7 +388,7 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
 std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, const std::string &eventName,
                                                 const std::string &eventData, const std::string &eventType,
                                                 const std::string &sendId, const std::string &origin,
-                                                const std::string &invokeId) {
+                                                const std::string &originType, const std::string &invokeId) {
     // For AOT engine: Create simple Event object from string parameters
     auto event = std::make_shared<Event>(eventName, eventType);
     if (!eventData.empty()) {
@@ -401,6 +401,10 @@ std::future<JSResult> JSEngine::setCurrentEvent(const std::string &sessionId, co
     // W3C SCXML 5.10.1: Set origin if provided (test336)
     if (!origin.empty()) {
         event->setOrigin(origin);
+    }
+    // W3C SCXML 5.10.1: Set originType if provided (test352)
+    if (!originType.empty()) {
+        event->setOriginType(originType);
     }
     // W3C SCXML 5.10.1: Set invokeid if provided (test338)
     if (!invokeId.empty()) {

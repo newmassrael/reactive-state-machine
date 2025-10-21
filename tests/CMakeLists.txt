@@ -544,6 +544,7 @@ rsm_generate_static_w3c_test(348 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.2: Sen
 rsm_generate_static_w3c_test(349 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10.1: _event.origin system variable
 rsm_generate_static_w3c_test(350 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.6: Default initial state (first child in document order)
 rsm_generate_static_w3c_test(351 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10.1: _event.sendid field validation
+rsm_generate_static_w3c_test(352 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10.1: _event.origintype field validation
 
 rsm_generate_static_w3c_test(355 ${STATIC_W3C_OUTPUT_DIR})  # no initial state (default to first child in document order)
 rsm_generate_static_w3c_test(364 ${STATIC_W3C_OUTPUT_DIR})  # parallel initial state format (space-separated IDs)

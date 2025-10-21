@@ -66,7 +66,7 @@
         if (!pendingEventName_.empty() || !pendingEventData_.empty() || !pendingEventOrigin_.empty()) {
             LOG_DEBUG("AOT processTransition: Setting _event (name='{}', data='{}', type='{}', sendId='{}', origin='{}', invokeId='{}')",
                       pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_, pendingEventInvokeId_);
-            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_, pendingEventInvokeId_);
+            setCurrentEventInJSEngine(pendingEventName_, pendingEventData_, pendingEventType_, pendingEventSendId_, pendingEventOrigin_, pendingEventOriginType_, pendingEventInvokeId_);
         }
 {%- endif %}
 

@@ -4,8 +4,8 @@
 #include "ISessionManager.h"
 #include "JSResult.h"
 #include "events/IEventRaiserRegistry.h"
-#include "runtime/ISessionObserver.h"
 #include "quickjs.h"
+#include "runtime/ISessionObserver.h"
 #include <atomic>
 #include <condition_variable>
 #include <future>
@@ -22,6 +22,7 @@
 // Forward declarations for QuickJS
 struct JSRuntime;
 struct JSContext;
+
 // Note: JSValue is typedef'd in quickjs.h (depending on config: uint64_t or struct JSValue*)
 // Do NOT forward declare here as it conflicts with the typedef
 
@@ -219,7 +220,7 @@ public:
     std::future<JSResult> setCurrentEvent(const std::string &sessionId, const std::string &eventName,
                                           const std::string &eventData = "", const std::string &eventType = "internal",
                                           const std::string &sendId = "", const std::string &origin = "",
-                                          const std::string &invokeId = "");
+                                          const std::string &originType = "", const std::string &invokeId = "");
 
     /**
      * @brief Setup SCXML system variables for a session
