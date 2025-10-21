@@ -23,7 +23,7 @@ bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
     }
 
     try {
-        // 초기화
+        // Initialize
         errorMessages_.clear();
         warningMessages_.clear();
         isProcessing_ = true;
@@ -31,13 +31,13 @@ bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
 
         LOG_DEBUG("Starting XInclude processing");
 
-        // 문서의 기본 디렉토리 경로 결정
+        // Determine document's base directory path
         std::string baseDir = basePath_;
         if (baseDir.empty()) {
-            baseDir = ".";  // 현재 디렉토리
+            baseDir = ".";  // Current directory
         }
 
-        // 루트 요소부터 XInclude 처리 시작
+        // Start XInclude processing from root element
         auto rootElement = doc->get_root_node();
         if (rootElement) {
             int processedCount = findAndProcessXIncludes(rootElement, baseDir);
@@ -46,8 +46,8 @@ bool RSM::XIncludeProcessor::process(xmlpp::Document *doc) {
             addWarning("Document has no root element");
         }
 
-        // 내장 XInclude 처리기 호출 (libxml의 XInclude 처리기)
-        // libxml++의 XInclude 처리 함수가 있다면 사용, 없으면 libxml2 직접 호출
+        // Call built-in XInclude processor (libxml's XInclude processor)
+        // Use libxml++'s XInclude function if available, otherwise call libxml2 directly
         try {
             doc->process_xinclude();
             LOG_DEBUG("Native XInclude processing successful");
@@ -91,7 +91,7 @@ int RSM::XIncludeProcessor::findAndProcessXIncludes(xmlpp::Element *element, con
         return 0;
     }
 
-    // 재귀 깊이 제한 확인
+    // Check recursion depth limit
     if (currentRecursionDepth_ >= maxRecursionDepth_) {
         addWarning("Maximum recursion depth reached, stopping XInclude processing");
         return 0;
@@ -100,7 +100,7 @@ int RSM::XIncludeProcessor::findAndProcessXIncludes(xmlpp::Element *element, con
     int processedCount = 0;
     currentRecursionDepth_++;
 
-    // 현재 요소가 XInclude 요소인지 확인
+    // Check if current element is an XInclude element
     std::string nodeName = element->get_name();
     bool isXInclude = (nodeName == "include" || nodeName == "xi:include");
 
@@ -109,7 +109,7 @@ int RSM::XIncludeProcessor::findAndProcessXIncludes(xmlpp::Element *element, con
             processedCount++;
         }
     } else {
-        // 자식 요소들에 대해 재귀적으로 처리
+        // Process child elements recursively
         auto children = element->get_children();
         for (auto *child : children) {
             auto *childElement = dynamic_cast<xmlpp::Element *>(child);
@@ -130,7 +130,7 @@ bool RSM::XIncludeProcessor::processXIncludeElement(xmlpp::Element *xincludeElem
 
     LOG_DEBUG("Processing XInclude element");
 
-    // href 속성 확인
+    // Check href attribute
     auto hrefAttr = xincludeElement->get_attribute("href");
     if (!hrefAttr) {
         addWarning("XInclude element missing href attribute");
@@ -143,20 +143,20 @@ bool RSM::XIncludeProcessor::processXIncludeElement(xmlpp::Element *xincludeElem
         return false;
     }
 
-    // parse 속성 확인 (xml 또는 text)
-    std::string parseMode = "xml";  // 기본값
+    // Check parse attribute (xml or text)
+    std::string parseMode = "xml";  // Default value
     auto parseAttr = xincludeElement->get_attribute("parse");
     if (parseAttr) {
         parseMode = parseAttr->get_value();
     }
 
-    // XML 모드만 지원
+    // Only XML mode is supported
     if (parseMode != "xml") {
         addWarning("XInclude parse mode '" + parseMode + "' not supported, only 'xml' is supported");
         return false;
     }
 
-    // 파일 로드 및 병합
+    // Load and merge file
     return loadAndMergeFile(href, xincludeElement, baseDir);
 }
 
@@ -166,7 +166,7 @@ bool RSM::XIncludeProcessor::loadAndMergeFile(const std::string &href, xmlpp::El
         return false;
     }
 
-    // 파일 경로 해석
+    // Resolve file path
     std::string fullPath = resolveFilePath(href, baseDir);
     if (fullPath.empty()) {
         addError("Could not resolve file path: " + href);
@@ -176,19 +176,19 @@ bool RSM::XIncludeProcessor::loadAndMergeFile(const std::string &href, xmlpp::El
     LOG_DEBUG("Loading: {}", fullPath);
 
     try {
-        // 파일 존재 여부 확인
+        // Check if file exists
         if (!std::filesystem::exists(fullPath)) {
             addError("File not found: " + fullPath);
             return false;
         }
 
-        // 순환 참조 확인
+        // Check for circular references
         if (processedFiles_.find(fullPath) != processedFiles_.end()) {
             addWarning("Circular reference detected: " + fullPath);
             return false;
         }
 
-        // 파일 파싱
+        // Parse file
         xmlpp::DomParser parser;
         parser.set_validate(false);
         parser.set_substitute_entities(true);
@@ -206,11 +206,11 @@ bool RSM::XIncludeProcessor::loadAndMergeFile(const std::string &href, xmlpp::El
             return false;
         }
 
-        // 포함된 파일의 XInclude도 처리 (재귀)
+        // Process XIncludes in the included file as well (recursive)
         std::string includedBaseDir = std::filesystem::path(fullPath).parent_path().string();
         findAndProcessXIncludes(includedRoot, includedBaseDir);
 
-        // 부모 노드와 XInclude 요소 가져오기
+        // Get parent node and XInclude element
         auto parent = xincludeElement->get_parent();
         auto *parentElement = dynamic_cast<xmlpp::Element *>(parent);
         if (!parentElement) {
@@ -218,27 +218,27 @@ bool RSM::XIncludeProcessor::loadAndMergeFile(const std::string &href, xmlpp::El
             return false;
         }
 
-        // 포함된 노드의 자식들을 복사하여 부모에 추가
+        // Copy and add children of included node to parent
         auto children = includedRoot->get_children();
         for (auto *child : children) {
             try {
-                // parentElement->import_node()는 노드를 복사하고 자식으로 추가함
+                // parentElement->import_node() copies the node and adds it as a child
                 parentElement->import_node(child);
             } catch (const std::exception &ex) {
                 addError("Exception while importing node from " + fullPath + ": " + std::string(ex.what()));
             }
         }
 
-        // XInclude 요소 제거
+        // Remove XInclude element
         try {
-            // Node::remove_node는 정적 메서드이므로 'Node::'로 호출합니다
+            // Node::remove_node is a static method, call with 'Node::'
             xmlpp::Node::remove_node(xincludeElement);
         } catch (const std::exception &ex) {
             addWarning("Exception while removing XInclude element: " + std::string(ex.what()));
-            // 계속 진행
+            // Continue processing
         }
 
-        // 처리된 파일 추적
+        // Track processed files
         processedFiles_[fullPath]++;
 
         LOG_DEBUG("Successfully merged: {}", fullPath);
@@ -250,18 +250,18 @@ bool RSM::XIncludeProcessor::loadAndMergeFile(const std::string &href, xmlpp::El
 }
 
 std::string RSM::XIncludeProcessor::resolveFilePath(const std::string &href, const std::string &baseDir) {
-    // 절대 경로인 경우 그대로 사용
+    // Use as-is if absolute path
     if (std::filesystem::path(href).is_absolute()) {
         return href;
     }
 
-    // 기본 디렉토리에 대한 상대 경로 시도
+    // Try relative path to base directory
     std::string fullPath = std::filesystem::path(baseDir) / href;
     if (std::filesystem::exists(fullPath)) {
         return std::filesystem::absolute(fullPath).string();
     }
 
-    // 설정된 검색 경로에서 파일 찾기
+    // Search for file in configured search paths
     for (const auto &searchPath : searchPaths_) {
         fullPath = std::filesystem::path(searchPath) / href;
         if (std::filesystem::exists(fullPath)) {
@@ -269,7 +269,7 @@ std::string RSM::XIncludeProcessor::resolveFilePath(const std::string &href, con
         }
     }
 
-    // 파일을 찾을 수 없음
+    // File not found
     addWarning("File not found in any search path: " + href);
     return "";
 }

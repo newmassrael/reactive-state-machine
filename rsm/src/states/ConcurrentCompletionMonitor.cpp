@@ -43,7 +43,7 @@ bool ConcurrentCompletionMonitor::isCompletionCriteriaMet() const {
         return false;
     }
 
-    // 모든 지역이 완료되었는지 확인
+    // Check if all regions are complete
     for (const auto &[regionId, isComplete] : regions_) {
         if (!isComplete) {
             return false;

@@ -33,34 +33,34 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
     LOG_DEBUG("Parsing transition: {} -> {}", (event.empty() ? "<no event>" : event),
               (target.empty() ? "<internal>" : target));
 
-    // target이 비어있는 경우 내부 전환으로 처리
+    // Treat as internal transition if target is empty
     bool isInternal = target.empty();
 
-    // 전환 노드 생성
+    // Create transition node
     std::shared_ptr<RSM::ITransitionNode> transition;
 
     if (isInternal) {
         LOG_DEBUG("Internal transition detected (no target)");
 
-        // 빈 타겟으로 전환 생성
+        // Create transition with empty target
         transition = nodeFactory_->createTransitionNode(event, "");
 
-        // 명시적으로 타겟 목록 비우기
+        // Explicitly clear target list
         transition->clearTargets();
 
         LOG_DEBUG("After clearTargets() - targets count: {}", transition->getTargets().size());
     } else {
-        // 초기화 시 빈 문자열로 생성
+        // Create with empty string on initialization
         transition = nodeFactory_->createTransitionNode(event, "");
 
-        // 기존 타겟 목록을 비우고 시작
+        // Clear existing target list and start fresh
         transition->clearTargets();
 
-        // 공백으로 구분된 타겟 문자열 파싱
+        // Parse space-separated target string
         std::stringstream ss(target);
         std::string targetId;
 
-        // 개별 타겟 추가
+        // Add individual targets
         while (ss >> targetId) {
             if (!targetId.empty()) {
                 transition->addTarget(targetId);
@@ -69,24 +69,24 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
         }
     }
 
-    // 내부 전환 설정
+    // Set internal transition
     transition->setInternal(isInternal);
 
-    // 타입 속성 처리
+    // Process type attribute
     auto typeAttr = transElement->get_attribute("type");
     if (typeAttr) {
         std::string type = typeAttr->get_value();
         transition->setAttribute("type", type);
         LOG_DEBUG("Type: {}", type);
 
-        // type이 "internal"인 경우 내부 전환으로 설정
+        // Set as internal transition if type is "internal"
         if (type == "internal") {
             transition->setInternal(true);
-            isInternal = true;  // isInternal 변수 업데이트
+            isInternal = true;  // Update isInternal variable
         }
     }
 
-    // 조건 속성 처리
+    // Process condition attribute
     auto condAttr = transElement->get_attribute("cond");
     if (condAttr) {
         std::string cond = condAttr->get_value();
@@ -95,14 +95,14 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
         LOG_DEBUG("Condition: {}", cond);
     }
 
-    // 가드 속성 처리
+    // Process guard attribute
     std::string guard = ParsingCommon::getAttributeValue(transElement, {"guard"});
     if (!guard.empty()) {
         transition->setGuard(guard);
         LOG_DEBUG("Guard: {}", guard);
     }
 
-    // 이벤트 목록 파싱
+    // Parse event list
     if (!event.empty()) {
         auto events = parseEventList(event);
         for (const auto &eventName : events) {
@@ -111,7 +111,7 @@ std::shared_ptr<RSM::ITransitionNode> RSM::TransitionParser::parseTransitionNode
         }
     }
 
-    // 액션 파싱
+    // Parse actions
     parseActions(transElement, transition);
 
     LOG_DEBUG("Transition parsed successfully with {} ActionNodes", transition->getActionNodes().size());
@@ -127,7 +127,7 @@ RSM::TransitionParser::parseInitialTransition(const xmlpp::Element *initialEleme
 
     LOG_DEBUG("Parsing initial transition");
 
-    // initial 요소 내의 transition 요소 찾기
+    // Find transition element within initial element
     auto transElement = ParsingCommon::findFirstChildElement(initialElement, "transition");
     if (!transElement) {
         LOG_WARN("No transition element found in initial");
@@ -143,13 +143,13 @@ RSM::TransitionParser::parseInitialTransition(const xmlpp::Element *initialEleme
     std::string target = targetAttr->get_value();
     LOG_DEBUG("Initial transition target: {}", target);
 
-    // 초기 전환 생성 - 이벤트 없음
+    // Create initial transition - no event
     auto transition = nodeFactory_->createTransitionNode("", target);
 
-    // 특수 속성 설정
+    // Set special attribute
     transition->setAttribute("initial", "true");
 
-    // 액션 파싱
+    // Parse actions
     parseActions(transElement, transition);
 
     LOG_DEBUG("Initial transition parsed successfully");
@@ -167,7 +167,7 @@ RSM::TransitionParser::parseTransitionsInState(const xmlpp::Element *stateElemen
 
     LOG_DEBUG("Parsing transitions in state: {}", stateNode->getId());
 
-    // 모든 transition 요소 찾기
+    // Find all transition elements
     auto transElements = ParsingCommon::findChildElements(stateElement, "transition");
     for (auto *transElement : transElements) {
         auto transition = parseTransitionNode(transElement, stateNode);
@@ -195,14 +195,14 @@ void RSM::TransitionParser::parseActions(const xmlpp::Element *transElement,
         return;
     }
 
-    // ActionParser는 SCXML 파싱에 필수
+    // ActionParser is required for SCXML parsing
     if (!actionParser_) {
         assert(false && "ActionParser is required for SCXML compliance");
         return;
     }
 
     {
-        // SCXML 사양 준수: ActionNode 객체를 직접 저장
+        // SCXML specification compliance: Store ActionNode objects directly
         auto actionNodes = actionParser_->parseActionsInElement(transElement);
         for (const auto &actionNode : actionNodes) {
             if (actionNode) {
@@ -218,9 +218,9 @@ std::vector<std::string> RSM::TransitionParser::parseEventList(const std::string
     std::stringstream ss(eventStr);
     std::string event;
 
-    // 공백으로 구분된 이벤트 목록 파싱
+    // Parse space-separated event list
     while (std::getline(ss, event, ' ')) {
-        // 빈 문자열 제거
+        // Remove empty strings
         if (!event.empty()) {
             events.push_back(event);
         }
@@ -238,9 +238,9 @@ std::vector<std::string> RSM::TransitionParser::parseTargetList(const std::strin
     std::stringstream ss(targetStr);
     std::string target;
 
-    // 공백으로 구분된 타겟 목록 파싱
+    // Parse space-separated target list
     while (std::getline(ss, target, ' ')) {
-        // 빈 문자열 제거
+        // Remove empty strings
         if (!target.empty()) {
             targets.push_back(target);
         }

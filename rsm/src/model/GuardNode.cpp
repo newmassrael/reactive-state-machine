@@ -3,7 +3,7 @@
 
 RSM::GuardNode::GuardNode(const std::string &id, const std::string &target)
     : id_(id), target_(target), condition_(""), targetState_(""), reactive_(false) {
-    // target이 조건식인지 상태 ID인지 판별하고 적절한 필드에 저장
+    // Determine if target is a condition expression or state ID and store in appropriate field
     LOG_DEBUG("Creating guard node: {} -> {}", id, target);
 }
 

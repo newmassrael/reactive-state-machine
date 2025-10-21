@@ -22,7 +22,7 @@ const std::string &RSM::TransitionNode::getEvent() const {
 }
 
 std::vector<std::string> RSM::TransitionNode::getTargets() const {
-    // 캐싱 메커니즘 - 타겟이 변경되었거나 아직 파싱되지 않았으면 파싱
+    // Caching mechanism - parse if targets changed or not yet parsed
     if (targetsDirty_) {
         parseTargets();
         targetsDirty_ = false;
@@ -34,7 +34,7 @@ void RSM::TransitionNode::addTarget(const std::string &target) {
     LOG_DEBUG("Adding target to transition {}: {}", (event_.empty() ? "<no event>" : event_), target);
 
     if (target.empty()) {
-        return;  // 빈 타겟은 추가하지 않음
+        return;  // Do not add empty target
     }
 
     if (target_.empty()) {
@@ -42,7 +42,7 @@ void RSM::TransitionNode::addTarget(const std::string &target) {
     } else {
         target_ += " " + target;
     }
-    targetsDirty_ = true;  // 캐시 갱신 필요 표시
+    targetsDirty_ = true;  // Mark cache needs update
 }
 
 void RSM::TransitionNode::clearTargets() {
@@ -50,7 +50,7 @@ void RSM::TransitionNode::clearTargets() {
 
     target_.clear();
     cachedTargets_.clear();
-    targetsDirty_ = false;  // 이미 캐시가 비어있으므로 갱신 불필요
+    targetsDirty_ = false;  // Cache already empty, no update needed
 }
 
 bool RSM::TransitionNode::hasTargets() const {

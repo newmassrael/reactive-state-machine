@@ -266,7 +266,7 @@ std::vector<std::string> RSM::SCXMLModel::findMissingStateIds() const {
         }
     }
 
-    // 중복 제거
+    // Remove duplicates
     std::sort(missingIds.begin(), missingIds.end());
     missingIds.erase(std::unique(missingIds.begin(), missingIds.end()), missingIds.end());
 
@@ -349,13 +349,13 @@ void RSM::SCXMLModel::printStateHierarchy(RSM::IStateNode *state, int depth) con
         return;
     }
 
-    // 들여쓰기 생성
+    // Generate indentation
     std::string indent(depth * 2, ' ');
 
-    // 현재 상태 정보 출력
+    // Print current state information
     LOG_INFO("{}State: {}", indent, state->getId());
 
-    // 자식 상태 재귀적으로 출력
+    // Print child states recursively
     for (const auto &child : state->getChildren()) {
         printStateHierarchy(child.get(), depth + 1);
     }

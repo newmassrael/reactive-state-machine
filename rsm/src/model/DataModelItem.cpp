@@ -47,41 +47,41 @@ const std::string &RSM::DataModelItem::getScope() const {
 void RSM::DataModelItem::setContent(const std::string &content) {
     LOG_DEBUG("Setting content for {}", id_);
 
-    // 데이터 모델이 xpath 또는 xml 유형인 경우 XML 파싱 시도
+    // Try XML parsing if data model is xpath or xml type
     if (type_ == "xpath" || type_ == "xml") {
         setXmlContent(content);
     } else {
-        // 다른 유형은 일반 문자열로 처리
+        // Handle other types as plain string
         content_ = content;
 
-        // XML 콘텐츠가 있었다면 제거
+        // Remove XML content if it existed
         xmlContent_.reset();
     }
 
-    // 모든 경우에 contentItems_에 추가
+    // Add to contentItems_ in all cases
     contentItems_.push_back(content);
 }
 
 void RSM::DataModelItem::addContent(const std::string &content) {
     LOG_DEBUG("Adding content for {}", id_);
 
-    // contentItems_에 항상 추가
+    // Always add to contentItems_
     contentItems_.push_back(content);
 
-    // XML 타입이면 DOM에 추가 시도
+    // Try adding to DOM if XML type
     if (type_ == "xpath" || type_ == "xml") {
         if (xmlContent_) {
             try {
-                // 임시 XML 문서로 파싱
+                // Parse as temporary XML document
                 xmlpp::DomParser parser;
                 parser.parse_memory(content);
                 xmlpp::Document *tempDoc = parser.get_document();
 
                 if (tempDoc && tempDoc->get_root_node()) {
-                    // 루트 노드 가져오기
+                    // Get root node
                     xmlpp::Node *root = xmlContent_->get_root_node();
                     if (root) {
-                        // 새 콘텐츠를 기존 트리에 추가
+                        // Add new content to existing tree
                         xmlpp::Node *importedNode = tempDoc->get_root_node();
                         if (importedNode) {
                             root->import_node(importedNode);
@@ -92,11 +92,11 @@ void RSM::DataModelItem::addContent(const std::string &content) {
                 LOG_ERROR("Failed to parse XML content: {}", ex.what());
             }
         } else {
-            // xmlContent_가 없으면 새로 생성
+            // Create new if xmlContent_ doesn't exist
             setXmlContent(content);
         }
     } else {
-        // XML 타입이 아니면 문자열에 추가
+        // Add to string if not XML type
         if (!content_.empty()) {
             content_ += content;
         } else {
@@ -106,13 +106,13 @@ void RSM::DataModelItem::addContent(const std::string &content) {
 }
 
 const std::string &RSM::DataModelItem::getContent() const {
-    // XML 콘텐츠가 있고 content_가 비어있으면 XML을 문자열로 직렬화
+    // Serialize XML to string if XML content exists and content_ is empty
     if (xmlContent_ && content_.empty()) {
         static std::string serialized;
         serialized.clear();
 
         try {
-            // XML 문서를 문자열로 직렬화
+            // Serialize XML document to string
             xmlContent_->write_to_string(serialized);
         } catch (const std::exception &ex) {
             LOG_ERROR("Failed to serialize XML: {}", ex.what());
@@ -153,27 +153,27 @@ const std::unordered_map<std::string, std::string> &RSM::DataModelItem::getAttri
 void RSM::DataModelItem::setXmlContent(const std::string &content) {
     LOG_DEBUG("Setting XML content for {}", id_);
 
-    // 기존 XML 문서가 있다면 삭제
+    // Delete existing XML document if present
     xmlContent_.reset();
 
     try {
-        // XML 파싱
+        // Parse XML
         xmlpp::DomParser parser;
         parser.parse_memory(content);
 
-        // 새 문서 생성 후 내용 가져오기 (Document는 복사 불가)
+        // Create new document and get content (Document is not copyable)
         xmlContent_ = std::make_unique<xmlpp::Document>();
         if (parser.get_document() && parser.get_document()->get_root_node()) {
             xmlContent_->create_root_node_by_import(parser.get_document()->get_root_node());
         }
 
-        // 파싱 성공하면 content_는 비움 (필요시 getContent()에서 재생성)
+        // Clear content_ if parsing succeeds (regenerate in getContent() if needed)
         content_ = "";
     } catch (const std::exception &ex) {
         LOG_ERROR("Failed to parse XML content: {}", ex.what());
         xmlContent_.reset();
 
-        // 파싱 실패 시 일반 문자열로 저장
+        // Store as plain string if parsing fails
         content_ = content;
     }
 }
@@ -207,18 +207,18 @@ std::optional<std::string> RSM::DataModelItem::queryXPath(const std::string &xpa
         }
 
         if (nodes.size() == 1) {
-            // 단일 노드일 경우
+            // Single node case
             auto node = nodes[0];
-            // 텍스트 노드를 찾기
+            // Find text node
             auto child = node->get_first_child();
             if (child && dynamic_cast<xmlpp::TextNode *>(child)) {
                 return dynamic_cast<xmlpp::TextNode *>(child)->get_content();
             } else {
-                // 텍스트 노드가 없으면 노드 경로 반환
+                // Return node path if no text node
                 return node->get_path();
             }
         } else {
-            // 여러 노드일 경우, 결과를 결합
+            // Multiple nodes case, combine results
             std::stringstream result;
             for (auto node : nodes) {
                 auto child = node->get_first_child();
@@ -239,21 +239,21 @@ std::optional<std::string> RSM::DataModelItem::queryXPath(const std::string &xpa
 }
 
 bool RSM::DataModelItem::supportsDataModel(const std::string &dataModelType) const {
-    // xpath와 xml 데이터 모델은 XML 처리 지원
+    // xpath and xml data models support XML processing
     if (dataModelType == "xpath" || dataModelType == "xml") {
         return true;
     }
 
-    // ecmascript 데이터 모델은 기본 문자열 처리 지원
+    // ecmascript data model supports basic string processing
     if (dataModelType == "ecmascript") {
         return true;
     }
 
-    // null 데이터 모델은 제한적 지원
+    // null data model has limited support
     if (dataModelType == "null") {
         return true;
     }
 
-    // 그 외에는 지원하지 않음으로 판단
+    // Other data models not supported
     return false;
 }

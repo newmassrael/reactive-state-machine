@@ -22,7 +22,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
     auto targetAttr = guardNode->get_attribute("target");
     auto conditionAttr = guardNode->get_attribute("condition");
 
-    // id와 target/condition이 없는 경우 다른 속성 이름을 시도
+    // Try alternative attribute names if id and target/condition are missing
     if (!idAttr) {
         idAttr = guardNode->get_attribute("name");
     }
@@ -34,7 +34,7 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
     if (!idAttr || (!targetAttr && !conditionAttr)) {
         LOG_WARN("Guard node missing required attributes");
         LOG_DEBUG("Node name: {}", guardNode->get_name());
-        // 디버깅을 위해 가용한 모든 속성 출력
+        // Print all available attributes for debugging
         auto attrs = guardNode->get_attributes();
         for (auto *attr : attrs) {
             auto *xmlAttr = dynamic_cast<const xmlpp::Attribute *>(attr);
@@ -47,45 +47,45 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
 
     std::string id = idAttr->get_value();
 
-    // 기본 가드 노드 생성 - 빈 문자열로 초기화
+    // Create basic guard node - initialized with empty string
     auto guard = nodeFactory_->createGuardNode(id, "");
 
-    // target 속성 처리
+    // Process target attribute
     if (targetAttr) {
         std::string target = targetAttr->get_value();
         LOG_DEBUG("Guard: {} with target attribute: {}", id, target);
 
         if (GuardUtils::isConditionExpression(target)) {
-            // target이 조건식인 경우
+            // When target is a condition expression
             guard->setCondition(target);
             LOG_DEBUG("Set condition from target: {}", target);
         } else {
-            // target이 상태 ID인 경우
+            // When target is a state ID
             guard->setTargetState(target);
             LOG_DEBUG("Set target state: {}", target);
         }
     }
 
-    // condition 속성 처리
+    // Process condition attribute
     if (conditionAttr) {
         std::string condition = conditionAttr->get_value();
         guard->setCondition(condition);
         LOG_DEBUG("Set condition from attribute: {}", condition);
     }
 
-    // <code:condition> 또는 <condition> 요소 처리
+    // Process <code:condition> or <condition> element
     auto conditionNode = guardNode->get_first_child("code:condition");
     if (!conditionNode) {
         conditionNode = guardNode->get_first_child("condition");
     }
 
     if (conditionNode) {
-        // <code:condition> 또는 <condition> 요소 처리
+        // Process <code:condition> or <condition> element
         auto conditionElement = RSM::ParsingCommon::findFirstChildElement(guardNode, "condition");
         if (conditionElement) {
             LOG_DEBUG("Found condition element");
 
-            // CDATA 섹션과 일반 텍스트 모두 처리
+            // Process both CDATA sections and plain text
             std::string conditionText = RSM::ParsingCommon::extractTextContent(conditionElement, true);
             LOG_DEBUG("Raw condition content: '{}'", conditionText);
 
@@ -96,10 +96,10 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardNode(const xmlpp::E
         }
     }
 
-    // 의존성 파싱
+    // Parse dependencies
     parseDependencies(guardNode, guard);
 
-    // 외부 구현 파싱
+    // Parse external implementation
     parseExternalImplementation(guardNode, guard);
 
     LOG_DEBUG("Guard parsed successfully");
@@ -113,15 +113,15 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardFromTransition(cons
         return nullptr;
     }
 
-    // guard 속성을 네임스페이스 접두사를 고려하여 찾기
+    // Find guard attribute considering namespace prefix
     auto guardAttr = transitionNode->get_attribute("guard", "code");
     if (!guardAttr) {
-        // 네임스페이스 없이 시도
+        // Try without namespace
         guardAttr = transitionNode->get_attribute("guard");
     }
 
     if (!guardAttr) {
-        // 가드 속성이 없는 경우
+        // No guard attribute found
         return nullptr;
     }
 
@@ -129,13 +129,13 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseGuardFromTransition(cons
 
     LOG_DEBUG("Parsing guard from transition: {} for state: {}", guardId, targetState);
 
-    // 기본 가드 노드 생성 - 빈 문자열로 초기화
+    // Create basic guard node - initialized with empty string
     auto guard = nodeFactory_->createGuardNode(guardId, "");
 
-    // 명확하게 타겟 상태 설정
+    // Set target state explicitly
     guard->setTargetState(targetState);
 
-    // cond 속성이 있는지 확인
+    // Check if cond attribute exists
     auto condAttr = transitionNode->get_attribute("cond");
     if (condAttr) {
         std::string condition = condAttr->get_value();
@@ -164,40 +164,40 @@ std::shared_ptr<RSM::IGuardNode> RSM::GuardParser::parseReactiveGuard(const xmlp
 
     std::string id = idAttr->get_value();
 
-    // 기본 가드 노드 생성 - 빈 문자열로 초기화
+    // Create basic guard node - initialized with empty string
     auto guard = nodeFactory_->createGuardNode(id, "");
 
-    // 반응형 속성 설정
+    // Set reactive attributes
     guard->setReactive(true);
     guard->setAttribute("reactive", "true");
 
-    // target 속성 처리
+    // Process target attribute
     if (targetAttr) {
         std::string target = targetAttr->get_value();
         LOG_DEBUG("Reactive guard: {} with target: {}", id, target);
 
         if (GuardUtils::isConditionExpression(target)) {
-            // target이 조건식인 경우
+            // When target is a condition expression
             guard->setCondition(target);
             LOG_DEBUG("Set condition from target: {}", target);
         } else {
-            // target이 상태 ID인 경우
+            // When target is a state ID
             guard->setTargetState(target);
             LOG_DEBUG("Set target state: {}", target);
         }
     }
 
-    // condition 속성 처리
+    // Process condition attribute
     if (conditionAttr) {
         std::string condition = conditionAttr->get_value();
         guard->setCondition(condition);
         LOG_DEBUG("Set condition from attribute: {}", condition);
     }
 
-    // 의존성 파싱
+    // Parse dependencies
     parseDependencies(reactiveGuardNode, guard);
 
-    // 외부 구현 파싱
+    // Parse external implementation
     parseExternalImplementation(reactiveGuardNode, guard);
 
     LOG_DEBUG("Reactive guard parsed successfully");
@@ -214,10 +214,10 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseGuardsEleme
 
     LOG_DEBUG("Parsing guards element");
 
-    // guard 노드들 파싱
+    // Parse guard nodes
     auto guardNodes = guardsNode->get_children("code:guard");
     if (guardNodes.empty()) {
-        // 네임스페이스 없이 시도
+        // Try without namespace
         guardNodes = guardsNode->get_children("guard");
     }
 
@@ -246,10 +246,10 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
 
     LOG_DEBUG("Parsing all guards in SCXML document");
 
-    // 1. code:guards 요소 내의 가드 파싱
+    // 1. Parse guards within code:guards element
     auto guardsNode = scxmlNode->get_first_child("code:guards");
     if (!guardsNode) {
-        // 네임스페이스 없이 시도
+        // Try without namespace
         guardsNode = scxmlNode->get_first_child("guards");
     }
 
@@ -261,10 +261,10 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
         }
     }
 
-    // 2. 모든 상태의 전환에서 가드 속성 찾기
+    // 2. Find guard attributes in transitions of all states
     std::vector<const xmlpp::Node *> stateNodes;
 
-    // 모든 상태 노드 수집 (상태, 병렬, 최종 포함)
+    // Collect all state nodes (state, parallel, final)
     auto states = scxmlNode->get_children("state");
     stateNodes.insert(stateNodes.end(), states.begin(), states.end());
 
@@ -274,11 +274,11 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
     auto finals = scxmlNode->get_children("final");
     stateNodes.insert(stateNodes.end(), finals.begin(), finals.end());
 
-    // 각 상태의 전환 요소에서 가드 속성 확인
+    // Check guard attributes in transition elements of each state
     for (auto *stateNode : stateNodes) {
         auto *stateElement = dynamic_cast<const xmlpp::Element *>(stateNode);
         if (stateElement) {
-            // 상태 ID 가져오기
+            // Get state ID
             auto idAttr = stateElement->get_attribute("id");
             if (!idAttr) {
                 continue;
@@ -286,7 +286,7 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
 
             std::string stateId = idAttr->get_value();
 
-            // 전환 요소 처리
+            // Process transition elements
             auto transNodes = stateElement->get_children("transition");
             for (auto *transNode : transNodes) {
                 auto *transElement = dynamic_cast<const xmlpp::Element *>(transNode);
@@ -303,10 +303,10 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
                 }
             }
 
-            // 반응형 가드 처리
+            // Process reactive guards
             auto reactiveGuardNodes = stateElement->get_children("code:reactive-guard");
             if (reactiveGuardNodes.empty()) {
-                // 네임스페이스 없이 시도
+                // Try without namespace
                 reactiveGuardNodes = stateElement->get_children("reactive-guard");
             }
 
@@ -323,7 +323,7 @@ std::vector<std::shared_ptr<RSM::IGuardNode>> RSM::GuardParser::parseAllGuards(c
         }
     }
 
-    // 3. 중복 제거 (ID 기준)
+    // 3. Remove duplicates (based on ID)
     std::sort(allGuards.begin(), allGuards.end(),
               [](const std::shared_ptr<RSM::IGuardNode> &a, const std::shared_ptr<RSM::IGuardNode> &b) {
                   return a->getId() < b->getId();
@@ -362,10 +362,10 @@ void RSM::GuardParser::parseDependencies(const xmlpp::Element *guardNode,
         return;
     }
 
-    // 의존성 파싱
+    // Parse dependencies
     auto depNodes = guardNode->get_children("code:dependency");
     if (depNodes.empty()) {
-        // 네임스페이스 없이 시도
+        // Try without namespace
         depNodes = guardNode->get_children("dependency");
     }
 
@@ -374,7 +374,7 @@ void RSM::GuardParser::parseDependencies(const xmlpp::Element *guardNode,
         if (element) {
             auto propAttr = element->get_attribute("property");
             if (!propAttr) {
-                propAttr = element->get_attribute("prop");  // 대체 속성 이름 시도
+                propAttr = element->get_attribute("prop");  // Try alternative attribute name
             }
 
             if (propAttr) {
@@ -394,7 +394,7 @@ void RSM::GuardParser::parseExternalImplementation(const xmlpp::Element *guardNo
 
     auto implNode = guardNode->get_first_child("code:external-implementation");
     if (!implNode) {
-        // 네임스페이스 없이 시도
+        // Try without namespace
         implNode = guardNode->get_first_child("external-implementation");
     }
 
@@ -420,12 +420,12 @@ void RSM::GuardParser::parseExternalImplementation(const xmlpp::Element *guardNo
 }
 
 bool RSM::GuardParser::matchNodeName(const std::string &nodeName, const std::string &searchName) const {
-    // 정확히 일치하는 경우
+    // Exact match
     if (nodeName == searchName) {
         return true;
     }
 
-    // 네임스페이스가 있는 경우 (예: "code:guard")
+    // With namespace (e.g., "code:guard")
     size_t colonPos = nodeName.find(':');
     if (colonPos != std::string::npos && colonPos + 1 < nodeName.length()) {
         std::string localName = nodeName.substr(colonPos + 1);

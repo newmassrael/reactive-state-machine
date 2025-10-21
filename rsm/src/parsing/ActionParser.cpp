@@ -28,14 +28,14 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
         return nullptr;
     }
 
-    // 요소 이름에서 액션 타입 결정
+    // Determine action type from element name
     std::string elementName = actionElement->get_name();
     size_t colonPos = elementName.find(':');
     if (colonPos != std::string::npos && colonPos + 1 < elementName.length()) {
         elementName = elementName.substr(colonPos + 1);
     }
 
-    // ID 추출
+    // Extract ID
     std::string id;
     auto nameAttr = actionElement->get_attribute("name");
     if (!nameAttr) {
@@ -49,7 +49,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
 
     LOG_DEBUG("ActionParser: Processing action with id: {}", id);
 
-    // 액션 타입별로 구체적인 액션 객체 생성
+    // Create specific action objects by action type
     if (elementName == "script") {
         // W3C SCXML 5.8: Check for external script source
         auto srcAttr = actionElement->get_attribute("src");
@@ -355,7 +355,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
         return cancelAction;
 
     } else if (elementName == "foreach") {
-        // SCXML W3C 표준: foreach 요소 파싱
+        // SCXML W3C standard: Parse foreach element
         auto arrayAttr = actionElement->get_attribute("array");
         auto itemAttr = actionElement->get_attribute("item");
         auto indexAttr = actionElement->get_attribute("index");
@@ -368,7 +368,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
 
         auto foreachAction = std::make_shared<RSM::ForeachAction>(array, item, index, id);
 
-        // 중첩 액션들 파싱 (foreach 내부의 실행 가능 콘텐츠)
+        // Parse nested actions (executable content inside foreach)
         auto childActions = parseActionsInElement(actionElement);
         for (const auto &childAction : childActions) {
             if (childAction) {
@@ -392,10 +392,10 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
         return nullptr;
     }
 
-    // 액션 ID(이름) 가져오기
+    // Get action ID (name)
     auto nameAttr = externalActionNode->get_attribute("name");
 
-    // name 속성이 없는 경우 id 속성 시도
+    // Try id attribute if name attribute is missing
     if (!nameAttr) {
         nameAttr = externalActionNode->get_attribute("id");
     }
@@ -408,19 +408,19 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
     std::string id = nameAttr->get_value();
     LOG_DEBUG("Parsing external action: {}", id);
 
-    // 외부 액션은 ScriptAction으로 처리 (향후 외부 액션 지원 시 확장)
+    // External actions are handled as ScriptAction (extend when external action support is added)
     auto action = std::make_shared<RSM::ScriptAction>("", id);
 
-    // 지연 시간은 무시 (현재 구현에서는 지원하지 않음)
+    // Ignore delay time (not supported in current implementation)
     auto delayAttr = externalActionNode->get_attribute("delay");
     if (delayAttr) {
         LOG_DEBUG("ActionParser: Delay attribute value: {}", delayAttr->get_value());
     }
 
-    // 외부 구현 요소 파싱
+    // Parse external implementation element
     auto implNode = externalActionNode->get_first_child("code:external-implementation");
     if (!implNode) {
-        // 네임스페이스 없이 시도
+        // Try without namespace
         implNode = externalActionNode->get_first_child("external-implementation");
     }
 
@@ -431,7 +431,7 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
         }
     }
 
-    // 추가 속성 처리
+    // Process additional attributes
     auto attributes = externalActionNode->get_attributes();
     for (auto attr : attributes) {
         auto xmlAttr = dynamic_cast<const xmlpp::Attribute *>(attr);
@@ -439,9 +439,9 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseExternalActionNode(con
             std::string name = xmlAttr->get_name();
             std::string value = xmlAttr->get_value();
 
-            // 이미 처리한 속성은 건너뜀
+            // Skip already processed attributes
             if (name != "name" && name != "id" && name != "delay") {
-                // 추가 속성 무시 (현재 구현에서는 지원하지 않음)
+                // Ignore additional attributes (not supported in current implementation)
                 LOG_DEBUG("ActionParser: Additional attribute {} = {}", name, value);
             }
         }
@@ -462,7 +462,7 @@ RSM::ActionParser::parseActionsInElement(const xmlpp::Element *parentElement) {
 
     LOG_DEBUG("ActionParser: Parsing actions in element: {}", parentElement->get_name());
 
-    // 모든 자식 요소 검사
+    // Examine all child elements
     auto children = parentElement->get_children();
     LOG_DEBUG("ActionParser: Found {} child elements in {}", children.size(), parentElement->get_name());
 
@@ -475,7 +475,7 @@ RSM::ActionParser::parseActionsInElement(const xmlpp::Element *parentElement) {
 
         LOG_DEBUG("ActionParser: Processing child element: '{}'", element->get_name());
 
-        // 액션 노드 확인
+        // Check action node
         if (isActionNode(element)) {
             LOG_DEBUG("ActionParser: '{}' is recognized as action node", element->get_name());
             auto action = parseActionNode(element);
@@ -488,16 +488,16 @@ RSM::ActionParser::parseActionsInElement(const xmlpp::Element *parentElement) {
         } else {
             LOG_DEBUG("ActionParser: '{}' is NOT recognized as action node", element->get_name());
         }
-        // 외부 실행 액션 노드 확인
+        // Check external executable action node
         if (isExternalActionNode(element)) {
             auto action = parseExternalActionNode(element);
             if (action) {
                 actions.push_back(action);
             }
         }
-        // 특수 처리가 필요한 SCXML 요소 (if/elseif/else, foreach 등)
+        // SCXML elements requiring special processing (if/elseif/else, foreach, etc.)
         else if (isSpecialExecutableContent(element)) {
-            // 특수 요소 처리 - 자식 요소를 재귀적으로 파싱
+            // Process special elements - recursively parse child elements
             parseSpecialExecutableContent(element, actions);
         }
     }
@@ -539,12 +539,12 @@ bool RSM::ActionParser::isActionNode(const xmlpp::Element *element) const {
     std::string nodeName = element->get_name();
     LOG_DEBUG("ActionParser: isActionNode checking element: '{}'", nodeName);
 
-    // 커스텀 액션 태그
+    // Custom action tags
     if (matchNodeName(nodeName, "action") || matchNodeName(nodeName, "code:action")) {
         return true;
     }
 
-    // 표준 SCXML 실행 가능 콘텐츠 태그
+    // Standard SCXML executable content tags
     bool isStandardAction = matchNodeName(nodeName, "raise") || matchNodeName(nodeName, "assign") ||
                             matchNodeName(nodeName, "script") || matchNodeName(nodeName, "log") ||
                             matchNodeName(nodeName, "send") || matchNodeName(nodeName, "cancel");
@@ -560,8 +560,8 @@ bool RSM::ActionParser::isSpecialExecutableContent(const xmlpp::Element *element
 
     std::string nodeName = element->get_name();
 
-    // 특수 처리가 필요한 SCXML 실행 가능 콘텐츠
-    // Note: else/elseif는 if 블록 내에서만 처리되므로 여기서는 제외
+    // SCXML executable content requiring special processing
+    // Note: else/elseif are only processed within if blocks, excluded here
     return matchNodeName(nodeName, "if") || matchNodeName(nodeName, "foreach") || matchNodeName(nodeName, "invoke") ||
            matchNodeName(nodeName, "finalize");
 }
@@ -598,12 +598,12 @@ void RSM::ActionParser::parseExternalImplementation(const xmlpp::Element *elemen
 }
 
 bool RSM::ActionParser::matchNodeName(const std::string &nodeName, const std::string &searchName) const {
-    // 정확히 일치하는 경우
+    // Exact match
     if (nodeName == searchName) {
         return true;
     }
 
-    // 네임스페이스가 있는 경우 (예: "code:action")
+    // With namespace (e.g., "code:action")
     size_t colonPos = nodeName.find(':');
     if (colonPos != std::string::npos && colonPos + 1 < nodeName.length()) {
         std::string localName = nodeName.substr(colonPos + 1);
@@ -614,7 +614,7 @@ bool RSM::ActionParser::matchNodeName(const std::string &nodeName, const std::st
 }
 
 std::string RSM::ActionParser::getLocalName(const std::string &nodeName) const {
-    // 네임스페이스가 있는 경우 제거
+    // Remove namespace if present
     size_t colonPos = nodeName.find(':');
     if (colonPos != std::string::npos && colonPos + 1 < nodeName.length()) {
         return nodeName.substr(colonPos + 1);

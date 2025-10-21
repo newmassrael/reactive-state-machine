@@ -22,7 +22,7 @@ RSM::DataModelParser::parseDataModelNode(const xmlpp::Element *datamodelNode, co
 
     LOG_DEBUG("Parsing datamodel node");
 
-    // data 노드들 파싱
+    // Parse data nodes
     auto dataNodes = datamodelNode->get_children("data");
     for (auto *node : dataNodes) {
         auto *dataElement = dynamic_cast<const xmlpp::Element *>(node);
@@ -63,7 +63,7 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
     LOG_DEBUG("Parsing data model item: {}", id);
     auto dataItem = nodeFactory_->createDataModelItem(id, expr);
 
-    // src 속성 처리 (추가된 부분)
+    // Process src attribute
     auto srcAttr = dataNode->get_attribute("src");
     if (srcAttr) {
         std::string src = srcAttr->get_value();
@@ -72,33 +72,33 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
 
         loadExternalContent(src, dataItem);
 
-        // SCXML 표준에 따르면 src, expr, content는 상호 배타적
+        // According to SCXML standard, src, expr, content are mutually exclusive
         if (exprAttr) {
             LOG_WARN("Data element cannot have both 'src' and 'expr' attributes: {}", id);
-            // 오류 처리: SCXML 표준에서는 오류지만, 일단 둘 다 저장
+            // Error handling: Store both even though it's an error per SCXML standard
         }
 
-        // 내용이 있는지 확인 (자식 노드가 있는지)
+        // Check if content exists (has child nodes)
         if (dataNode->get_first_child()) {
             LOG_WARN("Data element cannot have both 'src' attribute and content: {}", id);
-            // 오류 처리: SCXML 표준에서는 오류지만, 일단 둘 다 저장
+            // Error handling: Store both even though it's an error per SCXML standard
         }
     }
 
-    // 기존 속성 처리
+    // Process existing attributes
     auto typeAttr = dataNode->get_attribute("type");
     if (typeAttr) {
         dataItem->setType(typeAttr->get_value());
         LOG_DEBUG("Type: {}", typeAttr->get_value());
     } else if (!context.getDatamodelType().empty()) {
-        // 노드에 타입이 없으면 컨텍스트의 데이터 모델 타입 사용
+        // Use context datamodel type if node has no type
         dataItem->setType(context.getDatamodelType());
         LOG_DEBUG("Using parent datamodel type: {}", context.getDatamodelType());
     }
 
     auto scopeAttr = dataNode->get_attribute("code:scope");
     if (!scopeAttr) {
-        // 네임스페이스 없이 시도
+        // Try without namespace
         scopeAttr = dataNode->get_attribute("scope");
     }
 
@@ -107,7 +107,7 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
         LOG_DEBUG("Scope: {}", scopeAttr->get_value());
     }
 
-    // 추가 속성 처리
+    // Process additional attributes
     auto attributes = dataNode->get_attributes();
     for (auto *attr : attributes) {
         auto *xmlAttr = dynamic_cast<const xmlpp::Attribute *>(attr);
@@ -115,19 +115,18 @@ std::shared_ptr<RSM::IDataModelItem> RSM::DataModelParser::parseDataModelItem(co
             std::string name = xmlAttr->get_name();
             std::string value = xmlAttr->get_value();
 
-            // 이미 처리한 속성은 건너뜀
+            // Skip already processed attributes
             if (name != "id" && name != "expr" && name != "type" && name != "code:scope" && name != "scope" &&
-                name != "src")  // src 추가
-            {
+                name != "src") {
                 dataItem->setAttribute(name, value);
                 LOG_DEBUG("Added attribute: {} = {}", name, value);
             }
         }
     }
 
-    // src가 있으면서 expr이나 content가 없는 경우에만 내용 처리
+    // Process content only if src exists without expr or content
     if (!srcAttr || (srcAttr && !exprAttr && !dataNode->get_first_child())) {
-        // 내용(콘텐츠) 처리
+        // Process content
         parseDataContent(dataNode, dataItem);
     }
 
@@ -146,12 +145,12 @@ void RSM::DataModelParser::parseDataContent(const xmlpp::Element *dataNode, std:
     }
 
     for (auto *child : children) {
-        // 텍스트 노드 처리
+        // Process text nodes
         auto *textNode = dynamic_cast<const xmlpp::TextNode *>(child);
         if (textNode) {
             std::string content = textNode->get_content();
             if (!content.empty()) {
-                // 공백만 있는 내용은 무시
+                // Ignore whitespace-only content
                 bool onlyWhitespace = true;
                 for (char c : content) {
                     if (!std::isspace(c)) {
@@ -165,19 +164,19 @@ void RSM::DataModelParser::parseDataContent(const xmlpp::Element *dataNode, std:
                     LOG_DEBUG("Added text content");
                 }
             }
-            continue;  // 텍스트 노드 처리 후 다음 노드로
+            continue;  // Continue to next node after processing text node
         }
 
-        // CDATA 섹션 처리 (추가된 부분)
+        // Process CDATA sections
         auto *cdataNode = dynamic_cast<const xmlpp::CdataNode *>(child);
         if (cdataNode) {
             std::string content = cdataNode->get_content();
             dataItem->setContent(content);
             LOG_DEBUG("Added CDATA content: {}", content);
-            continue;  // CDATA 노드 처리 후 다음 노드로
+            continue;  // Continue to next node after processing CDATA node
         }
 
-        // 요소 노드 처리 (XML 콘텐츠)
+        // Process element nodes (XML content)
         auto *elementNode = dynamic_cast<const xmlpp::Element *>(child);
         if (elementNode) {
             // W3C SCXML B.2 test 557: Serialize full XML content for DOM parsing
@@ -205,12 +204,12 @@ RSM::DataModelParser::parseDataModelInState(const xmlpp::Element *stateNode, con
 
     LOG_DEBUG("Parsing datamodel in state");
 
-    // datamodel 요소 찾기
+    // Find datamodel element
     auto datamodelNode = stateNode->get_first_child("datamodel");
     if (datamodelNode) {
         auto *element = dynamic_cast<const xmlpp::Element *>(datamodelNode);
         if (element) {
-            // context 전달
+            // Pass context
             auto stateItems = parseDataModelNode(element, context);
             items.insert(items.end(), stateItems.begin(), stateItems.end());
         }
@@ -243,12 +242,12 @@ bool RSM::DataModelParser::isDataModelItem(const xmlpp::Element *element) const 
 }
 
 bool RSM::DataModelParser::matchNodeName(const std::string &nodeName, const std::string &searchName) const {
-    // 정확히 일치하는 경우
+    // Exact match
     if (nodeName == searchName) {
         return true;
     }
 
-    // 네임스페이스가 있는 경우 (예: "code:data")
+    // With namespace (e.g., "code:data")
     size_t colonPos = nodeName.find(':');
     if (colonPos != std::string::npos && colonPos + 1 < nodeName.length()) {
         std::string localName = nodeName.substr(colonPos + 1);
@@ -259,20 +258,20 @@ bool RSM::DataModelParser::matchNodeName(const std::string &nodeName, const std:
 }
 
 void RSM::DataModelParser::loadExternalContent(const std::string &src, std::shared_ptr<IDataModelItem> dataItem) {
-    // 이 메서드는 실제 구현에서 외부 URL에서 데이터를 로드하는 작업을 담당
-    // 예: 파일 시스템, HTTP 요청 등
+    // This method handles loading data from external URLs
+    // e.g., file system, HTTP requests, etc.
 
     LOG_DEBUG("Loading content from: {}", src);
 
-    // 예시: 파일 경로인 경우 파일 내용 로드
+    // Example: Load file content for file paths
     if (src.find("file://") == 0 || src.find("/") == 0 || src.find("./") == 0) {
         std::string filePath = src;
         if (src.find("file://") == 0) {
-            filePath = src.substr(7);  // "file://" 접두사 제거
+            filePath = src.substr(7);  // Remove "file://" prefix
         }
 
         try {
-            // 파일 내용 로드
+            // Load file content
             std::ifstream file(filePath);
             if (file.is_open()) {
                 std::stringstream buffer;
@@ -286,11 +285,11 @@ void RSM::DataModelParser::loadExternalContent(const std::string &src, std::shar
             LOG_ERROR("Exception loading file: {}", e.what());
         }
     } else if (src.find("http://") == 0 || src.find("https://") == 0) {
-        // HTTP 요청은 더 복잡한 구현이 필요하며, 외부 라이브러리 사용이 권장됨
-        // 여기서는 구현을 생략하고 로그만 남김
+        // HTTP requests require more complex implementation and external libraries are recommended
+        // Implementation omitted here, log only
         LOG_WARN("HTTP loading not implemented: {}", src);
     } else {
-        // 기타 프로토콜이나 상대 경로 등 처리
+        // Handle other protocols or relative paths
         LOG_WARN("Unsupported URL format: {}", src);
     }
 }

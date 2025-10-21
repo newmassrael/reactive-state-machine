@@ -39,18 +39,18 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
         return nullptr;
     }
 
-    // 상태 ID 가져오기
+    // Get state ID
     std::string stateId;
     auto idAttr = stateElement->get_attribute("id");
     if (idAttr) {
         stateId = idAttr->get_value();
     } else {
-        // ID가 없는 경우 자동 생성
+        // Auto-generate if ID is missing
         stateId = "state_" + std::to_string(reinterpret_cast<uintptr_t>(stateElement));
         LOG_WARN("State has no ID, generated: {}", stateId);
     }
 
-    // 상태 유형 결정
+    // Determine state type
     Type stateType = determineStateType(stateElement);
     LOG_DEBUG("Parsing state: {} ({})", stateId,
               (stateType == Type::PARALLEL  ? "parallel"
@@ -58,30 +58,30 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
                : stateType == Type::HISTORY ? "history"
                                             : "state"));
 
-    // 상태 노드 생성
+    // Create state node
     auto stateNode = nodeFactory_->createStateNode(stateId, stateType);
     if (!stateNode) {
         LOG_ERROR("Failed to create state node");
         return nullptr;
     }
 
-    // 부모 상태 설정
+    // Set parent state
     stateNode->setParent(parentState.get());
     if (!parentState) {
         LOG_DEBUG("No parent state (root)");
     }
 
-    // 히스토리 상태인 경우 추가 처리
+    // Additional processing for history states
     if (stateType == Type::HISTORY) {
         parseHistoryType(stateElement, stateNode);
     } else {
-        // onentry/onexit 요소 파싱 (히스토리 상태가 아닌 경우에만) - Feature available
+        // Parse onentry/onexit elements (only for non-history states) - Feature available
         // parseEntryExitElements(stateElement, stateNode);
 
-        // 새로운 IActionNode 기반 액션 파싱
+        // Parse new IActionNode-based actions
         parseEntryExitActionNodes(stateElement, stateNode);
 
-        // 전환 파싱 (히스토리 상태가 아닌 경우에만)
+        // Parse transitions (only for non-history states)
         if (transitionParser_) {
             parseTransitions(stateElement, stateNode);
         } else {
@@ -91,7 +91,7 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
         parseReactiveGuards(stateElement, stateNode);
     }
 
-    // 데이터 모델 파싱 - context 전달
+    // Parse data model - pass context
     if (dataModelParser_) {
         auto dataItems = dataModelParser_->parseDataModelInState(stateElement, context);
         for (const auto &item : dataItems) {
@@ -102,49 +102,49 @@ std::shared_ptr<RSM::IStateNode> RSM::StateNodeParser::parseStateNode(const xmlp
         LOG_WARN("DataModelParser not set, skipping data model");
     }
 
-    // 자식 상태 파싱 (compound 및 parallel 상태의 경우) - context 전달
+    // Parse child states (for compound and parallel states) - pass context
     if (stateType != Type::FINAL && stateType != Type::HISTORY) {
         parseChildStates(stateElement, stateNode, context);
     }
 
-    // invoke 요소 파싱
+    // Parse invoke elements
     if (invokeParser_) {
         parseInvokeElements(stateElement, stateNode);
     } else {
         LOG_WARN("InvokeParser not set, skipping invoke elements");
     }
 
-    // <final> 상태에서 <donedata> 요소 파싱
+    // Parse <donedata> element in <final> state
     if (stateType == Type::FINAL && doneDataParser_) {
         const xmlpp::Element *doneDataElement = ParsingCommon::findFirstChildElement(stateElement, "donedata");
         if (doneDataElement) {
             bool success = doneDataParser_->parseDoneData(doneDataElement, stateNode.get());
             if (!success) {
                 LOG_WARN("Failed to parse <donedata> in final state: {}", stateId);
-                // 오류가 있어도 계속 진행 (치명적이지 않음)
+                // Continue even with errors (not fatal)
             } else {
                 LOG_DEBUG("Successfully parsed <donedata> in final state: {}", stateId);
             }
         }
     }
 
-    // 초기 상태 설정 (compound 상태인 경우)
+    // Set initial state (for compound states)
     if (stateType == Type::COMPOUND && !stateNode->getChildren().empty()) {
         if (stateType == Type::COMPOUND && !stateNode->getChildren().empty()) {
-            // <initial> 요소 확인
+            // Check for <initial> element
             auto initialElement = ParsingCommon::findFirstChildElement(stateElement, "initial");
             if (initialElement) {
-                // <initial> 요소 파싱
+                // Parse <initial> element
                 parseInitialElement(initialElement, stateNode);
                 LOG_DEBUG("Parsed <initial> element for state: {}", stateId);
             } else {
-                // initial 속성에서 초기 상태 설정
+                // Set initial state from initial attribute
                 auto initialAttr = stateElement->get_attribute("initial");
                 if (initialAttr) {
                     stateNode->setInitialState(initialAttr->get_value());
                     LOG_DEBUG("StateNodeParser: State '{}' initial attribute='{}'", stateId, initialAttr->get_value());
                 } else if (!stateNode->getChildren().empty()) {
-                    // 초기 상태가 지정되지 않은 경우 첫 번째 자식을 사용
+                    // Use first child if initial state is not specified
                     stateNode->setInitialState(stateNode->getChildren().front()->getId());
                     LOG_DEBUG("Set default initial state: {}", stateNode->getChildren().front()->getId());
                 }
@@ -161,26 +161,26 @@ RSM::Type RSM::StateNodeParser::determineStateType(const xmlpp::Element *stateEl
         return Type::ATOMIC;
     }
 
-    // 노드 이름 가져오기
+    // Get node name
     std::string nodeName = stateElement->get_name();
 
-    // history 요소 확인
+    // Check for history element
     if (ParsingCommon::matchNodeName(nodeName, "history")) {
         return Type::HISTORY;
     }
 
-    // final 요소 확인
+    // Check for final element
     if (ParsingCommon::matchNodeName(nodeName, "final")) {
         return Type::FINAL;
     }
 
-    // parallel 요소 확인
+    // Check for parallel element
     if (ParsingCommon::matchNodeName(nodeName, "parallel")) {
         return Type::PARALLEL;
     }
 
-    // compound vs. atomic 상태 구분
-    // 자식 상태가 있으면 compound, 없으면 atomic
+    // Distinguish between compound and atomic states
+    // Compound if has child states, atomic otherwise
     bool hasChildStates = false;
     auto children = stateElement->get_children();
     for (auto child : children) {
@@ -223,7 +223,7 @@ void RSM::StateNodeParser::parseChildStates(const xmlpp::Element *stateElement,
                                             const RSM::SCXMLContext &context) {
     LOG_DEBUG("Parsing child states");
 
-    // state, parallel, final, history 등의 자식 요소 검색
+    // Search for child elements like state, parallel, final, history
     std::vector<const xmlpp::Element *> childStateElements;
     auto stateElements = ParsingCommon::findChildElements(stateElement, "state");
     childStateElements.insert(childStateElements.end(), stateElements.begin(), stateElements.end());
@@ -237,7 +237,7 @@ void RSM::StateNodeParser::parseChildStates(const xmlpp::Element *stateElement,
     auto historyElements = ParsingCommon::findChildElements(stateElement, "history");
     childStateElements.insert(childStateElements.end(), historyElements.begin(), historyElements.end());
 
-    // 발견된 각 자식 상태를 재귀적으로 파싱
+    // Recursively parse each discovered child state
     for (auto *childElement : childStateElements) {
         auto childState = parseStateNode(childElement, parentState, context);
         if (childState) {
@@ -261,11 +261,11 @@ void RSM::StateNodeParser::parseInvokeElements(const xmlpp::Element *parentEleme
             // W3C SCXML 6.4: Set parent state ID for invoke ID generation (test 224)
             invokeNode->setStateId(state->getId());
 
-            // Invoke 노드를 상태에 추가
+            // Add invoke node to state
             state->addInvoke(invokeNode);
             LOG_DEBUG("Added invoke: {}", invokeNode->getId());
 
-            // Param 요소들로부터 데이터 모델 아이템 생성 및 추가
+            // Create and add data model items from param elements
             auto dataItems = invokeParser_->parseParamElementsAndCreateDataItems(invokeElement, invokeNode);
             for (const auto &dataItem : dataItems) {
                 state->addDataItem(dataItem);
@@ -283,21 +283,21 @@ void RSM::StateNodeParser::parseHistoryType(const xmlpp::Element *historyElement
         return;
     }
 
-    // 기본값은 shallow
+    // Default is shallow
     bool isDeep = false;
 
-    // type 속성 확인
+    // Check type attribute
     auto typeAttr = historyElement->get_attribute("type");
     if (typeAttr && typeAttr->get_value() == "deep") {
         isDeep = true;
     }
 
-    // 히스토리 타입 설정
+    // Set history type
     state->setHistoryType(isDeep);
 
     LOG_DEBUG("History state {} type: {}", state->getId(), (isDeep ? "deep" : "shallow"));
 
-    // 히스토리 상태의 기본 전환도 파싱
+    // Parse default transition for history state
     if (transitionParser_) {
         parseTransitions(historyElement, state);
     }
@@ -309,12 +309,12 @@ void RSM::StateNodeParser::parseReactiveGuards(const xmlpp::Element *parentEleme
         return;
     }
 
-    // code:reactive-guard 요소 찾기
+    // Find code:reactive-guard elements
     auto reactiveGuardElements =
         ParsingCommon::findChildElementsWithNamespace(parentElement, "reactive-guard", "http://example.org/code");
 
     for (auto *reactiveGuardElement : reactiveGuardElements) {
-        // id 속성 가져오기
+        // Get id attribute
         auto idAttr = reactiveGuardElement->get_attribute("id");
         if (idAttr) {
             std::string guardId = idAttr->get_value();
@@ -336,16 +336,16 @@ void RSM::StateNodeParser::parseInitialElement(const xmlpp::Element *initialElem
 
     LOG_DEBUG("Parsing initial element for state: {}", state->getId());
 
-    // <transition> 요소 찾기
+    // Find <transition> elements
     const xmlpp::Element *transitionElement = ParsingCommon::findFirstChildElement(initialElement, "transition");
     if (transitionElement) {
-        // 전환 파싱 - 부모 상태도 함께 전달
+        // Parse transition - pass parent state together
         auto transition = transitionParser_->parseTransitionNode(transitionElement, state.get());
         if (transition) {
-            // IStateNode 인터페이스를 통해 직접 호출
+            // Call directly through IStateNode interface
             state->setInitialTransition(transition);
 
-            // initialState_ 설정 (W3C SCXML 3.3: space-separated targets for parallel regions)
+            // Set initialState_ (W3C SCXML 3.3: space-separated targets for parallel regions)
             if (!transition->getTargets().empty()) {
                 std::string allTargets;
                 for (size_t i = 0; i < transition->getTargets().size(); ++i) {
@@ -369,7 +369,7 @@ void RSM::StateNodeParser::parseEntryExitActionNodes(const xmlpp::Element *paren
         return;
     }
 
-    // W3C SCXML 3.8: onentry 요소 처리 - 각 onentry는 별도 블록
+    // W3C SCXML 3.8: Process onentry elements - each onentry is a separate block
     auto onentryElements = ParsingCommon::findChildElements(parentElement, "onentry");
     for (auto *onentryElement : onentryElements) {
         std::vector<std::shared_ptr<RSM::IActionNode>> actionBlock;
@@ -381,7 +381,7 @@ void RSM::StateNodeParser::parseEntryExitActionNodes(const xmlpp::Element *paren
         }
     }
 
-    // W3C SCXML 3.9: onexit 요소 처리 - 각 onexit는 별도 블록
+    // W3C SCXML 3.9: Process onexit elements - each onexit is a separate block
     auto onexitElements = ParsingCommon::findChildElements(parentElement, "onexit");
     for (auto *onexitElement : onexitElements) {
         std::vector<std::shared_ptr<RSM::IActionNode>> actionBlock;
@@ -418,7 +418,7 @@ void RSM::StateNodeParser::parseExecutableContentBlock(const xmlpp::Element *par
             actionBlock.push_back(action);
 
             std::string elementName = element->get_name();
-            // 네임스페이스 접두사 제거
+            // Remove namespace prefix
             size_t colonPos = elementName.find(':');
             if (colonPos != std::string::npos && colonPos + 1 < elementName.length()) {
                 elementName = elementName.substr(colonPos + 1);

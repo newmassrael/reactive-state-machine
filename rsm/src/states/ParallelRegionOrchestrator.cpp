@@ -6,7 +6,7 @@
 
 namespace RSM {
 
-// OrchestrationResult 정적 팩토리 메서드들
+// OrchestrationResult static factory methods
 
 ParallelRegionOrchestrator::OrchestrationResult
 ParallelRegionOrchestrator::OrchestrationResult::success(const std::vector<std::string> &regions) {
@@ -27,14 +27,14 @@ ParallelRegionOrchestrator::OrchestrationResult::failure(const std::string &erro
 ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::OrchestrationResult::partial(
     const std::vector<std::string> &successful, const std::vector<std::string> &failed, const std::string &error) {
     OrchestrationResult result;
-    result.isSuccess = failed.empty();  // 실패한 것이 없으면 성공
+    result.isSuccess = failed.empty();  // Success if nothing failed
     result.successfulRegions = successful;
     result.failedRegions = failed;
     result.errorMessage = error;
     return result;
 }
 
-// ParallelRegionOrchestrator 구현
+// ParallelRegionOrchestrator implementation
 
 ParallelRegionOrchestrator::ParallelRegionOrchestrator(const std::string &parentStateId)
     : parentStateId_(parentStateId) {
@@ -44,13 +44,13 @@ ParallelRegionOrchestrator::ParallelRegionOrchestrator(const std::string &parent
 ParallelRegionOrchestrator::~ParallelRegionOrchestrator() {
     LOG_DEBUG("Destroying orchestrator for state: {}", parentStateId_);
 
-    // 안전한 종료: 모든 지역 비활성화
+    // Safe shutdown: deactivate all regions
     if (!regions_.empty()) {
         deactivateAllRegions();
     }
 }
 
-// 지역 관리
+// Region management
 
 ConcurrentOperationResult ParallelRegionOrchestrator::addRegion(std::shared_ptr<IConcurrentRegion> region) {
     if (!region) {
@@ -59,19 +59,19 @@ ConcurrentOperationResult ParallelRegionOrchestrator::addRegion(std::shared_ptr<
 
     const std::string &regionId = region->getId();
 
-    // 중복 검사
+    // Check for duplicates
     if (regionMap_.find(regionId) != regionMap_.end()) {
         return ConcurrentOperationResult::failure(regionId,
                                                   fmt::format("Region with ID '{}' already exists", regionId));
     }
 
-    // 지역 추가
+    // Add region
     regions_.push_back(region);
     regionMap_[regionId] = region;
 
     LOG_DEBUG("Added region '{}' to orchestrator for {}", regionId, parentStateId_);
 
-    // 상태 변화 알림
+    // Notify state change
     notifyStateChange(regionId, RegionStateChangeEvent::ACTIVATED, "Region added to orchestrator");
 
     return ConcurrentOperationResult::success(regionId);
@@ -83,7 +83,7 @@ ConcurrentOperationResult ParallelRegionOrchestrator::removeRegion(const std::st
         return ConcurrentOperationResult::failure(regionId, fmt::format("Region with ID '{}' not found", regionId));
     }
 
-    // 지역이 활성화되어 있다면 먼저 비활성화
+    // Deactivate region first if it's active
     auto region = mapIt->second;
     if (region->isActive()) {
         auto deactivateResult = region->deactivate();
@@ -92,7 +92,7 @@ ConcurrentOperationResult ParallelRegionOrchestrator::removeRegion(const std::st
         }
     }
 
-    // 벡터에서 제거
+    // Remove from vector
     auto vectorIt =
         std::find_if(regions_.begin(), regions_.end(),
                      [&regionId](const std::shared_ptr<IConcurrentRegion> &r) { return r->getId() == regionId; });
@@ -101,12 +101,12 @@ ConcurrentOperationResult ParallelRegionOrchestrator::removeRegion(const std::st
         regions_.erase(vectorIt);
     }
 
-    // 맵에서 제거
+    // Remove from map
     regionMap_.erase(mapIt);
 
     LOG_DEBUG("Removed region '{}' from orchestrator for {}", regionId, parentStateId_);
 
-    // 상태 변화 알림
+    // Notify state change
     notifyStateChange(regionId, RegionStateChangeEvent::DEACTIVATED, "Region removed from orchestrator");
 
     return ConcurrentOperationResult::success(regionId);
@@ -133,7 +133,7 @@ std::vector<std::shared_ptr<IConcurrentRegion>> ParallelRegionOrchestrator::getA
     return activeRegions;
 }
 
-// 생명주기 조율
+// Lifecycle orchestration
 
 ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::activateAllRegions() {
     LOG_DEBUG("Activating {} regions for {}", regions_.size(), parentStateId_);
@@ -268,18 +268,18 @@ ParallelRegionOrchestrator::deactivateRegions(const std::vector<std::string> &re
 ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::restartAllRegions() {
     LOG_DEBUG("Restarting all regions for {}", parentStateId_);
 
-    // 먼저 모든 지역 비활성화
+    // First deactivate all regions
     auto deactivateResult = deactivateAllRegions();
 
-    // 그다음 모든 지역 활성화
+    // Then activate all regions
     auto activateResult = activateAllRegions();
 
-    // 결과 합성
+    // Synthesize results
     std::vector<std::string> successful;
     std::vector<std::string> failed;
     std::ostringstream errorStream;
 
-    // 활성화 성공한 것들만 최종 성공으로 간주
+    // Only consider activation successes as final success
     successful = activateResult.successfulRegions;
     failed = activateResult.failedRegions;
 
@@ -300,7 +300,7 @@ ParallelRegionOrchestrator::OrchestrationResult ParallelRegionOrchestrator::rest
     return OrchestrationResult::partial(successful, failed, errorStream.str());
 }
 
-// 상태 모니터링
+// State monitoring
 
 bool ParallelRegionOrchestrator::areAllRegionsActive() const {
     if (regions_.empty()) {
@@ -336,7 +336,7 @@ std::unordered_map<std::string, ConcurrentRegionInfo> ParallelRegionOrchestrator
     return states;
 }
 
-// 이벤트 처리
+// Event processing
 
 std::vector<ConcurrentOperationResult> ParallelRegionOrchestrator::broadcastEvent(const EventDescriptor &event) {
     LOG_DEBUG("Broadcasting event to {} regions for {}", regions_.size(), parentStateId_);
@@ -377,7 +377,7 @@ ConcurrentOperationResult ParallelRegionOrchestrator::sendEventToRegion(const st
     return result;
 }
 
-// 콜백 관리
+// Callback management
 
 void ParallelRegionOrchestrator::setStateChangeCallback(RegionStateChangeCallback callback) {
     stateChangeCallback_ = std::move(callback);
@@ -387,12 +387,12 @@ void ParallelRegionOrchestrator::clearStateChangeCallback() {
     stateChangeCallback_ = nullptr;
 }
 
-// 검증
+// Validation
 
 std::vector<std::string> ParallelRegionOrchestrator::validateOrchestrator() const {
     std::vector<std::string> errors;
 
-    // 지역 ID 중복 검사
+    // Check for duplicate region IDs
     std::vector<std::string> regionIds = getRegionIds();
     std::sort(regionIds.begin(), regionIds.end());
     for (size_t i = 1; i < regionIds.size(); ++i) {
@@ -401,7 +401,7 @@ std::vector<std::string> ParallelRegionOrchestrator::validateOrchestrator() cons
         }
     }
 
-    // 각 지역의 검증
+    // Validate each region
     for (const auto &region : regions_) {
         auto regionErrors = region->validate();
         for (const auto &error : regionErrors) {
@@ -441,7 +441,7 @@ std::string ParallelRegionOrchestrator::getStatistics() const {
     return stats.str();
 }
 
-// 내부 헬퍼 메서드들
+// Internal helper methods
 
 void ParallelRegionOrchestrator::notifyStateChange(const std::string &regionId, RegionStateChangeEvent event,
                                                    const std::string &details) {

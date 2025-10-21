@@ -2,19 +2,19 @@
 #include <algorithm>
 #include <filesystem>
 
-// 상수 정의
+// Constant definitions
 const std::string RSM::ParsingCommon::Constants::SCXML_NAMESPACE = "http://www.w3.org/2005/07/scxml";
 const std::string RSM::ParsingCommon::Constants::CODE_NAMESPACE = "http://www.example.org/code-extensions";
 const std::string RSM::ParsingCommon::Constants::CTX_NAMESPACE = "http://www.example.org/context-extensions";
 const std::string RSM::ParsingCommon::Constants::DI_NAMESPACE = "http://www.example.org/dependency-injection";
 
 bool RSM::ParsingCommon::matchNodeName(const std::string &nodeName, const std::string &baseName) {
-    // 정확히 일치하는 경우
+    // Exact match
     if (nodeName == baseName) {
         return true;
     }
 
-    // 네임스페이스가 있는 경우 (예: "code:action")
+    // With namespace (e.g., "code:action")
     size_t colonPos = nodeName.find(':');
     if (colonPos != std::string::npos && colonPos + 1 < nodeName.length()) {
         std::string localName = nodeName.substr(colonPos + 1);
@@ -33,7 +33,7 @@ std::vector<const xmlpp::Element *> RSM::ParsingCommon::findChildElements(const 
         return result;
     }
 
-    // 정확한 이름으로 자식 요소 찾기
+    // Find child elements with exact name
     auto children = element->get_children(childName);
     for (auto *child : children) {
         auto *childElement = dynamic_cast<const xmlpp::Element *>(child);
@@ -42,7 +42,7 @@ std::vector<const xmlpp::Element *> RSM::ParsingCommon::findChildElements(const 
         }
     }
 
-    // 네임스페이스가 다른 경우를 위한 추가 검색
+    // Additional search for different namespaces
     if (result.empty()) {
         auto allChildren = element->get_children();
         for (auto *child : allChildren) {
@@ -66,13 +66,13 @@ const xmlpp::Element *RSM::ParsingCommon::findFirstChildElement(const xmlpp::Ele
         return nullptr;
     }
 
-    // 정확한 이름으로 첫 번째 자식 요소 찾기
+    // Find first child element with exact name
     auto child = element->get_first_child(childName);
     if (child) {
         return dynamic_cast<const xmlpp::Element *>(child);
     }
 
-    // 네임스페이스가 다른 경우를 위한 추가 검색
+    // Additional search for different namespaces
     auto allChildren = element->get_children();
     for (auto *c : allChildren) {
         auto *childElement = dynamic_cast<const xmlpp::Element *>(c);
@@ -92,19 +92,19 @@ std::string RSM::ParsingCommon::findElementId(const xmlpp::Element *element) {
         return "";
     }
 
-    // 직접 id 속성 찾기
+    // Find id attribute directly
     auto idAttr = element->get_attribute("id");
     if (idAttr) {
         return idAttr->get_value();
     }
 
-    // 대체 속성 시도
+    // Try alternative attribute
     auto nameAttr = element->get_attribute("name");
     if (nameAttr) {
         return nameAttr->get_value();
     }
 
-    // 부모 요소에서 id 찾기
+    // Find id from parent element
     auto parent = element->get_parent();
     if (parent) {
         auto *parentElement = dynamic_cast<const xmlpp::Element *>(parent);
@@ -125,7 +125,7 @@ std::string RSM::ParsingCommon::getAttributeValue(const xmlpp::Element *element,
 
     LOG_DEBUG("Searching for attributes in element: {}", element->get_name());
 
-    // 주어진 속성 이름 목록에서 차례대로 시도
+    // Try each attribute name in the given list
     for (const auto &attrName : attrNames) {
         LOG_DEBUG("Checking attribute: {}", attrName);
 
@@ -135,7 +135,7 @@ std::string RSM::ParsingCommon::getAttributeValue(const xmlpp::Element *element,
             return attr->get_value();
         }
 
-        // 네임스페이스와 분리해서 속성 찾기
+        // Find attribute separated by namespace
         std::vector<std::string> namespaces = {"code", "ctx", "di"};
         for (const auto &ns : namespaces) {
             auto nsAttr = element->get_attribute(attrName, ns);
@@ -164,7 +164,7 @@ RSM::ParsingCommon::collectAttributes(const xmlpp::Element *element, const std::
         if (xmlAttr) {
             std::string name = xmlAttr->get_name();
 
-            // 제외할 속성인지 확인
+            // Check if attribute should be excluded
             bool excluded = false;
             for (const auto &excludeName : excludeAttrs) {
                 if (matchNodeName(name, excludeName)) {
@@ -174,7 +174,7 @@ RSM::ParsingCommon::collectAttributes(const xmlpp::Element *element, const std::
             }
 
             if (!excluded) {
-                // 네임스페이스 제거 옵션
+                // Remove namespace option
                 size_t colonPos = name.find(':');
                 if (colonPos != std::string::npos && colonPos + 1 < name.length()) {
                     std::string localName = name.substr(colonPos + 1);
@@ -190,18 +190,18 @@ RSM::ParsingCommon::collectAttributes(const xmlpp::Element *element, const std::
 }
 
 std::string RSM::ParsingCommon::resolveRelativePath(const std::string &basePath, const std::string &relativePath) {
-    // 상대 경로가 절대 경로이면 그대로 반환
+    // Return as-is if relative path is absolute
     if (std::filesystem::path(relativePath).is_absolute()) {
         return relativePath;
     }
 
-    // 기준 경로의 디렉토리 부분 추출
+    // Extract directory part of base path
     std::filesystem::path baseDir = std::filesystem::path(basePath).parent_path();
 
-    // 상대 경로 해석
+    // Resolve relative path
     std::filesystem::path resolvedPath = baseDir / relativePath;
 
-    // 정규화
+    // Normalize
     return std::filesystem::canonical(resolvedPath).string();
 }
 
@@ -214,13 +214,13 @@ std::string RSM::ParsingCommon::extractTextContent(const xmlpp::Element *element
     auto children = element->get_children();
 
     for (auto *child : children) {
-        // 일반 텍스트 노드 처리
+        // Process regular text nodes
         if (auto *textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
             result += textNode->get_content();
             continue;
         }
 
-        // CDATA 섹션 처리
+        // Process CDATA sections
         if (auto *cdataNode = dynamic_cast<const xmlpp::CdataNode *>(child)) {
             result += cdataNode->get_content();
             continue;
@@ -228,10 +228,10 @@ std::string RSM::ParsingCommon::extractTextContent(const xmlpp::Element *element
     }
 
     if (trimWhitespace) {
-        // 앞뒤 공백 제거
+        // Trim leading and trailing whitespace
         auto start = result.find_first_not_of(" \t\n\r\f\v");
         if (start == std::string::npos) {
-            return "";  // 공백만 있는 경우
+            return "";  // Whitespace only
         }
 
         auto end = result.find_last_not_of(" \t\n\r\f\v");
@@ -271,7 +271,7 @@ RSM::ParsingCommon::findChildElementsWithNamespace(const xmlpp::Element *parent,
             std::string fullName = element->get_name();
             std::string ns = element->get_namespace_uri();
 
-            // 네임스페이스 URI 확인 및 로컬 이름 추출
+            // Check namespace URI and extract local name
             if (ns == namespaceURI) {
                 size_t colonPos = fullName.find(':');
                 std::string localName = (colonPos != std::string::npos) ? fullName.substr(colonPos + 1) : fullName;
@@ -286,10 +286,10 @@ RSM::ParsingCommon::findChildElementsWithNamespace(const xmlpp::Element *parent,
 }
 
 std::string RSM::ParsingCommon::trimString(const std::string &str) {
-    // 앞뒤 공백 제거
+    // Trim leading and trailing whitespace
     auto start = str.find_first_not_of(" \t\n\r\f\v");
     if (start == std::string::npos) {
-        return "";  // 공백만 있는 경우
+        return "";  // Whitespace only
     }
 
     auto end = str.find_last_not_of(" \t\n\r\f\v");
