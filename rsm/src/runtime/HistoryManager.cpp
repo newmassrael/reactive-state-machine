@@ -1,4 +1,5 @@
 #include "runtime/HistoryManager.h"
+#include "common/HistoryHelper.h"
 #include "common/Logger.h"
 #include "model/IStateNode.h"
 #include "runtime/HistoryValidator.h"
@@ -8,12 +9,9 @@
 namespace RSM {
 
 HistoryManager::HistoryManager(std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider,
-                               std::unique_ptr<IHistoryStateFilter> shallowFilter,
-                               std::unique_ptr<IHistoryStateFilter> deepFilter,
                                std::unique_ptr<IHistoryValidator> validator)
-    : stateProvider_(std::move(stateProvider)), shallowFilter_(std::move(shallowFilter)),
-      deepFilter_(std::move(deepFilter)), validator_(std::move(validator)) {
-    LOG_INFO("HistoryManager: Initialized with SOLID architecture components");
+    : stateProvider_(std::move(stateProvider)), validator_(std::move(validator)) {
+    LOG_INFO("HistoryManager: Initialized - using shared HistoryHelper (Zero Duplication)");
 }
 
 bool HistoryManager::registerHistoryState(const std::string &historyStateId, const std::string &parentStateId,
@@ -84,9 +82,30 @@ bool HistoryManager::recordHistory(const std::string &parentStateId, const std::
     auto historyStatesForParent = findHistoryStatesForParent(parentStateId);
 
     for (const auto &historyInfo : historyStatesForParent) {
-        // Filter states based on history type using injected filters
-        auto &filter = getFilter(historyInfo.type);
-        auto filteredStates = filter.filterStates(activeStateIds, parentStateId);
+        // W3C SCXML 3.11: Use shared HistoryHelper (Zero Duplication with AOT)
+        // Create lambda adapter to convert IStateNode interface to getParent callback
+        auto getParent = [this](const std::string &stateId) -> std::optional<std::string> {
+            if (!stateProvider_) {
+                return std::nullopt;
+            }
+            auto state = stateProvider_(stateId);
+            if (!state) {
+                return std::nullopt;
+            }
+            auto parent = state->getParent();
+            if (!parent) {
+                return std::nullopt;
+            }
+            return parent->getId();
+        };
+
+        // Call shared HistoryHelper filtering logic
+        std::vector<std::string> filteredStates;
+        if (historyInfo.type == HistoryType::SHALLOW) {
+            filteredStates = ::RSM::HistoryHelper::filterShallowHistory(activeStateIds, parentStateId, getParent);
+        } else {
+            filteredStates = ::RSM::HistoryHelper::filterDeepHistory(activeStateIds, parentStateId, getParent);
+        }
 
         // W3C SCXML Section 3.6: Record history even if empty (valid scenario)
         HistoryEntry entry;
@@ -168,14 +187,6 @@ std::vector<HistoryEntry> HistoryManager::getHistoryEntries() const {
 
     LOG_DEBUG("HistoryManager: Retrieved {} history entries", entries.size());
     return entries;
-}
-
-IHistoryStateFilter &HistoryManager::getFilter(HistoryType type) const {
-    if (type == HistoryType::SHALLOW) {
-        return *shallowFilter_;
-    } else {
-        return *deepFilter_;
-    }
 }
 
 std::vector<HistoryManager::HistoryStateInfo>

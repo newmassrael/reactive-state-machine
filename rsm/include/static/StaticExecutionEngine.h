@@ -189,9 +189,9 @@ protected:
      *
      * @param state State being exited
      */
-    void executeOnExit(State state) {
-        // Call through policy instance (works for both static and non-static)
-        policy_.executeExitActions(state, *this);
+    void executeOnExit(State state, const std::vector<State> &activeStatesBeforeTransition) {
+        // Call through policy instance with pre-transition active states
+        policy_.executeExitActions(state, *this, activeStatesBeforeTransition);
     }
 
     /**
@@ -225,13 +225,15 @@ protected:
                           static_cast<int>(currentState_));
                 // Process event through transition logic
                 State oldState = currentState_;
+                std::vector<State> preTransitionStates =
+                    getActiveStates();  // W3C SCXML 3.11: Capture before transition
                 // Call through policy instance (works for both static and non-static)
                 if (policy_.processTransition(currentState_, event, *this)) {
                     // Transition occurred: execute exit/entry actions
                     if (oldState != currentState_) {
                         LOG_DEBUG("AOT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
                                   static_cast<int>(currentState_));
-                        executeOnExit(oldState);
+                        executeOnExit(oldState, preTransitionStates);
                         executeOnEntry(currentState_);
 
                         LOG_DEBUG("AOT processEventQueues: Calling checkEventlessTransitions after state entry");
@@ -256,11 +258,13 @@ protected:
 
                 // Process event through transition logic
                 State oldState = currentState_;
+                std::vector<State> preTransitionStates =
+                    getActiveStates();  // W3C SCXML 3.11: Capture before transition
                 // Call through policy instance (works for both static and non-static)
                 if (policy_.processTransition(currentState_, event, *this)) {
                     // Transition occurred: execute exit/entry actions
                     if (oldState != currentState_) {
-                        executeOnExit(oldState);
+                        executeOnExit(oldState, preTransitionStates);
                         executeOnEntry(currentState_);
 
                         // W3C SCXML 3.13: Check eventless transitions immediately after state entry
@@ -295,6 +299,7 @@ protected:
 
         while (iterations++ < MAX_ITERATIONS) {
             State oldState = currentState_;
+            std::vector<State> preTransitionStates = getActiveStates();  // W3C SCXML 3.11: Capture before transition
             LOG_DEBUG("AOT checkEventlessTransitions: Iteration {}, currentState={}", iterations,
                       static_cast<int>(currentState_));
 
@@ -303,7 +308,7 @@ protected:
                 LOG_DEBUG("AOT checkEventlessTransitions: Transition taken from {} to {}", static_cast<int>(oldState),
                           static_cast<int>(currentState_));
                 if (oldState != currentState_) {
-                    executeOnExit(oldState);
+                    executeOnExit(oldState, preTransitionStates);
                     executeOnEntry(currentState_);
 
                     // W3C SCXML 3.12.1: Process any new internal events
@@ -316,9 +321,11 @@ protected:
                                 policy_, eventWithMeta);
 
                             State oldEventState = currentState_;
+                            std::vector<State> preTransitionStates =
+                                getActiveStates();  // W3C SCXML 3.11: Capture before transition
                             if (policy_.processTransition(currentState_, event, *this)) {
                                 if (oldEventState != currentState_) {
-                                    executeOnExit(oldEventState);
+                                    executeOnExit(oldEventState, preTransitionStates);
                                     executeOnEntry(currentState_);
                                 }
                             }
@@ -341,10 +348,12 @@ protected:
                                                                                                          eventWithMeta);
 
                         State oldEventState = currentState_;
+                        std::vector<State> preTransitionStates =
+                            getActiveStates();  // W3C SCXML 3.11: Capture before transition
                         if (policy_.processTransition(currentState_, event, *this)) {
                             processedInternalEvent = true;
                             if (oldEventState != currentState_) {
-                                executeOnExit(oldEventState);
+                                executeOnExit(oldEventState, preTransitionStates);
                                 executeOnEntry(currentState_);
                             }
                         }
@@ -438,10 +447,11 @@ public:
         // If needed, it's managed by processTransition() and processEvent(Event, EventMetadata)
 
         State oldState = currentState_;
+        std::vector<State> preTransitionStates = getActiveStates();  // W3C SCXML 3.11: Capture before transition
         // Call through policy instance (works for both static and non-static)
         if (policy_.processTransition(currentState_, event, *this)) {
             if (oldState != currentState_) {
-                executeOnExit(oldState);
+                executeOnExit(oldState, preTransitionStates);
                 executeOnEntry(currentState_);
                 processEventQueues();
                 checkEventlessTransitions();
@@ -472,10 +482,11 @@ public:
         policy_.currentEventMetadata_ = metadata;
 
         State oldState = currentState_;
+        std::vector<State> preTransitionStates = getActiveStates();  // W3C SCXML 3.11: Capture before transition
         // Call through policy instance (works for both static and non-static)
         if (policy_.processTransition(currentState_, event, *this)) {
             if (oldState != currentState_) {
-                executeOnExit(oldState);
+                executeOnExit(oldState, preTransitionStates);
                 executeOnEntry(currentState_);
                 processEventQueues();
                 checkEventlessTransitions();
@@ -494,6 +505,21 @@ public:
      */
     State getCurrentState() const {
         return currentState_;
+    }
+
+    /**
+     * @brief Get all active states (W3C SCXML 3.11)
+     *
+     * For simple state machines (no parallel), returns vector with single current state.
+     * For parallel state machines, would return all active states in parallel regions.
+     *
+     * Used by history recording logic to match Interpreter HistoryManager behavior.
+     *
+     * @return Vector of currently active states
+     */
+    std::vector<State> getActiveStates() const {
+        // For simple state machines without parallel states
+        return {currentState_};
     }
 
     /**
@@ -541,10 +567,11 @@ public:
         // This triggers the scheduler check in processTransition, which raises
         // any ready scheduled events to the internal queue.
         State oldState = currentState_;
+        std::vector<State> preTransitionStates = getActiveStates();  // W3C SCXML 3.11: Capture before transition
         if (policy_.processTransition(currentState_, Event(), *this)) {
             // Only execute state change actions if state actually changed
             if (oldState != currentState_) {
-                executeOnExit(oldState);
+                executeOnExit(oldState, preTransitionStates);
                 executeOnEntry(currentState_);
                 processEventQueues();
                 checkEventlessTransitions();

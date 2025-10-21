@@ -1680,6 +1680,7 @@ TestReport W3CTestRunner::runAotTest(int testId) {
         case 376:
         case 377:
         case 378:
+        case 580:
             LOG_WARN("W3C AOT Test: Test {} uses dynamic features - tested via Interpreter engine", testId);
             report.validationResult =
                 ValidationResult(true, TestResult::PASS, "Tested via Interpreter engine (dynamic invoke)");

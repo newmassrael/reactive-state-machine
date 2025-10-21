@@ -170,10 +170,33 @@
     }
 
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static void executeExitActions(State state, Engine& engine) {
-{% else %}    void executeExitActions(State state, Engine& engine) {
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static void executeExitActions(State state, Engine& engine, const std::vector<State>& activeStatesBeforeTransition) {
+{% else %}    void executeExitActions(State state, Engine& engine, const std::vector<State>& activeStatesBeforeTransition) {
 {% endif %}
         (void)engine;
+        (void)activeStatesBeforeTransition;  // May be unused if no history states
+        {% if model.history_states %}
+        // W3C SCXML 3.11: Record history before exiting compound states (matches Interpreter logic)
+        // Use pre-transition active states (captured before processTransition modified currentState_)
+        const std::vector<State>& activeStates = activeStatesBeforeTransition;
+        
+        {% for history_id, history_info in model.history_states.items() %}
+        if (state == State::{{ history_info.parent | capitalize }}) {
+            // W3C SCXML 3.11: Filter states using HistoryHelper (shared with Interpreter)
+            auto filteredStates = ::RSM::HistoryHelper::recordHistory(
+                activeStates,
+                State::{{ history_info.parent | capitalize }},
+                HistoryType::{{ history_info.type.upper() }},
+                [](State s) { return {{ model.name }}Policy::getParent(s); }
+            );
+            
+            // W3C SCXML 3.11: Record even if empty (valid scenario - state was active with no children)
+            history_{{ history_id }} = filteredStates;
+            LOG_DEBUG("Recorded {{ history_info.type }} history for {{ history_id }}: {} states", filteredStates.size());
+        }
+        {% endfor %}
+        {% endif %}
+
         switch (state) {
 {% for state_id, state in model.states.items() %}
             case State::{{ state_id | capitalize }}:

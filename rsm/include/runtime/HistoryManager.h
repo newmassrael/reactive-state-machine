@@ -49,23 +49,6 @@ struct HistoryEntry {
 };
 
 /**
- * @brief Interface for filtering states based on history type (Strategy Pattern)
- */
-class IHistoryStateFilter {
-public:
-    virtual ~IHistoryStateFilter() = default;
-
-    /**
-     * @brief Filter active states based on history type and parent state
-     * @param activeStateIds All currently active states
-     * @param parentStateId Parent compound state
-     * @return Filtered states to record
-     */
-    virtual std::vector<std::string> filterStates(const std::vector<std::string> &activeStateIds,
-                                                  const std::string &parentStateId) const = 0;
-};
-
-/**
  * @brief Interface for validating history operations (Single Responsibility)
  */
 class IHistoryValidator {
@@ -99,30 +82,31 @@ public:
     virtual bool validateRestoration(const std::string &historyStateId) const = 0;
 };
 
-class IHistoryStateFilter;
 class IHistoryValidator;
 
 /**
- * @brief Main history manager implementation (SOLID compliant)
+ * @brief Main history manager implementation
  *
- * Implements the IHistoryManager interface following SOLID principles:
- * - Single Responsibility: Manages history state operations only
- * - Open/Closed: Extensible through filter and validator injection
- * - Liskov Substitution: Fully implements IHistoryManager contract
- * - Interface Segregation: Uses focused interfaces for filters/validators
- * - Dependency Inversion: Depends on abstractions, not concretions
+ * W3C SCXML 3.11: Manages history state operations using shared HistoryHelper
+ * for filtering logic (Zero Duplication with AOT engine)
+ *
+ * Responsibilities:
+ * - Register history states for parent compound states
+ * - Record active state configurations before exit
+ * - Restore recorded configurations or use default transitions
+ * - Validate history operations
  */
 class HistoryManager {
 public:
     /**
      * @brief Constructor with dependency injection
+     *
+     * W3C SCXML 3.11: Uses shared HistoryHelper for filtering (Zero Duplication with AOT)
+     *
      * @param stateProvider Function to get state by ID
-     * @param shallowFilter Filter for shallow history operations
-     * @param deepFilter Filter for deep history operations
      * @param validator Validator for history operations
      */
     HistoryManager(std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider,
-                   std::unique_ptr<IHistoryStateFilter> shallowFilter, std::unique_ptr<IHistoryStateFilter> deepFilter,
                    std::unique_ptr<IHistoryValidator> validator);
 
     // History manager interface
@@ -172,10 +156,8 @@ public:
     virtual std::vector<HistoryEntry> getHistoryEntries() const;
 
 private:
-    // Dependencies (Dependency Inversion Principle)
+    // Dependencies
     std::function<std::shared_ptr<IStateNode>(const std::string &)> stateProvider_;
-    std::unique_ptr<IHistoryStateFilter> shallowFilter_;
-    std::unique_ptr<IHistoryStateFilter> deepFilter_;
     std::unique_ptr<IHistoryValidator> validator_;
 
     // Thread safety
@@ -192,13 +174,6 @@ private:
 
     std::unordered_map<std::string, HistoryStateInfo> historyStates_;  // historyStateId -> info
     std::unordered_map<std::string, HistoryEntry> recordedHistory_;    // historyStateId -> entry
-
-    /**
-     * @brief Get appropriate filter for history type
-     * @param type History type
-     * @return Reference to filter
-     */
-    IHistoryStateFilter &getFilter(HistoryType type) const;
 
     /**
      * @brief Find history states for a parent state

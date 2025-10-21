@@ -20,6 +20,7 @@
 #include "common/SendSchedulingHelper.h"
 {% endif %}
 #include "common/TransitionHelper.h"
+#include "common/HistoryHelper.h"
 {% if model.needs_event_data_helper %}
 #include "common/EventDataHelper.h"
 {% endif %}
@@ -166,6 +167,12 @@ struct {{ model.name }}Policy {
     // W3C SCXML 5.10: Event data map for scheduled events with params (test186)
     mutable ::std::map<Event, ::std::string> scheduledEventData_;
     {% endif %}
+    {% endif %}
+    {% if model.history_states %}
+    // W3C SCXML 3.11: Runtime history tracking variables (matches Interpreter HistoryEntry)
+    {% for history_id, history_info in model.history_states.items() %}
+    mutable ::std::optional<::std::vector<State>> history_{{ history_id }};  // {{ history_info.type }} history for {{ history_info.parent }}
+    {% endfor %}
     {% endif %}
 
     // Default constructor (lazy initialization, no immediate resource allocation)

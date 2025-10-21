@@ -3,10 +3,7 @@
 #include "model/DoneData.h"
 #include "model/IStateNode.h"
 #include "model/ITransitionNode.h"
-#include "runtime/DeepHistoryFilter.h"
-#include "runtime/HistoryManager.h"
 #include "runtime/HistoryValidator.h"
-#include "runtime/ShallowHistoryFilter.h"
 #include <atomic>
 #include <gtest/gtest.h>
 #include <memory>
@@ -215,14 +212,11 @@ protected:
             return (it != mockStates_.end()) ? it->second : nullptr;
         };
 
-        // Create SOLID dependency injection components
-        auto shallowFilter = std::make_unique<ShallowHistoryFilter>(stateProvider_);
-        auto deepFilter = std::make_unique<DeepHistoryFilter>(stateProvider_);
+        // W3C SCXML 3.11: Create validator for history operations
         auto validator = std::make_unique<HistoryValidator>(stateProvider_);
 
-        // Initialize History Manager with dependency injection
-        historyManager_ = std::make_unique<HistoryManager>(stateProvider_, std::move(shallowFilter),
-                                                           std::move(deepFilter), std::move(validator));
+        // Initialize History Manager using shared HistoryHelper (Zero Duplication with AOT)
+        historyManager_ = std::make_unique<HistoryManager>(stateProvider_, std::move(validator));
 
         setupMockStateHierarchy();
     }

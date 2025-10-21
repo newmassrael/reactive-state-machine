@@ -1,11 +1,45 @@
 {#
     Process Transition Template (Jinja2)
 
-    ARCHITECTURE.md Compliance:
+    ARCHITECTURE.MD Compliance:
     - Zero Duplication: Matches Interpreter's hierarchical event processing logic
     - Single Source of Truth: Hierarchical transition checking from W3C SCXML 3.12
     - Long-Term Correctness: Complete Interpreter replication, no simplified workarounds
 #}
+
+{% macro restore_history_or_transition(transition) %}
+{% if transition.history_target is defined %}
+                    // W3C SCXML 3.11: Restore history or use default transition (matches Interpreter logic)
+                    if (history_{{ transition.history_target }}.has_value()) {
+                        // Restore from recorded history (may contain multiple states for parallel regions)
+                        const auto& recordedStates = history_{{ transition.history_target }}.value();
+                        if (!recordedStates.empty()) {
+                            // For simple state machines (no parallel), restore first state
+                            // For parallel state machines, engine will handle multiple states
+                            currentState = recordedStates[0];
+                            LOG_DEBUG("AOT processTransition: Restored history {} -> {} ({} states recorded)", 
+                                     "{{ transition.history_target }}", static_cast<int>(currentState), recordedStates.size());
+                        } else {
+{% set history_info = model.history_states[transition.history_target] %}
+{% set leaf_target = history_info.leaf_target %}
+                            // W3C SCXML 3.11: Empty history was recorded (valid scenario) - use default transition
+                            currentState = State::{{ leaf_target | capitalize }};
+                            LOG_DEBUG("AOT processTransition: Empty history for {{ transition.history_target }}, using default transition -> {}", static_cast<int>(currentState));
+                        }
+                    } else {
+{% set history_info = model.history_states[transition.history_target] %}
+{% set leaf_target = history_info.leaf_target %}
+                        // History never recorded - use default transition
+                        currentState = State::{{ leaf_target | capitalize }};
+                        LOG_DEBUG("AOT processTransition: No history recorded for {{ transition.history_target }}, using default transition -> {}", static_cast<int>(currentState));
+                    }
+                    transitionTaken = true;
+{% else %}
+                    LOG_DEBUG("AOT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
+                    currentState = State::{{ transition.target | capitalize }};
+                    transitionTaken = true;
+{% endif %}
+{% endmacro %}
 
     template<typename Engine>
 {% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static bool processTransition(State& currentState, Event event, Engine& engine) {
@@ -195,9 +229,7 @@ private:
 {% include 'actions/' + action.type + '.jinja2' %}
 {% endfor %}
 {% if transition.target %}
-                    LOG_DEBUG("AOT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
-                    currentState = State::{{ transition.target | capitalize }};
-                    transitionTaken = true;
+{{ restore_history_or_transition(transition) }}
 {% endif %}
                     return true;  // Transition found
 {% if transition.cond %}
@@ -272,9 +304,7 @@ private:
 {% include 'actions/' + action.type + '.jinja2' %}
 {% endfor %}
 {% if transition.target %}
-                    LOG_DEBUG("AOT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
-                    currentState = State::{{ transition.target | capitalize }};
-                    transitionTaken = true;
+{{ restore_history_or_transition(transition) }}
 {% endif %}
                     return true;  // Unconditional eventless transition
 {% endfor %}

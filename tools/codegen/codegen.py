@@ -357,10 +357,10 @@ class CodeGenerator:
         # Only check for other dynamic features (parallel, history, etc.)
         # Note: has_dynamic_expressions includes eventexpr/targetexpr/delayexpr which are JSEngine-compatible
 
-        # History states
-        if model.has_history_states:
-            print(f"    Reason: History states detected")
-            return True
+        # History states: Now supported via static resolution (W3C SCXML 3.11)
+        # History state targets are resolved to their default transitions at parse time
+        # No runtime history recording/restoration needed for default transitions
+        # See _resolve_history_targets() in scxml_parser.py
 
         # Parent-child communication (<send target="#_parent">) is supported in static code
         # Child state machines receive parent pointer via constructor and use SendHelper::sendToParent()

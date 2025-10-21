@@ -301,13 +301,64 @@ struct test319Policy {
 - **Memory**: 8 bytes (State) + JSEngine session (~100KB, lazy-allocated)
 - **Optimization**: Expression results can be cached when deterministic
 
-#### Current Implementation Gap
+#### Static History States: Runtime Tracking with Hybrid Approach
 
-**Important Distinction**:
-- **Logical Possibility**: Can this feature be implemented statically? (Design decision)
-- **Current Support**: Does StaticCodeGenerator currently support this? (Implementation status)
+**Philosophy**: W3C SCXML 3.11 history states require runtime recording and restoration to fully comply with the specification. The AOT engine achieves this through a hybrid approach: static structure with runtime history variables.
 
-**Critical Rule**: If a feature is **logically implementable at compile-time**, it MUST be classified as Static AOT, regardless of current StaticCodeGenerator implementation status. Missing infrastructure should be implemented, not bypassed with Interpreter wrappers.
+**W3C SCXML 3.11 Full Compliance**:
+- History states have two types: shallow (direct children) and deep (nested descendants)
+- History is **recorded** when exiting a compound state that contains history pseudo-states
+- History is **restored** when transitioning to a history pseudo-state
+- If no history is recorded, the default `<transition>` is followed
+
+**Hybrid Static Approach**:
+- **Static Structure**: State machine structure, enums, and transitions are compile-time generated
+- **Runtime History Tracking**: History values stored in `std::optional<State>` member variables
+- **Recording on Exit**: When exiting a compound state, current active state is recorded
+- **Restoration on Transition**: When transitioning to history state, check recorded value or use default
+- **Zero Overhead When Unused**: History variables are optional, only allocated when recorded
+
+**Generated Code**:
+
+```cpp
+struct test387Policy {
+    // W3C SCXML 3.11: Runtime history tracking variables
+    mutable std::optional<State> history_s0HistShallow;
+    mutable std::optional<State> history_s0HistDeep;
+    
+    // W3C SCXML 3.11: Record history on exit
+    void executeExitActions(State state, Engine& engine) {
+        State currentState = engine.getCurrentState();
+        if (state == State::S0) {
+            // Shallow history: Record direct child state
+            auto parent = getParent(currentState);
+            if (parent.has_value() && parent.value() == State::S0) {
+                history_s0HistShallow = currentState;
+            }
+            // Deep history: Record exact leaf state
+            history_s0HistDeep = currentState;
+        }
+    }
+    
+    // W3C SCXML 3.11: Restore history on transition
+    bool tryTransitionInState(...) {
+        case State::S3:
+            if (history_s0HistShallow.has_value()) {
+                currentState = history_s0HistShallow.value();
+            } else {
+                currentState = State::S011;  // Default
+            }
+            transitionTaken = true;
+            return true;
+    }
+};
+```
+
+**Advantages**:
+- 100% W3C Compliance with full recording/restoration semantics
+- Matches Interpreter HistoryManager behavior
+- Static structure with minimal runtime overhead
+- Type-safe enum-based state representation
 
 **Static-First Principle**: All SCXML features should be statically implementable UNLESS they require external world communication (HTTP requests, network I/O, file system access, etc.). Since all SCXML metadata exists in the parsed document, any feature that operates solely on this metadata can be resolved at compile-time through parsing and code generation.
 

@@ -127,11 +127,9 @@ add_library(rsm_unified
     src/runtime/SessionManagerImpl.cpp
     src/runtime/DataContentHelpers.cpp
     
-    # History state management (SOLID architecture)
+    # History state management (W3C SCXML 3.11)
     src/runtime/HistoryManager.cpp
     src/runtime/HistoryStateAutoRegistrar.cpp
-    src/runtime/ShallowHistoryFilter.cpp
-    src/runtime/DeepHistoryFilter.cpp
     src/runtime/HistoryValidator.cpp
 
     # Actions implementation

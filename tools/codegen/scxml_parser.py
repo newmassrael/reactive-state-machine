@@ -59,6 +59,8 @@ class SCXMLModel:
 
     states: Dict[str, State] = field(default_factory=dict)
     events: Set[str] = field(default_factory=set)
+    history_default_targets: Dict[str, str] = field(default_factory=dict)  # W3C SCXML 3.11: history_id -> default_target
+    history_states: Dict[str, Dict] = field(default_factory=dict)  # W3C SCXML 3.11: history_id -> {parent, type, default_target}
 
     # Feature flags (for determining static vs interpreter wrapper)
     has_dynamic_expressions: bool = False
@@ -171,6 +173,10 @@ class SCXMLParser:
         # Resolve deep initial state (matches C++ generator behavior)
         # W3C SCXML 3.6: Follow initial attributes recursively to find leaf state
         self._resolve_deep_initial()
+
+        # Resolve history state transitions (W3C SCXML 3.11)
+        # Replace history state targets with their default transition targets
+        self._resolve_history_targets()
 
         return self.model
 
@@ -320,6 +326,37 @@ class SCXMLParser:
 
             # Recursively parse child states
             self._parse_states(parallel_elem, parallel_id)
+
+        # Parse <history> elements (W3C SCXML 3.11)
+        for history_elem in ns_findall(parent_elem, 'history'):
+            history_id = history_elem.get('id')
+            if not history_id:
+                continue
+
+            history_type = history_elem.get('type', 'shallow')  # W3C SCXML 3.11: shallow or deep
+
+            # W3C SCXML 3.11: History states have default transitions
+            # Extract the default target from the history's transition element
+            default_target = None
+            for trans_elem in ns_findall(history_elem, 'transition'):
+                target = trans_elem.get('target')
+                if target:
+                    default_target = target
+                    break  # Use first transition as default
+
+            if default_target:
+                # Map history state ID to its default transition target
+                self.model.history_default_targets[history_id] = default_target
+                
+                # Store comprehensive history state information  
+                # Leaf target will be resolved later in _resolve_history_targets()
+                self.model.history_states[history_id] = {
+                    'parent': parent_id,  # Parent compound state
+                    'type': history_type,  # shallow or deep
+                    'default_target': default_target  # Default transition target
+                }
+                
+                self.model.has_history_states = True
 
     def _parse_transition(self, trans_elem) -> Transition:
         """Parse <transition> element (W3C SCXML 3.3)"""
@@ -827,6 +864,64 @@ class SCXMLParser:
 
         # Update model.initial to the resolved leaf state
         self.model.initial = current
+
+    def _resolve_history_targets(self):
+        """
+        Mark transitions targeting history states for runtime restoration (W3C SCXML 3.11)
+
+        Phase 2: Instead of resolving history targets at parse time, we mark them
+        for runtime restoration logic generation. This allows full W3C SCXML history
+        semantics with recording and restoration.
+        """
+        if not self.model.history_default_targets:
+            return  # No history states
+
+        # Resolve default targets to leaf states
+        for history_id, history_info in self.model.history_states.items():
+            default_target = history_info['default_target']
+            leaf_target = self._resolve_to_leaf_state(default_target)
+            history_info['leaf_target'] = leaf_target
+
+        # Mark transitions that target history states
+        for state in self.model.states.values():
+            for transition in state.transitions:
+                if transition.target in self.model.history_default_targets:
+                    # Add history restoration marker to transition
+                    if not hasattr(transition, 'history_target'):
+                        transition.history_target = transition.target
+                    # Keep original target for template to generate restoration logic
+
+    def _resolve_to_leaf_state(self, state_id: str) -> str:
+        """
+        Resolve a state ID to its leaf state by following initial attributes
+
+        Args:
+            state_id: State ID to resolve
+
+        Returns:
+            Leaf state ID (atomic state with no initial attribute)
+        """
+        MAX_DEPTH = 20  # Safety limit
+        current = state_id
+        depth = 0
+
+        while depth < MAX_DEPTH:
+            if current not in self.model.states:
+                # State not found - return as is
+                return current
+
+            state = self.model.states[current]
+
+            # Check if state has an initial child
+            if state.initial and state.initial in self.model.states:
+                # Follow to initial child
+                current = state.initial
+                depth += 1
+            else:
+                # Reached leaf state (or final state, or state without initial)
+                break
+
+        return current
 
     def _detect_features(self):
         """

@@ -15,14 +15,12 @@
 #include "parsing/XIncludeProcessor.h"
 #include "runtime/ActionExecutorImpl.h"
 #include "runtime/DataContentHelpers.h"
-#include "runtime/DeepHistoryFilter.h"
 #include "runtime/EventRaiserImpl.h"
 #include "runtime/ExecutionContextImpl.h"
 #include "runtime/HistoryManager.h"
 #include "runtime/HistoryStateAutoRegistrar.h"
 #include "runtime/HistoryValidator.h"
 #include "runtime/ImmediateModeGuard.h"
-#include "runtime/ShallowHistoryFilter.h"
 #include "scripting/JSEngine.h"
 #include "states/ConcurrentRegion.h"
 #include "states/ConcurrentStateNode.h"
@@ -3380,16 +3378,13 @@ void StateMachine::initializeHistoryManager() {
         return nullptr;
     };
 
-    // Create filter components using Strategy pattern
-    auto shallowFilter = std::make_unique<ShallowHistoryFilter>(stateProvider);
-    auto deepFilter = std::make_unique<DeepHistoryFilter>(stateProvider);
+    // W3C SCXML 3.11: Create validator for history operations
     auto validator = std::make_unique<HistoryValidator>(stateProvider);
 
-    // Create HistoryManager with dependency injection
-    historyManager_ = std::make_unique<HistoryManager>(stateProvider, std::move(shallowFilter), std::move(deepFilter),
-                                                       std::move(validator));
+    // W3C SCXML 3.11: Create HistoryManager using shared HistoryHelper (Zero Duplication with AOT)
+    historyManager_ = std::make_unique<HistoryManager>(stateProvider, std::move(validator));
 
-    LOG_INFO("StateMachine: History Manager initialized with SOLID dependencies");
+    LOG_INFO("StateMachine: History Manager initialized - using shared HistoryHelper");
 }
 
 void StateMachine::initializeHistoryAutoRegistrar() {
