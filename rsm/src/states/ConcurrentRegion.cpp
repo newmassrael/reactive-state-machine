@@ -253,9 +253,9 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
                         currentState_ = targetState;
                         LOG_DEBUG("Updated current state to: {}", currentState_);
 
-                        // SCXML W3C 사양 준수: 대상 상태의 entry 액션 실행
+                        // SCXML W3C compliance: Execute entry actions for target state
                         if (executionContext_) {
-                            // 자식 상태에서 대상 상태를 찾아 entry 액션 실행
+                            // Find target state in children and execute entry actions
                             const auto &children = rootState_->getChildren();
                             for (const auto &child : children) {
                                 if (child && child->getId() == targetState) {
@@ -295,7 +295,7 @@ ConcurrentOperationResult ConcurrentRegion::processEvent(const EventDescriptor &
                                             }
                                         }
                                     }
-                                    break;  // 대상 상태를 찾았으므로 루프 종료
+                                    break;  // Exit loop since target state found
                                 }
                             }
                         }

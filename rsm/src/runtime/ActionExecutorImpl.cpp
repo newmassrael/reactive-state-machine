@@ -213,8 +213,8 @@ std::string ActionExecutorImpl::evaluateExpression(const std::string &expression
         return "";
     }
 
-    // SCXML 준수: JavaScript 평가를 먼저 시도 (가장 정확한 접근법)
-    // 이는 기본 데이터 모델에 표현식 평가를 위임하는 W3C SCXML 사양을 따릅니다
+    // SCXML compliance: Try JavaScript evaluation first (most accurate approach)
+    // This follows W3C SCXML specification delegating expression evaluation to native data model
     std::string jsResult;
     if (tryJavaScriptEvaluation(expression, jsResult)) {
         LOG_DEBUG("JavaScript evaluation succeeded: '{}' -> '{}'", expression, jsResult);
@@ -608,7 +608,7 @@ bool ActionExecutorImpl::executeRaiseAction(const RaiseAction &action) {
             }
         }
 
-        LOG_DEBUG("ActionExecutorImpl: Calling raiseEvent with event: '{}', data: '{}', EventRaiser 인스턴스: {}",
+        LOG_DEBUG("ActionExecutorImpl: Calling raiseEvent with event: '{}', data: '{}', EventRaiser instance: {}",
                   action.getEvent(), eventData, (void *)eventRaiser_.get());
         if (!eventRaiser_) {
             LOG_ERROR("ActionExecutorImpl: EventRaiser not available - incomplete setup");

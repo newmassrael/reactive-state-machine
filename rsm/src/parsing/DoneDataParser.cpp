@@ -17,14 +17,14 @@ bool RSM::DoneDataParser::parseDoneData(const xmlpp::Element *doneDataElement, I
     bool hasContent = false;
     bool hasParam = false;
 
-    // <content> 요소 파싱
+    // Parse <content> element
     const xmlpp::Element *contentElement = ParsingCommon::findFirstChildElement(doneDataElement, "content");
     if (contentElement) {
         hasContent = parseContent(contentElement, stateNode);
         LOG_DEBUG("Found <content> element: {}", (hasContent ? "valid" : "invalid"));
     }
 
-    // <param> 요소들 파싱
+    // Parse <param> elements
     auto paramElements = ParsingCommon::findChildElements(doneDataElement, "param");
     for (auto *paramElement : paramElements) {
         if (parseParam(paramElement, stateNode)) {
@@ -34,23 +34,23 @@ bool RSM::DoneDataParser::parseDoneData(const xmlpp::Element *doneDataElement, I
 
     LOG_DEBUG("Found {} <param> elements: {}", paramElements.size(), (hasParam ? "valid" : "invalid"));
 
-    // <content>와 <param>은 함께 사용할 수 없음
+    // <content> and <param> cannot be used together
     if (hasContent && hasParam) {
         LOG_ERROR("<content> and <param> cannot be used together in <donedata>");
 
-        // 충돌 감지 시 명확한 정리
-        // content와 param이 둘 다 설정되어 있으므로 하나를 제거하여 XOR 조건 충족
+        // Clear conflict to satisfy XOR condition
+        // Both content and param are set, remove one
         if (hasContent) {
-            // content 유지하고 param 제거
+            // Keep content, remove param
             stateNode->clearDoneDataParams();
             hasParam = false;
         } else {
-            // param 유지하고 content 제거
+            // Keep param, remove content
             stateNode->setDoneDataContent("");
             hasContent = false;
         }
 
-        // SCXMLParser에 오류를 전파하려면 이 메서드에서 false를 반환해야 합니다
+        // Return false to propagate error to SCXMLParser
         return false;
     }
 
@@ -63,7 +63,7 @@ bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, ISt
         return false;
     }
 
-    // expr 속성 확인
+    // Check expr attribute
     auto exprAttr = contentElement->get_attribute("expr");
     std::string exprValue;
     if (exprAttr) {
@@ -71,11 +71,11 @@ bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, ISt
         LOG_DEBUG("Found 'expr' attribute: {}", exprValue);
     }
 
-    // 내용 확인
+    // Check content
     std::string textContent;
     const xmlpp::Node *childNode = contentElement->get_first_child();
     if (childNode) {
-        // TextNode로 타입 변환 시도
+        // Try type conversion to TextNode
         const xmlpp::TextNode *textNode = dynamic_cast<const xmlpp::TextNode *>(childNode);
         if (textNode) {
             textContent = textNode->get_content();
@@ -85,13 +85,13 @@ bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, ISt
         }
     }
 
-    // expr과 내용은 함께 사용할 수 없음
+    // expr and content cannot be used together
     if (!exprValue.empty() && !textContent.empty()) {
         LOG_ERROR("<content> cannot have both 'expr' attribute and child content");
         return false;
     }
 
-    // expr 또는 내용 설정
+    // Set expr or content
     if (!exprValue.empty()) {
         stateNode->setDoneDataContent(exprValue);
         return true;
@@ -100,7 +100,7 @@ bool RSM::DoneDataParser::parseContent(const xmlpp::Element *contentElement, ISt
         return true;
     }
 
-    // 빈 content 처리
+    // Handle empty content
     stateNode->setDoneDataContent("");
     return true;
 }
@@ -111,7 +111,7 @@ bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateN
         return false;
     }
 
-    // name 속성 (필수)
+    // name attribute (required)
     auto nameAttr = paramElement->get_attribute("name");
     if (!nameAttr) {
         LOG_ERROR("<param> element must have 'name' attribute");
@@ -120,7 +120,7 @@ bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateN
 
     std::string nameValue = nameAttr->get_value();
 
-    // expr과 location 속성 확인 (둘 중 하나만 사용 가능)
+    // Check expr and location attributes (only one can be used)
     auto exprAttr = paramElement->get_attribute("expr");
     auto locationAttr = paramElement->get_attribute("location");
 
@@ -129,7 +129,7 @@ bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateN
         return false;
     }
 
-    // location 속성 처리 (param을 donedata에 추가)
+    // Process location attribute (add param to donedata)
     if (locationAttr) {
         std::string locationValue = locationAttr->get_value();
         stateNode->addDoneDataParam(nameValue, locationValue);
@@ -137,11 +137,11 @@ bool RSM::DoneDataParser::parseParam(const xmlpp::Element *paramElement, IStateN
         return true;
     }
 
-    // expr 속성 처리
+    // Process expr attribute
     if (exprAttr) {
         std::string exprValue = exprAttr->get_value();
-        // 단순히 expr 값을 location으로 변환하여 사용
-        // 필요에 따라 더 복잡한 처리를 추가할 수 있음
+        // Simply convert expr value to location for use
+        // More complex processing can be added as needed
         stateNode->addDoneDataParam(nameValue, exprValue);
         LOG_DEBUG("Added param: {} with expr: {}", nameValue, exprValue);
         return true;

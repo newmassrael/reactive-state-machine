@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
 
     // Set logging level
     if (verbose) {
-        // Logger는 정적 레벨 설정이 없으므로 현재는 무시
+        // Logger has no static level setting, so currently ignored
         LOG_INFO("Verbose mode enabled");
     }
 

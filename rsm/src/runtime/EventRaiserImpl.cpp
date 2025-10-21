@@ -123,8 +123,8 @@ bool EventRaiserImpl::raiseEventWithPriority(const std::string &eventName, const
                                              EventPriority priority, const std::string &originSessionId,
                                              const std::string &sendId, const std::string &invokeId,
                                              const std::string &originType) {
-    LOG_DEBUG("EventRaiserImpl::raiseEventWithPriority 호출 - 이벤트: '{}', 데이터: '{}', 우선순위: {}, EventRaiser "
-              "인스턴스: {}",
+    LOG_DEBUG("EventRaiserImpl::raiseEventWithPriority called - event: '{}', data: '{}', priority: {}, EventRaiser "
+              "instance: {}",
               eventName, eventData, (priority == EventPriority::INTERNAL ? "INTERNAL" : "EXTERNAL"), (void *)this);
 
     if (!isRunning_.load()) {

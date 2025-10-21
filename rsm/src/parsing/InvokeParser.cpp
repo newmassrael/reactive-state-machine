@@ -28,10 +28,10 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
     }
     // If no id attribute, leave empty - InvokeExecutor will generate W3C compliant ID at runtime
 
-    // InvokeNode 생성
+    // Create InvokeNode
     auto invokeNode = nodeFactory_->createInvokeNode(id);
 
-    // type 속성 처리
+    // Process type attribute
     auto typeAttr = invokeElement->get_attribute("type");
     auto typeExprAttr = invokeElement->get_attribute("typeexpr");
     if (typeAttr) {
@@ -41,42 +41,42 @@ std::shared_ptr<RSM::IInvokeNode> RSM::InvokeParser::parseInvokeNode(const xmlpp
         invokeNode->setTypeExpr(typeExprAttr->get_value());
     }
 
-    // src 속성 처리
+    // Process src attribute
     auto srcAttr = invokeElement->get_attribute("src");
     auto srcExprAttr = invokeElement->get_attribute("srcexpr");
     if (srcAttr) {
         invokeNode->setSrc(srcAttr->get_value());
     } else if (srcExprAttr) {
-        // srcexpr 속성을 저장하여 런타임에 평가할 수 있도록 함
+        // Store srcexpr attribute for runtime evaluation
         invokeNode->setSrcExpr(srcExprAttr->get_value());
         LOG_DEBUG("srcexpr attribute set: {}", srcExprAttr->get_value());
     }
 
-    // idlocation 속성 처리
+    // Process idlocation attribute
     auto idLocationAttr = invokeElement->get_attribute("idlocation");
     if (idLocationAttr) {
         invokeNode->setIdLocation(idLocationAttr->get_value());
     }
 
-    // namelist 속성 처리
+    // Process namelist attribute
     auto namelistAttr = invokeElement->get_attribute("namelist");
     if (namelistAttr) {
         invokeNode->setNamelist(namelistAttr->get_value());
     }
 
-    // autoforward 속성 처리
+    // Process autoforward attribute
     auto autoforwardAttr = invokeElement->get_attribute("autoforward");
     if (autoforwardAttr && autoforwardAttr->get_value() == "true") {
         invokeNode->setAutoForward(true);
     }
 
-    // param 요소 파싱
+    // Parse param elements
     parseParamElements(invokeElement, invokeNode);
 
-    // content 요소 파싱
+    // Parse content element
     parseContentElement(invokeElement, invokeNode);
 
-    // finalize 요소 파싱
+    // Parse finalize element
     auto finalizeElement = ParsingCommon::findFirstChildElement(invokeElement, "finalize");
     if (finalizeElement) {
         parseFinalizeElement(finalizeElement, invokeNode);
@@ -226,10 +226,10 @@ RSM::InvokeParser::parseParamElementsAndCreateDataItems(const xmlpp::Element *in
             location = locationAttr->get_value();
         }
 
-        // 파라미터 추가 부분 제거 (invokeNode->addParam 호출 삭제)
-        // 이미 parseInvokeNode에서 parseParamElements를 통해 추가되었음
+        // Remove parameter addition (deleted invokeNode->addParam call)
+        // Already added via parseParamElements in parseInvokeNode
 
-        // 데이터 모델 아이템 생성
+        // Create data model item
         if (!name.empty() && (!expr.empty() || !location.empty())) {
             auto dataItem = nodeFactory_->createDataModelItem(name, expr.empty() ? location : expr);
             if (dataItem) {
@@ -261,28 +261,28 @@ void RSM::InvokeParser::parseContentElement(const xmlpp::Element *invokeElement,
             LOG_DEBUG("Content element has expr attribute: '{}'", contentExpr);
             return;
         } else {
-            // 내부 XML 요소를 직렬화
+            // Serialize internal XML elements
             auto children = contentElement->get_children();
             for (auto child : children) {
-                // XML 요소인 경우 libxml2의 직렬화 기능 사용
+                // Use libxml2 serialization for XML elements
                 if (auto childElement = dynamic_cast<const xmlpp::Element *>(child)) {
-                    // libxml2 노드 가져오기 - const_cast 사용
+                    // Get libxml2 node - use const_cast
                     _xmlNode *node = const_cast<_xmlNode *>(childElement->cobj());
 
-                    // 버퍼 생성
+                    // Create buffer
                     auto buf = xmlBufferCreate();
                     if (buf) {
-                        // 노드를 버퍼에 직렬화 (들여쓰기 없이 0 레벨)
+                        // Serialize node to buffer (level 0 without indentation)
                         xmlNodeDump(buf, node->doc, node, 0, 0);
 
-                        // 버퍼에서 문자열 추출
+                        // Extract string from buffer
                         content += (const char *)xmlBufferContent(buf);
 
-                        // 버퍼 해제
+                        // Free buffer
                         xmlBufferFree(buf);
                     }
                 } else if (auto textNode = dynamic_cast<const xmlpp::TextNode *>(child)) {
-                    // 텍스트 노드는 그대로 추가
+                    // Add text nodes as-is
                     content += textNode->get_content();
                 }
             }

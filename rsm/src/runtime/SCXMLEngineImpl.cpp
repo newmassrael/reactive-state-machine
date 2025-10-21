@@ -54,9 +54,9 @@ bool SCXMLEngineImpl::initialize() {
         return true;
     }
 
-    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
-    // instance() 호출만으로 완전 초기화된 엔진을 얻을 수 있음
-    RSM::JSEngine::instance();  // RAII 보장
+    // JSEngine automatically initialized in constructor (RAII)
+    // instance() call provides fully initialized engine
+    RSM::JSEngine::instance();  // RAII guaranteed
     LOG_DEBUG("SCXMLEngineImpl: JSEngine automatically initialized via RAII");
     initialized_ = true;
     return true;

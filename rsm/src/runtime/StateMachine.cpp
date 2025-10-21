@@ -66,8 +66,8 @@ private:
 
 StateMachine::StateMachine() : isRunning_(false), jsEnvironmentReady_(false) {
     sessionId_ = JSEngine::instance().generateSessionIdString("sm_");
-    // JS 환경은 지연 초기화로 변경
-    // ActionExecutor와 ExecutionContext는 setupJSEnvironment에서 초기화
+    // JS environment changed to lazy initialization
+    // ActionExecutor and ExecutionContext initialized in setupJSEnvironment
 
     // Initialize History Manager with SOLID architecture (Dependency Injection)
     initializeHistoryManager();
@@ -188,7 +188,7 @@ bool StateMachine::start() {
         return false;
     }
 
-    // JS 환경 초기화 보장
+    // Ensure JS environment initialization
     if (!ensureJSEnvironment()) {
         LOG_ERROR("StateMachine: Cannot start - JavaScript environment initialization failed");
         return false;
@@ -440,7 +440,7 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
         return result;
     }
 
-    // JS 환경 확인
+    // Check JS environment
     if (!jsEnvironmentReady_) {
         LOG_ERROR("StateMachine: Cannot process event - JavaScript environment not ready");
         TransitionResult result;
@@ -2756,8 +2756,8 @@ bool StateMachine::ensureJSEnvironment() {
 }
 
 bool StateMachine::setupJSEnvironment() {
-    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
-    auto &jsEngine = RSM::JSEngine::instance();  // RAII 보장
+    // JSEngine automatically initialized in constructor (RAII)
+    auto &jsEngine = RSM::JSEngine::instance();  // RAII guaranteed
     LOG_DEBUG("StateMachine: JSEngine automatically initialized via RAII at address: {}",
               static_cast<void *>(&jsEngine));
 
@@ -3088,7 +3088,7 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
             // SCXML W3C specification: Enter initial child states of each region ONLY if not already active
             const auto &children = rootState->getChildren();
             if (!children.empty()) {
-                // SCXML W3C 사양 준수: 병렬 영역이 이미 활성화되어 있으면 초기 상태로 재진입하지 않음
+                // SCXML W3C compliance: Do not re-enter initial state if parallel region already active
                 if (!region->isActive()) {
                     std::string initialChild = rootState->getInitialState();
                     if (initialChild.empty()) {
@@ -3114,7 +3114,7 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
                         }
                     }
                 } else {
-                    // SCXML W3C 사양 준수: 이미 활성화된 영역은 초기 상태로 재진입하지 않음
+                    // SCXML W3C compliance: Already active region does not re-enter initial state
                     auto concreteRegion = std::dynamic_pointer_cast<ConcurrentRegion>(region);
                     std::string currentState = concreteRegion ? concreteRegion->getCurrentState() : "unknown";
 
@@ -3122,15 +3122,15 @@ bool StateMachine::executeEntryActions(const std::string &stateId) {
                               "(current state: {})",
                               region->getId(), currentState);
 
-                    // SCXML W3C 사양 위반 방지: 이미 활성화된 영역의 현재 상태 유지
+                    // Prevent SCXML W3C violation: Maintain current state of already active region
                     assert(concreteRegion && !concreteRegion->getCurrentState().empty() &&
                            "SCXML violation: active region must have current state");
 
-                    // SCXML W3C 사양 준수 검증: 활성 영역이 초기 상태로 재설정되지 않음을 보장
+                    // Verify SCXML W3C compliance: Ensure active region not reset to initial state
                     assert(region->isActive() &&
                            "SCXML violation: region marked as active but isActive() returns false");
 
-                    // SCXML W3C 사양 위반 감지: 병렬 상태 재진입 시 상태 일관성 검증
+                    // Detect SCXML W3C violation: Verify state consistency on parallel state re-entry
                     const auto &currentActiveStates = region->getActiveStates();
                     assert(!currentActiveStates.empty() && "SCXML violation: active region must have active states");
                 }
