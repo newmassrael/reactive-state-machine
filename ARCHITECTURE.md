@@ -671,6 +671,21 @@ class EventQueueManager {
   - Test coverage: test343 (W3C 5.10.1 - empty param location validation)
 - Benefits: Zero code duplication, consistent donedata evaluation across engines, proper W3C SCXML 5.5/5.7 compliance
 
+**RSM::NamelistHelper::evaluateNamelist()**:
+- W3C SCXML C.1, 6.2: Namelist variable evaluation for event data population
+- Single Source of Truth for namelist processing shared between engines
+- Location: `rsm/include/common/NamelistHelper.h`
+- Used by: Interpreter engine (ActionExecutorImpl::executeSendAction), AOT engine (send.jinja2 template)
+- Features:
+  - **evaluateNamelist()**: Parse space-separated variable names, evaluate via JSEngine, store in params map
+  - W3C SCXML C.1: Namelist attribute support for `<send>` element
+  - W3C SCXML 6.2: Evaluation errors raise error.execution and discard message
+  - **Error handling callbacks**: Lambda pattern for engine-specific error.execution event raising
+    - Interpreter: `[this, &sendId](const std::string& msg) { eventRaiser_->raiseEvent("error.execution", msg, sendId, false); }`
+    - AOT: `[&engine](const std::string& msg) { LOG_ERROR("Namelist evaluation failed: {}", msg); engine.raise(Event::Error_execution); }`
+  - Test coverage: test354 (W3C 5.10 - namelist, param, and content event data)
+- Benefits: Zero code duplication, consistent namelist evaluation across engines, proper W3C SCXML C.1/6.2 compliance
+
 **RSM::SendSchedulingHelper::parseDelayString() / SimpleScheduler**:
 - W3C SCXML 6.2: Delay string parsing and event scheduling logic
 - Single Source of Truth for delayed send implementation shared between engines

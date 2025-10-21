@@ -379,6 +379,7 @@ class SCXMLParser:
                 action['delayexpr'] = child.get('delayexpr', '')
                 action['id'] = child.get('id', '')
                 action['idlocation'] = child.get('idlocation', '')
+                action['namelist'] = child.get('namelist', '')  # W3C SCXML C.1: namelist for event data
 
                 # Parse <param> children
                 action['params'] = []
@@ -474,6 +475,18 @@ class SCXMLParser:
                                 'params': [],
                                 'content': ''
                             })
+                            # Parse <param> children (W3C SCXML 6.2)
+                            for param in ns_findall(elem, 'param'):
+                                branch_action['params'].append({
+                                    'name': param.get('name'),
+                                    'expr': param.get('expr', ''),
+                                    'location': param.get('location', '')
+                                })
+                            # Parse <content> (W3C SCXML 6.2)
+                            content_elems = ns_findall(elem, 'content')
+                            if content_elems:
+                                content_elem = content_elems[0]
+                                branch_action['content'] = content_elem.text or ''
                         elif elem_tag == 'assign':
                             branch_action.update({
                                 'location': elem.get('location', ''),

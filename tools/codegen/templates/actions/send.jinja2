@@ -125,15 +125,35 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
 {% if action.delay or action.delayexpr %}
 // W3C SCXML 6.2: Delayed send with event scheduling
 {
-{% if action.params %}
-    // W3C SCXML 5.10: Evaluate params at send time (test186)
+{% if action.namelist or action.params %}
+    // W3C SCXML 5.10: Build event data from namelist and params (test354)
     std::map<std::string, std::vector<std::string>> params;
+{% if action.namelist %}
+    // W3C SCXML C.1: Evaluate namelist variables using NamelistHelper (Zero Duplication)
+{% if model.needs_jsengine or model.needs_event_origin %}
+    {
+        this->ensureJSEngine();
+        auto& jsEngine = ::RSM::JSEngine::instance();
+        bool success = ::RSM::NamelistHelper::evaluateNamelist(
+            jsEngine, sessionId_.value(), "{{ action.namelist }}",
+            params,
+            [&engine](const std::string& msg) {
+                LOG_ERROR("Namelist evaluation failed: {}", msg);
+                engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));
+            }
+        );
+        if (!success) return;
+    }
+{% endif %}
+{% endif %}
+{% if action.params %}
+    // W3C SCXML 5.10: Evaluate params at send time (test186, test354)
 {% for param in action.params %}
 {% if model.needs_jsengine or model.needs_event_origin %}
     {
         this->ensureJSEngine();
         auto& jsEngine = ::RSM::JSEngine::instance();
-        auto paramResult = jsEngine.getVariable(sessionId_.value(), "{{ param.expr }}").get();
+        auto paramResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ param.expr }}").get();
         if (::RSM::JSEngine::isSuccess(paramResult)) {
             params["{{ param.name }}"].push_back(::RSM::JSEngine::resultToString(paramResult));
         } else {
@@ -145,6 +165,7 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
     params["{{ param.name }}"].push_back(std::to_string({{ param.expr }}));
 {% endif %}
 {% endfor %}
+{% endif %}
 {% endif %}
 {% if action.delayexpr %}
     std::string delayStr;
@@ -171,15 +192,35 @@ if (::RSM::SendHelper::isInvalidTarget("{{ action.target }}")) {
 }
 {% else %}
 // W3C SCXML 6.2: Immediate send
-{% if action.params %}
-// W3C SCXML 5.10: Evaluate params at send time (test186)
+{% if action.namelist or action.params %}
+// W3C SCXML 5.10: Build event data from namelist and params (test354)
 std::map<std::string, std::vector<std::string>> params;
+{% if action.namelist %}
+// W3C SCXML C.1: Evaluate namelist variables using NamelistHelper (Zero Duplication)
+{% if model.needs_jsengine or model.needs_event_origin %}
+{
+    this->ensureJSEngine();
+    auto& jsEngine = ::RSM::JSEngine::instance();
+    bool success = ::RSM::NamelistHelper::evaluateNamelist(
+        jsEngine, sessionId_.value(), "{{ action.namelist }}",
+        params,
+        [&engine](const std::string& msg) {
+            LOG_ERROR("Namelist evaluation failed: {}", msg);
+            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));
+        }
+    );
+    if (!success) return;
+}
+{% endif %}
+{% endif %}
+{% if action.params %}
+// W3C SCXML 5.10: Evaluate params at send time (test186, test354)
 {% for param in action.params %}
 {% if model.needs_jsengine or model.needs_event_origin %}
 {
     this->ensureJSEngine();
     auto& jsEngine = ::RSM::JSEngine::instance();
-    auto paramResult = jsEngine.getVariable(sessionId_.value(), "{{ param.expr }}").get();
+    auto paramResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ param.expr }}").get();
     if (::RSM::JSEngine::isSuccess(paramResult)) {
         params["{{ param.name }}"].push_back(::RSM::JSEngine::resultToString(paramResult));
     } else {
@@ -191,6 +232,7 @@ std::map<std::string, std::vector<std::string>> params;
 params["{{ param.name }}"].push_back(std::to_string({{ param.expr }}));
 {% endif %}
 {% endfor %}
+{% endif %}
 std::string eventData = ::RSM::EventDataHelper::buildJsonFromParams(params);
 {% if action.send_type == 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor' %}
 {% if model.needs_jsengine or model.needs_event_origin %}

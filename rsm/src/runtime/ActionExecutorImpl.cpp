@@ -15,6 +15,7 @@
 #include "common/ForeachValidator.h"
 #include "common/GuardHelper.h"
 #include "common/Logger.h"
+#include "common/NamelistHelper.h"
 #include "common/SendHelper.h"
 #include "common/SendSchedulingHelper.h"
 #include "common/StringUtils.h"
@@ -878,36 +879,28 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
         // W3C SCXML: Supports duplicate param names - all values must be included (Test 178)
         std::map<std::string, std::vector<std::string>> evaluatedParams;
 
-        // Step 1: Evaluate namelist variables (if present)
+        // Step 1: Evaluate namelist variables using NamelistHelper (Zero Duplication Principle)
         const std::string &namelist = action.getNamelist();
         if (!namelist.empty()) {
             LOG_DEBUG("ActionExecutorImpl: Evaluating namelist: '{}'", namelist);
 
-            // Parse space/tab/newline-separated variable names
-            std::istringstream namelistStream(namelist);
-            std::string varName;
-            size_t varCount = 0;
+            bool success = NamelistHelper::evaluateNamelist(JSEngine::instance(), sessionId_, namelist, evaluatedParams,
+                                                            [this, &sendId](const std::string &errorMsg) {
+                                                                LOG_ERROR("ActionExecutorImpl: {}", errorMsg);
+                                                                // W3C SCXML 6.2: If evaluation of send's arguments
+                                                                // produces an error, the Processor MUST discard the
+                                                                // message without attempting to deliver it (test 553)
+                                                                if (eventRaiser_) {
+                                                                    eventRaiser_->raiseEvent("error.execution",
+                                                                                             errorMsg, sendId, false);
+                                                                }
+                                                            });
 
-            while (namelistStream >> varName) {
-                varCount++;
-                try {
-                    std::string varValue = evaluateExpression(varName);
-                    evaluatedParams[varName].push_back(varValue);
-                    LOG_DEBUG("ActionExecutorImpl: Namelist[{}] {}={}", varCount, varName, varValue);
-                } catch (const std::exception &e) {
-                    LOG_ERROR("ActionExecutorImpl: Failed to evaluate namelist var '{}': {}", varName, e.what());
-                    // W3C SCXML 6.2: If evaluation of send's arguments produces an error,
-                    // the Processor MUST discard the message without attempting to deliver it (test 553)
-                    if (eventRaiser_) {
-                        eventRaiser_->raiseEvent("error.execution",
-                                                 "Failed to evaluate namelist variable '" + varName + "': " + e.what(),
-                                                 sendId, false);
-                    }
-                    return false;
-                }
+            if (!success) {
+                return false;
             }
 
-            LOG_DEBUG("ActionExecutorImpl: Namelist evaluation complete: {} variables processed", varCount);
+            LOG_DEBUG("ActionExecutorImpl: Namelist evaluation complete");
         }
 
         // Step 2: Evaluate param elements (W3C SCXML Test 186, 354)
