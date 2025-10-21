@@ -141,7 +141,7 @@ if(BUILD_EXAMPLES)
 endif()
 
 # Installation configuration (using GNUInstallDirs variables)
-install(TARGETS rsm_unified scxml-codegen txml-converter
+install(TARGETS rsm_unified txml-converter
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
