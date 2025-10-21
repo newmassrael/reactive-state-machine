@@ -43,24 +43,24 @@ protected:
 };
 
 // ============================================================================
-// 이벤트 브로드캐스팅 테스트
+// Event Broadcasting Tests
 // ============================================================================
 
 TEST_F(ParallelStateComponentTest, EventBroadcasting_BasicBroadcast) {
     std::vector<std::string> regionIds = {"region1", "region2", "region3"};
-    // registerParallelState 메서드가 존재하지 않음 - 직접 지역 등록 필요
+    // registerParallelState method does not exist - need to register regions directly
 
     EventDescriptor event;
     event.eventName = "test_event";
     event.data = "test_data";
 
     bool result = broadcaster_->broadcastEvent("parallel1", event);
-    EXPECT_TRUE(result) << "기본 이벤트 브로드캐스팅이 실패했습니다";
+    EXPECT_TRUE(result) << "Basic event broadcasting failed";
 }
 
 TEST_F(ParallelStateComponentTest, EventBroadcasting_SelectiveBroadcast) {
     std::vector<std::string> regionIds = {"region1", "region2", "region3"};
-    // registerParallelState 메서드가 존재하지 않음 - 직접 지역 등록 필요
+    // registerParallelState method does not exist - need to register regions directly
 
     EventDescriptor event;
     event.eventName = "selective_event";
@@ -68,12 +68,12 @@ TEST_F(ParallelStateComponentTest, EventBroadcasting_SelectiveBroadcast) {
 
     std::vector<std::string> targetRegions = {"region1", "region3"};
     bool result = broadcaster_->broadcastEventToRegions(event, targetRegions);
-    EXPECT_TRUE(result) << "선택적 이벤트 브로드캐스팅이 실패했습니다";
+    EXPECT_TRUE(result) << "Selective event broadcasting failed";
 }
 
 TEST_F(ParallelStateComponentTest, EventBroadcasting_ConcurrentBroadcast) {
     std::vector<std::string> regionIds = {"region1", "region2", "region3", "region4"};
-    // registerParallelState 메서드가 존재하지 않음 - 직접 지역 등록 필요
+    // registerParallelState method does not exist - need to register regions directly
 
     std::vector<std::thread> threads;
     std::atomic<int> successCount{0};
@@ -93,22 +93,22 @@ TEST_F(ParallelStateComponentTest, EventBroadcasting_ConcurrentBroadcast) {
         thread.join();
     }
 
-    EXPECT_EQ(successCount.load(), 5) << "동시 브로드캐스팅에서 일부가 실패했습니다";
+    EXPECT_EQ(successCount.load(), 5) << "Some concurrent broadcasts failed";
 }
 
 // ============================================================================
-// 완료 모니터링 테스트
+// Completion Monitoring Tests
 // ============================================================================
 
 TEST_F(ParallelStateComponentTest, CompletionMonitoring_BasicMonitoring) {
-    EXPECT_FALSE(monitor_->isMonitoringActive()) << "모니터링이 초기에 활성화되어 있습니다";
+    EXPECT_FALSE(monitor_->isMonitoringActive()) << "Monitoring is active at initialization";
 
     bool started = monitor_->startMonitoring();
-    EXPECT_TRUE(started) << "모니터링 시작에 실패했습니다";
-    EXPECT_TRUE(monitor_->isMonitoringActive()) << "모니터링이 활성화되지 않았습니다";
+    EXPECT_TRUE(started) << "Failed to start monitoring";
+    EXPECT_TRUE(monitor_->isMonitoringActive()) << "Monitoring is not active";
 
     monitor_->stopMonitoring();
-    EXPECT_FALSE(monitor_->isMonitoringActive()) << "모니터링이 중지되지 않았습니다";
+    EXPECT_FALSE(monitor_->isMonitoringActive()) << "Monitoring is not stopped";
 }
 
 TEST_F(ParallelStateComponentTest, CompletionMonitoring_RegionCompletion) {
@@ -117,13 +117,13 @@ TEST_F(ParallelStateComponentTest, CompletionMonitoring_RegionCompletion) {
     monitor_->updateRegionCompletion("region1", false);
     monitor_->updateRegionCompletion("region2", false);
 
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "모든 지역이 미완료 상태인데 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when all regions are incomplete";
 
     monitor_->updateRegionCompletion("region1", true);
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역만 완료된 상태에서 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when only some regions are complete";
 
     monitor_->updateRegionCompletion("region2", true);
-    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "모든 지역이 완료되었는데 완료 조건이 만족되지 않았습니다";
+    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "Completion criteria not met when all regions are complete";
 }
 
 TEST_F(ParallelStateComponentTest, CompletionMonitoring_ConcurrentUpdates) {
@@ -147,13 +147,13 @@ TEST_F(ParallelStateComponentTest, CompletionMonitoring_ConcurrentUpdates) {
     }
 
     auto regions = monitor_->getRegisteredRegions();
-    EXPECT_EQ(regions.size(), numThreads * numRegionsPerThread) << "등록된 지역 수가 예상과 다릅니다";
+    EXPECT_EQ(regions.size(), numThreads * numRegionsPerThread) << "Number of registered regions differs from expected";
 
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역이 미완료 상태인데 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when some regions are incomplete";
 }
 
 // ============================================================================
-// 외부 전이 처리 테스트
+// External Transition Handling Tests
 // ============================================================================
 
 TEST_F(ParallelStateComponentTest, ExternalTransition_BasicHandling) {
@@ -161,7 +161,7 @@ TEST_F(ParallelStateComponentTest, ExternalTransition_BasicHandling) {
     handler_->registerParallelState("parallel1", regionIds);
 
     bool result = handler_->handleExternalTransition("parallel1", "target_state", "exit_event");
-    EXPECT_TRUE(result) << "기본 외부 전이 처리가 실패했습니다";
+    EXPECT_TRUE(result) << "Basic external transition handling failed";
 }
 
 TEST_F(ParallelStateComponentTest, ExternalTransition_ConcurrentLimit) {
@@ -184,49 +184,50 @@ TEST_F(ParallelStateComponentTest, ExternalTransition_ConcurrentLimit) {
         }
     }
 
-    EXPECT_LE(successCount, 5) << "동시 전이 제한이 적용되지 않았습니다";
+    EXPECT_LE(successCount, 5) << "Concurrent transition limit not applied";
 }
 
 TEST_F(ParallelStateComponentTest, ExternalTransition_InvalidParameters) {
     bool result = handler_->handleExternalTransition("", "target_state", "exit_event");
-    EXPECT_FALSE(result) << "빈 병렬 상태 ID로 전이가 성공했습니다";
+    EXPECT_FALSE(result) << "Transition succeeded with empty parallel state ID";
 
     result = handler_->handleExternalTransition("parallel1", "", "exit_event");
-    EXPECT_FALSE(result) << "빈 타겟 상태 ID로 전이가 성공했습니다";
+    EXPECT_FALSE(result) << "Transition succeeded with empty target state ID";
 
     result = handler_->handleExternalTransition("parallel1", "target_state", "");
-    EXPECT_FALSE(result) << "빈 전이 이벤트로 전이가 성공했습니다";
+    EXPECT_FALSE(result) << "Transition succeeded with empty transition event";
 }
 
 // ============================================================================
-// 통합 시나리오 테스트 (컴포넌트 간 상호작용)
+// Integrated Scenario Tests (Component Interactions)
 // ============================================================================
 
 TEST_F(ParallelStateComponentTest, IntegratedScenario_EventBroadcastToCompletion) {
     const std::string parallelStateId = "integrated_parallel";
     std::vector<std::string> regionIds = {"region1", "region2"};
 
-    // 모든 컴포넌트에 동일한 병렬 상태 등록
+    // Register same parallel state to all components
     broadcaster_->registerParallelState(parallelStateId, regionIds);
     handler_->registerParallelState(parallelStateId, regionIds);
     monitor_->startMonitoring();
 
-    // 이벤트 브로드캐스팅
+    // Event broadcasting
     EventDescriptor event;
     event.eventName = "completion_trigger";
     bool broadcastResult = broadcaster_->broadcastEvent(parallelStateId, event);
-    EXPECT_TRUE(broadcastResult) << "이벤트 브로드캐스팅이 실패했습니다";
+    EXPECT_TRUE(broadcastResult) << "Event broadcasting failed";
 
-    // 지역 완료 상태 업데이트
+    // Update region completion status
     monitor_->updateRegionCompletion("region1", true);
     monitor_->updateRegionCompletion("region2", true);
-    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "완료 조건이 만족되지 않았습니다";
+    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "Completion criteria not met";
 
-    // 외부 전이 처리
+    // Handle external transition
     bool transitionResult = handler_->handleExternalTransition(parallelStateId, "final_state", "done_event");
-    EXPECT_TRUE(transitionResult) << "외부 전이 처리가 실패했습니다";
+    EXPECT_TRUE(transitionResult) << "External transition handling failed";
 
-    EXPECT_EQ(handler_->getActiveTransitionCount(), 0) << "전이 완료 후 활성 전이 수가 0이 아닙니다";
+    EXPECT_EQ(handler_->getActiveTransitionCount(), 0)
+        << "Active transition count is not 0 after transition completion";
 }
 
 TEST_F(ParallelStateComponentTest, IntegratedScenario_PartialCompletionWithTransition) {
@@ -237,15 +238,15 @@ TEST_F(ParallelStateComponentTest, IntegratedScenario_PartialCompletionWithTrans
     handler_->registerParallelState(parallelStateId, regionIds);
     monitor_->startMonitoring();
 
-    // 일부 지역만 완료
+    // Complete only some regions
     monitor_->updateRegionCompletion("region1", true);
     monitor_->updateRegionCompletion("region2", false);
     monitor_->updateRegionCompletion("region3", false);
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역만 완료된 상태에서 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when only some regions are complete";
 
-    // 강제 외부 전이 (미완료 상태에서)
+    // Force external transition (from incomplete state)
     bool transitionResult = handler_->handleExternalTransition(parallelStateId, "early_exit", "force_exit");
-    EXPECT_TRUE(transitionResult) << "강제 외부 전이가 실패했습니다";
+    EXPECT_TRUE(transitionResult) << "Forced external transition failed";
 }
 
 TEST_F(ParallelStateComponentTest, IntegratedScenario_SCXMLWithComponents) {
@@ -277,21 +278,21 @@ TEST_F(ParallelStateComponentTest, IntegratedScenario_SCXMLWithComponents) {
     </scxml>)";
 
     auto result = parser_->parseContent(scxmlContent);
-    ASSERT_TRUE(result.has_value()) << "SCXML 파싱이 실패했습니다";
+    ASSERT_TRUE(result.has_value()) << "SCXML parsing failed";
 
     auto stateMachine = result.value();
-    ASSERT_NE(stateMachine, nullptr) << "상태머신 생성에 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "State machine creation failed";
 
-    // 컴포넌트들이 SCXML과 함께 작동하는지 테스트
+    // Test that components work with SCXML
     auto parallelState = stateMachine->findChildById("parallel1");
-    ASSERT_NE(parallelState, nullptr) << "병렬 상태를 찾을 수 없습니다";
+    ASSERT_NE(parallelState, nullptr) << "Parallel state not found";
 
     auto finalState = stateMachine->findChildById("final_state");
-    ASSERT_NE(finalState, nullptr) << "최종 상태를 찾을 수 없습니다";
+    ASSERT_NE(finalState, nullptr) << "Final state not found";
 }
 
 // ============================================================================
-// 성능 및 스트레스 테스트
+// Performance and Stress Tests
 // ============================================================================
 
 TEST_F(ParallelStateComponentTest, Performance_LargeScaleComponents) {
@@ -300,7 +301,7 @@ TEST_F(ParallelStateComponentTest, Performance_LargeScaleComponents) {
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    // 대량 병렬 상태 등록
+    // Register large number of parallel states
     for (int i = 0; i < numStates; ++i) {
         std::vector<std::string> regionIds;
         for (int j = 0; j < numRegionsPerState; ++j) {
@@ -314,9 +315,10 @@ TEST_F(ParallelStateComponentTest, Performance_LargeScaleComponents) {
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-    EXPECT_LT(duration.count(), 1000) << "대량 컴포넌트 등록 성능이 너무 느립니다 (1초 초과)";
+    EXPECT_LT(duration.count(), 1000)
+        << "Large-scale component registration performance is too slow (exceeds 1 second)";
 
-    // 대량 이벤트 브로드캐스팅 테스트
+    // Large-scale event broadcasting test
     startTime = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < numStates; ++i) {
@@ -328,7 +330,7 @@ TEST_F(ParallelStateComponentTest, Performance_LargeScaleComponents) {
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-    EXPECT_LT(duration.count(), 500) << "대량 이벤트 브로드캐스팅 성능이 너무 느립니다 (500ms 초과)";
+    EXPECT_LT(duration.count(), 500) << "Large-scale event broadcasting performance is too slow (exceeds 500ms)";
 }
 
 }  // namespace RSM

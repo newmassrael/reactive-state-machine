@@ -30,7 +30,7 @@ protected:
     std::string sessionId_;
 };
 
-// 최소한의 parallel 상태 파싱 테스트
+// Minimal parallel state parsing test
 TEST_F(SCXMLParallelParsingTest, MinimalParallelStateParsing) {
     const std::string minimalParallelSCXML = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -47,7 +47,7 @@ TEST_F(SCXMLParallelParsingTest, MinimalParallelStateParsing) {
     EXPECT_EQ(model->getDatamodel(), "ecmascript");
 }
 
-// 복잡한 parallel 상태 구조 파싱 테스트
+// Complex parallel state structure parsing test
 TEST_F(SCXMLParallelParsingTest, ComplexParallelStructureParsing) {
     const std::string complexParallelSCXML = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -86,7 +86,7 @@ TEST_F(SCXMLParallelParsingTest, ComplexParallelStructureParsing) {
     EXPECT_EQ(model->getDatamodel(), "ecmascript");
 }
 
-// 중첩된 parallel 상태 파싱 테스트
+// Nested parallel state parsing test
 TEST_F(SCXMLParallelParsingTest, NestedParallelStateParsing) {
     const std::string nestedParallelSCXML = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -113,26 +113,26 @@ TEST_F(SCXMLParallelParsingTest, NestedParallelStateParsing) {
     EXPECT_EQ(model->getInitialState(), "outer_parallel");
 }
 
-// 잘못된 parallel 상태 구조 파싱 테스트
+// Invalid parallel state structure parsing test
 TEST_F(SCXMLParallelParsingTest, InvalidParallelStateParsing) {
     const std::string invalidParallelSCXML = R"(<?xml version="1.0" encoding="UTF-8"?>
-    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
+    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0"
            initial="invalid_parallel">
         <parallel id="invalid_parallel">
-            <!-- parallel 상태에는 최소 하나의 자식 상태가 있어야 함 -->
+            <!-- parallel state must have at least one child state -->
         </parallel>
     </scxml>)";
 
-    // 파싱이 실패하거나 경고와 함께 성공할 수 있음
-    // 중요한 것은 크래시가 발생하지 않는 것
+    // Parsing may fail or succeed with warnings
+    // The important thing is that no crash occurs
     try {
         auto model = parser_->parseContent(invalidParallelSCXML);
-        // 파싱이 성공하면 검증 계속 진행
+        // If parsing succeeds, continue verification
         if (model) {
             EXPECT_EQ(model->getInitialState(), "invalid_parallel");
         }
     } catch (const std::exception &e) {
-        // 파싱 실패는 예상되는 결과
+        // Parsing failure is an expected result
         EXPECT_FALSE(std::string(e.what()).empty());
     }
 }

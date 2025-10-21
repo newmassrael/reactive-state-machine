@@ -10,7 +10,7 @@ class StateMachineTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Setup test environment
-        // Logger::setLevel(Logger::Level::DEBUG); // Logger API 확인 필요
+        // Logger::setLevel(Logger::Level::DEBUG); // Logger API verification needed
     }
 
     void TearDown() override {
@@ -129,22 +129,22 @@ private:
 
 // Basic functionality tests
 TEST_F(StateMachineTest, Constructor) {
-    // 기본 생성자는 안전하게 성공
+    // Default constructor succeeds safely
     StateMachine sm;
     EXPECT_FALSE(sm.isRunning());
-    // SCXML이 로드되지 않은 상태에서는 getCurrentState() 호출하면 안됨
-    // 이는 SCXML 표준 준수를 위한 올바른 동작
+    // Calling getCurrentState() when SCXML is not loaded should be avoided
+    // This is correct behavior for SCXML standard compliance
 }
 
 TEST_F(StateMachineTest, FactoryPattern_CreateForTesting) {
-    // Factory 패턴으로 Mock 기반 테스트 가능
+    // Factory pattern enables Mock-based testing
     auto result = StateMachineFactory::createProduction();
 
-    // Factory는 Mock 엔진 사용하므로 성공할 수 있음
+    // Factory uses Mock engine so it can succeed
     if (result.has_value()) {
         EXPECT_FALSE(result.value->isRunning());
     } else {
-        // 실패해도 오류 메시지가 있어야 함
+        // Even if failed, error message should exist
         EXPECT_FALSE(result.error.empty());
     }
 }

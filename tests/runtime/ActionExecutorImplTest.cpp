@@ -23,7 +23,7 @@ protected:
     void SetUp() override {
         // Initialize JS engine
         jsEngine = &JSEngine::instance();
-        // JSEngine 리셋으로 테스트 간 격리 보장
+        // Ensure test isolation with JSEngine reset
         jsEngine->reset();
 
         sessionId = "action_executor_test_session";

@@ -30,7 +30,7 @@ protected:
     std::string sessionId_;
 };
 
-// W3C SCXML parallel 상태 기본 파싱 테스트
+// W3C SCXML basic parallel state parsing test
 TEST_F(ParallelStateIntegrationTest, BasicParallelStateParsing) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="parallel1">
@@ -45,7 +45,7 @@ TEST_F(ParallelStateIntegrationTest, BasicParallelStateParsing) {
     EXPECT_EQ(model->getInitialState(), "parallel1");
 }
 
-// parallel 상태의 최종 상태 테스트
+// Parallel state final states test
 TEST_F(ParallelStateIntegrationTest, ParallelStateWithFinalStates) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="parallel1">
@@ -66,7 +66,7 @@ TEST_F(ParallelStateIntegrationTest, ParallelStateWithFinalStates) {
     EXPECT_EQ(model->getInitialState(), "parallel1");
 }
 
-// 중첩된 parallel 상태 테스트
+// Nested parallel states test
 TEST_F(ParallelStateIntegrationTest, NestedParallelStates) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="outer">
@@ -86,7 +86,7 @@ TEST_F(ParallelStateIntegrationTest, NestedParallelStates) {
     EXPECT_EQ(model->getInitialState(), "outer");
 }
 
-// 데이터 모델이 포함된 parallel 상태 테스트
+// Parallel state with data model test
 TEST_F(ParallelStateIntegrationTest, ParallelStateWithDataModel) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -115,17 +115,17 @@ TEST_F(ParallelStateIntegrationTest, ParallelStateWithDataModel) {
     EXPECT_EQ(model->getDatamodel(), "ecmascript");
 }
 
-// 잘못된 parallel 상태 구성 테스트
+// Invalid parallel state configuration test
 TEST_F(ParallelStateIntegrationTest, InvalidParallelStateConfiguration) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="parallel1">
         <parallel id="parallel1">
-            <!-- 잘못된 구성: parallel은 자식 상태가 있어야 함 -->
+            <!-- Invalid configuration: parallel must have child states -->
         </parallel>
     </scxml>)";
 
-    // 파싱이 실패하거나 경고와 함께 성공할 수 있음
-    // 중요한 것은 크래시가 발생하지 않는 것
+    // Parsing may fail or succeed with warnings
+    // The important thing is that no crash occurs
     auto model = parser_->parseContent(scxmlContent);
     if (model) {
         EXPECT_EQ(model->getInitialState(), "parallel1");

@@ -33,69 +33,69 @@ protected:
     std::string sessionId_;
 };
 
-// 기본 이벤트 브로드캐스팅 테스트
+// Basic event broadcasting test
 TEST_F(ParallelStateEventBroadcastingTest, BasicEventBroadcasting) {
-    // 병렬 상태 등록
+    // Register parallel state
     std::vector<std::string> regionIds = {"region1", "region2", "region3"};
     broadcaster_->registerParallelState("parallel1", regionIds);
 
-    // 이벤트 브로드캐스팅
+    // Event broadcasting
     EventDescriptor event;
     event.name = "test_event";
     event.data = "test_data";
 
     bool result = broadcaster_->broadcastToRegions("parallel1", event);
-    EXPECT_TRUE(result) << "이벤트 브로드캐스팅이 실패했습니다";
+    EXPECT_TRUE(result) << "Event broadcasting failed";
 }
 
-// 선택적 이벤트 브로드캐스팅 테스트
+// Selective event broadcasting test
 TEST_F(ParallelStateEventBroadcastingTest, SelectiveEventBroadcasting) {
-    // 병렬 상태 등록
+    // Register parallel state
     std::vector<std::string> regionIds = {"region1", "region2", "region3"};
     broadcaster_->registerParallelState("parallel1", regionIds);
 
-    // 선택적 브로드캐스팅
+    // Selective broadcasting
     EventDescriptor event;
     event.name = "selective_event";
     event.data = "selective_data";
 
     std::vector<std::string> targetRegions = {"region1", "region3"};
     bool result = broadcaster_->broadcastToSpecificRegions("parallel1", event, targetRegions);
-    EXPECT_TRUE(result) << "선택적 이벤트 브로드캐스팅이 실패했습니다";
+    EXPECT_TRUE(result) << "Selective event broadcasting failed";
 }
 
-// 이벤트 필터링 테스트
+// Event filtering test
 TEST_F(ParallelStateEventBroadcastingTest, EventFiltering) {
-    // 병렬 상태 등록
+    // Register parallel state
     std::vector<std::string> regionIds = {"region1", "region2"};
     broadcaster_->registerParallelState("parallel1", regionIds);
 
-    // 이벤트 필터 설정
+    // Set event filter
     broadcaster_->setEventFilter(
         "parallel1", [](const EventDescriptor &event) { return event.name.find("filtered") != std::string::npos; });
 
-    // 필터링될 이벤트
+    // Event to be filtered
     EventDescriptor filteredEvent;
     filteredEvent.name = "filtered_event";
 
-    // 필터링되지 않을 이벤트
+    // Event that won't be filtered
     EventDescriptor normalEvent;
     normalEvent.name = "normal_event";
 
     bool filteredResult = broadcaster_->broadcastToRegions("parallel1", filteredEvent);
     bool normalResult = broadcaster_->broadcastToRegions("parallel1", normalEvent);
 
-    EXPECT_TRUE(filteredResult) << "필터링된 이벤트 브로드캐스팅이 실패했습니다";
-    EXPECT_FALSE(normalResult) << "일반 이벤트가 필터링되지 않았습니다";
+    EXPECT_TRUE(filteredResult) << "Filtered event broadcasting failed";
+    EXPECT_FALSE(normalResult) << "Normal event was not filtered";
 }
 
-// 동시성 테스트
+// Concurrency test
 TEST_F(ParallelStateEventBroadcastingTest, ConcurrentBroadcasting) {
-    // 병렬 상태 등록
+    // Register parallel state
     std::vector<std::string> regionIds = {"region1", "region2", "region3", "region4"};
     broadcaster_->registerParallelState("parallel1", regionIds);
 
-    // 동시 브로드캐스팅 테스트
+    // Concurrent broadcasting test
     std::vector<std::thread> threads;
     std::atomic<int> successCount{0};
 
@@ -114,21 +114,21 @@ TEST_F(ParallelStateEventBroadcastingTest, ConcurrentBroadcasting) {
         thread.join();
     }
 
-    EXPECT_EQ(successCount.load(), 10) << "동시 브로드캐스팅에서 일부가 실패했습니다";
+    EXPECT_EQ(successCount.load(), 10) << "Some concurrent broadcasts failed";
 }
 
-// 이벤트 우선순위 테스트
+// Event priority test
 TEST_F(ParallelStateEventBroadcastingTest, EventPriority) {
-    // 병렬 상태 등록
+    // Register parallel state
     std::vector<std::string> regionIds = {"region1", "region2"};
     broadcaster_->registerParallelState("parallel1", regionIds);
 
-    // 높은 우선순위 이벤트
+    // High priority event
     EventDescriptor highPriorityEvent;
     highPriorityEvent.name = "high_priority";
     highPriorityEvent.priority = EventPriority::HIGH;
 
-    // 낮은 우선순위 이벤트
+    // Low priority event
     EventDescriptor lowPriorityEvent;
     lowPriorityEvent.name = "low_priority";
     lowPriorityEvent.priority = EventPriority::LOW;
@@ -136,17 +136,17 @@ TEST_F(ParallelStateEventBroadcastingTest, EventPriority) {
     bool highResult = broadcaster_->broadcastToRegions("parallel1", highPriorityEvent);
     bool lowResult = broadcaster_->broadcastToRegions("parallel1", lowPriorityEvent);
 
-    EXPECT_TRUE(highResult) << "높은 우선순위 이벤트 브로드캐스팅이 실패했습니다";
-    EXPECT_TRUE(lowResult) << "낮은 우선순위 이벤트 브로드캐스팅이 실패했습니다";
+    EXPECT_TRUE(highResult) << "High priority event broadcasting failed";
+    EXPECT_TRUE(lowResult) << "Low priority event broadcasting failed";
 }
 
-// 이벤트 배치 처리 테스트
+// Batch event processing test
 TEST_F(ParallelStateEventBroadcastingTest, BatchEventProcessing) {
-    // 병렬 상태 등록
+    // Register parallel state
     std::vector<std::string> regionIds = {"region1", "region2", "region3"};
     broadcaster_->registerParallelState("parallel1", regionIds);
 
-    // 배치 이벤트 생성
+    // Generate batch events
     std::vector<EventDescriptor> events;
     for (int i = 0; i < 5; ++i) {
         EventDescriptor event;
@@ -155,16 +155,16 @@ TEST_F(ParallelStateEventBroadcastingTest, BatchEventProcessing) {
     }
 
     bool result = broadcaster_->broadcastBatchToRegions("parallel1", events);
-    EXPECT_TRUE(result) << "배치 이벤트 브로드캐스팅이 실패했습니다";
+    EXPECT_TRUE(result) << "Batch event broadcasting failed";
 }
 
-// 이벤트 통계 테스트
+// Event statistics test
 TEST_F(ParallelStateEventBroadcastingTest, EventStatistics) {
-    // 병렬 상태 등록
+    // Register parallel state
     std::vector<std::string> regionIds = {"region1", "region2"};
     broadcaster_->registerParallelState("parallel1", regionIds);
 
-    // 여러 이벤트 브로드캐스팅
+    // Broadcast multiple events
     for (int i = 0; i < 5; ++i) {
         EventDescriptor event;
         event.name = "stats_event_" + std::to_string(i);
@@ -172,26 +172,26 @@ TEST_F(ParallelStateEventBroadcastingTest, EventStatistics) {
     }
 
     auto stats = broadcaster_->getStatistics("parallel1");
-    EXPECT_GT(stats.totalEventsBroadcast, 0) << "브로드캐스트된 이벤트 수가 0입니다";
-    EXPECT_EQ(stats.totalRegions, regionIds.size()) << "등록된 지역 수가 일치하지 않습니다";
+    EXPECT_GT(stats.totalEventsBroadcast, 0) << "Broadcast event count is 0";
+    EXPECT_EQ(stats.totalRegions, regionIds.size()) << "Registered region count mismatch";
 }
 
-// 에러 처리 테스트
+// Error handling test
 TEST_F(ParallelStateEventBroadcastingTest, ErrorHandling) {
-    // 존재하지 않는 병렬 상태에 이벤트 브로드캐스팅
+    // Broadcast event to non-existent parallel state
     EventDescriptor event;
     event.name = "error_test_event";
 
     bool result = broadcaster_->broadcastToRegions("nonexistent_parallel", event);
-    EXPECT_FALSE(result) << "존재하지 않는 병렬 상태에 대한 브로드캐스팅이 성공했습니다";
+    EXPECT_FALSE(result) << "Broadcasting to non-existent parallel state succeeded";
 
-    // 빈 지역 목록에 브로드캐스팅
+    // Broadcast to empty region list
     broadcaster_->registerParallelState("empty_parallel", {});
     result = broadcaster_->broadcastToRegions("empty_parallel", event);
-    EXPECT_FALSE(result) << "빈 지역 목록에 대한 브로드캐스팅이 성공했습니다";
+    EXPECT_FALSE(result) << "Broadcasting to empty region list succeeded";
 }
 
-// SCXML 통합 이벤트 브로드캐스팅 테스트
+// SCXML integrated event broadcasting test
 TEST_F(ParallelStateEventBroadcastingTest, SCXMLIntegratedBroadcasting) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -227,14 +227,14 @@ TEST_F(ParallelStateEventBroadcastingTest, SCXMLIntegratedBroadcasting) {
     </scxml>)";
 
     auto result = parser_->parseContent(scxmlContent);
-    ASSERT_TRUE(result.has_value()) << "SCXML 파싱이 실패했습니다";
+    ASSERT_TRUE(result.has_value()) << "SCXML parsing failed";
 
     auto stateMachine = result.value();
-    ASSERT_NE(stateMachine, nullptr) << "상태머신 생성에 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "State machine creation failed";
 
-    // 이벤트 브로드캐스팅이 SCXML과 통합되어 작동하는지 테스트
+    // Test that event broadcasting works integrated with SCXML
     auto parallelState = stateMachine->findChildById("parallel1");
-    ASSERT_NE(parallelState, nullptr) << "병렬 상태를 찾을 수 없습니다";
+    ASSERT_NE(parallelState, nullptr) << "Parallel state not found";
 }
 
 }  // namespace RSM

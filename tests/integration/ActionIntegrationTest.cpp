@@ -17,7 +17,7 @@ using namespace RSM;
 class ActionIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // JSEngine 리셋으로 테스트 간 격리 보장
+        // Ensure test isolation with JSEngine reset
         RSM::JSEngine::instance().reset();
 
         // Build StateMachine with dependency injection, then wrap in RAII context

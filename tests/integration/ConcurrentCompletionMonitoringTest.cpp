@@ -40,72 +40,72 @@ protected:
 };
 
 /*
-// 기본 모니터링 시작/중지 테스트
+// Basic monitoring start/stop test
 TEST_F(ConcurrentCompletionMonitoringTest, BasicMonitoringStartStop) {
-    EXPECT_FALSE(monitor_->isMonitoringActive()) << "모니터링이 초기에 활성화되어 있습니다";
+    EXPECT_FALSE(monitor_->isMonitoringActive()) << "Monitoring is active at initialization";
 
     bool started = monitor_->startMonitoring();
-    EXPECT_TRUE(started) << "모니터링 시작에 실패했습니다";
-    EXPECT_TRUE(monitor_->isMonitoringActive()) << "모니터링이 활성화되지 않았습니다";
+    EXPECT_TRUE(started) << "Failed to start monitoring";
+    EXPECT_TRUE(monitor_->isMonitoringActive()) << "Monitoring is not active";
 
     monitor_->stopMonitoring();
-    EXPECT_FALSE(monitor_->isMonitoringActive()) << "모니터링이 중지되지 않았습니다";
+    EXPECT_FALSE(monitor_->isMonitoringActive()) << "Monitoring is not stopped";
 }
 
-// 지역 완료 상태 업데이트 테스트
+// Region completion status update test
 TEST_F(ConcurrentCompletionMonitoringTest, RegionCompletionUpdate) {
     monitor_->startMonitoring();
 
-    // 지역 완료 상태 업데이트
+    // Update region completion status
     monitor_->updateRegionCompletion("region1", false);
     monitor_->updateRegionCompletion("region2", false);
 
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "모든 지역이 미완료 상태인데 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when all regions are incomplete";
 
-    // 하나의 지역 완료
+    // Complete one region
     monitor_->updateRegionCompletion("region1", true);
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역만 완료된 상태에서 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when only some regions are complete";
 
-    // 모든 지역 완료
+    // Complete all regions
     monitor_->updateRegionCompletion("region2", true);
-    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "모든 지역이 완료되었는데 완료 조건이 만족되지 않았습니다";
+    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "Completion criteria not met when all regions are complete";
 }
 
-// 등록된 지역 조회 테스트
+// Registered regions retrieval test
 TEST_F(ConcurrentCompletionMonitoringTest, RegisteredRegionsRetrieval) {
     monitor_->startMonitoring();
 
-    // 초기 상태에서는 등록된 지역이 없어야 함
+    // No regions should be registered initially
     auto regions = monitor_->getRegisteredRegions();
-    EXPECT_TRUE(regions.empty()) << "초기 상태에서 등록된 지역이 있습니다";
+    EXPECT_TRUE(regions.empty()) << "Regions are registered in initial state";
 
-    // 지역 등록
+    // Register regions
     monitor_->updateRegionCompletion("region1", false);
     monitor_->updateRegionCompletion("region2", false);
     monitor_->updateRegionCompletion("region3", false);
 
     regions = monitor_->getRegisteredRegions();
-    EXPECT_EQ(regions.size(), 3) << "등록된 지역 수가 예상과 다릅니다";
+    EXPECT_EQ(regions.size(), 3) << "Number of registered regions differs from expected";
 
-    // 지역 이름 확인
+    // Check region names
     std::set<std::string> regionSet(regions.begin(), regions.end());
-    EXPECT_TRUE(regionSet.count("region1") > 0) << "region1이 등록되지 않았습니다";
-    EXPECT_TRUE(regionSet.count("region2") > 0) << "region2가 등록되지 않았습니다";
-    EXPECT_TRUE(regionSet.count("region3") > 0) << "region3이 등록되지 않았습니다";
+    EXPECT_TRUE(regionSet.count("region1") > 0) << "region1 is not registered";
+    EXPECT_TRUE(regionSet.count("region2") > 0) << "region2 is not registered";
+    EXPECT_TRUE(regionSet.count("region3") > 0) << "region3 is not registered";
 }
 
-// 모니터링 비활성 상태에서의 업데이트 테스트
+// Update when monitoring inactive test
 TEST_F(ConcurrentCompletionMonitoringTest, UpdateWhenMonitoringInactive) {
-    // 모니터링이 비활성 상태에서 업데이트 시도
+    // Attempt update when monitoring is inactive
     monitor_->updateRegionCompletion("region1", true);
 
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "모니터링 비활성 상태에서 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when monitoring is inactive";
 
     auto regions = monitor_->getRegisteredRegions();
-    EXPECT_TRUE(regions.empty()) << "모니터링 비활성 상태에서 지역이 등록되었습니다";
+    EXPECT_TRUE(regions.empty()) << "Regions registered when monitoring is inactive";
 }
 
-// 동시성 테스트 - 여러 스레드에서 동시 업데이트
+// Concurrency test - concurrent updates from multiple threads
 TEST_F(ConcurrentCompletionMonitoringTest, ConcurrentUpdates) {
     monitor_->startMonitoring();
 
@@ -113,54 +113,54 @@ TEST_F(ConcurrentCompletionMonitoringTest, ConcurrentUpdates) {
     const int numRegionsPerThread = 10;
     std::vector<std::thread> threads;
 
-    // 여러 스레드에서 동시에 지역 완료 상태 업데이트
+    // Update region completion status concurrently from multiple threads
     for (int t = 0; t < numThreads; ++t) {
         threads.emplace_back([this, t, numRegionsPerThread]() {
             for (int r = 0; r < numRegionsPerThread; ++r) {
                 std::string regionId = "thread" + std::to_string(t) + "_region" + std::to_string(r);
-                monitor_->updateRegionCompletion(regionId, (r % 2 == 0));  // 짝수는 완료, 홀수는 미완료
+                monitor_->updateRegionCompletion(regionId, (r % 2 == 0));  // Even: complete, odd: incomplete
             }
         });
     }
 
-    // 모든 스레드 완료 대기
+    // Wait for all threads to complete
     for (auto &thread : threads) {
         thread.join();
     }
 
     auto regions = monitor_->getRegisteredRegions();
-    EXPECT_EQ(regions.size(), numThreads * numRegionsPerThread) << "등록된 지역 수가 예상과 다릅니다";
+    EXPECT_EQ(regions.size(), numThreads * numRegionsPerThread) << "Number of registered regions differs from expected";
 
-    // 완료 조건은 만족되지 않아야 함 (홀수 지역들이 미완료 상태)
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역이 미완료 상태인데 완료 조건이 만족되었습니다";
+    // Completion criteria should not be met (odd regions are incomplete)
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when some regions are incomplete";
 }
 
-// 빈 지역 목록에서의 완료 조건 테스트
+// Empty regions completion criteria test
 TEST_F(ConcurrentCompletionMonitoringTest, EmptyRegionsCompletionCriteria) {
     monitor_->startMonitoring();
 
-    // 지역이 등록되지 않은 상태에서 완료 조건 확인
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "빈 지역 목록에서 완료 조건이 만족되었습니다";
+    // Check completion criteria when no regions are registered
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met with empty region list";
 }
 
-// 동일 지역 중복 업데이트 테스트
+// Duplicate region updates test
 TEST_F(ConcurrentCompletionMonitoringTest, DuplicateRegionUpdates) {
     monitor_->startMonitoring();
 
-    // 동일 지역을 여러 번 업데이트
+    // Update the same region multiple times
     monitor_->updateRegionCompletion("region1", false);
     monitor_->updateRegionCompletion("region1", true);
     monitor_->updateRegionCompletion("region1", false);
     monitor_->updateRegionCompletion("region1", true);
 
     auto regions = monitor_->getRegisteredRegions();
-    EXPECT_EQ(regions.size(), 1) << "중복 업데이트로 인해 지역이 중복 등록되었습니다";
+    EXPECT_EQ(regions.size(), 1) << "Region registered multiple times due to duplicate updates";
 
-    // 최종 상태는 true여야 함
-    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "최종 완료 상태가 반영되지 않았습니다";
+    // Final state should be true
+    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "Final completion state not reflected";
 }
 
-// 최종 상태 ID를 포함한 업데이트 테스트
+// Update with final state IDs test
 TEST_F(ConcurrentCompletionMonitoringTest, UpdateWithFinalStateIds) {
     monitor_->startMonitoring();
 
@@ -168,13 +168,13 @@ TEST_F(ConcurrentCompletionMonitoringTest, UpdateWithFinalStateIds) {
     monitor_->updateRegionCompletion("region1", true, finalStateIds);
     monitor_->updateRegionCompletion("region2", false);
 
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역만 완료된 상태에서 완료 조건이 만족되었습니다";
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when only some regions are complete";
 
     monitor_->updateRegionCompletion("region2", true, {"final3"});
-    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "모든 지역이 완료되었는데 완료 조건이 만족되지 않았습니다";
+    EXPECT_TRUE(monitor_->isCompletionCriteriaMet()) << "Completion criteria not met when all regions are complete";
 }
 
-// SCXML 통합 완료 모니터링 테스트
+// SCXML integrated completion monitoring test
 TEST_F(ConcurrentCompletionMonitoringTest, SCXMLIntegratedMonitoring) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0"
@@ -204,24 +204,24 @@ TEST_F(ConcurrentCompletionMonitoringTest, SCXMLIntegratedMonitoring) {
     </scxml>)";
 
     auto result = parser_->parseContent(scxmlContent);
-    ASSERT_TRUE(result.has_value()) << "SCXML 파싱이 실패했습니다";
+    ASSERT_TRUE(result.has_value()) << "SCXML parsing failed";
 
     auto stateMachine = result.value();
-    ASSERT_NE(stateMachine, nullptr) << "상태머신 생성에 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "State machine creation failed";
 
-    // 완료 모니터링이 SCXML과 통합되어 작동하는지 테스트
+    // Test that completion monitoring is integrated with SCXML
     auto parallelState = stateMachine->findChildById("parallel1");
-    ASSERT_NE(parallelState, nullptr) << "병렬 상태를 찾을 수 없습니다";
+    ASSERT_NE(parallelState, nullptr) << "Parallel state not found";
 }
 
-// 대량 지역 처리 성능 테스트
+// Large scale region handling performance test
 TEST_F(ConcurrentCompletionMonitoringTest, LargeScaleRegionHandling) {
     monitor_->startMonitoring();
 
     const int numRegions = 1000;
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    // 대량 지역 등록 및 업데이트
+    // Register and update large number of regions
     for (int i = 0; i < numRegions; ++i) {
         std::string regionId = "large_scale_region_" + std::to_string(i);
         monitor_->updateRegionCompletion(regionId, (i % 2 == 0));
@@ -231,11 +231,11 @@ TEST_F(ConcurrentCompletionMonitoringTest, LargeScaleRegionHandling) {
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
     auto regions = monitor_->getRegisteredRegions();
-    EXPECT_EQ(regions.size(), numRegions) << "대량 지역 등록에 실패했습니다";
-    EXPECT_LT(duration.count(), 1000) << "대량 지역 처리 성능이 너무 느립니다 (1초 초과)";
+    EXPECT_EQ(regions.size(), numRegions) << "Failed to register large number of regions";
+    EXPECT_LT(duration.count(), 1000) << "Large scale region processing performance is too slow (exceeds 1 second)";
 
-    // 완료 조건은 만족되지 않아야 함 (홀수 지역들이 미완료)
-    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "일부 지역이 미완료 상태인데 완료 조건이 만족되었습니다";
+    // Completion criteria should not be met (odd regions are incomplete)
+    EXPECT_FALSE(monitor_->isCompletionCriteriaMet()) << "Completion criteria met when some regions are incomplete";
 }
 
 // SCXML W3C Specification Test: ConcurrentRegion Exit Behavior

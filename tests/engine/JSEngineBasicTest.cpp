@@ -10,7 +10,7 @@ class JSEngineBasicTest : public ::testing::Test {
 protected:
     void SetUp() override {
         engine_ = &RSM::JSEngine::instance();
-        // JSEngine 리셋으로 테스트 간 격리 보장
+        // Ensure test isolation with JSEngine reset
         engine_->reset();
 
         sessionId_ = "js_basic_test_session";
@@ -424,14 +424,14 @@ TEST_F(JSEngineBasicTest, W3C_InFunction_StateMachineIntegration_ShouldReturnCor
 }
 
 TEST_F(JSEngineBasicTest, W3C_ForeachAction_ArrayExpressionEvaluation) {
-    // SCXML foreach에서 사용하는 배열 표현식들을 테스트
-    // 이 테스트는 ForeachAction의 parseArrayExpression에서 사용되는 패턴들을 검증
+    // Test array expressions used in SCXML foreach
+    // This test validates patterns used in ForeachAction's parseArrayExpression
 
-    // 1. 기본 숫자 배열 표현식 (ForeachAction 실패 원인 분석용)
+    // 1. Basic number array expression (for ForeachAction failure analysis)
     auto numberArrayResult = engine_->evaluateExpression(sessionId_, "[1, 2, 3]").get();
-    ASSERT_TRUE(numberArrayResult.isSuccess()) << "숫자 배열 표현식 평가 실패";
+    ASSERT_TRUE(numberArrayResult.isSuccess()) << "Number array expression evaluation failed";
 
-    // 반환값의 타입과 내용 확인
+    // Check return value type and contents
     if (std::holds_alternative<std::string>(numberArrayResult.getInternalValue())) {
         std::string resultStr = std::get<std::string>(numberArrayResult.getInternalValue());
         LOG_DEBUG("Array result (string): '{}'", resultStr);
@@ -448,47 +448,47 @@ TEST_F(JSEngineBasicTest, W3C_ForeachAction_ArrayExpressionEvaluation) {
         LOG_DEBUG("Array result (boolean): {}", std::get<bool>(numberArrayResult.getInternalValue()));
     }
 
-    // 2. 문자열 배열 표현식
+    // 2. String array expression
     auto stringArrayResult = engine_->evaluateExpression(sessionId_, "['first', 'second', 'third']").get();
-    ASSERT_TRUE(stringArrayResult.isSuccess()) << "문자열 배열 표현식 평가 실패";
+    ASSERT_TRUE(stringArrayResult.isSuccess()) << "String array expression evaluation failed";
 
-    // 3. 변수를 통한 배열 접근
+    // 3. Array access via variable
     auto varArraySetup = engine_->executeScript(sessionId_, "var testArray = [1, 2, 3]; testArray").get();
-    ASSERT_TRUE(varArraySetup.isSuccess()) << "배열 변수 설정 실패";
+    ASSERT_TRUE(varArraySetup.isSuccess()) << "Array variable setup failed";
 
     auto varArrayResult = engine_->evaluateExpression(sessionId_, "testArray").get();
-    ASSERT_TRUE(varArrayResult.isSuccess()) << "배열 변수 평가 실패";
+    ASSERT_TRUE(varArrayResult.isSuccess()) << "Array variable evaluation failed";
 
-    // 4. Object.values() 표현식 (복잡한 배열 생성)
+    // 4. Object.values() expression (complex array generation)
     auto objectValuesResult =
         engine_->evaluateExpression(sessionId_, "Object.values({a: 'first', b: 'second', c: 'third'})").get();
-    ASSERT_TRUE(objectValuesResult.isSuccess()) << "Object.values 표현식 평가 실패";
+    ASSERT_TRUE(objectValuesResult.isSuccess()) << "Object.values expression evaluation failed";
 
-    // 5. 빈 배열 표현식
+    // 5. Empty array expression
     auto emptyArrayResult = engine_->evaluateExpression(sessionId_, "[]").get();
-    ASSERT_TRUE(emptyArrayResult.isSuccess()) << "빈 배열 표현식 평가 실패";
+    ASSERT_TRUE(emptyArrayResult.isSuccess()) << "Empty array expression evaluation failed";
 
-    // 6. 배열 길이 확인 (foreach에서 반복 횟수 결정에 사용)
+    // 6. Array length check (used in foreach to determine iteration count)
     auto lengthCheckResult = engine_->evaluateExpression(sessionId_, "[1, 2, 3].length").get();
-    ASSERT_TRUE(lengthCheckResult.isSuccess()) << "배열 길이 확인 실패";
+    ASSERT_TRUE(lengthCheckResult.isSuccess()) << "Array length check failed";
     if (lengthCheckResult.isSuccess()) {
-        EXPECT_EQ(lengthCheckResult.getValue<double>(), 3.0) << "배열 길이가 3이 아님";
+        EXPECT_EQ(lengthCheckResult.getValue<double>(), 3.0) << "Array length is not 3";
     }
 
-    // 7. 배열 요소 개별 접근 (foreach 반복에서 사용)
+    // 7. Individual array element access (used in foreach iteration)
     auto elementAccessResult1 = engine_->evaluateExpression(sessionId_, "[1, 2, 3][0]").get();
-    ASSERT_TRUE(elementAccessResult1.isSuccess()) << "배열 첫 번째 요소 접근 실패";
+    ASSERT_TRUE(elementAccessResult1.isSuccess()) << "Array first element access failed";
 
     auto elementAccessResult2 = engine_->evaluateExpression(sessionId_, "[1, 2, 3][1]").get();
-    ASSERT_TRUE(elementAccessResult2.isSuccess()) << "배열 두 번째 요소 접근 실패";
+    ASSERT_TRUE(elementAccessResult2.isSuccess()) << "Array second element access failed";
 
-    // 8. JSON.stringify를 통한 배열 문자열 변환 (디버깅용)
+    // 8. Array string conversion via JSON.stringify (for debugging)
     auto stringifyResult = engine_->evaluateExpression(sessionId_, "JSON.stringify([1, 2, 3])").get();
-    ASSERT_TRUE(stringifyResult.isSuccess()) << "JSON.stringify 변환 실패";
+    ASSERT_TRUE(stringifyResult.isSuccess()) << "JSON.stringify conversion failed";
     if (stringifyResult.isSuccess()) {
         std::string jsonString = stringifyResult.getValue<std::string>();
         LOG_DEBUG("JSON.stringify result: '{}'", jsonString);
-        EXPECT_EQ(jsonString, "[1,2,3]") << "JSON 문자열이 예상과 다름";
+        EXPECT_EQ(jsonString, "[1,2,3]") << "JSON string differs from expected";
     }
 }
 
@@ -629,16 +629,16 @@ TEST_F(JSEngineBasicTest, W3C_VariablePersistence_ExecuteScriptConsistency) {
     EXPECT_EQ(stateTypeResult.getValue<std::string>(), "string") << "workflow_state should remain a string";
 }
 
-// **리그레이션 방지 테스트**: 숫자 변수명에 대한 'in _data' 검사
+// **Regression Prevention Test**: 'in _data' check for numeric variable names
 TEST_F(JSEngineBasicTest, W3C_NumericVariableNamesInDataAccess) {
-    // Test 150 foreach 시나리오: 숫자 변수명 생성
+    // Test 150 foreach scenario: numeric variable name generation
     auto createVar4Result = engine_->executeScript(sessionId_, "var _data = {}; _data['4'] = 'test_value';").get();
     ASSERT_TRUE(createVar4Result.isSuccess()) << "Creating numeric variable '4' should succeed";
 
     auto createVar123Result = engine_->executeScript(sessionId_, "_data['123'] = 42;").get();
     ASSERT_TRUE(createVar123Result.isSuccess()) << "Creating numeric variable '123' should succeed";
 
-    // **핵심 검증**: 'varName' in _data 구문이 올바르게 작동하는지 확인
+    // **Core Verification**: Verify 'varName' in _data syntax works correctly
     auto checkVar4Result = engine_->evaluateExpression(sessionId_, "'4' in _data").get();
     ASSERT_TRUE(checkVar4Result.isSuccess()) << "'4' in _data check should succeed";
     EXPECT_TRUE(checkVar4Result.getValue<bool>()) << "'4' should exist in _data";
@@ -651,57 +651,57 @@ TEST_F(JSEngineBasicTest, W3C_NumericVariableNamesInDataAccess) {
     ASSERT_TRUE(checkNonExistentResult.isSuccess()) << "'999' in _data check should succeed";
     EXPECT_FALSE(checkNonExistentResult.getValue<bool>()) << "'999' should NOT exist in _data";
 
-    // **리그레이션 방지**: typeof 숫자 리터럴은 유효하지만 변수명으로는 부적절함을 보여줌
+    // **Regression Prevention**: typeof numeric literal is valid, but shows why it's inappropriate as variable name
     auto typeofLiteralResult = engine_->evaluateExpression(sessionId_, "typeof 4").get();
     ASSERT_TRUE(typeofLiteralResult.isSuccess()) << "typeof 4 (literal) is valid JavaScript";
     EXPECT_EQ(typeofLiteralResult.getValue<std::string>(), "number") << "typeof 4 should return 'number'";
 
-    // 하지만 변수명 '4'로는 접근할 수 없음을 보여줌 - 우리의 _data 접근 방식이 올바름
+    // However, shows that variable name '4' cannot be accessed directly - our _data access approach is correct
     auto directAccessResult = engine_->evaluateExpression(sessionId_, "4").get();
     ASSERT_TRUE(directAccessResult.isSuccess()) << "Direct access to literal 4 should succeed";
     EXPECT_EQ(directAccessResult.getValue<int64_t>(), 4) << "Direct 4 should be number literal 4, not variable";
 
-    // 변수 '4'에 접근하려면 _data['4'] 방식을 써야 함 (우리가 올바르게 변환한 방식)
+    // To access variable '4', must use _data['4'] approach (the correct transformation we implemented)
     EXPECT_NE(directAccessResult.getValue<int64_t>(),
               engine_->evaluateExpression(sessionId_, "_data['4']").get().getValue<std::string>().length())
         << "Direct literal access vs _data variable access should be different";
 }
 
-// **리그레이션 방지 테스트**: foreach 변수 생성과 존재 확인
+// **Regression Prevention Test**: foreach variable creation and existence check
 TEST_F(JSEngineBasicTest, W3C_ForeachVariableCreationAndExistenceCheck) {
-    // SCXML 데이터 모델 초기화
+    // Initialize SCXML data model
     auto initResult =
         engine_
             ->executeScript(sessionId_, "var _data = {}; _data['1'] = [1,2,3]; _data['2'] = 0; _data['3'] = [1,2,3];")
             .get();
     ASSERT_TRUE(initResult.isSuccess()) << "Data model initialization should succeed";
 
-    // **시나리오 1**: 기존 변수 사용 (foreach item="1")
-    // typeof 1 체크 (W3C 준수 변수 생성 로직)
+    // **Scenario 1**: Using existing variable (foreach item="1")
+    // Check typeof 1 (W3C-compliant variable creation logic)
     auto checkExisting1Result = engine_->evaluateExpression(sessionId_, "'1' in _data").get();
     ASSERT_TRUE(checkExisting1Result.isSuccess()) << "Checking existing variable '1' should succeed";
     EXPECT_TRUE(checkExisting1Result.getValue<bool>()) << "Variable '1' should already exist";
 
-    // **시나리오 2**: 신규 변수 생성 (foreach item="4")
+    // **Scenario 2**: Creating new variable (foreach item="4")
     auto checkNew4Result = engine_->evaluateExpression(sessionId_, "'4' in _data").get();
     ASSERT_TRUE(checkNew4Result.isSuccess()) << "Checking new variable '4' should succeed";
     EXPECT_FALSE(checkNew4Result.getValue<bool>()) << "Variable '4' should NOT exist initially";
 
-    // foreach 실행 시뮬레이션: 새 변수 생성
+    // Simulate foreach execution: create new variable
     auto createNew4Result = engine_->executeScript(sessionId_, "_data['4'] = _data['3'][0];").get();
     ASSERT_TRUE(createNew4Result.isSuccess()) << "Creating new foreach variable '4' should succeed";
 
-    // **핵심 검증**: 새로 생성된 변수가 존재하는지 확인
+    // **Core Verification**: Verify newly created variable exists
     auto verifyNew4Result = engine_->evaluateExpression(sessionId_, "'4' in _data").get();
     ASSERT_TRUE(verifyNew4Result.isSuccess()) << "Verifying new variable '4' should succeed";
     EXPECT_TRUE(verifyNew4Result.getValue<bool>()) << "Variable '4' should now exist after foreach";
 
-    // **추가 검증**: 변수 값도 올바른지 확인
+    // **Additional Verification**: Verify variable value is correct
     auto getValue4Result = engine_->evaluateExpression(sessionId_, "_data['4']").get();
     ASSERT_TRUE(getValue4Result.isSuccess()) << "Getting value of '4' should succeed";
     EXPECT_EQ(getValue4Result.getValue<int64_t>(), 1) << "Variable '4' should contain first array element";
 
-    // **시나리오 3**: index 변수 생성 (foreach index="5")
+    // **Scenario 3**: Create index variable (foreach index="5")
     auto createIndex5Result = engine_->executeScript(sessionId_, "_data['5'] = 0;").get();
     ASSERT_TRUE(createIndex5Result.isSuccess()) << "Creating index variable '5' should succeed";
 

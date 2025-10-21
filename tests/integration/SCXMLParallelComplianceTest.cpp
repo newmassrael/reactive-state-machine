@@ -36,7 +36,7 @@ protected:
     std::string sessionId_;
 };
 
-// W3C SCXML 사양 3.4: 병렬 상태 기본 동작 테스트
+// W3C SCXML specification 3.4: Parallel state basic behavior test
 TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_BasicBehavior_ShouldParseAndEnterCorrectly) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -81,7 +81,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_BasicBehavior_ShouldParseA
     EXPECT_TRUE(sm.isRunning()) << "StateMachine not running after successful start";
 }
 
-// W3C SCXML 사양 3.4: done.state 이벤트 생성 테스트
+// W3C SCXML specification 3.4: done.state event generation test
 TEST_F(SCXMLParallelComplianceTest, W3C_DoneStateEvent_Generation_ShouldProcessDoneStateEvents) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -111,9 +111,9 @@ TEST_F(SCXMLParallelComplianceTest, W3C_DoneStateEvent_Generation_ShouldProcessD
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱이 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: done.state.parallel1 전환이 올바르게 파싱됨
+    // W3C specification: done.state.parallel1 transition parsed correctly
     EXPECT_EQ(stateMachine->getInitialState(), "parallel1");
 
     // SCXML W3C specification section 3.4: done.state event handling compliance test
@@ -141,9 +141,10 @@ TEST_F(SCXMLParallelComplianceTest, W3C_DoneStateEvent_Generation_ShouldProcessD
         << "StateMachine must transition to completed state per W3C SCXML 3.4 specification";
 }
 
-// W3C SCXML 사양 3.4: done.state 이벤트 자동 생성 테스트
+// W3C SCXML specification 3.4: done.state event automatic generation test
 TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_DoneStateEvent_Generation) {
-    // W3C 사양: 병렬 상태의 모든 지역이 완료되면 done.state.parallel_id 이벤트 자동 생성
+    // W3C specification: When all regions of parallel state complete, done.state.parallel_id event is automatically
+    // generated
 
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -161,7 +162,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_DoneStateEvent_Generation) {
                 <initial><transition target="b_final"/></initial>
                 <final id="b_final"/>
             </state>
-            <!-- W3C SCXML 3.4: done.state 이벤트를 받을 전환 정의 -->
+            <!-- W3C SCXML 3.4: Define transition to receive done.state event -->
             <transition event="done.state.test_parallel" target="completed">
                 <assign location="done_event_received" expr="true"/>
                 <assign location="parallel_completed" expr="true"/>
@@ -171,57 +172,59 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_DoneStateEvent_Generation) {
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // SCXML W3C 사양 3.4: 병렬 상태 완료 시 자동 done.state 이벤트 생성 테스트
+    // SCXML W3C specification 3.4: Automatic done.state event generation test on parallel state completion
     RSM::StateMachine sm;
-    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine 로딩 실패";
-    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine loading failed";
+    ASSERT_TRUE(sm.start()) << "StateMachine start failed";
 
-    // W3C SCXML 3.4 사양 테스트: 모든 지역이 즉시 final 상태로 진입
-    // 이 시나리오에서는 병렬 상태가 시작과 동시에 모든 지역이 완료됨
-    // 따라서 done.state.test_parallel 이벤트가 자동으로 생성되고 즉시 처리되어 completed 상태로 전환됨
+    // W3C SCXML 3.4 specification test: All regions immediately enter final state
+    // In this scenario, all regions complete as soon as the parallel state starts
+    // Therefore, done.state.test_parallel event is automatically generated and immediately processed, transitioning to
+    // completed state
 
     try {
-        // 병렬 상태가 완료되었는지 확인 (done.state 이벤트 자동 생성)
-        // StateMachine의 다음 처리 사이클을 기다리기 위해 짧은 시간 대기
+        // Check if parallel state completed (done.state event automatic generation)
+        // Wait briefly for StateMachine's next processing cycle
         std::this_thread::sleep_for(RSM::Test::Utils::POLL_INTERVAL_MS);
 
-        // 자동 생성된 done.state 이벤트로 인한 전환이 발생했는지 확인
+        // Verify transition occurred due to automatically generated done.state event
         auto doneEventResult =
             RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "done_event_received").get();
 
         auto parallelCompletedResult =
             RSM::JSEngine::instance().evaluateExpression(sm.getSessionId(), "parallel_completed").get();
 
-        // W3C SCXML 3.4: done.state 이벤트 자동 생성 검증
+        // W3C SCXML 3.4: Verify done.state event automatic generation
         if (doneEventResult.getValueAsString() == "true" && parallelCompletedResult.getValueAsString() == "true") {
-            // 최종 상태로의 전환도 확인
-            EXPECT_EQ(sm.getCurrentState(), "completed") << "done.state 이벤트로 인한 전환이 완료되지 않음";
+            // Also verify transition to final state
+            EXPECT_EQ(sm.getCurrentState(), "completed") << "Transition due to done.state event not completed";
 
-            Logger::info("W3C COMPLIANCE VERIFIED: done.state 이벤트가 자동으로 생성되고 처리됨");
-            SUCCEED()
-                << "SCXML W3C 3.4 사양 준수: 병렬 상태 완료 시 done.state.test_parallel 이벤트 자동 생성 및 처리 성공";
+            Logger::info("W3C COMPLIANCE VERIFIED: done.state event automatically generated and processed");
+            SUCCEED() << "SCXML W3C 3.4 specification compliance: Successfully auto-generated and processed "
+                         "done.state.test_parallel event on parallel state completion";
 
         } else {
-            // done.state 이벤트가 자동 생성되지 않은 경우
+            // When done.state event was not automatically generated
             EXPECT_EQ(doneEventResult.getValueAsString(), "true")
-                << "SCXML 위반: done.state.test_parallel 이벤트가 자동 생성되지 않음. "
-                << "W3C 사양에 따르면 모든 병렬 지역이 완료되면 done.state 이벤트가 자동 생성되어야 함";
+                << "SCXML violation: done.state.test_parallel event not automatically generated. "
+                << "According to W3C specification, done.state event should be automatically generated when all "
+                   "parallel regions complete";
 
             EXPECT_EQ(parallelCompletedResult.getValueAsString(), "true")
-                << "SCXML 위반: 병렬 상태 완료 감지 실패. "
-                << "병렬 상태의 모든 지역이 final 상태에 도달했으므로 완료로 인식되어야 함";
+                << "SCXML violation: Parallel state completion detection failed. "
+                << "All regions of parallel state reached final state, so it should be recognized as complete";
         }
 
     } catch (const std::exception &e) {
-        FAIL() << "SCXML 위반: done.state 이벤트 자동 생성 테스트 실행 중 오류 발생. "
-               << "W3C 사양 3.4에 따른 병렬 상태 완료 처리가 올바르게 구현되지 않음. "
-               << "오류: " << e.what();
+        FAIL() << "SCXML violation: Error occurred during done.state event automatic generation test. "
+               << "Parallel state completion handling according to W3C specification 3.4 not correctly implemented. "
+               << "Error: " << e.what();
     }
 }
 
-// W3C SCXML 사양 3.4: 병렬 상태 완료 조건 테스트
+// W3C SCXML specification 3.4: Parallel state completion criteria test
 TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_CompletionCriteria_ShouldCompleteWhenAllRegionsFinal) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -250,13 +253,13 @@ TEST_F(SCXMLParallelComplianceTest, W3C_ParallelState_CompletionCriteria_ShouldC
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱이 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: 모든 지역이 최종 상태에 도달해야 병렬 상태가 완료됨
+    // W3C specification: Parallel state completes when all regions reach final state
     EXPECT_EQ(stateMachine->getInitialState(), "parallel1");
 }
 
-// W3C SCXML 사양 3.4: 병렬 상태에서 외부 전이 테스트
+// W3C SCXML specification 3.4: External transition from parallel state test
 TEST_F(SCXMLParallelComplianceTest, W3C_ExternalTransition_FromParallelState_ShouldExitAllRegions) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -284,13 +287,13 @@ TEST_F(SCXMLParallelComplianceTest, W3C_ExternalTransition_FromParallelState_Sho
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱이 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: 병렬 상태에서 외부 전이가 모든 지역을 비활성화해야 함
+    // W3C specification: External transition from parallel state must deactivate all regions
     EXPECT_EQ(stateMachine->getInitialState(), "parallel1");
 }
 
-// W3C SCXML 사양 3.4: 지역 독립성 테스트
+// W3C SCXML specification 3.4: Region independence test
 TEST_F(SCXMLParallelComplianceTest, W3C_RegionIndependence_ShouldProcessEventsIndependently) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -318,13 +321,13 @@ TEST_F(SCXMLParallelComplianceTest, W3C_RegionIndependence_ShouldProcessEventsIn
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱이 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: 각 지역이 독립적으로 이벤트를 처리해야 함
+    // W3C specification: Each region must process events independently
     EXPECT_EQ(stateMachine->getInitialState(), "parallel1");
 }
 
-// W3C SCXML 사양 3.4: 중첩된 병렬 상태 테스트
+// W3C SCXML specification 3.4: Nested parallel states test
 TEST_F(SCXMLParallelComplianceTest, W3C_NestedParallelStates) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -359,13 +362,13 @@ TEST_F(SCXMLParallelComplianceTest, W3C_NestedParallelStates) {
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱이 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: 중첩된 병렬 상태가 올바르게 처리되어야 함
+    // W3C specification: Nested parallel states must be handled correctly
     EXPECT_EQ(stateMachine->getInitialState(), "outer_parallel");
 }
 
-// W3C SCXML 사양 3.4: 데이터 모델 공유 테스트
+// W3C SCXML specification 3.4: Data model sharing test
 TEST_F(SCXMLParallelComplianceTest, W3C_DataModelSharing) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -398,13 +401,13 @@ TEST_F(SCXMLParallelComplianceTest, W3C_DataModelSharing) {
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱이 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: 병렬 상태 간 데이터 모델 공유가 올바르게 작동해야 함
+    // W3C specification: Data model sharing between parallel states must work correctly
     EXPECT_EQ(stateMachine->getInitialState(), "parallel1");
 }
 
-// W3C SCXML 사양 3.4: 이벤트 우선순위 테스트
+// W3C SCXML specification 3.4: Event priority test
 TEST_F(SCXMLParallelComplianceTest, W3C_EventPriority) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -434,13 +437,13 @@ TEST_F(SCXMLParallelComplianceTest, W3C_EventPriority) {
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱이 실패했습니다";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: 이벤트 우선순위가 올바르게 처리되어야 함
+    // W3C specification: Event priority must be handled correctly
     EXPECT_EQ(stateMachine->getInitialState(), "parallel1");
 }
 
-// W3C SCXML 사양 3.4: 동시 지역 활성화 테스트 (구현됨)
+// W3C SCXML specification 3.4: Simultaneous region activation test (implemented)
 TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_RegionActivation_Simultaneous) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -476,13 +479,13 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_RegionActivation_Simultaneous) 
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
-    // W3C 사양: "When a <parallel> element is active, ALL of its children are active"
+    // W3C specification: "When a <parallel> element is active, ALL of its children are active"
     // Test actual region activation through StateMachine integration
     RSM::StateMachine sm;
-    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine 로딩 실패";
-    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine loading failed";
+    ASSERT_TRUE(sm.start()) << "StateMachine start failed";
 
     // Verify parallel state is active
     EXPECT_EQ(sm.getCurrentState(), "test_parallel") << "Parallel state not entered";
@@ -531,7 +534,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_RegionActivation_Simultaneous) 
     }
 }
 
-// W3C SCXML 사양 3.4: 이벤트 브로드캐스팅 테스트 (구현됨)
+// W3C SCXML specification 3.4: Event broadcasting test (implemented)
 TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EventBroadcasting_AllRegions) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -573,11 +576,11 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EventBroadcasting_AllRegions) {
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
     RSM::StateMachine sm;
-    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "SCXML 로딩 실패";
-    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "SCXML loading failed";
+    ASSERT_TRUE(sm.start()) << "StateMachine start failed";
 
     // Verify initial state is parallel state
     EXPECT_EQ(sm.getCurrentState(), "broadcast_test") << "Parallel state not entered correctly";
@@ -618,7 +621,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EventBroadcasting_AllRegions) {
     }
 }
 
-// W3C SCXML 사양 3.4: 병렬 상태 완료 기준 테스트
+// W3C SCXML specification 3.4: Parallel state completion criteria test
 TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_CompletionCriteria) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -651,11 +654,11 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_CompletionCriteria) {
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
     RSM::StateMachine sm;
-    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "SCXML 로딩 실패";
-    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "SCXML loading failed";
+    ASSERT_TRUE(sm.start()) << "StateMachine start failed";
 
     // Verify initial state is parallel state
     EXPECT_EQ(sm.getCurrentState(), "completion_test") << "Parallel state not entered correctly";
@@ -694,7 +697,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_CompletionCriteria) {
     }
 }
 
-// W3C SCXML 사양 3.4: 진입/종료 시퀀스 테스트
+// W3C SCXML specification 3.4: Entry/exit sequence test
 TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EntryExitSequence) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -741,7 +744,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EntryExitSequence) {
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
     // W3C SCXML specification section 3.4: Entry/exit sequence compliance test
     RSM::StateMachine sm;
@@ -806,7 +809,7 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_EntryExitSequence) {
     }
 }
 
-// W3C SCXML 사양 3.4: 독립적 전환 처리 테스트
+// W3C SCXML specification 3.4: Independent transition processing test
 TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_TransitionProcessing_Independent) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -840,12 +843,12 @@ TEST_F(SCXMLParallelComplianceTest, W3C_Parallel_TransitionProcessing_Independen
     </scxml>)";
 
     auto stateMachine = parser_->parseContent(scxmlContent);
-    ASSERT_NE(stateMachine, nullptr) << "SCXML 파싱 실패";
+    ASSERT_NE(stateMachine, nullptr) << "SCXML parsing failed";
 
     // W3C SCXML specification section 3.4: Independent transition processing test
     RSM::StateMachine sm;
-    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine 로딩 실패";
-    ASSERT_TRUE(sm.start()) << "StateMachine 시작 실패";
+    ASSERT_TRUE(sm.loadSCXMLFromString(scxmlContent)) << "StateMachine loading failed";
+    ASSERT_TRUE(sm.start()) << "StateMachine start failed";
 
     // Verify initial state is parallel state
     EXPECT_EQ(sm.getCurrentState(), "independent_test") << "Parallel state not entered correctly";

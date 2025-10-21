@@ -518,7 +518,7 @@ std::string TXMLConverter::convertConfAttributes(const std::string &content) {
     result = std::regex_replace(result, CONF_EVENTTYPE_ATTR, R"(expr="_event.type")");
 
     // Convert foreach element attributes with numeric variable name handling
-    // JavaScript 호환성: 숫자 변수명은 var prefix 추가
+    // JavaScript compatibility: Add var prefix for numeric variable names
 
     // Convert conf:item with numeric handling
     std::regex item_numeric_pattern(R"xyz(conf:item="([0-9]+)")xyz");

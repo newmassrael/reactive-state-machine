@@ -42,7 +42,7 @@ public:
 class EventSchedulingTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // JSEngine 리셋으로 테스트 간 격리 보장
+        // Ensure test isolation with JSEngine reset
         auto &jsEngine = JSEngine::instance();
         jsEngine.reset();
 
@@ -579,35 +579,35 @@ TEST_F(EventSchedulingTest, SessionAwareDelayedEventCancellation) {
 }
 
 /**
- * @brief 실제 StateMachine invoke를 사용한 종합적인 세션 격리 테스트
+ * @brief Comprehensive session isolation test using actual StateMachine invoke
  *
- * W3C SCXML 사양:
- * - Section 6.4.1: invoke 요소는 별도의 세션을 생성해야 함
- * - Section 6.2: send 요소로 생성된 지연된 이벤트는 해당 세션에서만 처리되어야 함
- * - Section 6.2.4: 세션 간 이벤트 격리가 보장되어야 함
+ * W3C SCXML Specification:
+ * - Section 6.4.1: invoke element must create a separate session
+ * - Section 6.2: Delayed events created by send element must be processed only in that session
+ * - Section 6.2.4: Event isolation between sessions must be guaranteed
  *
- * 테스트 시나리오: W3C 207과 유사한 시나리오로 invoke 세션의 지연된 이벤트 격리 검증
- * 1. 부모 StateMachine이 자식 StateMachine을 invoke로 생성
- * 2. 자식 세션에서 지연된 이벤트를 전송하고 자체 EventRaiser로 처리되는지 검증
- * 3. 부모 세션의 EventRaiser에 자식 이벤트가 잘못 전송되지 않는지 검증
+ * Test Scenario: Verify invoke session delayed event isolation similar to W3C test 207
+ * 1. Parent StateMachine creates child StateMachine via invoke
+ * 2. Child session sends delayed event and verify it's processed by its own EventRaiser
+ * 3. Verify child events are not incorrectly sent to parent session's EventRaiser
  */
 // Re-enabled after fixing race conditions with mutex-based synchronization
 // Tests concurrent invoke session isolation with delayed event routing
 TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
     LOG_DEBUG("High-level SCXML invoke session isolation test");
 
-    // 고수준 SCXML 기반 세션 격리 테스트 (dual invoke로 복원)
+    // High-level SCXML-based session isolation test (restored with dual invoke)
     std::atomic<bool> parentReceivedChild1Event{false};
     std::atomic<bool> parentReceivedChild2Event{false};
     std::atomic<bool> child1ReceivedOwnEvent{false};
     std::atomic<bool> child2ReceivedOwnEvent{false};
     std::atomic<bool> sessionIsolationViolated{false};
 
-    // 부모 StateMachine 생성 (2개의 자식 invoke 포함) - shared_ptr for enable_shared_from_this support
+    // Create parent StateMachine (with 2 child invokes) - shared_ptr for enable_shared_from_this support
     auto parentStateMachine = std::make_shared<StateMachine>();
     auto parentContext = std::make_unique<StateMachineContext>(parentStateMachine);
 
-    // 부모 SCXML: 두 개의 자식 세션을 invoke하고 세션 격리 검증
+    // Parent SCXML: Invoke two child sessions and verify session isolation
     std::string parentScxml = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="parent_start" datamodel="ecmascript">
     <datamodel>
@@ -616,7 +616,7 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
         <data id="isolationViolated" expr="false"/>
     </datamodel>
 
-    <!-- W3C SCXML 3.13: Invoke는 compound state에 정의하되, internal transition만 사용하여 state exit 방지 -->
+    <!-- W3C SCXML 3.13: Define invoke in compound state, but use only internal transitions to prevent state exit -->
     <state id="parent_start">
         <onentry>
             <log expr="'Parent: Starting session isolation test with two children'"/>
@@ -670,7 +670,7 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
             </content>
         </invoke>
 
-        <!-- W3C SCXML: Internal transitions는 state를 exit하지 않으므로 invoke가 취소되지 않음 -->
+        <!-- W3C SCXML: Internal transitions do not exit state, so invoke is not cancelled -->
         <transition event="child1.ready" type="internal">
             <log expr="'Parent: Child1 ready'"/>
         </transition>
@@ -719,7 +719,7 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
     </final>
 </scxml>)";
 
-    // EventRaiser 콜백으로 이벤트 추적
+    // Track events with EventRaiser callback
     auto parentEventRaiser =
         std::make_shared<RSM::Test::MockEventRaiser>([&](const std::string &name, const std::string &data) -> bool {
             (void)data;
@@ -736,7 +736,7 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
                 child2ReceivedOwnEvent = true;
             }
 
-            // StateMachine에 이벤트 전달
+            // Forward event to StateMachine
             if (parentStateMachine->isRunning()) {
                 std::string currentState = parentStateMachine->getCurrentState();
                 LOG_DEBUG("Parent state: {}, processing event: {}", currentState, name);
@@ -749,26 +749,26 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
             return false;
         });
 
-    // StateMachine 설정
+    // Configure StateMachine
     parentStateMachine->setEventDispatcher(dispatcher_);
     parentStateMachine->setEventRaiser(parentEventRaiser);
 
-    // SCXML 로드 및 실행
+    // Load and execute SCXML
     ASSERT_TRUE(parentStateMachine->loadSCXMLFromString(parentScxml)) << "Failed to load parent SCXML";
     ASSERT_TRUE(parentStateMachine->start()) << "Failed to start parent StateMachine";
 
     LOG_DEBUG("Waiting for invoke sessions and delayed events to execute...");
 
-    // 충분한 시간 대기 (자식 세션 생성 + 지연된 이벤트 실행 + EventScheduler 처리 시간)
+    // Wait sufficient time (child session creation + delayed event execution + EventScheduler processing time)
     // child1: 100ms delay, child2: 150ms delay + substantial processing time
     // Adding extra time to ensure all events are fully processed before cleanup
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
 
-    // 고수준 검증: SCXML 데이터모델을 통한 상태 확인
+    // High-level verification: Check state via SCXML datamodel
     bool finalStateReached = (parentStateMachine->getCurrentState() == "parent_success" ||
                               parentStateMachine->getCurrentState() == "parent_violation");
 
-    // 세션 격리 검증
+    // Verify session isolation
     EXPECT_TRUE(finalStateReached) << "StateMachine should reach final state";
     EXPECT_TRUE(parentReceivedChild1Event.load()) << "Parent should receive child1 ready event";
     EXPECT_TRUE(parentReceivedChild2Event.load()) << "Parent should receive child2 ready event";
@@ -777,7 +777,7 @@ TEST_F(EventSchedulingTest, InvokeSessionEventIsolation_DelayedEventRouting) {
     EXPECT_FALSE(sessionIsolationViolated.load()) << "No session isolation violations should occur";
     EXPECT_EQ(parentStateMachine->getCurrentState(), "parent_success") << "Should reach success state, not violation";
 
-    // StateMachine 정리
+    // Clean up StateMachine
     parentStateMachine->stop();
 
     LOG_DEBUG("High-level session isolation test completed - Child1: {}, Child2: {}, Violations: {}",

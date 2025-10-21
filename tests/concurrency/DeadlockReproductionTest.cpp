@@ -32,7 +32,7 @@ namespace RSM {
 class DeadlockReproductionTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // JSEngine 리셋으로 테스트 간 격리 보장
+        // Ensure test isolation with JSEngine reset
         auto &jsEngine = JSEngine::instance();
         jsEngine.reset();
 

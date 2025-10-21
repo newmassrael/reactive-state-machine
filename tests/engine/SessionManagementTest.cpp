@@ -16,7 +16,7 @@ class SessionManagementTest : public ::testing::Test {
 protected:
     void SetUp() override {
         engine_ = &RSM::JSEngine::instance();
-        // JSEngine 리셋으로 테스트 간 격리 보장
+        // Ensure test isolation with JSEngine reset
         engine_->reset();
     }
 
@@ -231,7 +231,7 @@ TEST_F(SessionManagementTest, SessionCleanupOnShutdown) {
     engine_->shutdown();
 
     // Re-initialize for TearDown
-    // JSEngine은 생성자에서 자동 초기화됨 (RAII)
+    // JSEngine is automatically initialized in constructor (RAII)
 }
 
 // Test max sessions stress test

@@ -176,7 +176,7 @@ TEST_F(TXMLConverterTest, ConvertsDatamodelAttribute) {
 // Variable Binding and Expression Tests (conf:isBound)
 // ============================================================================
 
-// Test conf:isBound attribute conversion: 숫자는 var prefix 추가, 일반 변수명은 그대로
+// Test conf:isBound attribute conversion: Add var prefix for numbers, keep general variable names as-is
 TEST_F(TXMLConverterTest, ConvertsIsBoundToTypeofCondition) {
     std::string txml = createValidTXML(R"(
         <transition conf:isBound="4" target="pass"/>
@@ -758,7 +758,7 @@ TEST_F(TXMLConverterTest, ConvertsForeachMixedAttributes) {
     EXPECT_EQ(result.find("conf:"), std::string::npos);
 }
 
-// **리그레이션 방지 테스트**: JavaScript 문법 유효성 검증
+// **Regression Prevention Test**: JavaScript syntax validity verification
 TEST_F(TXMLConverterTest, ValidatesJavaScriptSyntaxForNumericVariables) {
     std::string txml = R"abc(<?xml version="1.0"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" initial="test">
@@ -773,7 +773,7 @@ TEST_F(TXMLConverterTest, ValidatesJavaScriptSyntaxForNumericVariables) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // **핵심 검증**: 숫자 변수명도 올바른 JavaScript 구문으로 변환되어야 함
+    // **Core Verification**: Numeric variable names must convert to valid JavaScript syntax
     EXPECT_NE(result.find(R"abc(cond="typeof Var4 !== 'undefined'")abc"), std::string::npos)
         << "conf:isBound=\"4\" should convert to valid JavaScript: typeof Var4 !== 'undefined'";
 
@@ -783,7 +783,7 @@ TEST_F(TXMLConverterTest, ValidatesJavaScriptSyntaxForNumericVariables) {
     EXPECT_NE(result.find(R"abc(cond="typeof variableName !== 'undefined'")abc"), std::string::npos)
         << "conf:isBound=\"variableName\" should convert to valid JavaScript: typeof variableName !== 'undefined'";
 
-    // **리그레이션 방지**: 잘못된 JavaScript 구문이 생성되지 않았는지 확인
+    // **Regression Prevention**: Verify no invalid JavaScript syntax is generated
     EXPECT_EQ(result.find("typeof 4 !== 'undefined'"), std::string::npos)
         << "Should NOT generate invalid JavaScript: typeof 4 !== 'undefined'";
 
@@ -794,7 +794,7 @@ TEST_F(TXMLConverterTest, ValidatesJavaScriptSyntaxForNumericVariables) {
     EXPECT_EQ(result.find("conf:"), std::string::npos) << "All conf: references should be removed";
 }
 
-// **단위 테스트**: conf 배열 요소 변환 검증
+// **Unit Test**: conf array element conversion verification
 TEST_F(TXMLConverterTest, ConvertsConfArrayElementsInDataModel) {
     std::string txml = R"abc(<?xml version="1.0"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" initial="test">
@@ -815,28 +815,28 @@ TEST_F(TXMLConverterTest, ConvertsConfArrayElementsInDataModel) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // **핵심 검증**: conf:array123이 JavaScript 배열로 변환되는지 확인
+    // **Core Verification**: Check if conf:array123 converts to JavaScript array
     EXPECT_NE(result.find(R"([1,2,3])"), std::string::npos) << "<conf:array123/> should convert to [1,2,3]";
 
     EXPECT_NE(result.find(R"([4,5,6])"), std::string::npos) << "<conf:array456/> should convert to [4,5,6]";
 
-    // **검증**: conf 요소가 완전히 제거되었는지 확인
+    // **Verification**: Check if conf elements are completely removed
     EXPECT_EQ(result.find("<conf:array123/>"), std::string::npos)
         << "conf:array123 element should be completely removed";
 
     EXPECT_EQ(result.find("<conf:array456/>"), std::string::npos)
         << "conf:array456 element should be completely removed";
 
-    // **검증**: 다른 요소는 영향받지 않는지 확인
+    // **Verification**: Check that other elements are not affected
     EXPECT_NE(result.find(R"(id="emptyData")"), std::string::npos) << "Other data elements should remain unchanged";
 
-    // **최종 검증**: 모든 conf 참조가 제거되었는지 확인
+    // **Final Verification**: Check that all conf references are removed
     EXPECT_EQ(result.find("conf:"), std::string::npos) << "All conf: references should be removed";
 }
 
-// **통합 테스트**: 완전한 W3C 테스트 패턴 변환 검증
+// **Integration Test**: Complete W3C test pattern conversion verification
 TEST_F(TXMLConverterTest, ConvertsCompleteW3CTestPattern) {
-    // 실제 W3C 테스트 150의 완전한 패턴 (conf:array123 포함)
+    // Complete pattern from actual W3C test 150 (including conf:array123)
     std::string txml = R"abc(<?xml version="1.0"?>
 <scxml initial="s0" conf:datamodel="" version="1.0" xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance">
 <datamodel>
@@ -868,7 +868,7 @@ TEST_F(TXMLConverterTest, ConvertsCompleteW3CTestPattern) {
 
     std::string result = converter.convertTXMLToSCXML(txml);
 
-    // **핵심 검증**: 데이터모델이 올바르게 변환되는지 확인
+    // **Core Verification**: Check if datamodel is converted correctly
     EXPECT_NE(result.find(R"abc(datamodel="ecmascript")abc"), std::string::npos)
         << "conf:datamodel should convert to datamodel=\"ecmascript\"";
 
@@ -876,11 +876,11 @@ TEST_F(TXMLConverterTest, ConvertsCompleteW3CTestPattern) {
 
     EXPECT_NE(result.find(R"abc(id="Var3")abc"), std::string::npos) << "conf:id=\"3\" should convert to id=\"Var3\"";
 
-    // **핵심 검증**: conf:array123이 JavaScript 배열로 변환되는지 확인
+    // **Core Verification**: Check if conf:array123 converts to JavaScript array
     EXPECT_NE(result.find(R"([1,2,3])"), std::string::npos)
         << "<conf:array123/> should convert to [1,2,3] inside data element";
 
-    // **검증**: foreach 속성들이 올바르게 변환되는지 확인
+    // **Verification**: Check if foreach attributes are converted correctly
     EXPECT_NE(result.find(R"abc(item="Var4")abc"), std::string::npos)
         << "conf:item=\"4\" should convert to item=\"Var4\" for valid JavaScript variable name";
 
@@ -890,11 +890,11 @@ TEST_F(TXMLConverterTest, ConvertsCompleteW3CTestPattern) {
     EXPECT_NE(result.find(R"abc(array="Var3")abc"), std::string::npos)
         << "conf:arrayVar=\"3\" should convert to array=\"Var3\" for valid JavaScript variable name";
 
-    // **검증**: isBound가 올바른 JavaScript 구문으로 변환되는지 확인
+    // **Verification**: Check if isBound converts to valid JavaScript syntax
     EXPECT_NE(result.find(R"abc(cond="typeof Var4 !== 'undefined'")abc"), std::string::npos)
         << "conf:isBound=\"4\" should convert to valid JavaScript: typeof Var4 !== 'undefined'";
 
-    // **검증**: pass/fail 타겟이 올바르게 변환되는지 확인
+    // **Verification**: Check if pass/fail targets are converted correctly
     EXPECT_NE(result.find(R"abc(target="pass")abc"), std::string::npos)
         << "conf:targetpass should convert to target=\"pass\"";
 
@@ -907,14 +907,14 @@ TEST_F(TXMLConverterTest, ConvertsCompleteW3CTestPattern) {
     EXPECT_NE(result.find(R"abc(<final id="fail"/>)abc"), std::string::npos)
         << "conf:fail should convert to final id=\"fail\"";
 
-    // **리그레이션 방지**: 잘못된 JavaScript 구문이 생성되지 않았는지 확인
+    // **Regression Prevention**: Verify no invalid JavaScript syntax is generated
     EXPECT_EQ(result.find("typeof 4 !== 'undefined'"), std::string::npos)
         << "Should NOT generate invalid JavaScript: typeof 4 !== 'undefined'";
 
     EXPECT_EQ(result.find("typeof 1 !== 'undefined'"), std::string::npos)
         << "Should NOT generate invalid JavaScript: typeof 1 !== 'undefined'";
 
-    // **최종 검증**: 모든 conf 참조가 제거되었는지 확인
+    // **Final Verification**: Check that all conf references are removed
     EXPECT_EQ(result.find("conf:"), std::string::npos) << "All conf: references should be removed";
 }
 

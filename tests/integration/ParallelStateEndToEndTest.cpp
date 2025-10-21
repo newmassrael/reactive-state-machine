@@ -30,7 +30,7 @@ protected:
     std::string sessionId_;
 };
 
-// 기본적인 parallel 상태 End-to-End 워크플로우 테스트
+// Basic parallel state End-to-End workflow test
 TEST_F(ParallelStateEndToEndTest, BasicParallelStateWorkflow) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -38,13 +38,13 @@ TEST_F(ParallelStateEndToEndTest, BasicParallelStateWorkflow) {
         <datamodel>
             <data id="task1_completed" expr="false"/>
             <data id="task2_completed" expr="false"/>
-            <data id="workflow_status" expr="'초기화'"/>
+            <data id="workflow_status" expr="'initialized'"/>
         </datamodel>
         
         <parallel id="parallel_work">
             <state id="task1">
                 <onentry>
-                    <script>workflow_status = '작업1 시작';</script>
+                    <script>workflow_status = 'task1_started';</script>
                 </onentry>
                 <transition event="complete_task1" target="task1_done">
                     <script>task1_completed = true;</script>
@@ -54,7 +54,7 @@ TEST_F(ParallelStateEndToEndTest, BasicParallelStateWorkflow) {
             
             <state id="task2">
                 <onentry>
-                    <script>workflow_status = '작업2 시작';</script>
+                    <script>workflow_status = 'task2_started';</script>
                 </onentry>
                 <transition event="complete_task2" target="task2_done">
                     <script>task2_completed = true;</script>
@@ -69,12 +69,12 @@ TEST_F(ParallelStateEndToEndTest, BasicParallelStateWorkflow) {
     auto model = parser_->parseContent(scxmlContent);
     ASSERT_NE(model, nullptr);
 
-    // 상태 머신 생성 테스트
+    // Test state machine creation
     EXPECT_EQ(model->getInitialState(), "parallel_work");
     EXPECT_EQ(model->getDatamodel(), "ecmascript");
 }
 
-// 복잡한 parallel 상태 시나리오 테스트
+// Complex parallel state scenario test
 TEST_F(ParallelStateEndToEndTest, ComplexParallelStateScenario) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -129,7 +129,7 @@ TEST_F(ParallelStateEndToEndTest, ComplexParallelStateScenario) {
     EXPECT_EQ(model->getInitialState(), "multi_region_parallel");
 }
 
-// 에러 처리가 포함된 parallel 상태 테스트
+// Parallel state test with error handling
 TEST_F(ParallelStateEndToEndTest, ParallelStateWithErrorHandling) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 
@@ -181,7 +181,7 @@ TEST_F(ParallelStateEndToEndTest, ParallelStateWithErrorHandling) {
     EXPECT_EQ(model->getInitialState(), "resilient_parallel");
 }
 
-// 타이밍과 동기화가 중요한 parallel 상태 테스트
+// Parallel state test with timing and synchronization
 TEST_F(ParallelStateEndToEndTest, ParallelStateTimingAndSynchronization) {
     const std::string scxmlContent = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" 

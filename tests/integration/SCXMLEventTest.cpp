@@ -34,7 +34,7 @@ class SCXMLEventTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Initialize JavaScript engine
-        // JSEngine 리셋으로 테스트 간 격리 보장
+        // Ensure test isolation with JSEngine reset
         JSEngine::instance().reset();
 
         sessionId_ = "scxml_event_test_session";

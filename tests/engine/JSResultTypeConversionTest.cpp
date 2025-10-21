@@ -189,11 +189,11 @@ TEST_F(JSResultTypeConversionTest, DataLossPrevention_NoValueLoss) {
     // Critical requirement: No data loss during C++ and JavaScript type conversions
 
     // 1. int64_t values must be recoverable after double conversion
-    int64_t originalInt = 9007199254740992LL;  // 2^53 (double precision 경계)
+    int64_t originalInt = 9007199254740992LL;  // 2^53 (double precision boundary)
     auto intResult = JSResult::createSuccess(originalInt);
 
     double asDouble = intResult.getValue<double>();
-    int64_t backToInt = static_cast<int64_t>(asDouble);  // 수동 역변환
+    int64_t backToInt = static_cast<int64_t>(asDouble);  // Manual reverse conversion
     EXPECT_EQ(originalInt, backToInt) << "Data loss in int64_t → double → int64_t conversion!";
 
     // 2. double values (whole numbers) must be recoverable after int64_t conversion
@@ -201,7 +201,7 @@ TEST_F(JSResultTypeConversionTest, DataLossPrevention_NoValueLoss) {
     auto doubleResult = JSResult::createSuccess(originalDouble);
 
     int64_t asInt = doubleResult.getValue<int64_t>();
-    double backToDouble = static_cast<double>(asInt);  // 수동 역변환
+    double backToDouble = static_cast<double>(asInt);  // Manual reverse conversion
     EXPECT_DOUBLE_EQ(originalDouble, backToDouble) << "Data loss in double → int64_t → double conversion!";
 
     // 3. Fractional values should fail int64_t conversion (prevent data loss)
