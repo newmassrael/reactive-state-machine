@@ -229,12 +229,14 @@ class SCXMLParser:
 
                 # Collect event names
                 if transition.event:
-                    # W3C SCXML 3.12.1: Skip wildcard events (*, .*, etc.)
-                    # Wildcards are handled by Wildcard enum value
+                    # W3C SCXML 5.9.3: Add transition events to enum, but skip wildcard patterns
+                    # Wildcards (*) and patterns (foo.*) are handled by EventMatchingHelper at runtime
                     if transition.event not in ['*', '.*', '_*']:
                         # Handle multiple events (e.g., "event1 event2")
                         for event in transition.event.split():
-                            if event not in ['*', '.*', '_*']:
+                            # Skip wildcards and wildcard patterns
+                            if event not in ['*', '.*', '_*'] and not event.endswith('.*'):
+                                # Regular event - add to enum
                                 self.model.events.add(event)
 
             # Parse onentry

@@ -217,17 +217,12 @@ private:
 {% set prev_event = namespace(value='') %}
 {% for trans in event_transitions %}
 {# Generate event matching condition using prefix matching #}
-{% if trans.event in ['*', '.*', '_*'] %}
-            if (event != Event::NONE) {  // W3C SCXML 3.12: Wildcard matches any event except NONE
-{% else %}
-{% set events = trans.event.split() %}
-{% if events | length > 1 %}
-            if ({% for ev in events %}event == Event::{{ ev | replace('.', '_') | capitalize }}{% if not loop.last %} || {% endif %}{% endfor %}) {
-{% elif trans.prefix_matching_events and trans.prefix_matching_events | length > 1 %}
-            if ({% for ev in trans.prefix_matching_events %}event == Event::{{ ev | replace('.', '_') | capitalize }}{% if not loop.last %} || {% endif %}{% endfor %}) {
+{% if trans.event in ['*', '.*', '_*'] or trans.event.find('.*') != -1 or ' ' in trans.event %}
+            // W3C SCXML 5.9.3: Event descriptor matching (wildcards, patterns, multiple events)
+            if (event != Event::NONE && ::RSM::EventMatchingHelper::matchesEventDescriptor(
+                {{ model.name }}Policy::getEventName(event), "{{ trans.event }}")) {
 {% else %}
             if (event == Event::{{ trans.event | replace('.', '_') | capitalize }}) {
-{% endif %}
 {% endif %}
 {# Initialize JSEngine if needed (only once per transition) #}
 {% if model.needs_jsengine %}
