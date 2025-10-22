@@ -47,6 +47,7 @@ class State:
     invokes: List[Dict] = field(default_factory=list)
     static_invokes: List[Dict] = field(default_factory=list)  # Static invoke info for member generation
     donedata: Optional[Dict] = None  # W3C SCXML 5.5: Donedata for final states
+    document_order: int = 0  # W3C SCXML 3.13: Document order for exit order tie-breaking
 
 
 @dataclass
@@ -72,6 +73,7 @@ class SCXMLModel:
     has_parent_communication: bool = False  # True if <send target="#_parent"> detected
     has_child_communication: bool = False  # True if <send target="#_child"> detected
     needs_jsengine: bool = False
+    has_transition_actions: bool = False  # W3C SCXML 3.13: True if any transition has executable content
 
     # W3C SCXML 5.10: Event metadata field flags
     needs_event_name: bool = False
@@ -87,6 +89,9 @@ class SCXMLModel:
     
     # Static invoke information (for code generation)
     static_invokes: List[Dict] = field(default_factory=list)
+    
+    # W3C SCXML 3.4: Parallel state regions (parallel_id -> [child_region_ids])
+    parallel_regions: Dict[str, List[str]] = field(default_factory=dict)
 
 
 class SCXMLParser:
@@ -111,6 +116,7 @@ class SCXMLParser:
 
     def __init__(self):
         self.model = None
+        self.document_order_counter = 0  # W3C SCXML 3.13: Track document order
 
     def parse_file(self, scxml_path: str) -> SCXMLModel:
         """
@@ -177,6 +183,12 @@ class SCXMLParser:
         # Resolve history state transitions (W3C SCXML 3.11)
         # Replace history state targets with their default transition targets
         self._resolve_history_targets()
+        
+        # W3C SCXML 3.4: Compute parallel regions (child states of parallel states)
+        self._compute_parallel_regions()
+        
+        # W3C SCXML 3.13: Check if any transitions have actions (for static optimization)
+        self._detect_transition_actions()
 
         return self.model
 
@@ -219,8 +231,10 @@ class SCXMLParser:
             state = State(
                 id=state_id,
                 initial=state_elem.get('initial', ''),
-                parent=parent_id
+                parent=parent_id,
+                document_order=self.document_order_counter
             )
+            self.document_order_counter += 1
 
             # Parse transitions
             for trans_elem in ns_findall(state_elem, 'transition'):
@@ -294,8 +308,10 @@ class SCXMLParser:
             state = State(
                 id=final_id,
                 is_final=True,
-                parent=parent_id
+                parent=parent_id,
+                document_order=self.document_order_counter
             )
+            self.document_order_counter += 1
 
             # Parse onentry/onexit for final states
             for entry_elem in ns_findall(final_elem, 'onentry'):
@@ -320,13 +336,36 @@ class SCXMLParser:
             state = State(
                 id=parallel_id,
                 is_parallel=True,
-                parent=parent_id
+                parent=parent_id,
+                document_order=self.document_order_counter
             )
+            self.document_order_counter += 1
+
+            # W3C SCXML 3.4: Parallel states can have transitions and onexit/onentry
+            # Parse transitions
+            for trans_elem in ns_findall(parallel_elem, 'transition'):
+                transition = self._parse_transition(trans_elem)
+                state.transitions.append(transition)
+
+                # Collect event names
+                if transition.event:
+                    if transition.event not in ['*', '.*', '_*']:
+                        for event in transition.event.split():
+                            if event not in ['*', '.*', '_*'] and not event.endswith('.*'):
+                                self.model.events.add(event)
+
+            # Parse onentry
+            for entry_elem in ns_findall(parallel_elem, 'onentry'):
+                state.on_entry.extend(self._parse_executable_content(entry_elem))
+
+            # Parse onexit
+            for exit_elem in ns_findall(parallel_elem, 'onexit'):
+                state.on_exit.extend(self._parse_executable_content(exit_elem))
 
             self.model.states[parallel_id] = state
             self.model.has_parallel_states = True
 
-            # Recursively parse child states
+            # Recursively parse child states (parallel regions)
             self._parse_states(parallel_elem, parallel_id)
 
         # Parse <history> elements (W3C SCXML 3.11)
@@ -924,6 +963,40 @@ class SCXMLParser:
                 break
 
         return current
+
+    def _compute_parallel_regions(self):
+        """
+        Compute child regions for each parallel state (W3C SCXML 3.4)
+        
+        Parallel state regions are direct child states (not nested descendants).
+        These will be used for code generation to create per-region state variables.
+        """
+        for state_id, state in self.model.states.items():
+            if state.is_parallel:
+                # Find all direct child states
+                child_regions = []
+                for child_id, child_state in self.model.states.items():
+                    if child_state.parent == state_id:
+                        child_regions.append(child_id)
+                
+                # Sort by document order (state IDs in model.states maintain insertion order)
+                self.model.parallel_regions[state_id] = child_regions
+
+    def _detect_transition_actions(self):
+        """
+        Detect if any transitions have executable content (W3C SCXML 3.13)
+        
+        Sets has_transition_actions flag for conditional static optimization.
+        If no transitions have actions, tryTransitionInState can remain static.
+        """
+        for state in self.model.states.values():
+            for transition in state.transitions:
+                if transition.actions:
+                    self.model.has_transition_actions = True
+                    return  # Early exit once we find any action
+        
+        # No transition actions found
+        self.model.has_transition_actions = False
 
     def _detect_features(self):
         """

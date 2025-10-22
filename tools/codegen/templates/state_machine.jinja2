@@ -22,6 +22,10 @@
 #include "common/TransitionHelper.h"
 #include "common/HistoryHelper.h"
 #include "common/EventMatchingHelper.h"
+{% if model.has_parallel_states %}
+#include "common/ParallelStateHelper.h"
+#include "common/ParallelExitEntryHelper.h"
+{% endif %}
 {% if model.needs_event_data_helper %}
 #include "common/EventDataHelper.h"
 {% endif %}
@@ -176,6 +180,13 @@ struct {{ model.name }}Policy {
     {% endfor %}
     {% endif %}
 
+{% if model.has_transition_actions %}
+    // W3C SCXML 3.13: Track last transition for deferred action execution
+    mutable State lastTransitionSourceState_{};
+    mutable size_t lastTransitionIndex_ = 0;
+    mutable bool hasTransitionActions_ = false;
+
+{% endif %}
     // Default constructor (lazy initialization, no immediate resource allocation)
     {{ model.name }}Policy() = default;
 
@@ -254,7 +265,47 @@ struct {{ model.name }}Policy {
         }
     }
 
-    {% include 'entry_exit_actions.jinja2' %}
+{% if model.has_parallel_states %}
+    // W3C SCXML 3.4: Check if state is a parallel state
+    static bool isParallelState(State state) {
+        switch (state) {
+            {% for state_id, state in model.states.items() %}
+            {% if state.is_parallel %}
+            case State::{{ state_id | capitalize }}:
+                return true;
+            {% endif %}
+            {% endfor %}
+            default:
+                return false;
+        }
+    }
+
+    // W3C SCXML 3.4: Get child regions of a parallel state
+    static ::std::vector<State> getParallelRegions(State state) {
+        switch (state) {
+            {% for parallel_id, regions in model.parallel_regions.items() %}
+            case State::{{ parallel_id | capitalize }}:
+                return { {% for region in regions %}State::{{ region | capitalize }}{{ ", " if not loop.last }}{% endfor %} };
+            {% endfor %}
+            default:
+                return {};
+        }
+    }
+
+    // W3C SCXML 3.13: Get document order for exit order tie-breaking
+    static int getDocumentOrder(State state) {
+        switch (state) {
+            {% for state_id, state in model.states.items() %}
+            case State::{{ state_id | capitalize }}:
+                return {{ state.document_order }};
+            {% endfor %}
+            default:
+                return 0;
+        }
+    }
+{% endif %}
+
+{% include 'entry_exit_actions.jinja2' %}
 
     {% include 'process_transition.jinja2' %}
 

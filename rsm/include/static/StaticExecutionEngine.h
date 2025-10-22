@@ -88,7 +88,9 @@ private:
      * @param newState State after transition
      * @param preTransitionStates Active states before transition (for history recording)
      */
-    void handleHierarchicalTransition(State oldState, State newState, const std::vector<State> &preTransitionStates) {
+    template <typename TransitionActionFn = decltype([] {})>
+    void handleHierarchicalTransition(State oldState, State newState, const std::vector<State> &preTransitionStates,
+                                      TransitionActionFn &&transitionAction = {}) {
         LOG_DEBUG("AOT handleHierarchicalTransition: Transition {} -> {}", static_cast<int>(oldState),
                   static_cast<int>(newState));
 
@@ -96,14 +98,18 @@ private:
         auto lca = RSM::Common::HierarchicalStateHelper<StatePolicy>::findLCA(oldState, newState);
 
         if (lca.has_value()) {
-            // Exit states from oldState up to (but not including) LCA
+            // W3C SCXML 3.13: Exit states from oldState up to (but not including) LCA
             auto exitChain = RSM::Common::HierarchicalStateHelper<StatePolicy>::buildExitChain(oldState, lca.value());
             for (const auto &state : exitChain) {
                 LOG_DEBUG("AOT handleHierarchicalTransition: Hierarchical exit state {}", static_cast<int>(state));
                 executeOnExit(state, preTransitionStates);
             }
 
-            // Enter states from LCA down to newState (including initial children)
+            // W3C SCXML 3.13: Execute transition actions AFTER exit, BEFORE entry
+            LOG_DEBUG("AOT handleHierarchicalTransition: Executing transition actions");
+            transitionAction();
+
+            // W3C SCXML 3.13: Enter states from LCA down to newState (including initial children)
             auto entryChain =
                 RSM::Common::HierarchicalStateHelper<StatePolicy>::buildEntryChainFromParent(newState, lca.value());
             for (const auto &state : entryChain) {
@@ -125,6 +131,10 @@ private:
                 }
                 current = parent.value();
             }
+
+            // W3C SCXML 3.13: Execute transition actions AFTER exit, BEFORE entry
+            LOG_DEBUG("AOT handleHierarchicalTransition: Executing transition actions (no LCA)");
+            transitionAction();
 
             // Enter full hierarchy from root to newState
             auto entryChain = RSM::Common::HierarchicalStateHelper<StatePolicy>::buildEntryChain(newState);
@@ -294,7 +304,9 @@ protected:
                                   static_cast<int>(currentState_));
 
                         // ARCHITECTURE.md: Zero Duplication - use shared helper
-                        handleHierarchicalTransition(oldState, currentState_, preTransitionStates);
+                        // W3C SCXML 3.13: Pass transition action callback for correct execution order
+                        handleHierarchicalTransition(oldState, currentState_, preTransitionStates,
+                                                     [this] { policy_.executeTransitionActions(*this); });
 
                         LOG_DEBUG("AOT processEventQueues: Calling checkEventlessTransitions after state entry");
                         // W3C SCXML 3.13: Check eventless transitions immediately after state entry
@@ -325,7 +337,9 @@ protected:
                     // Transition occurred: execute hierarchical exit/entry actions
                     if (oldState != currentState_) {
                         // ARCHITECTURE.md: Zero Duplication - use shared helper
-                        handleHierarchicalTransition(oldState, currentState_, preTransitionStates);
+                        // W3C SCXML 3.13: Pass transition action callback for correct execution order
+                        handleHierarchicalTransition(oldState, currentState_, preTransitionStates,
+                                                     [this] { policy_.executeTransitionActions(*this); });
 
                         // W3C SCXML 3.13: Check eventless transitions immediately after state entry
                         checkEventlessTransitions();
@@ -369,7 +383,9 @@ protected:
                           static_cast<int>(currentState_));
                 if (oldState != currentState_) {
                     // ARCHITECTURE.md: Zero Duplication - use shared helper
-                    handleHierarchicalTransition(oldState, currentState_, preTransitionStates);
+                    // W3C SCXML 3.13: Pass transition action callback for correct execution order
+                    handleHierarchicalTransition(oldState, currentState_, preTransitionStates,
+                                                 [this] { policy_.executeTransitionActions(*this); });
 
                     // W3C SCXML 3.12.1: Process any new internal events
                     RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
@@ -386,7 +402,8 @@ protected:
                             if (policy_.processTransition(currentState_, event, *this)) {
                                 if (oldEventState != currentState_) {
                                     // ARCHITECTURE.md: Zero Duplication - use shared helper
-                                    handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates);
+                                    handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates,
+                                                                 [this] { policy_.executeTransitionActions(*this); });
                                 }
                             }
                             return true;
@@ -414,7 +431,8 @@ protected:
                             processedInternalEvent = true;
                             if (oldEventState != currentState_) {
                                 // ARCHITECTURE.md: Zero Duplication - use shared helper
-                                handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates);
+                                handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates,
+                                                             [this] { policy_.executeTransitionActions(*this); });
                             }
                         }
                         return true;

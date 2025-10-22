@@ -43,7 +43,7 @@
 {% endmacro %}
 
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static bool processTransition(State& currentState, Event event, Engine& engine) {
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler and not model.has_transition_actions %}    static bool processTransition(State& currentState, Event event, Engine& engine) {
 {% else %}    bool processTransition(State& currentState, Event event, Engine& engine) {
 {% endif %}
 {% if model.static_invokes %}
@@ -189,7 +189,8 @@ private:
     // W3C SCXML 3.12: Helper method for hierarchical transition checking
     // Matches Interpreter engine's processStateTransitions() logic
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static bool tryTransitionInState([[maybe_unused]] State checkState, [[maybe_unused]] Event event,
+    // W3C SCXML 3.13: Conditional static based on transition actions (Zero Overhead)
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler and not model.has_transition_actions %}    static bool tryTransitionInState([[maybe_unused]] State checkState, [[maybe_unused]] Event event,
                                       [[maybe_unused]] State& currentState, [[maybe_unused]] bool& transitionTaken,
                                       [[maybe_unused]] Engine& engine) {
 {% else %}    bool tryTransitionInState([[maybe_unused]] State checkState, [[maybe_unused]] Event event,
@@ -201,12 +202,16 @@ private:
         case State::{{ state_id | capitalize }}:
 {% if state.transitions %}
 {% set event_transitions = [] %}
+{% set event_transition_indices = [] %}
 {% set eventless_transitions = [] %}
+{% set eventless_transition_indices = [] %}
 {% for trans in state.transitions %}
 {% if trans.event %}
 {% set _ = event_transitions.append(trans) %}
+{% set _ = event_transition_indices.append(loop.index0) %}
 {% else %}
 {% set _ = eventless_transitions.append(trans) %}
+{% set _ = eventless_transition_indices.append(loop.index0) %}
 {% endif %}
 {% endfor %}
 {% if event_transitions %}
@@ -241,9 +246,12 @@ private:
                 if ({{ trans.cond }}) {
 {% endif %}
                     LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ trans.event }}' in state {}", static_cast<int>(checkState));
-{% for action in trans.actions %}
-{% include 'actions/' + action.type + '.jinja2' %}
-{% endfor %}
+{% if model.has_transition_actions %}
+// W3C SCXML 3.13: Store transition for deferred execution (use original index)
+                    lastTransitionSourceState_ = checkState;
+                    lastTransitionIndex_ = {{ event_transition_indices[loop.index0] }};
+                    hasTransitionActions_ = {{ 'true' if trans.actions else 'false' }};
+{% endif %}
 {% if trans.target %}
 {{ restore_history_or_transition(trans) }}
 {% endif %}
@@ -252,9 +260,12 @@ private:
 {% else %}
                 {  // Unconditional transition
                     LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ trans.event }}' in state {}", static_cast<int>(checkState));
-{% for action in trans.actions %}
-{% include 'actions/' + action.type + '.jinja2' %}
-{% endfor %}
+{% if model.has_transition_actions %}
+// W3C SCXML 3.13: Store transition for deferred execution (use original index)
+                    lastTransitionSourceState_ = checkState;
+                    lastTransitionIndex_ = {{ event_transition_indices[loop.index0] }};
+                    hasTransitionActions_ = {{ 'true' if trans.actions else 'false' }};
+{% endif %}
 {% if trans.target %}
 {{ restore_history_or_transition(trans) }}
 {% endif %}
@@ -301,9 +312,12 @@ private:
 {% endif %}
 {% set first_trans.value = False %}
 {% endif %}
-{% for action in transition.actions %}
-{% include 'actions/' + action.type + '.jinja2' %}
-{% endfor %}
+{% if model.has_transition_actions %}
+// W3C SCXML 3.13: Store transition for deferred execution (use original index)
+                    lastTransitionSourceState_ = checkState;
+                    lastTransitionIndex_ = {{ eventless_transition_indices[loop.index0] }};
+                    hasTransitionActions_ = {{ 'true' if transition.actions else 'false' }};
+{% endif %}
 {% if transition.target %}
                     LOG_DEBUG("AOT processTransition: State transition {} -> {}", static_cast<int>(currentState), static_cast<int>(State::{{ transition.target | capitalize }}));
                     currentState = State::{{ transition.target | capitalize }};
@@ -323,9 +337,12 @@ private:
 {% endif %}
 {% else %}
 {% for transition in eventless_transitions %}
-{% for action in transition.actions %}
-{% include 'actions/' + action.type + '.jinja2' %}
-{% endfor %}
+{% if model.has_transition_actions %}
+// W3C SCXML 3.13: Store transition for deferred execution (use original index)
+                    lastTransitionSourceState_ = checkState;
+                    lastTransitionIndex_ = {{ eventless_transition_indices[loop.index0] }};
+                    hasTransitionActions_ = {{ 'true' if transition.actions else 'false' }};
+{% endif %}
 {% if transition.target %}
 {{ restore_history_or_transition(transition) }}
 {% endif %}
@@ -342,3 +359,57 @@ private:
     }
 
 public:
+    // W3C SCXML 3.13: Execute transition actions (called between exit and entry)
+    template<typename Engine>
+    void executeTransitionActions([[maybe_unused]] Engine& engine) {
+{% if model.has_transition_actions %}
+        if (!hasTransitionActions_) {
+            LOG_DEBUG("AOT executeTransitionActions: No actions to execute");
+            return;
+        }
+
+        LOG_DEBUG("AOT executeTransitionActions: Executing actions for state {} transition {}", 
+                  static_cast<int>(lastTransitionSourceState_), lastTransitionIndex_);
+
+        // Switch on source state, then transition index
+        switch (lastTransitionSourceState_) {
+{% for state_id, state in model.states.items() %}
+{% if state.transitions %}
+        case State::{{ state_id | capitalize }}:
+            {
+                switch (lastTransitionIndex_) {
+{% for trans in state.transitions %}
+                case {{ loop.index0 }}:  // Transition {{ loop.index0 }}
+                    {
+                        LOG_DEBUG("AOT executeTransitionActions: Executing transition {{ loop.index0 }} actions");
+{% if model.needs_jsengine %}
+                        this->ensureJSEngine();
+                        [[maybe_unused]] auto& jsEngine = ::RSM::JSEngine::instance();
+{% endif %}
+{% for action in trans.actions %}
+{% include 'actions/' + action.type + '.jinja2' %}
+{% endfor %}
+                    }
+                    break;
+{% endfor %}
+                default:
+                    break;
+                }
+            }
+            break;
+{% endif %}
+{% endfor %}
+        default:
+            break;
+        }
+
+        // Reset flags after execution
+        hasTransitionActions_ = false;
+{% else %}
+        // W3C SCXML 3.13: No transition actions (Zero Overhead - empty method)
+        (void)engine;
+        LOG_DEBUG("AOT executeTransitionActions: No transition actions in this state machine");
+{% endif %}
+    }
+
+
