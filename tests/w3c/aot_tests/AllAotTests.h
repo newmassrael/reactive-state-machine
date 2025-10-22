@@ -74,6 +74,7 @@
 #include "Test388.h"
 #include "Test396.h"
 #include "Test399.h"
+#include "Test401.h"
 #include "Test579.h"
 
 // Scheduled tests (event scheduler polling)

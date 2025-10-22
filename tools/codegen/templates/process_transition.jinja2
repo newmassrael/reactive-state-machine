@@ -4,6 +4,7 @@
     ARCHITECTURE.MD Compliance:
     - Zero Duplication: Matches Interpreter's hierarchical event processing logic
     - Single Source of Truth: Hierarchical transition checking from W3C SCXML 3.12
+    - Event Matching: Uses EventMatchingHelper for W3C SCXML 5.9.3 compliance
     - Long-Term Correctness: Complete Interpreter replication, no simplified workarounds
 #}
 
@@ -222,7 +223,10 @@ private:
             if (event != Event::NONE && ::RSM::EventMatchingHelper::matchesEventDescriptor(
                 {{ model.name }}Policy::getEventName(event), "{{ trans.event }}")) {
 {% else %}
-            if (event == Event::{{ trans.event | replace('.', '_') | capitalize }}) {
+            // W3C SCXML 5.9.3: Event descriptor matching with prefix matching
+            // Descriptor "{{ trans.event }}" matches "{{ trans.event }}" exactly or "{{ trans.event }}.*" prefix
+            if (event != Event::NONE && ::RSM::EventMatchingHelper::matchesEventDescriptor(
+                {{ model.name }}Policy::getEventName(event), "{{ trans.event }}")) {
 {% endif %}
 {# Initialize JSEngine if needed (only once per transition) #}
 {% if model.needs_jsengine %}
