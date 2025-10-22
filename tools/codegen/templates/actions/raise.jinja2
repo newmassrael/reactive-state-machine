@@ -1,2 +1,4 @@
 // W3C SCXML 3.8.1: <raise>
+LOG_DEBUG("AOT raise: About to raise event {{ action.event }}");
 engine.raise(typename Engine::EventWithMetadata(Event::{{ action.event | replace('.', '_') | capitalize }}));
+LOG_DEBUG("AOT raise: Successfully raised event {{ action.event }}");

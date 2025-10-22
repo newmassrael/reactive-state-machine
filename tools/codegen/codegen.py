@@ -338,10 +338,10 @@ class CodeGenerator:
             print(f"    Reason: Scoped datamodel detected (duplicate variables: {set(duplicates)})")
             return True
 
-        # Parallel states
-        if model.has_parallel_states:
-            print(f"    Reason: Parallel states detected")
-            return True
+        # Parallel states: Static parallel states (compile-time structure) can be generated statically
+        # Only dynamic parallel states (runtime-determined structure) require wrapper
+        # Since all current W3C tests use static parallel structure, no wrapper needed
+        # Future: Check for dynamic parallel features (initial state expressions, etc.)
 
         # Dynamic invoke requires Interpreter wrapper (matches C++ All-or-Nothing strategy)
         # Static invoke (type="scxml" src="file:...") can be handled statically

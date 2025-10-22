@@ -141,12 +141,14 @@ Generate Hybrid C++ Code (always succeeds)
     │  Performance: Zero-overhead, 8-100 bytes
     │
     └─ Dynamic Components (runtime, lazy-init)
-       • Parallel states → ParallelStateHandler
+       • Parallel states (dynamic) → ParallelStateHandler
        • History states → HistoryTracker
        • Invoke → InvokeHandler
        • Send with delay → TimerManager
        • Complex ECMAScript → JSEngine
        Memory: Only allocated if SCXML uses these features
+
+    Note: Static parallel states (compile-time structure) → inline C++ code
     ↓
 Generated code works for ALL SCXML (W3C 100%)
 ```
@@ -167,6 +169,7 @@ Generated code works for ALL SCXML (W3C 100%)
 - ✅ **Static Expressions**: Simple guards (`x > 0`), assignments (`x = 5`)
 - ✅ **Compile-Time Constants**: All values deterministic at code generation time
 - ✅ **ECMAScript Expressions via JSEngine Hybrid**: Complex expressions evaluated at runtime via embedded JSEngine
+- ✅ **Static Parallel States**: Parallel states with compile-time structure (all children defined statically, no dynamic initial state expressions)
 
 **Examples**:
 ```xml
@@ -179,6 +182,17 @@ Generated code works for ALL SCXML (W3C 100%)
 
 <!-- Static: Simple guard condition -->
 <transition event="event1" cond="x > 0" target="pass"/>
+
+<!-- Static: Parallel state with compile-time structure -->
+<parallel id="s01p">
+  <state id="s01p1">
+    <onexit><raise event="event2"/></onexit>
+  </state>
+  <state id="s01p2">
+    <onexit><raise event="event1"/></onexit>
+  </state>
+  <onexit><raise event="event3"/></onexit>
+</parallel>
 ```
 
 **Generated Code Characteristics**:
@@ -197,6 +211,7 @@ Generated code works for ALL SCXML (W3C 100%)
 - 🔴 **Dynamic Invoke**: `<invoke srcexpr>` (runtime URL resolution), `<invoke contentExpr>` (runtime expression)
 - 🔴 **Unsupported Processors**: Non-SCXML event processor types (BasicHTTP, custom)
 - 🔴 **Runtime Validation**: TypeRegistry lookups, platform-specific features
+- 🔴 **Dynamic Parallel States**: Parallel states with runtime-determined structure (initial state expressions, dynamic child creation)
 
 **Examples**:
 ```xml

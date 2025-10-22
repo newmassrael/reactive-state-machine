@@ -175,6 +175,37 @@
 {% endif %}
         (void)engine;
         (void)activeStatesBeforeTransition;  // May be unused if no history states
+
+{% if model.has_parallel_states %}
+        // W3C SCXML 3.4 + 3.13: Parallel state exit order
+        // Exit child regions in reverse document order BEFORE exiting parallel state itself
+        LOG_DEBUG("AOT executeExitActions: Checking if state {} is parallel", static_cast<int>(state));
+        if (isParallelState(state)) {
+            LOG_DEBUG("AOT executeExitActions: State {} IS parallel, getting regions", static_cast<int>(state));
+            auto regions = getParallelRegions(state);
+            LOG_DEBUG("AOT executeExitActions: Got {} regions for parallel state {}", regions.size(), static_cast<int>(state));
+            
+            // W3C SCXML 3.13: Sort regions by reverse document order (later states exit first)
+            std::sort(regions.begin(), regions.end(),
+                     [](State a, State b) {
+                         return getDocumentOrder(a) > getDocumentOrder(b);
+                     });
+            
+            LOG_DEBUG("AOT executeExitActions: Sorted regions in reverse document order");
+            
+            // Exit each child region
+            for (State region : regions) {
+                LOG_DEBUG("AOT executeExitActions: Recursively exiting child region {}", static_cast<int>(region));
+                // Recursively exit child region (may have its own children)
+                executeExitActions(region, engine, activeStatesBeforeTransition);
+            }
+            
+            LOG_DEBUG("AOT executeExitActions: All child regions exited, now exiting parallel state {} itself", static_cast<int>(state));
+            // After exiting all children, fall through to exit parallel state itself
+        } else {
+            LOG_DEBUG("AOT executeExitActions: State {} is NOT parallel, proceeding to switch", static_cast<int>(state));
+        }
+{% endif %}
         {% if model.history_states %}
         // W3C SCXML 3.11: Record history before exiting compound states (matches Interpreter logic)
         // Use pre-transition active states (captured before processTransition modified currentState_)
@@ -196,10 +227,12 @@
         }
         {% endfor %}
         {% endif %}
-
+        LOG_DEBUG("AOT executeExitActions: Entering switch for state {}", static_cast<int>(state));
         switch (state) {
 {% for state_id, state in model.states.items() %}
             case State::{{ state_id | capitalize }}:
+                LOG_DEBUG("AOT executeExitActions: Processing exit actions for state {} ({{ state_id }})", static_cast<int>(state));
+                LOG_DEBUG("AOT executeExitActions: About to execute exit action block for state {}", static_cast<int>(state));
 {% if state.on_exit or state.static_invokes %}
                 {
 {% if state.static_invokes %}
