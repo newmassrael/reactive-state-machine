@@ -1251,7 +1251,7 @@ bool ActionExecutorImpl::setLoopVariable(const std::string &varName, const std::
         std::string jsVarName = transformVariableName(varName);
 
         // Use shared ForeachHelper logic (eliminates code duplication with AOT engine)
-        bool success = ForeachHelper::setLoopVariable(JSEngine::instance(), sessionId_, jsVarName, value);
+        bool success = RSM::Common::ForeachHelper::setLoopVariable(JSEngine::instance(), sessionId_, jsVarName, value);
 
         if (success) {
             LOG_DEBUG("Set foreach variable: {} = {} (JS: {}, iteration {})", varName, value, jsVarName, iteration);

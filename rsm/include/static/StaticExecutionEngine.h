@@ -2,12 +2,13 @@
 
 #include "common/EventMetadataHelper.h"
 #include "common/EventTypeHelper.h"
+#include "common/HierarchicalStateHelper.h"
+#include "common/HistoryHelper.h"
 #include "common/Logger.h"
 #include "core/EventMetadata.h"
 #include "core/EventProcessingAlgorithms.h"
 #include "core/EventQueueAdapters.h"
 #include "core/EventQueueManager.h"
-#include "core/HierarchicalStateHelper.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -76,6 +77,64 @@ public:
     };
 
 private:
+    /**
+     * @brief Handle hierarchical exit and entry for state transition
+     *
+     * @details
+     * ARCHITECTURE.md: Extract duplicate code from processEventQueues
+     * W3C SCXML 3.12: Compute LCA and execute hierarchical exit/entry
+     *
+     * @param oldState State before transition
+     * @param newState State after transition
+     * @param preTransitionStates Active states before transition (for history recording)
+     */
+    void handleHierarchicalTransition(State oldState, State newState, const std::vector<State> &preTransitionStates) {
+        LOG_DEBUG("AOT handleHierarchicalTransition: Transition {} -> {}", static_cast<int>(oldState),
+                  static_cast<int>(newState));
+
+        // W3C SCXML 3.12: Find LCA and build exit/entry chains
+        auto lca = RSM::Common::HierarchicalStateHelper<StatePolicy>::findLCA(oldState, newState);
+
+        if (lca.has_value()) {
+            // Exit states from oldState up to (but not including) LCA
+            auto exitChain = RSM::Common::HierarchicalStateHelper<StatePolicy>::buildExitChain(oldState, lca.value());
+            for (const auto &state : exitChain) {
+                LOG_DEBUG("AOT handleHierarchicalTransition: Hierarchical exit state {}", static_cast<int>(state));
+                executeOnExit(state, preTransitionStates);
+            }
+
+            // Enter states from LCA down to newState (including initial children)
+            auto entryChain =
+                RSM::Common::HierarchicalStateHelper<StatePolicy>::buildEntryChainFromParent(newState, lca.value());
+            for (const auto &state : entryChain) {
+                LOG_DEBUG("AOT handleHierarchicalTransition: Hierarchical entry state {}", static_cast<int>(state));
+                executeOnEntry(state);
+            }
+        } else {
+            // No LCA (top-level transition) - exit all ancestors of oldState
+            LOG_DEBUG("AOT handleHierarchicalTransition: No LCA (top-level transition)");
+
+            State current = oldState;
+            while (true) {
+                LOG_DEBUG("AOT handleHierarchicalTransition: Exit state {} (to root)", static_cast<int>(current));
+                executeOnExit(current, preTransitionStates);
+
+                auto parent = StatePolicy::getParent(current);
+                if (!parent.has_value()) {
+                    break;  // Reached root
+                }
+                current = parent.value();
+            }
+
+            // Enter full hierarchy from root to newState
+            auto entryChain = RSM::Common::HierarchicalStateHelper<StatePolicy>::buildEntryChain(newState);
+            for (const auto &state : entryChain) {
+                LOG_DEBUG("AOT handleHierarchicalTransition: Entry state {} (from root)", static_cast<int>(state));
+                executeOnEntry(state);
+            }
+        }
+    }
+
     State currentState_;
     RSM::Core::EventQueueManager<EventWithMetadata>
         internalQueue_;  // W3C SCXML C.1: Internal event queue (high priority)
@@ -229,12 +288,13 @@ protected:
                     getActiveStates();  // W3C SCXML 3.11: Capture before transition
                 // Call through policy instance (works for both static and non-static)
                 if (policy_.processTransition(currentState_, event, *this)) {
-                    // Transition occurred: execute exit/entry actions
+                    // Transition occurred: execute hierarchical exit/entry actions
                     if (oldState != currentState_) {
                         LOG_DEBUG("AOT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
                                   static_cast<int>(currentState_));
-                        executeOnExit(oldState, preTransitionStates);
-                        executeOnEntry(currentState_);
+
+                        // ARCHITECTURE.md: Zero Duplication - use shared helper
+                        handleHierarchicalTransition(oldState, currentState_, preTransitionStates);
 
                         LOG_DEBUG("AOT processEventQueues: Calling checkEventlessTransitions after state entry");
                         // W3C SCXML 3.13: Check eventless transitions immediately after state entry
@@ -262,10 +322,10 @@ protected:
                     getActiveStates();  // W3C SCXML 3.11: Capture before transition
                 // Call through policy instance (works for both static and non-static)
                 if (policy_.processTransition(currentState_, event, *this)) {
-                    // Transition occurred: execute exit/entry actions
+                    // Transition occurred: execute hierarchical exit/entry actions
                     if (oldState != currentState_) {
-                        executeOnExit(oldState, preTransitionStates);
-                        executeOnEntry(currentState_);
+                        // ARCHITECTURE.md: Zero Duplication - use shared helper
+                        handleHierarchicalTransition(oldState, currentState_, preTransitionStates);
 
                         // W3C SCXML 3.13: Check eventless transitions immediately after state entry
                         checkEventlessTransitions();
@@ -308,8 +368,8 @@ protected:
                 LOG_DEBUG("AOT checkEventlessTransitions: Transition taken from {} to {}", static_cast<int>(oldState),
                           static_cast<int>(currentState_));
                 if (oldState != currentState_) {
-                    executeOnExit(oldState, preTransitionStates);
-                    executeOnEntry(currentState_);
+                    // ARCHITECTURE.md: Zero Duplication - use shared helper
+                    handleHierarchicalTransition(oldState, currentState_, preTransitionStates);
 
                     // W3C SCXML 3.12.1: Process any new internal events
                     RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
@@ -325,8 +385,8 @@ protected:
                                 getActiveStates();  // W3C SCXML 3.11: Capture before transition
                             if (policy_.processTransition(currentState_, event, *this)) {
                                 if (oldEventState != currentState_) {
-                                    executeOnExit(oldEventState, preTransitionStates);
-                                    executeOnEntry(currentState_);
+                                    // ARCHITECTURE.md: Zero Duplication - use shared helper
+                                    handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates);
                                 }
                             }
                             return true;
@@ -353,8 +413,8 @@ protected:
                         if (policy_.processTransition(currentState_, event, *this)) {
                             processedInternalEvent = true;
                             if (oldEventState != currentState_) {
-                                executeOnExit(oldEventState, preTransitionStates);
-                                executeOnEntry(currentState_);
+                                // ARCHITECTURE.md: Zero Duplication - use shared helper
+                                handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates);
                             }
                         }
                         return true;
@@ -393,7 +453,7 @@ public:
         isRunning_ = true;
 
         // W3C SCXML 3.3: Use HierarchicalStateHelper for correct entry order
-        auto entryChain = RSM::Core::HierarchicalStateHelper<StatePolicy>::buildEntryChain(currentState_);
+        auto entryChain = RSM::Common::HierarchicalStateHelper<StatePolicy>::buildEntryChain(currentState_);
 
         // Execute entry actions from root to leaf (ancestor first)
         for (const auto &state : entryChain) {
@@ -518,8 +578,10 @@ public:
      * @return Vector of currently active states
      */
     std::vector<State> getActiveStates() const {
-        // For simple state machines without parallel states
-        return {currentState_};
+        // W3C SCXML 3.11: Use shared HistoryHelper for full active hierarchy (Zero Duplication Principle)
+        // Returns [currentState, parent, grandparent, ...] for proper history recording
+        return ::RSM::HistoryHelper::getActiveHierarchy(currentState_,
+                                                        [](State s) { return StatePolicy::getParent(s); });
     }
 
     /**

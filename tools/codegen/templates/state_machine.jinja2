@@ -225,6 +225,34 @@ struct {{ model.name }}Policy {
         }
     }
 
+    // W3C SCXML 3.3: Check if state is compound (has initial child)
+    static bool isCompoundState(State state) {
+        switch (state) {
+            {% for state_id, state in model.states.items() %}
+            {% if state.initial %}
+            case State::{{ state_id | capitalize }}:
+                return true;
+            {% endif %}
+            {% endfor %}
+            default:
+                return false;
+        }
+    }
+
+    // W3C SCXML 3.3: Get initial child of compound state
+    static State getInitialChild(State state) {
+        switch (state) {
+            {% for state_id, state in model.states.items() %}
+            {% if state.initial %}
+            case State::{{ state_id | capitalize }}:
+                return State::{{ state.initial | capitalize }};
+            {% endif %}
+            {% endfor %}
+            default:
+                return state;  // Not compound or no initial child
+        }
+    }
+
     {% include 'entry_exit_actions.jinja2' %}
 
     {% include 'process_transition.jinja2' %}

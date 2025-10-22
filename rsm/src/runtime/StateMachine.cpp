@@ -3941,38 +3941,18 @@ std::string StateMachine::findLCA(const std::string &sourceStateId, const std::s
         return "";
     }
 
-    // Get all ancestors of source (excluding source itself - W3C SCXML 3.13: test 504)
-    // W3C SCXML: "ancestor" means parent, grandparent, etc., NOT the state itself
-    std::vector<std::string> sourceAncestors;
-    sourceAncestors.reserve(16);  // Performance: Reserve typical depth to avoid reallocation
-
-    auto sourceNode = model_->findStateById(sourceStateId);
-    if (sourceNode) {
-        // Start from parent, not source itself
-        IStateNode *current = sourceNode->getParent();
-        while (current != nullptr) {
-            sourceAncestors.push_back(current->getId());
-            current = current->getParent();
+    // ARCHITECTURE.md: Zero Duplication - delegate to HierarchicalStateHelper
+    // W3C SCXML 3.12: Find Least Common Ancestor for hierarchical transitions
+    auto getParent = [this](const std::string &stateId) -> std::optional<std::string> {
+        auto node = model_->findStateById(stateId);
+        if (!node || !node->getParent()) {
+            return std::nullopt;
         }
-    }
+        return node->getParent()->getId();
+    };
 
-    // Walk up from target until we find a common ancestor
-    auto targetNode = model_->findStateById(targetStateId);
-    if (targetNode) {
-        // W3C SCXML: Start from target itself (target can be the LCA)
-        IStateNode *current = targetNode;
-        while (current != nullptr) {
-            std::string currentId = current->getId();
-            // Check if this ancestor is in source's ancestor chain
-            if (std::find(sourceAncestors.begin(), sourceAncestors.end(), currentId) != sourceAncestors.end()) {
-                return currentId;  // Found LCA
-            }
-            current = current->getParent();
-        }
-    }
-
-    // No common ancestor found (shouldn't happen in valid SCXML)
-    return "";
+    // Use shared Helper implementation (Single Source of Truth)
+    return RSM::Common::HierarchicalStateHelperString::findLCA(sourceStateId, targetStateId, getParent);
 }
 
 // Helper: Build exit set for descendants of an ancestor state

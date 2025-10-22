@@ -7,7 +7,7 @@ try {
         this->ensureJSEngine();
         auto& jsEngine = ::RSM::JSEngine::instance();
         // W3C SCXML 4.6: Use ForeachHelper for centralized error handling
-        ::RSM::ForeachHelper::executeForeachWithActions(
+        ::RSM::Common::ForeachHelper::executeForeachWithActions(
             jsEngine, sessionId_.value(),
             "{{ action.array }}", "{{ action.item }}", "{{ action.index }}",
             [&](size_t i) -> bool {
@@ -37,7 +37,7 @@ try {
     {
         this->ensureJSEngine();
         auto& jsEngine = ::RSM::JSEngine::instance();
-        ::RSM::ForeachHelper::executeForeachWithoutBody(
+        ::RSM::Common::ForeachHelper::executeForeachWithoutBody(
             jsEngine, sessionId_.value(),
             "{{ action.array }}", "{{ action.item }}", "{{ action.index }}"
         );

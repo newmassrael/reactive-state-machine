@@ -122,7 +122,14 @@
                 break;  // Transition taken, exit hierarchy check
             }
 
-            // W3C SCXML 3.12: Move to parent state for hierarchical event bubbling
+            // W3C SCXML 3.13: Eventless transitions do NOT bubble to parent states
+            // Only check the current active state for eventless transitions
+            if (event == Event()) {
+                LOG_DEBUG("AOT processTransition: Eventless transition - not checking parent states");
+                break;
+            }
+
+            // W3C SCXML 3.12: Move to parent state for hierarchical event bubbling (external events only)
             auto parent = {{ model.name }}Policy::getParent(checkState);
             if (!parent.has_value()) {
                 // Reached root, no more parents to check
@@ -202,43 +209,60 @@ private:
 {% endif %}
 {% endfor %}
 {% if event_transitions %}
-{% for transition in event_transitions %}
-{% if transition.event in ['*', '.*', '_*'] %}
+{# W3C SCXML 3.12: Process transitions in strict document order (no grouping) #}
+{# W3C SCXML 3.12.1: Prefix matching is applied during event comparison #}
+{# Example: event="entering" matches "entering", "entering.s011", "entering.s012", etc. #}
+{# CRITICAL: More specific events (entering.s011) must be checked BEFORE general events (entering) #}
+{# Document order ensures this: if SCXML has entering.s011 before entering, check in that order #}
+{% set prev_event = namespace(value='') %}
+{% for trans in event_transitions %}
+{# Generate event matching condition using prefix matching #}
+{% if trans.event in ['*', '.*', '_*'] %}
             if (event != Event::NONE) {  // W3C SCXML 3.12: Wildcard matches any event except NONE
 {% else %}
-{% set events = transition.event.split() %}
+{% set events = trans.event.split() %}
 {% if events | length > 1 %}
             if ({% for ev in events %}event == Event::{{ ev | replace('.', '_') | capitalize }}{% if not loop.last %} || {% endif %}{% endfor %}) {
-{% elif transition.prefix_matching_events and transition.prefix_matching_events | length > 1 %}
-            if ({% for ev in transition.prefix_matching_events %}event == Event::{{ ev | replace('.', '_') | capitalize }}{% if not loop.last %} || {% endif %}{% endfor %}) {
+{% elif trans.prefix_matching_events and trans.prefix_matching_events | length > 1 %}
+            if ({% for ev in trans.prefix_matching_events %}event == Event::{{ ev | replace('.', '_') | capitalize }}{% if not loop.last %} || {% endif %}{% endfor %}) {
 {% else %}
-            if (event == Event::{{ transition.event | replace('.', '_') | capitalize }}) {
+            if (event == Event::{{ trans.event | replace('.', '_') | capitalize }}) {
 {% endif %}
 {% endif %}
-{% if transition.cond %}
+{# Initialize JSEngine if needed (only once per transition) #}
 {% if model.needs_jsengine %}
                 this->ensureJSEngine();
-                auto& jsEngine = ::RSM::JSEngine::instance();
-                if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}", engine)) {
+                [[maybe_unused]] auto& jsEngine = ::RSM::JSEngine::instance();
+{% endif %}
+{# Process single transition with its condition #}
+{% if trans.cond %}
+{% if model.needs_jsengine %}
+                if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ trans.cond | escape_cpp }}", engine)) {
 {% else %}
-                if ({{ transition.cond }}) {
+                if ({{ trans.cond }}) {
 {% endif %}
-{% endif %}
-                    LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ transition.event }}' in state {}", static_cast<int>(checkState));
-{% for action in transition.actions %}
+                    LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ trans.event }}' in state {}", static_cast<int>(checkState));
+{% for action in trans.actions %}
 {% include 'actions/' + action.type + '.jinja2' %}
 {% endfor %}
-{% if transition.target %}
-{{ restore_history_or_transition(transition) }}
+{% if trans.target %}
+{{ restore_history_or_transition(trans) }}
 {% endif %}
                     return true;  // Transition found
-{% if transition.cond %}
+                }
+{% else %}
+                {  // Unconditional transition
+                    LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ trans.event }}' in state {}", static_cast<int>(checkState));
+{% for action in trans.actions %}
+{% include 'actions/' + action.type + '.jinja2' %}
+{% endfor %}
+{% if trans.target %}
+{{ restore_history_or_transition(trans) }}
+{% endif %}
+                    return true;  // Transition found
                 }
 {% endif %}
-{% if not loop.last %}
-            } else {% else %}
             }
-{% endif %}
 {% endfor %}
 {% endif %}
 {% if eventless_transitions %}

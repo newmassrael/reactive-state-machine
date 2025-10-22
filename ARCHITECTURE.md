@@ -661,7 +661,7 @@ class EventQueueManager {
 - Used in: Main state transitions, parallel region transitions
 - Benefits: Compliance guarantee, zero code duplication
 
-**RSM::ForeachHelper::setLoopVariable()**:
+**RSM::Common::ForeachHelper::setLoopVariable()**:
 - W3C SCXML 4.6: Foreach variable declaration and type preservation
 - Single Source of Truth for foreach variable setting logic
 - Location: `rsm/include/common/ForeachHelper.h`
@@ -736,6 +736,37 @@ class EventQueueManager {
     - AOT: `[&engine](const std::string& msg) { LOG_ERROR("Namelist evaluation failed: {}", msg); engine.raise(Event::Error_execution); }`
   - Test coverage: test354 (W3C 5.10 - namelist, param, and content event data)
 - Benefits: Zero code duplication, consistent namelist evaluation across engines, proper W3C SCXML C.1/6.2 compliance
+
+**RSM::Common::HierarchicalStateHelper / HierarchicalStateHelperString**:
+- W3C SCXML 3.12, 3.7, 3.8: Hierarchical state transition logic (LCA calculation, entry/exit chains)
+- Single Source of Truth for hierarchical state operations shared between engines
+- Location: `rsm/include/common/HierarchicalStateHelper.h`
+- Used by: Interpreter engine (StateMachine::findLCA), AOT engine (StaticExecutionEngine::handleHierarchicalTransition)
+- Features:
+  - **findLCA()**: Least Common Ancestor calculation for external transitions
+    - W3C SCXML 3.12: Find deepest common ancestor in state hierarchy
+    - Algorithm: Build ancestor chain for state1, walk up from state2 to find intersection
+    - Time complexity: O(depth1 + depth2), Space complexity: O(depth1)
+    - Template version for AOT (enum State), String adapter for Interpreter (string state IDs)
+  - **buildExitChain()**: Exit chain construction (child → parent order, W3C SCXML 3.8)
+    - Returns states from current state up to (but not including) LCA
+    - Maintains child → parent order for proper onexit execution
+    - Matches Interpreter's buildExitSetForDescendants() behavior
+  - **buildEntryChain()**: Entry chain construction (parent → child order, W3C SCXML 3.7)
+    - Returns states from LCA down to target state (excluding LCA)
+    - Maintains parent → child order for proper onentry execution
+    - W3C SCXML 3.3: Automatically descends to initial child for compound states
+  - **buildEntryChainFromParent()**: Alternative entry chain starting from explicit parent
+  - **Template-based design**: `HierarchicalStateHelper<StatePolicy>` for AOT (enum states)
+  - **String adapter**: `HierarchicalStateHelperString` for Interpreter (string state IDs)
+  - **Lambda Adapter Pattern**: Flexible getParent injection for dynamic tree structures
+    - Interpreter: `[this](const std::string& stateId) -> std::optional<std::string> { return model_->findStateById(stateId)->getParent()->getId(); }`
+    - AOT: Uses StatePolicy::getParent() with compile-time type checking
+  - **Performance**: Pre-allocated capacity (8 states), O(depth) time/space
+  - **Safety**: Cyclic parent relationship detection (MAX_DEPTH = 16)
+  - **Static assertions**: Compile-time validation of StatePolicy interface (getParent, isCompoundState, getInitialChild)
+- Test coverage: All hierarchical transition tests (W3C test144, test278-279, test387-388)
+- Benefits: Zero code duplication, guaranteed W3C SCXML 3.12 compliance across all hierarchical transitions, eliminates 150+ lines of duplicate exit/entry logic
 
 **RSM::SendSchedulingHelper::parseDelayString() / SimpleScheduler**:
 - W3C SCXML 6.2: Delay string parsing and event scheduling logic

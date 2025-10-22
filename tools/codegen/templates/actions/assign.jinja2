@@ -2,12 +2,16 @@
 // W3C SCXML 5.3, 5.4: Validate assignment location using shared AssignHelper
 if (::RSM::AssignHelper::isValidLocation("{{ action.location }}")) {
     // Location is valid, proceed with assignment
+    LOG_DEBUG("AOT assign: Before ensureJSEngine for {{ action.location }}");
     this->ensureJSEngine();
+    LOG_DEBUG("AOT assign: After ensureJSEngine, sessionId={}", sessionId_.value_or("NONE"));
     auto& jsEngine = ::RSM::JSEngine::instance();
     {
         // W3C SCXML 5.3: Execute assignment as JavaScript expression to preserve object references
         // Using direct assignment (location = expr) instead of getInternalValue() for reference semantics
+        LOG_DEBUG("AOT assign: Evaluating: {{ action.location }} = ({{ action.expr }})");
         auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ action.location }} = ({{ action.expr }})").get();
+        LOG_DEBUG("AOT assign: Result - success={}", ::RSM::JSEngine::isSuccess(exprResult));
         if (!::RSM::JSEngine::isSuccess(exprResult)) {
             std::string errorMsg = "Failed to evaluate assignment expression: {{ action.location }} = ({{ action.expr }})";
             LOG_ERROR("{}", errorMsg);

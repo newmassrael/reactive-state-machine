@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/HierarchicalStateHelper.h"
 #include "events/IEventDispatcher.h"
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
