@@ -1,153 +1,153 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites tests="404" failures="76" errors="0" time="22.268">
-  <testsuite name="W3C_SCXML_Interpreter" tests="202" failures="0" errors="0" time="22.268">
+<testsuites tests="404" failures="72" errors="0" time="22.235">
+  <testsuite name="W3C_SCXML_Interpreter" tests="202" failures="0" errors="0" time="22.235">
     <testcase classname="W3C_Interpreter" name="Test_144" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_147" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_147" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_148" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_149" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_150" time="0.007"/>
-    <testcase classname="W3C_Interpreter" name="Test_151" time="0.007"/>
-    <testcase classname="W3C_Interpreter" name="Test_152" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_153" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_150" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_151" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_152" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_153" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_155" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_156" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_156" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_158" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_159" time="0.001"/>
-    <testcase classname="W3C_Interpreter" name="Test_172" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_172" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_173" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_174" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_175" time="1.01"/>
+    <testcase classname="W3C_Interpreter" name="Test_174" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_175" time="1.012"/>
     <testcase classname="W3C_Interpreter" name="Test_176" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_178" time="0"/>
     <testcase classname="W3C_Interpreter" name="Test_179" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_183" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_185" time="1.011"/>
+    <testcase classname="W3C_Interpreter" name="Test_185" time="1.012"/>
     <testcase classname="W3C_Interpreter" name="Test_186" time="1.012"/>
-    <testcase classname="W3C_Interpreter" name="Test_187" time="1.012"/>
+    <testcase classname="W3C_Interpreter" name="Test_187" time="1.003"/>
     <testcase classname="W3C_Interpreter" name="Test_189" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_190" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_191" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_192" time="0.006"/>
-    <testcase classname="W3C_Interpreter" name="Test_193" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_192" time="0.007"/>
+    <testcase classname="W3C_Interpreter" name="Test_193" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_194" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_198" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_199" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_200" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_201" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_205" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_207" time="1.015"/>
-    <testcase classname="W3C_Interpreter" name="Test_208" time="1.51"/>
-    <testcase classname="W3C_Interpreter" name="Test_210" time="1.509"/>
-    <testcase classname="W3C_Interpreter" name="Test_215" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_216" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_207" time="1.008"/>
+    <testcase classname="W3C_Interpreter" name="Test_208" time="1.509"/>
+    <testcase classname="W3C_Interpreter" name="Test_210" time="1.51"/>
+    <testcase classname="W3C_Interpreter" name="Test_215" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_216" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_220" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_223" time="0.015"/>
+    <testcase classname="W3C_Interpreter" name="Test_223" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_224" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_225" time="0.008"/>
-    <testcase classname="W3C_Interpreter" name="Test_226" time="0.006"/>
-    <testcase classname="W3C_Interpreter" name="Test_228" time="0.006"/>
-    <testcase classname="W3C_Interpreter" name="Test_229" time="0.007"/>
+    <testcase classname="W3C_Interpreter" name="Test_225" time="0.007"/>
+    <testcase classname="W3C_Interpreter" name="Test_226" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_228" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_229" time="0.006"/>
     <testcase classname="W3C_Interpreter" name="Test_230" time="0"/>
-    <testcase classname="W3C_Interpreter" name="Test_232" time="0.016"/>
-    <testcase classname="W3C_Interpreter" name="Test_233" time="0.006"/>
-    <testcase classname="W3C_Interpreter" name="Test_234" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_235" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_236" time="2.006"/>
-    <testcase classname="W3C_Interpreter" name="Test_237" time="2.511"/>
+    <testcase classname="W3C_Interpreter" name="Test_232" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_233" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_234" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_235" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_236" time="2.011"/>
+    <testcase classname="W3C_Interpreter" name="Test_237" time="2.514"/>
     <testcase classname="W3C_Interpreter" name="Test_239" time="0.007"/>
     <testcase classname="W3C_Interpreter" name="Test_240" time="0.009"/>
-    <testcase classname="W3C_Interpreter" name="Test_241" time="0.01"/>
-    <testcase classname="W3C_Interpreter" name="Test_242" time="0.019"/>
+    <testcase classname="W3C_Interpreter" name="Test_241" time="0.007"/>
+    <testcase classname="W3C_Interpreter" name="Test_242" time="0.007"/>
     <testcase classname="W3C_Interpreter" name="Test_243" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_244" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_244" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_245" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_247" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_250" time="0"/>
-    <testcase classname="W3C_Interpreter" name="Test_252" time="1.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_253" time="0.007"/>
+    <testcase classname="W3C_Interpreter" name="Test_252" time="1.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_253" time="0.009"/>
     <testcase classname="W3C_Interpreter" name="Test_276" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_277" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_278" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_279" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_277" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_278" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_279" time="0.001"/>
     <testcase classname="W3C_Interpreter" name="Test_280" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_286" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_286" time="0.001"/>
     <testcase classname="W3C_Interpreter" name="Test_287" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_294" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_298" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_294" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_298" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_301" time="0"/>
     <testcase classname="W3C_Interpreter" name="Test_302" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_303" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_304" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_304" time="0.001"/>
     <testcase classname="W3C_Interpreter" name="Test_307" time="0"/>
-    <testcase classname="W3C_Interpreter" name="Test_309" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_310" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_311" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_309" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_310" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_311" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_312" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_313" time="0"/>
     <testcase classname="W3C_Interpreter" name="Test_314" time="0"/>
     <testcase classname="W3C_Interpreter" name="Test_318" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_319" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_321" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_322" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_323" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_324" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_325" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_326" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_329" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_330" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_331" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_321" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_322" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_323" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_324" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_325" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_326" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_329" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_330" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_331" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_332" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_333" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_335" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_336" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_337" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_338" time="0.006"/>
-    <testcase classname="W3C_Interpreter" name="Test_339" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_333" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_335" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_336" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_337" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_338" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_339" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_342" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_343" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_343" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_344" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_346" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_347" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_348" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_346" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_347" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_348" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_349" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_350" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_351" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_352" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_354" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_350" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_351" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_352" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_354" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_355" time="0.001"/>
-    <testcase classname="W3C_Interpreter" name="Test_364" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_364" time="0.007"/>
     <testcase classname="W3C_Interpreter" name="Test_372" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_375" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_376" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_377" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_378" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_387" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_387" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_388" time="0.005"/>
-    <testcase classname="W3C_Interpreter" name="Test_396" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_399" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_396" time="0.001"/>
+    <testcase classname="W3C_Interpreter" name="Test_399" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_401" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_402" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_403a" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_402" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_403a" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_403b" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_403c" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_404" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_405" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_406" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_406" time="0.005"/>
     <testcase classname="W3C_Interpreter" name="Test_407" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_409" time="1.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_409" time="1.004"/>
     <testcase classname="W3C_Interpreter" name="Test_411" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_412" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_412" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_413" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_415" time="0"/>
     <testcase classname="W3C_Interpreter" name="Test_416" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_417" time="1.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_419" time="0.001"/>
-    <testcase classname="W3C_Interpreter" name="Test_421" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_422" time="2.01"/>
-    <testcase classname="W3C_Interpreter" name="Test_423" time="1.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_417" time="1.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_419" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_421" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_422" time="2.011"/>
+    <testcase classname="W3C_Interpreter" name="Test_423" time="1.005"/>
     <testcase classname="W3C_Interpreter" name="Test_436" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_444" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_445" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_445" time="0.001"/>
     <testcase classname="W3C_Interpreter" name="Test_446" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_448" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_449" time="0.001"/>
@@ -171,16 +171,16 @@
     <testcase classname="W3C_Interpreter" name="Test_509" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_510" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_513" time="0"/>
-    <testcase classname="W3C_Interpreter" name="Test_518" time="0.003"/>
+    <testcase classname="W3C_Interpreter" name="Test_518" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_519" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_520" time="0.003"/>
-    <testcase classname="W3C_Interpreter" name="Test_521" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_520" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_521" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_522" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_525" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_527" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_528" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_529" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_530" time="0.004"/>
+    <testcase classname="W3C_Interpreter" name="Test_530" time="0.014"/>
     <testcase classname="W3C_Interpreter" name="Test_531" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_532" time="0.003"/>
     <testcase classname="W3C_Interpreter" name="Test_533" time="0.007"/>
@@ -188,23 +188,23 @@
     <testcase classname="W3C_Interpreter" name="Test_550" time="0.001"/>
     <testcase classname="W3C_Interpreter" name="Test_551" time="0.001"/>
     <testcase classname="W3C_Interpreter" name="Test_552" time="0.001"/>
-    <testcase classname="W3C_Interpreter" name="Test_553" time="1.01"/>
-    <testcase classname="W3C_Interpreter" name="Test_554" time="1.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_553" time="1.009"/>
+    <testcase classname="W3C_Interpreter" name="Test_554" time="1.005"/>
     <testcase classname="W3C_Interpreter" name="Test_557" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_558" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_560" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_561" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_562" time="0.001"/>
-    <testcase classname="W3C_Interpreter" name="Test_567" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_569" time="0.001"/>
-    <testcase classname="W3C_Interpreter" name="Test_570" time="0.004"/>
-    <testcase classname="W3C_Interpreter" name="Test_576" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_562" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_567" time="0.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_569" time="0.002"/>
+    <testcase classname="W3C_Interpreter" name="Test_570" time="0.006"/>
+    <testcase classname="W3C_Interpreter" name="Test_576" time="0.004"/>
     <testcase classname="W3C_Interpreter" name="Test_577" time="0.002"/>
     <testcase classname="W3C_Interpreter" name="Test_578" time="0.002"/>
-    <testcase classname="W3C_Interpreter" name="Test_579" time="1.005"/>
+    <testcase classname="W3C_Interpreter" name="Test_579" time="1.008"/>
     <testcase classname="W3C_Interpreter" name="Test_580" time="0.005"/>
   </testsuite>
-  <testsuite name="W3C_SCXML_AOT" tests="202" failures="76" errors="0" time="0">
+  <testsuite name="W3C_SCXML_AOT" tests="202" failures="72" errors="0" time="0">
     <testcase classname="W3C_AOT" name="Test_144" time="0"/>
     <testcase classname="W3C_AOT" name="Test_147" time="0"/>
     <testcase classname="W3C_AOT" name="Test_148" time="0"/>
@@ -330,18 +330,10 @@
     <testcase classname="W3C_AOT" name="Test_396" time="0"/>
     <testcase classname="W3C_AOT" name="Test_399" time="0"/>
     <testcase classname="W3C_AOT" name="Test_401" time="0"/>
-    <testcase classname="W3C_AOT" name="Test_402" time="0">
-      <failure message="Test not yet implemented in AOT engine"/>
-    </testcase>
-    <testcase classname="W3C_AOT" name="Test_403a" time="0">
-      <failure message="Test not yet implemented in AOT engine"/>
-    </testcase>
-    <testcase classname="W3C_AOT" name="Test_403b" time="0">
-      <failure message="Test not yet implemented in AOT engine"/>
-    </testcase>
-    <testcase classname="W3C_AOT" name="Test_403c" time="0">
-      <failure message="Test not yet implemented in AOT engine"/>
-    </testcase>
+    <testcase classname="W3C_AOT" name="Test_402" time="0"/>
+    <testcase classname="W3C_AOT" name="Test_403a" time="0"/>
+    <testcase classname="W3C_AOT" name="Test_403b" time="0"/>
+    <testcase classname="W3C_AOT" name="Test_403c" time="0"/>
     <testcase classname="W3C_AOT" name="Test_404" time="0">
       <failure message="Test not yet implemented in AOT engine"/>
     </testcase>
