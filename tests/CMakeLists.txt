@@ -559,6 +559,7 @@ rsm_generate_static_w3c_test(388 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: de
 rsm_generate_static_w3c_test(396 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.12.1: event name matching and document order transition selection
 rsm_generate_static_w3c_test(399 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.3: event name matching with prefix and wildcard
 rsm_generate_static_w3c_test(401 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.12.1: internal event queue priority over external events
+rsm_generate_static_w3c_test(402 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.12: error events processed like any other event
 rsm_generate_static_w3c_test(579 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: default history content execution
 rsm_generate_static_w3c_test(580 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: history state not in configuration (parallel)
 rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.4: auto-discovers test239sub1.txml
