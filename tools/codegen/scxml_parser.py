@@ -871,7 +871,7 @@ class SCXMLParser:
         """
         Mark transitions targeting history states for runtime restoration (W3C SCXML 3.11)
 
-        Phase 2: Instead of resolving history targets at parse time, we mark them
+        W3C SCXML 3.11: Instead of resolving history targets at parse time, we mark them
         for runtime restoration logic generation. This allows full W3C SCXML history
         semantics with recording and restoration.
         """

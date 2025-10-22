@@ -153,8 +153,6 @@ class CodeGenerator:
                 model.needs_event_data_helper = True
             # Send with delay/delayexpr needs EventScheduler (test175, test179, etc.)
             if action.get('delay') or action.get('delayexpr'):
-                if not hasattr(model, 'needs_event_scheduler'):
-                    model.needs_event_scheduler = False
                 model.needs_event_scheduler = True
             if action.get('type') == 'http://www.w3.org/TR/scxml/#SCXMLEventProcessor':
                 model.needs_external_flag = True
@@ -168,8 +166,6 @@ class CodeGenerator:
 
         elif action_type == 'cancel':
             # W3C SCXML 6.2: <cancel> requires EventScheduler to cancel delayed events
-            if not hasattr(model, 'needs_event_scheduler'):
-                model.needs_event_scheduler = False
             model.needs_event_scheduler = True
 
         elif action_type == 'assign':
