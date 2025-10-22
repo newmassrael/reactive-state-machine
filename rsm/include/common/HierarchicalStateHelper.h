@@ -348,21 +348,27 @@ public:
             return state1;
         }
 
-        // Build ancestor chain for state1
+        // Build ancestor chain for state1 (W3C SCXML 3.13: exclude state1 itself, start from parent)
+        // This matches the original Interpreter behavior before commit d0c3ab2
         std::vector<State> ancestors1;
         ancestors1.reserve(8);
-        State current = state1;
-        while (true) {
-            ancestors1.push_back(current);
-            auto parent = StatePolicy::getParent(current);
-            if (!parent.has_value()) {
-                break;
+
+        // Start from state1's parent, not state1 itself (W3C SCXML test 504)
+        auto parent1 = StatePolicy::getParent(state1);
+        if (parent1.has_value()) {
+            State current = parent1.value();
+            while (true) {
+                ancestors1.push_back(current);
+                auto parent = StatePolicy::getParent(current);
+                if (!parent.has_value()) {
+                    break;
+                }
+                current = parent.value();
             }
-            current = parent.value();
         }
 
         // Walk up from state2 and check if we find any ancestor of state1
-        current = state2;
+        State current = state2;
         while (true) {
             // Check if current is in state1's ancestor chain
             for (const auto &ancestor : ancestors1) {
@@ -416,22 +422,27 @@ struct HierarchicalStateHelperString {
             return state1;
         }
 
-        // Build ancestor chain for state1
+        // Build ancestor chain for state1 (W3C SCXML 3.13: exclude state1 itself, start from parent)
+        // This matches the original Interpreter behavior before commit d0c3ab2
         std::vector<std::string> ancestors1;
         ancestors1.reserve(8);
 
-        std::string current = state1;
-        while (true) {
-            ancestors1.push_back(current);
-            auto parent = getParent(current);
-            if (!parent.has_value()) {
-                break;  // Reached root
+        // Start from state1's parent, not state1 itself (W3C SCXML test 504)
+        auto parent1 = getParent(state1);
+        if (parent1.has_value()) {
+            std::string current = parent1.value();
+            while (true) {
+                ancestors1.push_back(current);
+                auto parent = getParent(current);
+                if (!parent.has_value()) {
+                    break;  // Reached root
+                }
+                current = parent.value();
             }
-            current = parent.value();
         }
 
         // Walk up from state2 and check if we find any ancestor of state1
-        current = state2;
+        std::string current = state2;
         while (true) {
             // Check if current is in state1's ancestor chain
             for (const auto &ancestor : ancestors1) {
