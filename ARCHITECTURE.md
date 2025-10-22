@@ -802,146 +802,136 @@ class EventQueueManager {
 - Test: test277 (datamodel init error with onentry "foo" event + wildcard transition)
 - Benefits: Correct event priority handling in static context, Zero Duplication with Interpreter semantics
 
-### Future Core Components (Planned)
+### Future Enhancements
+
+**Planned Core Components**:
 
 **RSM::Core::StateExecutor**:
 - W3C SCXML 3.7/3.8: Entry/Exit action execution
-- Shared between static and dynamic
+- Shared between static and dynamic engines
 
 **RSM::Core::TransitionProcessor**:
 - W3C SCXML 3.13: Transition selection and execution
-- Microstep processing logic
+- Microstep processing logic optimization
 
 **RSM::Core::DatamodelManager**:
 - W3C SCXML 5.3: Data model variable management
-- Shared datamodel semantics
+- Shared datamodel semantics across engines
 
-## Implementation Phases
+**Full Hybrid Implementation**:
+- Automatic detection and integration of AOT/Interpreter switching
+- Lazy initialization of dynamic components
+- Performance benchmarks and optimization
 
-### Phase 1: Basic Static Generation (Complete ✅)
-- test144: Basic transitions, raise events
-- State/Event enum generation
-- Policy pattern with CRTP
+## Implementation History
+
+### Core Features (Implemented ✅)
+
+**Static Code Generation (W3C SCXML 3.1-3.13)**:
+- test144: Basic transitions, raise events (W3C SCXML 3.5.1 document order)
+- State/Event enum generation with CRTP policy pattern
 - StaticExecutionEngine foundation
 
-### Phase 2: Datamodel Support (Complete ✅)
-- test147-149: int datamodel, if/elseif/else
-- Simple expression generation
-- Guard condition handling
+**Datamodel Support (W3C SCXML 5.1-5.10)**:
+- test147-149: int datamodel, if/elseif/else conditions
+- Expression generation and guard condition handling
+- JSEngine integration for dynamic datamodel
 
-### Phase 3: W3C SCXML Compliance (Complete ✅)
-- W3C Static Tests: 20/20 (100%) ✅
-- test144: W3C SCXML 3.5.1 document order preservation
+**W3C SCXML Compliance (20/20 Static Tests ✅)**:
 - test150-155: AOT JSEngine integration (foreach, dynamic datamodel)
-- test155: Fixed type preservation in foreach loops (numeric addition vs string concatenation)
-  - Root cause: `ScriptValue(string)` created STRING type → JavaScript performed string concatenation
-  - Solution: Use `executeScript("var = value;")` to let JavaScript evaluate types
-  - ForeachHelper refactored as Single Source of Truth (used by both Interpreter and AOT engines)
-- test158-159: Send action support with error handling
-  - SendHelper refactored as Single Source of Truth for target validation
-  - W3C SCXML 6.2: Invalid send targets (starting with "!") detected
-  - W3C SCXML 5.10: Invalid targets stop subsequent executable content
-- test172: Dynamic event name evaluation (eventexpr attribute)
-  - JavaScript string literal handling ('value' → C++ "value")
-  - Runtime string-to-enum conversion for dynamic event raising
-  - Proper escape handling using escapeStringLiteral()
-- test173-174: targetexpr support (W3C SCXML 6.2.4)
-  - Dynamic target evaluation for send actions
+  - test155: Type preservation in foreach loops (numeric vs string)
+  - ForeachHelper as Single Source of Truth (Zero Duplication)
+- test158-159: Send action with error handling
+  - SendHelper as Single Source of Truth for target validation
+  - W3C SCXML 6.2: Invalid send target detection
+  - W3C SCXML 5.10: Invalid targets halt executable content
+- test172: Dynamic event name evaluation (eventexpr)
+  - JavaScript string literal handling
+  - Runtime string-to-enum conversion
+- test173-174: Dynamic target evaluation (targetexpr, W3C SCXML 6.2.4)
   - Runtime target resolution with JavaScript expressions
-  - SendHelper integration for target validation
+  - SendHelper integration for validation
 - test239: Invoke + Hierarchical States (W3C SCXML 3.3, 6.4, 6.5)
-  - W3C SCXML 3.3: Hierarchical/composite state entry (root-to-leaf order)
+  - W3C SCXML 3.3: Hierarchical state entry (root-to-leaf order)
   - W3C SCXML 6.4: Static invoke with child SCXML compilation
   - W3C SCXML 6.5: Finalize handler code generation
-  - W3C SCXML 6.4.1: Autoforward flag support (forward events to children)
-  - HierarchicalStateHelper refactored as Single Source of Truth
-  - Zero Duplication: Shared hierarchical entry logic between Interpreter and AOT
-  - Infinite loop protection: Cycle detection for malformed SCXML (MAX_DEPTH=16)
-  - Performance optimization: Pre-allocated entry chain (reserve 8 states)
-- Shared helper functions with interpreter engine (ForeachHelper, SendHelper, HierarchicalStateHelper)
-- Final state transition logic (no fall-through)
-- **Result**: 20/20 W3C Static Tests PASSED ✅
+  - W3C SCXML 6.4.1: Autoforward flag support
+  - HierarchicalStateHelper as Single Source of Truth
+  - Infinite loop protection with cycle detection (MAX_DEPTH=16)
 
-### Phase 4: Dynamic Component Integration (Partial ✅)
-- ✅ Send with delay → SendSchedulingHelper (W3C SCXML 6.2)
-  - test175: Send delayexpr with current datamodel value
-  - test185-187: Event scheduler polling with delayed send and invoke
-    - test185: Basic delayed send without params (W3C SCXML 6.2)
-    - test186: Delayed send with params for event data (W3C SCXML 5.10)
-    - test187: Dynamic invoke with done.invoke event (W3C SCXML 6.4)
-    - Automatic done.invoke event generation for invoke elements
-    - Event enum includes Done_invoke when state has invoke
-  - test208: Cancel delayed send by sendid (W3C SCXML 6.3)
-    - `<cancel sendid="foo"/>` support with literal sendid
-    - Automatic fallback to Interpreter wrapper for `sendidexpr` (dynamic expressions)
-    - Event enum includes all sent events (even if cancelled)
-    - SendSchedulingHelper.cancelEvent() reused across engines
-  - SimpleScheduler with priority queue (O(log n) scheduling)
-  - Event::NONE for scheduler polling without semantic transitions
-  - StaticExecutionEngine::tick() method for single-threaded polling
-  - Zero overhead for state machines without delayed sends (lazy-init)
-  - Hybrid approach: Static delay ("5s") or dynamic delayexpr ("Var1")
-  - **Single Source of Truth**: parseDelayString() shared across engines (Zero Duplication achieved)
-  - **W3C SCXML 6.2.5**: Sendid support for event tracking
-  - **W3C SCXML 6.3**: Cancel element support with sendid parameter
-  - Thread-safe unique sendid generation with atomic counter
-  - Automatic filtering of cancelled events in popReadyEvent()
-- 🔴 ParallelStateHandler for parallel states (planned)
-- 🔴 InvokeHandler for external invocations (planned)
-- 🔴 JSEngine integration for complex scripts (planned)
+### Advanced Features (W3C SCXML 6.2-6.5 ✅)
 
-### Phase 5: Full Hybrid Implementation (Planned)
-- Automatic detection and integration
-- Lazy initialization of dynamic components
-- Performance benchmarks
+**Event Scheduling (W3C SCXML 6.2)**:
+- test175: Send with delayexpr using current datamodel values
+- test185: Basic delayed send without params
+- test186: Delayed send with params for event data (W3C SCXML 5.10)
+- test187: Dynamic invoke with done.invoke event (W3C SCXML 6.4)
+- test208: Cancel delayed send by sendid (W3C SCXML 6.3)
+  - Automatic fallback to Interpreter wrapper for sendidexpr
+  - SendSchedulingHelper.cancelEvent() shared across engines
+- SimpleScheduler with priority queue (O(log n) scheduling)
+- Event::NONE for scheduler polling without semantic transitions
+- StaticExecutionEngine::tick() method for single-threaded polling
+- Zero overhead for state machines without delayed sends (lazy-init)
+- parseDelayString() as Single Source of Truth (Zero Duplication)
+- Thread-safe unique sendid generation with atomic counter
 
 ## Current Test Coverage
 
-| Category | Static Generator | Interpreter Engine | Combined |
-|----------|------------------|----------------|----------|
-| **W3C Static Tests** | **20/20 (100%)** ✅ | N/A | **20/20 (100%)** |
-| **Basic Tests** | 12/60 (20%) | 60/60 (100%) | 60/60 (100%) |
-| **Datamodel Tests** | 4/30 (13%) | 30/30 (100%) | 30/30 (100%) |
-| **Complex Tests** | 0/112 (0%) | 112/112 (100%) | 112/112 (100%) |
-| **Total** | **12/202 (6%)** | **202/202 (100%)** | **202/202 (100%)** |
+| Category | AOT Engine | Interpreter Engine | Combined |
+|----------|------------|-------------------|----------|
+| **W3C SCXML Tests** | **73/580 (12.6%)** ✅ | **580/580 (100%)** ✅ | **580/580 (100%)** ✅ |
+
+**AOT Engine Test Distribution** (73 tests):
+- **Basic Features**: test144-159, 172-176, 178-179, 183, 193-194, 200
+- **Datamodel & Events**: test276-280, 286-287, 301, 311-314, 318-319, 321-326, 329-333, 335-339, 342-344, 346-352, 354
+- **Advanced Features**: test387-388, 396, 399, 401, 579
+- **Event Scheduling**: test175, 185-186, 208 (W3C SCXML 6.2-6.3)
+
+**Key Test Categories**:
+- ✅ W3C SCXML 3.5.1: Document order preservation (test144)
+- ✅ W3C SCXML 5.9.3: Event descriptor matching with prefix rules (test399, test401)
+- ✅ W3C SCXML 5.10: Event data and _event variable binding (test318-319, 321-326, 329-339)
+- ✅ W3C SCXML 6.2: Delayed send with event scheduler (test175, 185-186)
+- ✅ W3C SCXML 6.3: Cancel element support (test208)
+- ✅ W3C SCXML 6.4: Invoke with done.invoke events (test338)
 
 **Note**:
-- W3C Static Tests (144, 147-153, 155-156, 158-159, 172-175, 185-187, 208, 239): Validates W3C SCXML compliance including document order (3.5.1), eventexpr, targetexpr, delayed send (6.2), cancel element (6.3), event data (5.10), invoke with done.invoke events (6.4), hierarchical states, AOT JSEngine integration
-- Interpreter engine provides 100% W3C compliance baseline
-- Static generator produces hybrid code with shared semantics from interpreter engine
+- Interpreter engine provides 100% W3C SCXML compliance baseline
+- AOT engine generates optimized static code for compile-time known features
+- Both engines share core logic through Helper functions (Zero Duplication)
 
 ## Success Metrics
 
-### Must Have
-- [x] Interpreter engine: 202/202 W3C tests
-- [x] Static generator: W3C Static Tests 20/20 (100%) ✅
-- [x] Static generator: Hybrid code generation (static + dynamic)
-- [x] Logic commonization: Shared helpers with interpreter engine
-- [ ] Static generator: 60+ tests (basic features)
+### Achieved ✅
+- [x] Interpreter engine: 580/580 W3C SCXML tests (100%)
+- [x] AOT engine: 73 tests with static code generation
+- [x] Zero Duplication: Shared Helper functions across engines
+- [x] W3C SCXML compliance: Event matching (5.9.3), event data (5.10), scheduling (6.2-6.3)
+- [x] Dynamic component integration: Event scheduler, delayed send, invoke
 
-### Should Have
-- [ ] Dynamic component integration working
-- [ ] Performance: 50x+ faster for pure static parts
-- [ ] Memory: 8 bytes (pure static) to ~100KB (full dynamic)
-- [ ] Documentation: Feature handling strategy
+### In Progress
+- [ ] AOT engine: Expand coverage to 100+ tests
+- [ ] Performance benchmarks: Measure AOT vs Interpreter speed
+- [ ] Memory profiling: Validate static overhead assumptions
 
-### Nice to Have
+### Future Enhancements
 - [ ] Automatic optimization recommendations
 - [ ] Visual complexity analyzer
 - [ ] WASM compilation support
 
 ## Key Principles
 
-1. **W3C Compliance is Non-Negotiable**: All 202 tests must pass (via interpreter engine)
+1. **W3C SCXML Compliance is Non-Negotiable**: All 580 W3C tests must pass (via Interpreter engine)
 2. **Always Generate Code**: Never refuse generation, always produce working implementation
-3. **Automatic Optimization**: Generator decides static vs dynamic internally
+3. **Automatic Optimization**: Code generator decides AOT vs Interpreter internally
    - Same feature can be static OR dynamic depending on usage (e.g., invoke with static src vs srcexpr)
    - Analysis happens at code generation time, not runtime
 4. **Lazy Initialization**: Pay only for features actually used in SCXML
-5. **Zero Duplication**: Static and Interpreter engines share core W3C SCXML logic through helpers
+5. **Zero Duplication**: AOT and Interpreter engines share core W3C SCXML logic through Helper functions
 
 ---
 
-**Status**: Dynamic Component Integration (Partial ✅) - Send with delay support complete (test175-187)
-**Last Updated**: 2025-10-15
-**Version**: 4.0 (Delayed Send + Event Scheduler)
+**Status**: 73 AOT tests (12.6% coverage) + 580 Interpreter tests (100% W3C SCXML compliance)
+**Last Updated**: 2025-10-22
+**Version**: 5.0 (Event Matching, Event Data, Event Scheduling)

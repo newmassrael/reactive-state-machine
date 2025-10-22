@@ -184,7 +184,7 @@ env SPDLOG_LEVEL=warn python3 tools/codegen/codegen.py /tmp/test_verify/testXXX.
 2. **CLAUDE.md** - Code quality and documentation standards
    - No Phase Markers rule
    - W3C SCXML references required
-   - StaticCodeGenerator modification rules
+   - Python code generator (codegen.py) template modification rules
    - Test Integration Guidelines
 
 3. **COMMIT_FORMAT.md** - Git commit message conventions
