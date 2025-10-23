@@ -48,6 +48,7 @@ class State:
     static_invokes: List[Dict] = field(default_factory=list)  # Static invoke info for member generation
     donedata: Optional[Dict] = None  # W3C SCXML 5.5: Donedata for final states
     document_order: int = 0  # W3C SCXML 3.13: Document order for exit order tie-breaking
+    initial_transition_actions: List[Dict] = field(default_factory=list)  # W3C SCXML 3.3.2: <initial> transition executable content
 
 
 @dataclass
@@ -261,6 +262,21 @@ class SCXMLParser:
             # Parse onexit
             for exit_elem in ns_findall(state_elem, 'onexit'):
                 state.on_exit.extend(self._parse_executable_content(exit_elem))
+
+            # W3C SCXML 3.3.2: Parse <initial> transition executable content
+            # This content executes AFTER parent onentry and BEFORE child state entry
+            initial_elem = ns_find(state_elem, 'initial')
+            if initial_elem is not None:
+                # <initial> contains a <transition> element with executable content
+                initial_trans_elem = ns_find(initial_elem, 'transition')
+                if initial_trans_elem is not None:
+                    state.initial_transition_actions = self._parse_executable_content(initial_trans_elem)
+                    # W3C SCXML 3.3: Extract target from <initial> transition (if state.initial empty)
+                    # History state targets will be resolved later by _resolve_history_targets()
+                    if not state.initial:
+                        initial_target = initial_trans_elem.get('target', '')
+                        if initial_target:
+                            state.initial = initial_target
 
             # Parse datamodel
             for datamodel in ns_findall(state_elem, 'datamodel'):
@@ -935,6 +951,15 @@ class SCXMLParser:
                     if not hasattr(transition, 'history_target'):
                         transition.history_target = transition.target
                     # Keep original target for template to generate restoration logic
+        
+        # W3C SCXML 3.11: Resolve state.initial if it points to history state
+        # This handles <initial><transition target="h1"/></initial> where h1 is a history state
+        for state in self.model.states.values():
+            if state.initial in self.model.history_default_targets:
+                # Replace history state ID with its default target's leaf state
+                history_info = self.model.history_states[state.initial]
+                leaf_target = history_info['leaf_target']
+                state.initial = leaf_target
 
     def _resolve_to_leaf_state(self, state_id: str) -> str:
         """

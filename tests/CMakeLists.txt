@@ -569,6 +569,7 @@ rsm_generate_static_w3c_test(406 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.3: sta
 rsm_generate_static_w3c_test(407 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.8: onexit handlers with datamodel variable updates
 rsm_generate_static_w3c_test(409 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.12.1: state removal from active states during exit
 rsm_generate_static_w3c_test(411 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.12.1: state addition to active states during entry
+rsm_generate_static_w3c_test(412 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.3.2: initial transition executable content execution order
 rsm_generate_static_w3c_test(579 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: default history content execution
 rsm_generate_static_w3c_test(580 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: history state not in configuration (parallel)
 rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.4: auto-discovers test239sub1.txml

@@ -98,3 +98,23 @@ private:
                                                     actualType, sendId, origin, originType, invokeId).get();
     }
 {% endif %}
+
+public:
+    // Helper: Ensure JSEngine session is destroyed before stack unwinding
+    // This prevents stack-use-after-return when JSEngine background thread
+    // tries to call In() predicate callbacks after the state machine is destroyed
+    void ensureJSEngineSessionDestroyed() const {
+{% if model.needs_jsengine %}
+        if (!jsEngineInitialized_) return;
+        if (!sessionId_.has_value()) return;
+        auto& jsEngine = ::RSM::JSEngine::instance();
+{% if model.has_parallel_states or model.uses_in_predicate %}
+        // W3C SCXML: Unregister state query callback before destroying session
+        // This prevents stack-use-after-return when JSEngine tries to call callback
+        // after state machine is destroyed
+        jsEngine.setStateQueryCallback(nullptr, sessionId_.value());
+{% endif %}
+        jsEngine.destroySession(sessionId_.value());
+        jsEngineInitialized_ = false;
+{% endif %}
+    }

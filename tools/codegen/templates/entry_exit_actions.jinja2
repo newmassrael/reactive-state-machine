@@ -121,6 +121,15 @@
                 {% include 'actions/' + action.type + '.jinja2' %}
 
 {% endfor %}
+{% if state.initial_transition_actions %}
+                // W3C SCXML 3.3.2: Execute <initial> transition executable content
+                // This content executes AFTER parent onentry and BEFORE child state entry
+{% for action in state.initial_transition_actions %}
+                {% set in_entry_exit = true %}
+                {% include 'actions/' + action.type + '.jinja2' %}
+
+{% endfor %}
+{% endif %}
 {% if state.is_final and state.donedata %}
                 // W3C SCXML 5.5: Evaluate donedata for final state
                 {

@@ -10,7 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV IN_DOCKER_TSAN=1
 
 # ThreadSanitizer options for non-instrumented modules
-ENV TSAN_OPTIONS="ignore_noninstrumented_modules=1"
+# halt_on_error=1: Stop immediately on first error/warning
+ENV TSAN_OPTIONS="ignore_noninstrumented_modules=1:halt_on_error=1"
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -28,7 +29,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install latest meson from pip (Ubuntu 22.04 has 0.61.2, libxml++ needs >= 0.62.0)
-RUN pip3 install meson
+# Install jinja2 and lxml for code generation
+RUN pip3 install meson jinja2 lxml
 
 # Workaround 1: Disable nscd to prevent glibc DNS resolver TLS crashes with TSAN
 # nscd (Name Service Cache Daemon) has known thread safety issues that cause

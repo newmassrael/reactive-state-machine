@@ -80,6 +80,8 @@ public:
         while (!sm.isInFinalState()) {
             // Check for timeout
             if (std::chrono::steady_clock::now() - startTime > timeout) {
+                // Cleanup JSEngine session before returning to prevent stack-use-after-return
+                sm.getPolicy().ensureJSEngineSessionDestroyed();
                 return false;
             }
 
@@ -90,7 +92,14 @@ public:
             sm.tick();
         }
 
-        return sm.getCurrentState() == SM::State::Pass;
+        bool result = sm.getCurrentState() == SM::State::Pass;
+
+        // W3C SCXML: Cleanup JSEngine session before stack unwinding
+        // This prevents stack-use-after-return when JSEngine background thread
+        // tries to call In() predicate callbacks after sm is destroyed
+        sm.getPolicy().ensureJSEngineSessionDestroyed();
+
+        return result;
     }
 
     int getTestId() const override {
