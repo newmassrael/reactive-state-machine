@@ -40,6 +40,36 @@
         }
     }
 
+{% if model.has_parallel_states or model.uses_in_predicate %}
+    // Helper: Convert State enum to string for In() predicate (W3C SCXML 5.9.2)
+    static std::string getStateName(State state) {
+        switch (state) {
+{% for state_id in model.states.keys() | sort %}
+            case State::{{ state_id | capitalize }}: return "{{ state_id }}";
+{% endfor %}
+            default: return "";
+        }
+    }
+
+    // W3C SCXML 5.9.2: Check if state is active (for In() predicate)
+    // ARCHITECTURE.md Zero Duplication: Use InPredicateHelper (Single Source of Truth)
+    // Thread-safe: called from JSEngine worker thread
+    bool isStateActive(const std::string& stateId) const {
+        ::std::lock_guard<::std::mutex> lock(activeStatesMutex_);
+        
+        // ARCHITECTURE.md: Delegate to InPredicateHelper for shared In() predicate logic
+        bool result = ::RSM::InPredicateHelper::isStateActive(
+            activeStates_,
+            [](State s) { return getStateName(s); },
+            stateId
+        );
+        
+        LOG_TRACE("AOT isStateActive: '{}' {} in activeStates_ (size={})", 
+                  stateId, result ? "found" : "not found", activeStates_.size());
+        return result;
+    }
+{% endif %}
+
 private:
 {% if model.needs_event_type %}
     // Helper: Determine event type using shared EventTypeHelper (W3C SCXML 5.10.1)

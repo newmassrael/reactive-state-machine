@@ -73,6 +73,7 @@ class SCXMLModel:
     has_parent_communication: bool = False  # True if <send target="#_parent"> detected
     has_child_communication: bool = False  # True if <send target="#_child"> detected
     needs_jsengine: bool = False
+    uses_in_predicate: bool = False  # W3C SCXML 3.12.1: True if In() predicate used (requires activeStates_ management)
     has_transition_actions: bool = False  # W3C SCXML 3.13: True if any transition has executable content
 
     # W3C SCXML 5.10: Event metadata field flags
@@ -732,6 +733,9 @@ class SCXMLParser:
 
         for feature in js_features:
             if feature in expr:
+                # W3C SCXML 3.12.1: In() predicate requires activeStates_ management
+                if 'In(' in expr:
+                    self.model.uses_in_predicate = True
                 return True
 
         # Check for event metadata access
@@ -1021,6 +1025,7 @@ class SCXMLParser:
         # Summary
         return {
             'needs_jsengine': self.model.needs_jsengine,
+            'uses_in_predicate': self.model.uses_in_predicate,
             'has_dynamic_expressions': self.model.has_dynamic_expressions,
             'has_parallel_states': self.model.has_parallel_states,
             'has_invoke': self.model.has_invoke,

@@ -39,6 +39,18 @@
 {% endif %}
 {% endfor %}
 
+{% if model.has_parallel_states or model.uses_in_predicate %}
+        // W3C SCXML 5.9.2: Register state query callback for In() predicate support
+        // ARCHITECTURE.md All-or-Nothing Strategy: Static AOT engines cannot hold StateMachine*
+        // pointers (no base class). Callback mechanism provides In() capability while maintaining
+        // compile-time static structure. isStateActive() uses InPredicateHelper for shared logic.
+        jsEngine.setStateQueryCallback(
+            [this](const std::string& stateId) { return this->isStateActive(stateId); },
+            sessionId_.value()
+        );
+        LOG_DEBUG("AOT ensureJSEngine: Registered state query callback for In() predicate");
+{% endif %}
+
         jsEngineInitialized_ = true;
     }
 
@@ -78,6 +90,18 @@
             });
 {% endif %}
 {% endfor %}
+
+{% if model.has_parallel_states or model.uses_in_predicate %}
+        // W3C SCXML 5.9.2: Register state query callback for In() predicate support
+        // ARCHITECTURE.md All-or-Nothing Strategy: Static AOT engines cannot hold StateMachine*
+        // pointers (no base class). Callback mechanism provides In() capability while maintaining
+        // compile-time static structure. isStateActive() uses InPredicateHelper for shared logic.
+        jsEngine.setStateQueryCallback(
+            [this](const std::string& stateId) { return this->isStateActive(stateId); },
+            sessionId_.value()
+        );
+        LOG_DEBUG("AOT initializeDataModel: Registered state query callback for In() predicate");
+{% endif %}
 
         jsEngineInitialized_ = true;
     }

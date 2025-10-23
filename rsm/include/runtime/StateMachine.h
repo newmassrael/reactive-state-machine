@@ -12,6 +12,7 @@
 #include "runtime/StateHierarchyManager.h"
 #include "runtime/StateMachineEventRaiser.h"
 #include "scripting/JSEngine.h"
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -394,7 +395,8 @@ private:
     // Core state - now delegated to StateHierarchyManager
     // Removed: std::string currentState_ (use hierarchyManager_->getCurrentState())
     // Removed: std::vector<std::string> activeStates_ (use hierarchyManager_->getActiveStates())
-    bool isRunning_ = false;
+    // Thread-safe: accessed from EventRaiser callback (main thread) and enterState() (worker threads)
+    std::atomic<bool> isRunning_{false};
     bool isEnteringState_ = false;                 // Guard against reentrant enterState calls
     bool isProcessingEvent_ = false;               // Track event processing context
     bool isBatchProcessing_ = false;               // Track batch event processing to prevent recursive auto-processing

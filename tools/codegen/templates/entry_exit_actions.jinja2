@@ -26,10 +26,13 @@
 {% else %}    void executeEntryActions(State state, Engine& engine) {
 {% endif %}
         (void)engine;
-{% if model.has_parallel_states %}
-        // W3C SCXML 3.4: Add state to active configuration for parallel state support
+{% if model.has_parallel_states or model.uses_in_predicate %}
+        // W3C SCXML 3.4/3.12.1: Add state to active configuration for parallel states and In() predicate
         LOG_DEBUG("AOT executeEntryActions: Adding state {} to activeStates", static_cast<int>(state));
-        activeStates_.push_back(state);
+        {
+            ::std::lock_guard<::std::mutex> lock(activeStatesMutex_);
+            activeStates_.push_back(state);
+        }
 {% endif %}
         switch (state) {
 {% for state_id, state in model.states.items() %}
@@ -256,13 +259,16 @@
             LOG_DEBUG("AOT executeExitActions: State {} is NOT parallel, proceeding to switch", static_cast<int>(state));
         }
 {% endif %}
-{% if model.has_parallel_states %}
-        // W3C SCXML 3.4: Remove state from active configuration
+{% if model.has_parallel_states or model.uses_in_predicate %}
+        // W3C SCXML 3.4/3.12.1: Remove state from active configuration (parallel states and In() predicate)
         LOG_DEBUG("AOT executeExitActions: Removing state {} from activeStates", static_cast<int>(state));
-        activeStates_.erase(
-            std::remove(activeStates_.begin(), activeStates_.end(), state),
-            activeStates_.end()
-        );
+        {
+            ::std::lock_guard<::std::mutex> lock(activeStatesMutex_);
+            activeStates_.erase(
+                std::remove(activeStates_.begin(), activeStates_.end(), state),
+                activeStates_.end()
+            );
+        }
 {% endif %}
         {% if model.history_states %}
         // W3C SCXML 3.11: Record history before exiting compound states (matches Interpreter logic)

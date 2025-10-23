@@ -1072,7 +1072,16 @@ void JSEngine::setupSystemVariables(JSContext *ctx) {
 bool JSEngine::checkStateActive(const std::string &stateName) const {
     std::lock_guard<std::mutex> lock(stateMachinesMutex_);
 
-    // Check all registered StateMachines for the given state
+    // W3C SCXML 5.9.2: In() predicate function
+    // First check callback-based state queries (for static AOT engines)
+    for (const auto &pair : stateQueryCallbacks_) {
+        const auto &callback = pair.second;
+        if (callback && callback(stateName)) {
+            return true;
+        }
+    }
+
+    // Fall back to StateMachine pointers (for Interpreter engine)
     for (const auto &pair : stateMachines_) {
         StateMachine *sm = pair.second;
         if (sm && sm->isStateActive(stateName)) {
@@ -1120,6 +1129,20 @@ void JSEngine::setStateMachine(StateMachine *stateMachine, const std::string &se
         if (it != stateMachines_.end()) {
             stateMachines_.erase(it);
             LOG_DEBUG("JSEngine: StateMachine removed for session: {}", sessionId);
+        }
+    }
+}
+
+void JSEngine::setStateQueryCallback(StateQueryCallback callback, const std::string &sessionId) {
+    std::lock_guard<std::mutex> lock(stateMachinesMutex_);
+    if (callback) {
+        stateQueryCallbacks_[sessionId] = callback;
+        LOG_DEBUG("JSEngine: State query callback set for session: {}", sessionId);
+    } else {
+        auto it = stateQueryCallbacks_.find(sessionId);
+        if (it != stateQueryCallbacks_.end()) {
+            stateQueryCallbacks_.erase(it);
+            LOG_DEBUG("JSEngine: State query callback removed for session: {}", sessionId);
         }
     }
 }

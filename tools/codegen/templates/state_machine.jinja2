@@ -43,6 +43,7 @@
 #include "common/ForeachValidator.h"
 #include "common/ForeachHelper.h"
 #include "common/GuardHelper.h"
+#include "common/InPredicateHelper.h"
 {% endif %}
 
 namespace RSM::Generated::{{ model.name }} {
@@ -197,10 +198,13 @@ struct {{ model.name }}Policy {
     mutable ::std::optional<::std::vector<State>> history_{{ history_id }};  // {{ history_info.type }} history for {{ history_info.parent }}
     {% endfor %}
     {% endif %}
-    {% if model.has_parallel_states %}
-    // W3C SCXML 3.4: Configuration - active states for parallel state support
+    {% if model.has_parallel_states or model.uses_in_predicate %}
+    // W3C SCXML 3.4/3.12.1: Configuration - active states for parallel states and In() predicate
     // Tracks all currently active states (parallel regions can have multiple active states)
+    // Also required for In() predicate to check state membership
+    // Thread-safe: mutex protects access from JSEngine worker thread
     mutable ::std::vector<State> activeStates_;
+    mutable ::std::mutex activeStatesMutex_;
     {% endif %}
 
     // W3C SCXML 3.13: Track last transition for deferred action execution

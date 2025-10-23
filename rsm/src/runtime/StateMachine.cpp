@@ -64,7 +64,7 @@ private:
 };
 }  // anonymous namespace
 
-StateMachine::StateMachine() : isRunning_(false), jsEnvironmentReady_(false) {
+StateMachine::StateMachine() : jsEnvironmentReady_(false) {
     sessionId_ = JSEngine::instance().generateSessionIdString("sm_");
     // JS environment changed to lazy initialization
     // ActionExecutor and ExecutionContext initialized in setupJSEnvironment
@@ -77,7 +77,7 @@ StateMachine::StateMachine() : isRunning_(false), jsEnvironmentReady_(false) {
 }
 
 // Constructor with session ID injection for invoke scenarios
-StateMachine::StateMachine(const std::string &sessionId) : isRunning_(false), jsEnvironmentReady_(false) {
+StateMachine::StateMachine(const std::string &sessionId) : jsEnvironmentReady_(false) {
     if (sessionId.empty()) {
         throw std::invalid_argument("StateMachine: Session ID cannot be empty when using injection constructor");
     }
@@ -382,7 +382,7 @@ bool StateMachine::start() {
 }
 
 void StateMachine::stop() {
-    LOG_DEBUG("StateMachine: Stopping state machine (isRunning: {})", isRunning_);
+    LOG_DEBUG("StateMachine: Stopping state machine (isRunning: {})", isRunning_.load());
 
     // W3C SCXML Test 250: Exit ALL active states with onexit handlers (only if still running)
     // Must exit in reverse document order (children before parents)
@@ -2904,7 +2904,7 @@ bool StateMachine::setupJSEnvironment() {
 
 void StateMachine::updateStatistics() {
     stats_.currentState = getCurrentState();
-    stats_.isRunning = isRunning_;
+    stats_.isRunning = isRunning_.load();
 }
 
 bool StateMachine::initializeActionExecutor() {

@@ -40,6 +40,12 @@ class StateMachine;
  */
 class JSEngine : public ISessionManager {
 public:
+    // W3C SCXML 5.9.2: State query callback for In() predicate (static AOT engines)
+    // ARCHITECTURE.md All-or-Nothing Strategy: Static engines use callback mechanism
+    // because they cannot hold StateMachine pointers (no dynamic polymorphism at compile-time).
+    // InPredicateHelper provides shared In() logic, callback provides state query capability.
+    using StateQueryCallback = std::function<bool(const std::string &)>;
+
     /**
      * @brief Get the global JSEngine instance
      */
@@ -247,6 +253,13 @@ public:
      * @param sessionId Session ID to associate with this state machine
      */
     void setStateMachine(StateMachine *stateMachine, const std::string &sessionId);
+
+    /**
+     * @brief Set state query callback for In() function integration (for static engines)
+     * @param callback Function that checks if a state is active
+     * @param sessionId Session ID to associate with this callback
+     */
+    void setStateQueryCallback(StateQueryCallback callback, const std::string &sessionId);
 
     // === Session ID Generation ===
 
@@ -569,6 +582,8 @@ private:
     std::mutex globalFunctionsMutex_;
     // === StateMachine Integration ===
     std::unordered_map<std::string, StateMachine *> stateMachines_;  // sessionId -> StateMachine*
+    // === StateMachine Integration (Callback-based for static engines) ===
+    std::unordered_map<std::string, StateQueryCallback> stateQueryCallbacks_;  // sessionId -> callback
     mutable std::mutex stateMachinesMutex_;
 
     // === Internal Event System ===
