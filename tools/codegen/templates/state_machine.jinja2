@@ -34,6 +34,7 @@
 #include "common/DoneDataHelper.h"
 {% endif %}
 {% if model.needs_jsengine %}
+#include "common/DataModelInitHelper.h"
 #include "common/EventTypeHelper.h"
 #include <optional>
 #include "common/Logger.h"
@@ -123,7 +124,6 @@ struct {{ model.name }}Policy {
     {% endif %}
     {% if model.needs_jsengine %}
     mutable bool jsEngineInitialized_ = false;
-    mutable bool datamodelInitFailed_ = false;  // W3C SCXML 5.3: Track initialization errors
     {% endif %}
     {% if model.needs_event_name %}
     // W3C SCXML 5.10: Event name storage for _event.name access (test318)

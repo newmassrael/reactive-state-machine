@@ -1,5 +1,6 @@
 #include "runtime/StateMachine.h"
 #include "common/BindingHelper.h"
+#include "common/DataModelInitHelper.h"
 #include "common/DoneDataHelper.h"
 #include "common/Logger.h"
 #include "common/ParallelTransitionHelper.h"
@@ -1614,34 +1615,20 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
             }
             LOG_DEBUG("StateMachine: Initialized function variable '{}' from expression '{}'", id, expr);
         } else {
-            // Standard evaluation for non-function expressions
-            auto future = RSM::JSEngine::instance().evaluateExpression(sessionId_, expr);
-            auto result = future.get();
-
-            if (RSM::JSEngine::isSuccess(result)) {
-                auto setVarFuture = RSM::JSEngine::instance().setVariable(sessionId_, id, result.getInternalValue());
-                auto setResult = setVarFuture.get();
-
-                if (!RSM::JSEngine::isSuccess(setResult)) {
-                    LOG_ERROR("StateMachine: Failed to set variable '{}' from expression '{}': {}", id, expr,
-                              setResult.getErrorMessage());
+            // ARCHITECTURE.MD: Zero Duplication - Use DataModelInitHelper (shared with AOT engine)
+            // W3C SCXML 5.2/5.3: Standard evaluation for non-function expressions
+            bool success = DataModelInitHelper::initializeVariable(
+                RSM::JSEngine::instance(), sessionId_, id, expr, [this, &id](const std::string &msg) {
+                    // W3C SCXML 5.3: Raise error.execution on initialization failure
                     if (eventRaiser_) {
-                        eventRaiser_->raiseEvent("error.execution", "Failed to set variable '" + id +
-                                                                        "' from expression '" + expr +
-                                                                        "': " + setResult.getErrorMessage());
+                        eventRaiser_->raiseEvent("error.execution", msg);
                     }
-                    return;
-                }
+                    LOG_ERROR("StateMachine: {}", msg);
+                });
 
+            if (success) {
                 LOG_DEBUG("StateMachine: Initialized variable '{}' from expression '{}'", id, expr);
             } else {
-                LOG_ERROR("StateMachine: Failed to evaluate expression '{}' for variable '{}': {}", expr, id,
-                          result.getErrorMessage());
-                // W3C SCXML 5.3: On evaluation error, raise error.execution event and create unbound variable
-                if (eventRaiser_) {
-                    eventRaiser_->raiseEvent("error.execution", "Failed to evaluate data expression for '" + id +
-                                                                    "': " + result.getErrorMessage());
-                }
                 // Leave variable unbound (don't create it) so it can be assigned later
                 return;
             }

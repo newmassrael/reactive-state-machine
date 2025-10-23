@@ -428,6 +428,12 @@ public:
     void initialize() {
         isRunning_ = true;
 
+        // W3C SCXML 5.3: Initialize datamodel before any state entry
+        // This ensures error.execution events are raised immediately if initialization fails
+        if constexpr (requires { policy_.initializeDataModel(*this); }) {
+            policy_.initializeDataModel(*this);
+        }
+
         // W3C SCXML 3.3: Use HierarchicalStateHelper for correct entry order
         auto entryChain = RSM::Common::HierarchicalStateHelper<StatePolicy>::buildEntryChain(currentState_);
 

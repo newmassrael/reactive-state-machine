@@ -79,15 +79,9 @@
 {% endfor %}
 {% endif %}
 {%- if model.needs_jsengine %}
-        // W3C SCXML 5.3: Ensure JSEngine initialized to detect datamodel errors
+        // W3C SCXML 5.3: Ensure JSEngine initialized (lazy init for runtime operations)
+        // Note: Datamodel initialization happens in StaticExecutionEngine::initialize()
         this->ensureJSEngine();
-
-        // W3C SCXML 5.3: Raise error.execution and defer to next tick
-        if (datamodelInitFailed_) {
-            datamodelInitFailed_ = false;
-            engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, "Datamodel initialization failed"));
-            return false;
-        }
 {%- endif %}
 {%- if model.needs_event_scheduler and model.needs_event_data and (model.needs_event_data_helper or model.needs_jsengine) %}
 

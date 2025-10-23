@@ -19,8 +19,6 @@
         auto initExpr_{{ var.id }} = jsEngine.evaluateExpression(sessionId_.value(), "{{ var.expr | escape_cpp }}").get();
         if (!::RSM::JSEngine::isSuccess(initExpr_{{ var.id }})) {
             LOG_ERROR("Failed to evaluate expression for variable: {{ var.id }}");
-            // W3C SCXML 5.3: Mark initialization failure for later error.execution event
-            datamodelInitFailed_ = true;
         } else {
             jsEngine.setVariable(sessionId_.value(), "{{ var.id }}", initExpr_{{ var.id }}.getInternalValue());
         }
@@ -28,8 +26,6 @@
         auto initExpr_{{ var.id }} = jsEngine.evaluateExpression(sessionId_.value(), R"({{ var.content | escape_cpp }})").get();
         if (!::RSM::JSEngine::isSuccess(initExpr_{{ var.id }})) {
             LOG_ERROR("Failed to evaluate expression for variable: {{ var.id }}");
-            // W3C SCXML 5.3: Mark initialization failure for later error.execution event
-            datamodelInitFailed_ = true;
         } else {
             jsEngine.setVariable(sessionId_.value(), "{{ var.id }}", initExpr_{{ var.id }}.getInternalValue());
         }
@@ -37,11 +33,49 @@
         auto initExpr_{{ var.id }} = jsEngine.evaluateExpression(sessionId_.value(), "undefined").get();
         if (!::RSM::JSEngine::isSuccess(initExpr_{{ var.id }})) {
             LOG_ERROR("Failed to evaluate expression for variable: {{ var.id }}");
-            // W3C SCXML 5.3: Mark initialization failure for later error.execution event
-            datamodelInitFailed_ = true;
         } else {
             jsEngine.setVariable(sessionId_.value(), "{{ var.id }}", initExpr_{{ var.id }}.getInternalValue());
         }
+{% endif %}
+{% endfor %}
+
+        jsEngineInitialized_ = true;
+    }
+
+    // ARCHITECTURE.MD: Zero Duplication - Use DataModelInitHelper (shared with Interpreter)
+    // W3C SCXML 5.2/5.3: Initialize datamodel and raise error.execution if failed
+    // Called during StaticExecutionEngine::initialize() to ensure proper error event timing
+    template<typename Engine>
+    void initializeDataModel(Engine& engine) {
+        if (jsEngineInitialized_) return;
+        ensureSessionId();
+        if (!sessionId_.has_value()) return;
+        auto& jsEngine = ::RSM::JSEngine::instance();
+        jsEngine.createSession(sessionId_.value());
+{% if not model.variables %}
+        (void)engine;  // No variables to initialize
+{% endif %}
+
+{% for var in model.variables %}
+{% if var.expr %}
+        // W3C SCXML 5.2/5.3: Use shared Helper for datamodel initialization
+        ::RSM::DataModelInitHelper::initializeVariable(
+            jsEngine, sessionId_.value(), "{{ var.id }}", "{{ var.expr | escape_cpp }}",
+            [&engine](const ::std::string& msg) {
+                engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, msg));
+            });
+{% elif var.content %}
+        ::RSM::DataModelInitHelper::initializeVariable(
+            jsEngine, sessionId_.value(), "{{ var.id }}", R"({{ var.content | escape_cpp }})",
+            [&engine](const ::std::string& msg) {
+                engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, msg));
+            });
+{% elif var.type == 'runtime' %}
+        ::RSM::DataModelInitHelper::initializeVariable(
+            jsEngine, sessionId_.value(), "{{ var.id }}", "",
+            [&engine](const ::std::string& msg) {
+                engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, msg));
+            });
 {% endif %}
 {% endfor %}
 
