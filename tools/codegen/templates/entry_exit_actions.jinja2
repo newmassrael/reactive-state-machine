@@ -1,10 +1,24 @@
 {#
     Entry/Exit Actions Template (Jinja2)
 
-    ARCHITECTURE.md Compliance:
+    Last Modified: 2025-10-23
+    ARCHITECTURE.md Version: 2025-10-23
+
+    ARCHITECTURE.md Compliance (Lines 311-491):
     - Zero Duplication: Uses DoneDataHelper for param/content evaluation
     - Single Source of Truth: All W3C SCXML 5.5/5.7 logic in helper class
     - Long-Term Correctness: No workarounds, complete implementation
+
+    Helper Classes Used:
+    - DoneDataHelper: W3C SCXML 5.5/5.7 (donedata param/content evaluation)
+    - HistoryHelper: W3C SCXML 3.11 (history state recording)
+    - AssignHelper: W3C SCXML 5.3/5.4 (location validation)
+
+    Features Implemented:
+    - W3C SCXML 3.4: Parallel state auto-entry (enter all child regions)
+    - W3C SCXML 3.8: Onexit handlers with datamodel updates
+    - W3C SCXML 3.9: Entry/exit action execution
+    - W3C SCXML 6.4: Static invoke lifecycle management
 #}
 
     template<typename Engine>

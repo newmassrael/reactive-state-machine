@@ -1,11 +1,26 @@
 {#
     Process Transition Template (Jinja2)
 
-    ARCHITECTURE.MD Compliance:
+    Last Modified: 2025-10-23
+    ARCHITECTURE.md Version: 2025-10-23
+
+    ARCHITECTURE.md Compliance (Lines 311-491):
     - Zero Duplication: Matches Interpreter's hierarchical event processing logic
     - Single Source of Truth: Hierarchical transition checking from W3C SCXML 3.12
     - Event Matching: Uses EventMatchingHelper for W3C SCXML 5.9.3 compliance
     - Long-Term Correctness: Complete Interpreter replication, no simplified workarounds
+
+    Helper Classes Used:
+    - ParallelTransitionHelper: W3C SCXML Appendix D.2 (microstep execution)
+    - EventMatchingHelper: W3C SCXML 5.9.3 (event descriptor matching)
+    - HistoryHelper: W3C SCXML 3.11 (history state recording)
+    - GuardHelper: W3C SCXML 5.9.2 (condition evaluation)
+    - SendHelper: W3C SCXML 6.2 (event scheduling and sending)
+    - ForeachHelper: W3C SCXML 4.6 (foreach loop execution)
+
+    Critical Fix (2025-10-23):
+    - Fixed lastTransitionSourceState_ tracking for transitions without actions
+    - Ensures hierarchical exit/entry uses correct source state (W3C SCXML 3.4)
 #}
 
 {% macro restore_history_or_transition(transition) %}
@@ -293,15 +308,15 @@ private:
 
         // Convert TransitionInfo to ParallelTransitionHelper::Transition
         ::std::vector<::RSM::ParallelTransitionHelper::Transition<State>> helperTransitions;
-        helperTransitions.reserve(transitions.size());  // Avoid reallocation and GCC -Warray-bounds false positive
+        helperTransitions.reserve(transitions.size());  // Pre-allocate capacity
+        // W3C SCXML Appendix D: Construct transitions directly in vector to avoid GCC -Warray-bounds false positive
         for (const auto& trans : transitions) {
-            ::RSM::ParallelTransitionHelper::Transition<State> helperTrans(
+            helperTransitions.emplace_back(
                 trans.source, 
                 {trans.target}, 
                 trans.transitionIndex, 
                 trans.hasActions
             );
-            helperTransitions.push_back(helperTrans);
         }
 
         // W3C SCXML Appendix D.2 Step 1 & 2: Compute and exit states (Helper)
@@ -448,9 +463,12 @@ private:
                 if ({{ trans.cond }}) {
 {% endif %}
                     LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ trans.event }}' in state {}", static_cast<int>(checkState));
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.4: Track transition source for hierarchical exit/entry
+                    lastTransitionSourceState_ = checkState;
+{% endif %}
 {% if model.has_transition_actions %}
 // W3C SCXML 3.13: Store transition for deferred execution (use original index)
-                    lastTransitionSourceState_ = checkState;
                     lastTransitionIndex_ = {{ event_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if trans.actions else 'false' }};
 {% endif %}
@@ -460,9 +478,12 @@ private:
 {% else %}
                 {  // Unconditional transition
                     LOG_DEBUG("AOT processTransition: Event matched descriptor '{{ trans.event }}' in state {}", static_cast<int>(checkState));
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.4: Track transition source for hierarchical exit/entry
+                    lastTransitionSourceState_ = checkState;
+{% endif %}
 {% if model.has_transition_actions %}
 // W3C SCXML 3.13: Store transition for deferred execution (use original index)
-                    lastTransitionSourceState_ = checkState;
                     lastTransitionIndex_ = {{ event_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if trans.actions else 'false' }};
 {% endif %}
@@ -510,9 +531,12 @@ private:
 {% endif %}
 {% set first_trans.value = False %}
 {% endif %}
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.4: Track transition source for hierarchical exit/entry
+                    lastTransitionSourceState_ = checkState;
+{% endif %}
 {% if model.has_transition_actions %}
 // W3C SCXML 3.13: Store transition for deferred execution (use original index)
-                    lastTransitionSourceState_ = checkState;
                     lastTransitionIndex_ = {{ eventless_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if transition.actions else 'false' }};
 {% endif %}
@@ -531,9 +555,12 @@ private:
 {% endif %}
 {% else %}
 {% for transition in eventless_transitions %}
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.4: Track transition source for hierarchical exit/entry
+                    lastTransitionSourceState_ = checkState;
+{% endif %}
 {% if model.has_transition_actions %}
 // W3C SCXML 3.13: Store transition for deferred execution (use original index)
-                    lastTransitionSourceState_ = checkState;
                     lastTransitionIndex_ = {{ eventless_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if transition.actions else 'false' }};
 {% endif %}
