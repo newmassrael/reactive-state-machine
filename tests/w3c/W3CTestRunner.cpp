@@ -1572,15 +1572,21 @@ TestReport W3CTestRunner::runAotTest(int testId) {
                 report.executionContext.finalState = "fail";
             }
 
+            report.executionContext.executionTime = duration;
+
             LOG_INFO("AOT Test {} ({}): {} in {}ms", testId, testDescription, testPassed ? "PASS" : "FAIL",
                      duration.count());
 
             return report;
 
         } catch (const std::exception &e) {
+            auto endTime = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
             LOG_ERROR("AOT Test {} failed with exception: {}", testId, e.what());
             report.validationResult = ValidationResult(false, TestResult::ERROR, e.what());
             report.executionContext.finalState = "error";
+            report.executionContext.executionTime = duration;
             return report;
         }
     }

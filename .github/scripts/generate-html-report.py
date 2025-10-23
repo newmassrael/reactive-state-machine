@@ -88,7 +88,7 @@ def generate_html(data):
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: #f6f8fa;
             color: #24292e;
-            padding: 20px;
+            padding: 10px;
         }}
         .container {{
             max-width: 1200px;
@@ -96,28 +96,60 @@ def generate_html(data):
             background: white;
             border-radius: 6px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-            padding: 30px;
+            padding: 20px;
+        }}
+        @media (min-width: 768px) {{
+            body {{
+                padding: 20px;
+            }}
+            .container {{
+                padding: 30px;
+            }}
         }}
         h1 {{
             color: #24292e;
             margin-bottom: 10px;
-            font-size: 32px;
+            font-size: 24px;
+            word-break: break-word;
+        }}
+        @media (min-width: 768px) {{
+            h1 {{
+                font-size: 32px;
+            }}
         }}
         .timestamp {{
             color: #586069;
-            font-size: 14px;
-            margin-bottom: 30px;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }}
+        @media (min-width: 768px) {{
+            .timestamp {{
+                font-size: 14px;
+                margin-bottom: 30px;
+            }}
         }}
         .summary {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }}
+        @media (min-width: 768px) {{
+            .summary {{
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+                margin-bottom: 30px;
+            }}
         }}
         .summary-card {{
-            padding: 20px;
+            padding: 15px;
             border-radius: 6px;
             border: 1px solid #e1e4e8;
+        }}
+        @media (min-width: 768px) {{
+            .summary-card {{
+                padding: 20px;
+            }}
         }}
         .summary-card.total {{
             background: #f6f8fa;
@@ -131,44 +163,87 @@ def generate_html(data):
             border-color: #d73a49;
         }}
         .summary-card h3 {{
-            font-size: 14px;
+            font-size: 11px;
             color: #586069;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             text-transform: uppercase;
         }}
+        @media (min-width: 768px) {{
+            .summary-card h3 {{
+                font-size: 14px;
+                margin-bottom: 8px;
+            }}
+        }}
         .summary-card .value {{
-            font-size: 36px;
+            font-size: 28px;
             font-weight: 600;
         }}
+        @media (min-width: 768px) {{
+            .summary-card .value {{
+                font-size: 36px;
+            }}
+        }}
         .pass-rate {{
-            font-size: 18px;
+            font-size: 14px;
             color: #586069;
             margin-top: 5px;
         }}
+        @media (min-width: 768px) {{
+            .pass-rate {{
+                font-size: 18px;
+            }}
+        }}
         .testsuite {{
-            margin-bottom: 40px;
+            margin-bottom: 30px;
+        }}
+        @media (min-width: 768px) {{
+            .testsuite {{
+                margin-bottom: 40px;
+            }}
         }}
         .testsuite-header {{
             background: #f6f8fa;
-            padding: 15px 20px;
+            padding: 12px 15px;
             border-radius: 6px 6px 0 0;
             border: 1px solid #e1e4e8;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }}
+        @media (min-width: 768px) {{
+            .testsuite-header {{
+                padding: 15px 20px;
+                flex-wrap: nowrap;
+            }}
         }}
         .testsuite-header:hover {{
             background: #f1f3f5;
         }}
         .testsuite-title {{
-            font-size: 20px;
+            font-size: 16px;
             font-weight: 600;
+            flex: 1 1 100%;
+        }}
+        @media (min-width: 768px) {{
+            .testsuite-title {{
+                font-size: 20px;
+                flex: 1 1 auto;
+            }}
         }}
         .testsuite-stats {{
             display: flex;
-            gap: 20px;
-            font-size: 14px;
+            gap: 10px;
+            font-size: 12px;
+            flex-wrap: wrap;
+        }}
+        @media (min-width: 768px) {{
+            .testsuite-stats {{
+                gap: 20px;
+                font-size: 14px;
+            }}
         }}
         .stat-passed {{
             color: #28a745;
@@ -180,6 +255,7 @@ def generate_html(data):
             border: 1px solid #e1e4e8;
             border-top: none;
             border-radius: 0 0 6px 6px;
+            overflow-x: auto;
         }}
         .testsuite-content.collapsed {{
             display: none;
@@ -187,7 +263,7 @@ def generate_html(data):
         table {{
             width: 100%;
             border-collapse: collapse;
-            table-layout: fixed;
+            min-width: 600px;
         }}
         th {{
             width: 60%;
@@ -200,17 +276,30 @@ def generate_html(data):
         }}
         th {{
             text-align: left;
-            padding: 12px 20px;
+            padding: 10px 12px;
             background: #fafbfc;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11px;
             color: #586069;
             text-transform: uppercase;
             border-bottom: 1px solid #e1e4e8;
         }}
+        @media (min-width: 768px) {{
+            th {{
+                padding: 12px 20px;
+                font-size: 12px;
+            }}
+        }}
         td {{
-            padding: 12px 20px;
+            padding: 10px 12px;
             border-bottom: 1px solid #e1e4e8;
+            font-size: 14px;
+        }}
+        @media (min-width: 768px) {{
+            td {{
+                padding: 12px 20px;
+                font-size: 16px;
+            }}
         }}
         tr:last-child td {{
             border-bottom: none;
@@ -240,12 +329,19 @@ def generate_html(data):
             font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
         }}
         .footer {{
-            margin-top: 40px;
-            padding-top: 20px;
+            margin-top: 30px;
+            padding-top: 15px;
             border-top: 1px solid #e1e4e8;
             text-align: center;
             color: #586069;
-            font-size: 14px;
+            font-size: 12px;
+        }}
+        @media (min-width: 768px) {{
+            .footer {{
+                margin-top: 40px;
+                padding-top: 20px;
+                font-size: 14px;
+            }}
         }}
         .github-link {{
             color: #0366d6;
