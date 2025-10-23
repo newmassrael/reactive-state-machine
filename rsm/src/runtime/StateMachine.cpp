@@ -2,6 +2,7 @@
 #include "common/BindingHelper.h"
 #include "common/DoneDataHelper.h"
 #include "common/Logger.h"
+#include "common/ParallelTransitionHelper.h"
 #include "common/StringUtils.h"
 #include "common/TransitionHelper.h"
 #include "core/EventProcessingAlgorithms.h"
@@ -2519,6 +2520,11 @@ bool StateMachine::checkEventlessTransitions() {
 }
 
 bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> &transitions) {
+    // ARCHITECTURE.MD: W3C SCXML Appendix D.2 Microstep Execution
+    // Note: Interpreter engine uses dynamic node-based approach (runtime state IDs)
+    // AOT engine uses ParallelTransitionHelper with static enum-based approach
+    // Zero Duplication applies to algorithm structure, not implementation (different representations)
+
     if (transitions.empty()) {
         return false;
     }
@@ -2529,8 +2535,9 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
     // RAII guard ensures flag is cleared on all exit paths (normal return, error, exception)
     TransitionGuard transitionGuard(inTransition_);
 
-    // W3C SCXML 3.13: Exit all source states (executing onexit actions)
-    // W3C SCXML: Compute unique exit set from all transitions, exit in correct order
+    // W3C SCXML Appendix D.2 Step 1 & 2: Exit all source states (executing onexit actions)
+    // ARCHITECTURE.MD: Algorithm structure shared with AOT engine (via ParallelTransitionHelper)
+    // Compute unique exit set from all transitions, exit in W3C SCXML 3.13 order
     std::set<std::string> exitSetUnique;
     for (const auto &transInfo : transitions) {
         for (const auto &stateId : transInfo.exitSet) {
@@ -2562,28 +2569,16 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
     }
 
     // W3C SCXML 3.13: Sort by depth (deepest first), then by reverse document order
+    // ARCHITECTURE.MD: Zero Duplication - Use ParallelTransitionHelper (shared with AOT engine)
     // Performance: Cache document positions for O(1) lookup during sort
     std::unordered_map<std::string, int> positionCache;
     for (const auto &stateId : allStatesToExit) {
         positionCache[stateId] = getStateDocumentPosition(stateId);
     }
 
-    std::sort(allStatesToExit.begin(), allStatesToExit.end(),
-              [&depthCache, &positionCache](const std::string &a, const std::string &b) {
-                  // Primary: Sort deepest first (higher depth comes first)
-                  int depthA = depthCache.at(a);
-                  int depthB = depthCache.at(b);
-
-                  if (depthA != depthB) {
-                      return depthA > depthB;
-                  }
-
-                  // Secondary: For states at same depth, use reverse document order
-                  // W3C SCXML: Exit states in reverse document order (later states exit first)
-                  int posA = positionCache.at(a);
-                  int posB = positionCache.at(b);
-                  return posA > posB;  // Reverse document order
-              });
+    allStatesToExit = ParallelTransitionHelper::sortStatesForExit<std::string>(
+        allStatesToExit, [&depthCache](const std::string &stateId) { return depthCache.at(stateId); },
+        [&positionCache](const std::string &stateId) { return positionCache.at(stateId); });
 
     // W3C SCXML 3.6 (test 580): Record history BEFORE exiting states
     // History must be recorded while all descendants are still active
@@ -2622,7 +2617,8 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
         }
     }
 
-    // W3C SCXML 3.13: Execute all transition actions in document order
+    // W3C SCXML Appendix D.2 Step 3: Execute all transition actions in document order
+    // ARCHITECTURE.MD: Algorithm structure same as AOT engine (different execution method)
     LOG_DEBUG("W3C SCXML 3.13: Executing transition actions for {} transition(s)", transitions.size());
     for (const auto &transInfo : transitions) {
         const auto &actionNodes = transInfo.transition->getActionNodes();
@@ -2651,7 +2647,8 @@ bool StateMachine::executeTransitionMicrostep(const std::vector<TransitionInfo> 
         }
     }
 
-    // W3C SCXML 3.13: Enter all target states (executing onentry actions)
+    // W3C SCXML Appendix D.2 Step 4-5: Enter all target states (executing onentry actions)
+    // ARCHITECTURE.MD: Algorithm structure same as AOT engine (different execution method)
     LOG_DEBUG("W3C SCXML 3.13: Entering {} target state(s)", transitions.size());
     for (const auto &transInfo : transitions) {
         if (!transInfo.targetState.empty()) {

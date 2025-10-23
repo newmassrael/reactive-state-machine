@@ -1,8 +1,8 @@
 #pragma once
 
+#include "common/Logger.h"
 #include <algorithm>
 #include <optional>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <vector>
 
@@ -28,6 +28,45 @@ template <typename StatePolicy> class HierarchicalStateHelper {
 public:
     using State = typename StatePolicy::State;
 
+private:
+    // SFINAE helper: addParallelRegions if method exists
+    template <typename T = StatePolicy>
+    static auto addParallelRegionsImpl(std::vector<State> &chain, State leafState, int)
+        -> decltype(T::isParallelState(leafState), void()) {
+        LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - Checking if leafState {} is parallel",
+                  static_cast<int>(leafState));
+        if (T::isParallelState(leafState)) {
+            LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - leafState {} IS parallel, adding regions",
+                      static_cast<int>(leafState));
+            auto regions = T::getParallelRegions(leafState);
+            LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - Found {} regions", regions.size());
+            for (const auto &region : regions) {
+                LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - Adding region {}", static_cast<int>(region));
+                chain.push_back(region);
+
+                if (T::isCompoundState(region)) {
+                    State regionInitialChild = T::getInitialChild(region);
+                    LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - Region {} initial child: {}",
+                              static_cast<int>(region), static_cast<int>(regionInitialChild));
+                    if (regionInitialChild != region) {
+                        LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - Adding initial child {}",
+                                  static_cast<int>(regionInitialChild));
+                        chain.push_back(regionInitialChild);
+                    }
+                }
+            }
+        }
+    }
+
+    template <typename T = StatePolicy> static void addParallelRegionsImpl(std::vector<State> &, State, ...) {
+        // No-op if isParallelState doesn't exist
+    }
+
+    static void addParallelRegions(std::vector<State> &chain, State leafState) {
+        addParallelRegionsImpl(chain, leafState, 0);
+    }
+
+public:
     // Static assertions to validate StatePolicy interface at compile-time
     static_assert(std::is_same_v<decltype(StatePolicy::getParent(std::declval<State>())), std::optional<State>>,
                   "StatePolicy::getParent() must return std::optional<State>");
@@ -108,10 +147,10 @@ public:
 
         // Safety check: detect cyclic parent relationships
         if (depth >= MAX_DEPTH) {
-            spdlog::error("HierarchicalStateHelper::buildEntryChain() - Maximum depth ({}) exceeded for state. "
-                          "Cyclic parent relationship detected in state machine definition. "
-                          "This indicates a bug in the code generator or corrupted SCXML.",
-                          MAX_DEPTH);
+            LOG_ERROR("HierarchicalStateHelper::buildEntryChain() - Maximum depth ({}) exceeded for state. "
+                      "Cyclic parent relationship detected in state machine definition. "
+                      "This indicates a bug in the code generator or corrupted SCXML.",
+                      MAX_DEPTH);
             throw std::runtime_error("Cyclic parent relationship detected in state hierarchy");
         }
 
@@ -131,6 +170,14 @@ public:
             leafToCheck = initialChild;
             ++depth;
         }
+
+        // W3C SCXML 3.4: If leaf is parallel state, add ALL child regions and their initial states
+        // This ensures parallel states enter all regions simultaneously (Interpreter behavior)
+        LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - About to call addParallelRegions for leafState {}",
+                  static_cast<int>(leafState));
+        addParallelRegions(chain, leafState);
+        LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - Returned from addParallelRegions, chain size now {}",
+                  chain.size());
 
         return chain;
     }

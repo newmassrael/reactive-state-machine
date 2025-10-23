@@ -26,9 +26,17 @@ public:
         std::vector<StateType> targets;         // Target states
         std::unordered_set<StateType> exitSet;  // States exited by this transition
 
+        // W3C SCXML 3.13: Additional metadata for AOT engine compatibility
+        int transitionIndex = 0;  // Index for executeTransitionActions
+        bool hasActions = false;  // Whether transition has executable content
+
         Transition() = default;
 
         Transition(StateType src, std::vector<StateType> tgts) : source(src), targets(std::move(tgts)) {}
+
+        // Constructor with full metadata (for AOT engine)
+        Transition(StateType src, std::vector<StateType> tgts, int idx, bool actions)
+            : source(src), targets(std::move(tgts)), transitionIndex(idx), hasActions(actions) {}
     };
 
     /**
@@ -49,13 +57,13 @@ public:
         // Find LCA of source and all targets
         std::optional<StateType> lca = std::nullopt;
         for (const auto &target : transition.targets) {
-            auto currentLca = HierarchicalStateHelper::findLCA<StateType, PolicyType>(transition.source, target);
+            auto currentLca = RSM::Common::HierarchicalStateHelper<PolicyType>::findLCA(transition.source, target);
 
             if (!lca.has_value()) {
                 lca = currentLca;
             } else if (currentLca.has_value()) {
                 // If we have multiple LCAs, find their common ancestor
-                lca = HierarchicalStateHelper::findLCA<StateType, PolicyType>(lca.value(), currentLca.value());
+                lca = RSM::Common::HierarchicalStateHelper<PolicyType>::findLCA(lca.value(), currentLca.value());
             }
         }
 
@@ -179,6 +187,145 @@ public:
         }
 
         return depth;
+    }
+
+    /**
+     * @brief Check if a transition is enabled for an event
+     *
+     * A transition is enabled if:
+     * 1. Source state is active
+     * 2. Event matches transition's event descriptor
+     * 3. Condition evaluates to true (if present)
+     *
+     * @tparam StateType State enum or identifier type
+     * @tparam EventType Event enum or identifier type
+     * @param sourceState Source state of transition
+     * @param transitionEvent Event descriptor of transition
+     * @param currentEvent Current event being processed
+     * @param isActive Predicate to check if source state is active
+     * @return true if transition is enabled
+     */
+    /**
+     * @brief Compute and sort states to exit for microstep execution
+     *
+     * ARCHITECTURE.MD: Zero Duplication Principle - Shared exit computation logic
+     * W3C SCXML Appendix D.2 Step 1: Collect unique source states from transitions
+     * W3C SCXML 3.13: Sort by reverse document order (deepest/rightmost first)
+     *
+     * @tparam StateType State enum or identifier type
+     * @tparam PolicyType Policy class with getDocumentOrder()
+     * @param transitions Transitions to execute
+     * @param activeStates Current active states
+     * @return States to exit in reverse document order
+     */
+    template <typename StateType, typename PolicyType>
+    static std::vector<StateType> computeStatesToExit(const std::vector<Transition<StateType>> &transitions,
+                                                      const std::vector<StateType> &activeStates) {
+        std::vector<StateType> statesToExit;
+
+        // Collect unique source states that are active
+        for (const auto &trans : transitions) {
+            bool found = false;
+            for (StateType s : statesToExit) {
+                if (s == trans.source) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                for (StateType active : activeStates) {
+                    if (active == trans.source) {
+                        statesToExit.push_back(trans.source);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // W3C SCXML 3.13: Sort by REVERSE document order (exit deepest first)
+        std::sort(statesToExit.begin(), statesToExit.end(), [](StateType a, StateType b) {
+            return PolicyType::getDocumentOrder(a) > PolicyType::getDocumentOrder(b);
+        });
+
+        return statesToExit;
+    }
+
+    /**
+     * @brief Sort transitions by source state document order
+     *
+     * ARCHITECTURE.MD: Zero Duplication Principle - Shared sorting logic
+     * W3C SCXML Appendix D.2 Step 3: Execute transition content in document order
+     *
+     * @tparam StateType State enum or identifier type
+     * @tparam PolicyType Policy class with getDocumentOrder()
+     * @param transitions Transitions to sort
+     * @return Sorted transitions (by source state document order)
+     */
+    template <typename StateType, typename PolicyType>
+    static std::vector<Transition<StateType>> sortTransitionsBySource(std::vector<Transition<StateType>> transitions) {
+        std::sort(transitions.begin(), transitions.end(),
+                  [](const Transition<StateType> &a, const Transition<StateType> &b) {
+                      return PolicyType::getDocumentOrder(a.source) < PolicyType::getDocumentOrder(b.source);
+                  });
+
+        return transitions;
+    }
+
+    /**
+     * @brief Sort transitions by target state document order
+     *
+     * ARCHITECTURE.MD: Zero Duplication Principle - Shared sorting logic
+     * W3C SCXML Appendix D.2 Step 4-5: Enter target states in document order
+     *
+     * @tparam StateType State enum or identifier type
+     * @tparam PolicyType Policy class with getDocumentOrder()
+     * @param transitions Transitions to sort
+     * @return Sorted transitions (by target state document order)
+     */
+    template <typename StateType, typename PolicyType>
+    static std::vector<Transition<StateType>> sortTransitionsByTarget(std::vector<Transition<StateType>> transitions) {
+        std::sort(transitions.begin(), transitions.end(),
+                  [](const Transition<StateType> &a, const Transition<StateType> &b) {
+                      StateType targetA = a.targets.empty() ? a.source : a.targets[0];
+                      StateType targetB = b.targets.empty() ? b.source : b.targets[0];
+                      return PolicyType::getDocumentOrder(targetA) < PolicyType::getDocumentOrder(targetB);
+                  });
+
+        return transitions;
+    }
+
+    /**
+     * @brief Sort states for exit by depth and document order
+     *
+     * ARCHITECTURE.MD: Zero Duplication Principle - Shared exit ordering logic
+     * W3C SCXML 3.13: States exit in order (deepest first, then reverse document order)
+     * Shared between Interpreter and AOT engines.
+     *
+     * @tparam StateType State identifier type (string or enum)
+     * @tparam GetDepthFunc Callable that returns depth for a state
+     * @tparam GetDocOrderFunc Callable that returns document order for a state
+     * @param states States to sort
+     * @param getDepth Function to get state depth (0 = root)
+     * @param getDocOrder Function to get document order
+     * @return Sorted states (deepest first, reverse document order for same depth)
+     */
+    template <typename StateType, typename GetDepthFunc, typename GetDocOrderFunc>
+    static std::vector<StateType> sortStatesForExit(std::vector<StateType> states, GetDepthFunc getDepth,
+                                                    GetDocOrderFunc getDocOrder) {
+        std::sort(states.begin(), states.end(), [&](const StateType &a, const StateType &b) {
+            // W3C SCXML 3.13: Primary sort by depth (deepest first)
+            int depthA = getDepth(a);
+            int depthB = getDepth(b);
+
+            if (depthA != depthB) {
+                return depthA > depthB;  // Deeper states exit first
+            }
+
+            // W3C SCXML 3.13: Secondary sort by reverse document order
+            return getDocOrder(a) > getDocOrder(b);  // Later states exit first
+        });
+
+        return states;
     }
 
     /**

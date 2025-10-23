@@ -58,6 +58,53 @@ When choosing between approaches:
 
 **This principle overrides all other considerations including token usage, implementation time, and perceived complexity.**
 
+### W3C SCXML Perfect Compliance Requirement
+
+**Absolute Rule**: AOT engine must achieve 100% W3C SCXML 1.0 specification compliance, matching Interpreter engine's correctness.
+
+**Forbidden Approaches**:
+1. **Test-Specific Solutions**: Never implement fixes that only work for specific test cases
+   - ❌ Bad: "Sort states by document order for test 405"
+   - ✅ Good: "Implement W3C SCXML Appendix D optimal transition set algorithm"
+
+2. **Partial Algorithm Implementation**: Never implement simplified versions of W3C SCXML algorithms
+   - ❌ Bad: "Process first enabled transition in parallel states"
+   - ✅ Good: "Collect ALL enabled transitions, execute in document order per W3C SCXML D.2"
+
+3. **Edge Case Shortcuts**: Never ignore edge cases to simplify implementation
+   - ❌ Bad: "This works for most parallel state scenarios"
+   - ✅ Good: "Handles all W3C SCXML parallel state combinations (eventless, external, conflicting)"
+
+4. **Incremental Workarounds**: Never add special cases to patch existing incomplete implementations
+   - ❌ Bad: "Add if (eventless) { skip break; } to existing loop"
+   - ✅ Good: "Refactor transition processing to implement microstep algorithm correctly"
+
+**Required Implementation Standards**:
+1. **Reference W3C SCXML Specification**: Every implementation must cite specific W3C SCXML section (e.g., "3.13", "Appendix D.2")
+2. **Match Interpreter Behavior**: AOT engine behavior must be identical to Interpreter engine for all test cases
+3. **Complete Algorithm Implementation**: Implement entire W3C SCXML algorithm, not simplified subset
+4. **Future-Proof Architecture**: Solution must work for all potential W3C SCXML test cases, not just current ones
+
+**Verification Process**:
+1. **Specification Review**: Read relevant W3C SCXML specification sections before implementation
+2. **Algorithm Completeness**: Verify all algorithm steps from spec are implemented
+3. **Interpreter Comparison**: Compare AOT and Interpreter execution logs to ensure identical behavior
+4. **Edge Case Analysis**: Test with variations to ensure robustness beyond specific test case
+
+**Examples of Correct Approach**:
+- ✅ Implementing optimal transition set: Collect → Sort by document order → Execute (exit all → transition all → enter all)
+- ✅ Microstep algorithm: Loop until stable configuration (no enabled eventless transitions)
+- ✅ Parallel state transition: Select one transition per region, execute atomically
+- ✅ Configuration tracking: Maintain complete active state set per W3C SCXML 3.4
+
+**Consequence of Violation**:
+- Incomplete implementations create technical debt that compounds exponentially
+- Test-specific fixes fail when new tests expose edge cases
+- Simplified algorithms violate W3C SCXML determinism guarantees
+- Future W3C SCXML tests will fail, requiring expensive refactoring
+
+**This requirement has absolute priority over development speed, token efficiency, and implementation complexity.**
+
 ## Core Architecture
 
 ### Code Generator: Python + Jinja2 (Production)

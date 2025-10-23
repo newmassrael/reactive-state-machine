@@ -25,6 +25,7 @@
 {% if model.has_parallel_states %}
 #include "common/ParallelStateHelper.h"
 #include "common/ParallelExitEntryHelper.h"
+#include "common/ParallelTransitionHelper.h"
 {% endif %}
 {% if model.needs_event_data_helper %}
 #include "common/EventDataHelper.h"
@@ -63,6 +64,23 @@ enum class Event : uint8_t {
     {% for event_name in model.events | sort %}
     {{ event_name | replace('.', '_') | capitalize }}{{ "," if not loop.last }}
     {% endfor %}
+};
+
+{# Transition descriptor for W3C SCXML Appendix D optimal transition set #}
+/**
+ * @brief Transition information for microstep execution
+ *
+ * W3C SCXML Appendix D: Optimal enabled transition set execution requires
+ * collecting all enabled transitions before executing any (atomic microstep).
+ */
+struct TransitionInfo {
+    State source;              // W3C SCXML 3.13: Source state of transition
+    State target;              // Target state of transition
+    int transitionIndex;       // Index of transition in source state (for executeTransitionActions)
+    bool hasActions;           // Whether transition has executable content
+
+    TransitionInfo(State src, State tgt, int idx, bool actions)
+        : source(src), target(tgt), transitionIndex(idx), hasActions(actions) {}
 };
 
 {# Policy class #}
@@ -179,13 +197,18 @@ struct {{ model.name }}Policy {
     mutable ::std::optional<::std::vector<State>> history_{{ history_id }};  // {{ history_info.type }} history for {{ history_info.parent }}
     {% endfor %}
     {% endif %}
+    {% if model.has_parallel_states %}
+    // W3C SCXML 3.4: Configuration - active states for parallel state support
+    // Tracks all currently active states (parallel regions can have multiple active states)
+    mutable ::std::vector<State> activeStates_;
+    {% endif %}
 
-{% if model.has_transition_actions %}
     // W3C SCXML 3.13: Track last transition for deferred action execution
+    // W3C SCXML 3.4: Also needed for parallel states to track actual transition source
     mutable State lastTransitionSourceState_{};
+{% if model.has_transition_actions %}
     mutable size_t lastTransitionIndex_ = 0;
     mutable bool hasTransitionActions_ = false;
-
 {% endif %}
     // Default constructor (lazy initialization, no immediate resource allocation)
     {{ model.name }}Policy() = default;
@@ -289,6 +312,22 @@ struct {{ model.name }}Policy {
             {% endfor %}
             default:
                 return {};
+        }
+    }
+
+    // W3C SCXML 3.4: Check if descendant is a descendant of ancestor (anywhere in hierarchy)
+    // Matches Interpreter's collectDescendantStates logic
+    static bool isDescendantOf(State descendant, State ancestor) {
+        State current = descendant;
+        while (true) {
+            auto parent = getParent(current);
+            if (!parent.has_value()) {
+                return false;  // Reached root without finding ancestor
+            }
+            if (parent.value() == ancestor) {
+                return true;  // Found ancestor in parent chain
+            }
+            current = parent.value();
         }
     }
 

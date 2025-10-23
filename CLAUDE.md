@@ -20,6 +20,32 @@
   - ❌ Bad: Changing function signatures to avoid template instantiation errors
   - ✅ Good: Understanding why template instantiation fails and fixing the underlying design issue
 
+### W3C SCXML Perfect Compliance Requirement
+- **Complete Implementation Mandatory**: Never implement simplified or partial solutions for W3C SCXML features
+- **No "Good Enough" Shortcuts**: Solutions must fully satisfy W3C SCXML specification, not just pass specific tests
+- **Forbidden Approaches**:
+  - ❌ **Simple fixes that work for one test**: "Sort by document order" without implementing optimal transition set
+  - ❌ **Partial algorithm implementation**: "Process first transition only" instead of collecting all enabled transitions
+  - ❌ **Test-specific workarounds**: "If test 405, do X" instead of implementing W3C SCXML D.2 algorithm
+  - ❌ **Edge case ignoring**: "This works for most cases" instead of handling all W3C SCXML scenarios
+- **Required Approach**:
+  - ✅ **Full W3C SCXML algorithm implementation**: Read spec sections (e.g., Appendix D) and implement completely
+  - ✅ **Systematic architecture**: Build proper infrastructure (e.g., optimal transition set collection/execution)
+  - ✅ **Future-proof solutions**: Implementation works for all current and future W3C SCXML tests
+  - ✅ **Reference Interpreter**: Match Interpreter engine's complete W3C SCXML compliance
+- **Examples**:
+  - ❌ Bad: "Break after first eventless transition in parallel states"
+  - ✅ Good: "Implement W3C SCXML optimal transition set selection (collect all enabled, execute in document order)"
+  - ❌ Bad: "Sort active states by document order"
+  - ✅ Good: "Implement microstep algorithm: exit all → execute all transitions → enter all"
+  - ❌ Bad: "Add special case for parallel state eventless transitions"
+  - ✅ Good: "Implement W3C SCXML Appendix D.2 transition execution order for all state types"
+- **Rationale**:
+  - Simplified solutions fail for future tests with different edge cases
+  - W3C SCXML spec is comprehensive - partial implementations create technical debt
+  - AOT engine must match Interpreter's perfect W3C compliance
+  - "Just pass this test" mentality leads to unmaintainable codebase
+
 ## Code Modification Rules
 
 ### Python Code Generator (Production)

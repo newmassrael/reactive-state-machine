@@ -12,6 +12,17 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
     set(SCXML_FILE "${OUTPUT_DIR}/test${TEST_NUM}.scxml")
     set(GENERATED_HEADER "${OUTPUT_DIR}/test${TEST_NUM}_sm.h")
 
+    # Collect all code generator dependencies for proper incremental builds
+    # When any template or Python script changes, all generated code must be rebuilt
+    file(GLOB CODEGEN_TEMPLATES "${CMAKE_SOURCE_DIR}/tools/codegen/templates/*.jinja2")
+    file(GLOB CODEGEN_ACTION_TEMPLATES "${CMAKE_SOURCE_DIR}/tools/codegen/templates/actions/*.jinja2")
+    set(CODEGEN_DEPENDENCIES
+        "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py"
+        "${CMAKE_SOURCE_DIR}/tools/codegen/scxml_parser.py"
+        ${CODEGEN_TEMPLATES}
+        ${CODEGEN_ACTION_TEMPLATES}
+    )
+
     # Check if main TXML file exists
     if(NOT EXISTS "${TXML_FILE}")
         message(WARNING "TXML file not found: ${TXML_FILE} - Skipping test ${TEST_NUM}")
@@ -42,7 +53,7 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
         add_custom_command(
             OUTPUT "${SUB_HEADER_FILE}"
             COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SUB_SCXML_FILE}" -o "${OUTPUT_DIR}" --as-child
-            DEPENDS "${SUB_SCXML_FILE}"
+            DEPENDS "${SUB_SCXML_FILE}" ${CODEGEN_DEPENDENCIES}
             COMMENT "Generating C++ code: ${SUB_TXML_NAME}_sm.h"
             VERBATIM
         )
@@ -72,7 +83,7 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
         OUTPUT "${GENERATED_HEADER}"
         COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SCXML_FILE}" -o "${OUTPUT_DIR}"
         COMMAND bash -c "if [ -f \"${CHILDREN_METADATA}\" ]; then while IFS= read -r child; do [ -n \"$child\" ] && python3 \"${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py\" \"${OUTPUT_DIR}/$child.scxml\" -o \"${OUTPUT_DIR}\" --as-child; done < \"${CHILDREN_METADATA}\"; fi"
-        DEPENDS "${SCXML_FILE}" ${SUB_HEADER_DEPENDENCIES}
+        DEPENDS "${SCXML_FILE}" ${SUB_HEADER_DEPENDENCIES} ${CODEGEN_DEPENDENCIES}
         COMMENT "Generating C++ code: test${TEST_NUM}_sm.h (with inline children)"
         VERBATIM
     )

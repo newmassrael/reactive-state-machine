@@ -8,10 +8,15 @@
 #}
 
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.has_parent_communication and not model.needs_event_scheduler %}    static void executeEntryActions(State state, Engine& engine) {
+{% if not model.needs_jsengine and not model.static_invokes and not model.has_parent_communication and not model.needs_event_scheduler and not model.has_parallel_states %}    static void executeEntryActions(State state, Engine& engine) {
 {% else %}    void executeEntryActions(State state, Engine& engine) {
 {% endif %}
         (void)engine;
+{% if model.has_parallel_states %}
+        // W3C SCXML 3.4: Add state to active configuration for parallel state support
+        LOG_DEBUG("AOT executeEntryActions: Adding state {} to activeStates", static_cast<int>(state));
+        activeStates_.push_back(state);
+{% endif %}
         switch (state) {
 {% for state_id, state in model.states.items() %}
             case State::{{ state_id | capitalize }}:
@@ -170,7 +175,7 @@
     }
 
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler %}    static void executeExitActions(State state, Engine& engine, const std::vector<State>& activeStatesBeforeTransition) {
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler and not model.has_parallel_states %}    static void executeExitActions(State state, Engine& engine, const std::vector<State>& activeStatesBeforeTransition) {
 {% else %}    void executeExitActions(State state, Engine& engine, const std::vector<State>& activeStatesBeforeTransition) {
 {% endif %}
         (void)engine;
@@ -178,33 +183,49 @@
 
 {% if model.has_parallel_states %}
         // W3C SCXML 3.4 + 3.13: Parallel state exit order
-        // Exit child regions in reverse document order BEFORE exiting parallel state itself
+        // Matches Interpreter's exitParallelStateAndDescendants() logic
         LOG_DEBUG("AOT executeExitActions: Checking if state {} is parallel", static_cast<int>(state));
         if (isParallelState(state)) {
-            LOG_DEBUG("AOT executeExitActions: State {} IS parallel, getting regions", static_cast<int>(state));
-            auto regions = getParallelRegions(state);
-            LOG_DEBUG("AOT executeExitActions: Got {} regions for parallel state {}", regions.size(), static_cast<int>(state));
-            
-            // W3C SCXML 3.13: Sort regions by reverse document order (later states exit first)
-            std::sort(regions.begin(), regions.end(),
-                     [](State a, State b) {
-                         return getDocumentOrder(a) > getDocumentOrder(b);
-                     });
-            
-            LOG_DEBUG("AOT executeExitActions: Sorted regions in reverse document order");
-            
-            // Exit each child region
-            for (State region : regions) {
-                LOG_DEBUG("AOT executeExitActions: Recursively exiting child region {}", static_cast<int>(region));
-                // Recursively exit child region (may have its own children)
-                executeExitActions(region, engine, activeStatesBeforeTransition);
+            LOG_DEBUG("AOT executeExitActions: State {} IS parallel, collecting active descendants", static_cast<int>(state));
+
+            // W3C SCXML 3.4: Collect all active descendants of this parallel state
+            // Matches Interpreter's collectDescendantStates() - exit ALL active descendants, not just direct regions
+            ::std::vector<State> descendantsToExit;
+            for (State activeState : activeStates_) {
+                if (activeState != state && isDescendantOf(activeState, state)) {
+                    descendantsToExit.push_back(activeState);
+                    LOG_DEBUG("AOT executeExitActions: Found active descendant {} of parallel state {}",
+                             static_cast<int>(activeState), static_cast<int>(state));
+                }
             }
-            
-            LOG_DEBUG("AOT executeExitActions: All child regions exited, now exiting parallel state {} itself", static_cast<int>(state));
-            // After exiting all children, fall through to exit parallel state itself
+
+            LOG_DEBUG("AOT executeExitActions: Found {} active descendants to exit", descendantsToExit.size());
+
+            // W3C SCXML 3.13: Sort descendants by reverse document order (deepest states exit first)
+            ::std::sort(descendantsToExit.begin(), descendantsToExit.end(),
+                       [](State a, State b) {
+                           return getDocumentOrder(a) > getDocumentOrder(b);
+                       });
+
+            // Exit each active descendant (deepest first)
+            for (State descendant : descendantsToExit) {
+                LOG_DEBUG("AOT executeExitActions: Exiting active descendant {}", static_cast<int>(descendant));
+                executeExitActions(descendant, engine, activeStatesBeforeTransition);
+            }
+
+            LOG_DEBUG("AOT executeExitActions: All active descendants exited, now exiting parallel state {} itself", static_cast<int>(state));
+            // After exiting all descendants, fall through to exit parallel state itself
         } else {
             LOG_DEBUG("AOT executeExitActions: State {} is NOT parallel, proceeding to switch", static_cast<int>(state));
         }
+{% endif %}
+{% if model.has_parallel_states %}
+        // W3C SCXML 3.4: Remove state from active configuration
+        LOG_DEBUG("AOT executeExitActions: Removing state {} from activeStates", static_cast<int>(state));
+        activeStates_.erase(
+            std::remove(activeStates_.begin(), activeStates_.end(), state),
+            activeStates_.end()
+        );
 {% endif %}
         {% if model.history_states %}
         // W3C SCXML 3.11: Record history before exiting compound states (matches Interpreter logic)

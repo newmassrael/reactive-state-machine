@@ -379,70 +379,28 @@ protected:
 
             // Call processTransition with default event for eventless transitions
             if (policy_.processTransition(currentState_, Event(), *this)) {
-                LOG_DEBUG("AOT checkEventlessTransitions: Transition taken from {} to {}", static_cast<int>(oldState),
-                          static_cast<int>(currentState_));
+                // W3C SCXML 3.4: For parallel states, use actual transition source state
+                State actualSourceState = policy_.lastTransitionSourceState_;
+                LOG_DEBUG("AOT checkEventlessTransitions: Transition taken from {} to {} (actual source: {})",
+                          static_cast<int>(oldState), static_cast<int>(currentState_),
+                          static_cast<int>(actualSourceState));
                 if (oldState != currentState_) {
-                    // ARCHITECTURE.md: Zero Duplication - use shared helper
+                    // ARCHITECTURE.MD: Zero Duplication - use shared helper
                     // W3C SCXML 3.13: Pass transition action callback for correct execution order
-                    handleHierarchicalTransition(oldState, currentState_, preTransitionStates,
+                    // W3C SCXML 3.4: Use actualSourceState for correct hierarchical exit/entry in parallel states
+                    handleHierarchicalTransition(actualSourceState, currentState_, preTransitionStates,
                                                  [this] { policy_.executeTransitionActions(*this); });
 
-                    // W3C SCXML 3.12.1: Process any new internal events
-                    RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
-                        adapter, [this](const EventWithMetadata &eventWithMeta) {
-                            // W3C SCXML 5.10: Set pending event fields from metadata using EventMetadataHelper
-                            // ARCHITECTURE.md: Zero Duplication - shared logic with EventMetadataHelper
-                            Event event = eventWithMeta.event;
-                            RSM::Common::EventMetadataHelper::populatePolicyFromMetadata<StatePolicy, Event>(
-                                policy_, eventWithMeta);
-
-                            State oldEventState = currentState_;
-                            std::vector<State> preTransitionStates =
-                                getActiveStates();  // W3C SCXML 3.11: Capture before transition
-                            if (policy_.processTransition(currentState_, event, *this)) {
-                                if (oldEventState != currentState_) {
-                                    // ARCHITECTURE.md: Zero Duplication - use shared helper
-                                    handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates,
-                                                                 [this] { policy_.executeTransitionActions(*this); });
-                                }
-                            }
-                            return true;
-                        });
-
-                    // Continue loop to check for more eventless transitions
+                    // W3C SCXML C.1: Internal events are processed AFTER stable configuration is reached
+                    // Continue loop to check for more eventless transitions first
                 } else {
                     // Transition taken but state didn't change - stop
                     break;
                 }
             } else {
-                // No eventless transition available - check internal queue before stopping
-                // W3C SCXML 6.4: Entry actions may raise done.invoke events
-                bool processedInternalEvent = false;
-                RSM::Core::EventProcessingAlgorithms::processInternalEventQueue(
-                    adapter, [this, &processedInternalEvent](const EventWithMetadata &eventWithMeta) {
-                        Event event = eventWithMeta.event;
-                        RSM::Common::EventMetadataHelper::populatePolicyFromMetadata<StatePolicy, Event>(policy_,
-                                                                                                         eventWithMeta);
-
-                        State oldEventState = currentState_;
-                        std::vector<State> preTransitionStates =
-                            getActiveStates();  // W3C SCXML 3.11: Capture before transition
-                        if (policy_.processTransition(currentState_, event, *this)) {
-                            processedInternalEvent = true;
-                            if (oldEventState != currentState_) {
-                                // ARCHITECTURE.md: Zero Duplication - use shared helper
-                                handleHierarchicalTransition(oldEventState, currentState_, preTransitionStates,
-                                                             [this] { policy_.executeTransitionActions(*this); });
-                            }
-                        }
-                        return true;
-                    });
-
-                if (!processedInternalEvent) {
-                    // No internal events and no eventless transitions - stop
-                    break;
-                }
-                // Internal event was processed, continue loop
+                // W3C SCXML C.1: No eventless transition available - stable configuration reached
+                // Internal events will be processed by caller (processEventQueues or step)
+                break;
             }
         }
 
@@ -478,12 +436,23 @@ public:
             executeOnEntry(state);
         }
 
-        // W3C SCXML 3.13: Process queues which internally calls checkEventlessTransitions after each transition
-        LOG_DEBUG("AOT initialize: After entry actions, before processEventQueues");
-        processEventQueues();
-        LOG_DEBUG("AOT initialize: After processEventQueues, before final checkEventlessTransitions");
-        checkEventlessTransitions();  // Final check for any remaining eventless transitions
-        LOG_DEBUG("AOT initialize: After final checkEventlessTransitions");
+        // W3C SCXML C.1: Macrostep completion loop
+        // Process eventless transitions and internal events until stable configuration
+        LOG_DEBUG("AOT initialize: After entry actions, starting macrostep completion loop");
+        while (true) {
+            // Process eventless transitions until stable
+            checkEventlessTransitions();
+
+            // Check if there are internal events to process
+            if (!internalQueue_.hasEvents() && !externalQueue_.hasEvents()) {
+                // Truly stable - no eventless transitions and no events
+                break;
+            }
+
+            // Process internal/external events (may raise more events or cause transitions)
+            processEventQueues();
+        }
+        LOG_DEBUG("AOT initialize: Macrostep completion loop finished - stable configuration reached");
     }
 
     /**
