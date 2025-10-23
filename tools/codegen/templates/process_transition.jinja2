@@ -145,7 +145,7 @@
                        });
             LOG_DEBUG("AOT processTransition: Collecting eventless transitions from {} active states", statesToCheck.size());
 
-            // Phase 1: Collection - find all enabled eventless transitions
+            // W3C SCXML Appendix D Step 1: Collect all enabled eventless transitions (optimal transition set)
             for (State activeState : statesToCheck) {
                 LOG_DEBUG("AOT processTransition: Checking eventless in active state {}", static_cast<int>(activeState));
 
@@ -156,8 +156,7 @@
 
             LOG_DEBUG("AOT processTransition: Collected {} enabled eventless transitions", enabledTransitions.size());
 
-            // Phase 2: Execution - execute collected transitions as atomic microstep
-            // W3C SCXML Appendix D.2: Proper execution order (exit → transition → enter)
+            // W3C SCXML Appendix D Steps 2-5: Execute as atomic microstep (exit → transition → enter)
             if (!enabledTransitions.empty()) {
                 executeMicrostep(enabledTransitions, currentState, transitionTaken, engine);
             }
@@ -294,6 +293,7 @@ private:
 
         // Convert TransitionInfo to ParallelTransitionHelper::Transition
         ::std::vector<::RSM::ParallelTransitionHelper::Transition<State>> helperTransitions;
+        helperTransitions.reserve(transitions.size());  // Avoid reallocation and GCC -Warray-bounds false positive
         for (const auto& trans : transitions) {
             ::RSM::ParallelTransitionHelper::Transition<State> helperTrans(
                 trans.source, 

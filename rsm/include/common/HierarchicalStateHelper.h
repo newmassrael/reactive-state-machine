@@ -171,13 +171,9 @@ public:
             ++depth;
         }
 
-        // W3C SCXML 3.4: If leaf is parallel state, add ALL child regions and their initial states
-        // This ensures parallel states enter all regions simultaneously (Interpreter behavior)
-        LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - About to call addParallelRegions for leafState {}",
-                  static_cast<int>(leafState));
-        addParallelRegions(chain, leafState);
-        LOG_DEBUG("HierarchicalStateHelper::buildEntryChain - Returned from addParallelRegions, chain size now {}",
-                  chain.size());
+        // W3C SCXML 3.4: Do NOT add parallel regions here
+        // Let executeEntryActions() handle parallel regions automatically for consistent behavior
+        // This avoids duplication between buildEntryChain and executeEntryActions
 
         return chain;
     }
@@ -352,6 +348,11 @@ public:
 
         // Reverse to get parent → child order (entry order per W3C SCXML 3.3)
         std::reverse(chain.begin(), chain.end());
+
+        // W3C SCXML 3.3/3.4: Do NOT add compound initial children or parallel regions here
+        // Let executeEntryActions() handle them automatically for consistent behavior
+        // This avoids duplication between buildEntryChain and executeEntryActions
+
         return chain;
     }
 

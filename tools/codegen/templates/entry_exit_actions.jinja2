@@ -172,6 +172,29 @@
             default:
                 break;
         }
+{% if model.has_parallel_states %}
+
+        // W3C SCXML 3.4: If entering parallel state, enter all child regions and their initial children
+        // This ensures parallel states behave like Interpreter (auto-enter all regions)
+        if (isParallelState(state)) {
+            LOG_DEBUG("AOT executeEntryActions: State {} is parallel, entering child regions", static_cast<int>(state));
+            auto regions = getParallelRegions(state);
+            for (const auto& region : regions) {
+                LOG_DEBUG("AOT executeEntryActions: Entering parallel region {}", static_cast<int>(region));
+                executeEntryActions(region, engine);
+
+                // W3C SCXML 3.3: If region is compound, enter initial child
+                if (isCompoundState(region)) {
+                    State initialChild = getInitialChild(region);
+                    if (initialChild != region) {
+                        LOG_DEBUG("AOT executeEntryActions: Entering initial child {} of region {}",
+                                 static_cast<int>(initialChild), static_cast<int>(region));
+                        executeEntryActions(initialChild, engine);
+                    }
+                }
+            }
+        }
+{% endif %}
     }
 
     template<typename Engine>
