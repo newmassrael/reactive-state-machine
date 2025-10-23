@@ -312,9 +312,9 @@ private:
         // W3C SCXML Appendix D: Construct transitions directly in vector to avoid GCC -Warray-bounds false positive
         for (const auto& trans : transitions) {
             helperTransitions.emplace_back(
-                trans.source, 
-                {trans.target}, 
-                trans.transitionIndex, 
+                trans.source,
+                ::std::vector<State>{trans.target},
+                trans.transitionIndex,
                 trans.hasActions
             );
         }
