@@ -706,6 +706,11 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                     }
                 }
 
+                // W3C SCXML 6.4: Execute pending invokes after macrostep completes
+                if (!eventGuard.wasAlreadySet_) {
+                    executePendingInvokes();
+                }
+
                 return stateTransitionResult;
             }
             // Internal transition: actions executed, continue to region processing
@@ -948,6 +953,11 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                     }
                 }
 
+                // W3C SCXML 6.4: Execute pending invokes after macrostep completes
+                if (!eventGuard.wasAlreadySet_) {
+                    executePendingInvokes();
+                }
+
                 return transitionResult;
             }
 
@@ -980,6 +990,11 @@ StateMachine::TransitionResult StateMachine::processEvent(const std::string &eve
                 return true;
             });
         }
+    }
+
+    // W3C SCXML 6.4: Execute pending invokes after macrostep completes
+    if (!eventGuard.wasAlreadySet_) {
+        executePendingInvokes();
     }
 
     return result;
