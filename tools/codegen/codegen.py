@@ -327,9 +327,20 @@ class CodeGenerator:
             return True
 
         # Check if initial state exists in model
-        if model.initial not in model.states:
-            print(f"    Reason: Initial state '{model.initial}' not found in model")
-            return True
+        # W3C SCXML 3.13: For parallel states, initial may contain space-separated state IDs
+        initial_states = model.initial.split()
+        
+        if len(initial_states) > 1:
+            # Multiple initial states (parallel entry) - verify all exist
+            missing_states = [s for s in initial_states if s not in model.states]
+            if missing_states:
+                print(f"    Reason: Initial states '{', '.join(missing_states)}' not found in model")
+                return True
+        else:
+            # Single initial state - verify exists
+            if model.initial not in model.states:
+                print(f"    Reason: Initial state '{model.initial}' not found in model")
+                return True
 
         # Scoped datamodel (duplicate variable names - test240, test241, test244)
         var_names = [var['id'] for var in model.variables]

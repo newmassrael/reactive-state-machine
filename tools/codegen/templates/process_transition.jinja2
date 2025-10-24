@@ -171,6 +171,12 @@
 
             LOG_DEBUG("AOT processTransition: Collected {} enabled eventless transitions", enabledTransitions.size());
 
+            // W3C SCXML Appendix D.2: Remove conflicting transitions (optimal transition set)
+            if (!enabledTransitions.empty()) {
+                enabledTransitions = removeConflictingTransitions(enabledTransitions);
+                LOG_DEBUG("AOT processTransition: After conflict resolution: {} transitions", enabledTransitions.size());
+            }
+
             // W3C SCXML Appendix D Steps 2-5: Execute as atomic microstep (exit → transition → enter)
             if (!enabledTransitions.empty()) {
                 executeMicrostep(enabledTransitions, currentState, transitionTaken, engine);
@@ -292,6 +298,8 @@
 
 private:
 {% if model.has_parallel_states %}
+    {% include 'conflict_resolution.jinja2' %}
+
     // W3C SCXML Appendix D.2: Execute microstep with proper ordering
     // ARCHITECTURE.MD: Zero Duplication Principle - Uses ParallelTransitionHelper (Single Source of Truth)
     // Exit all → Transition content all → Enter all

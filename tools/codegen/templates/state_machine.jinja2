@@ -26,6 +26,8 @@
 #include "common/ParallelStateHelper.h"
 #include "common/ParallelExitEntryHelper.h"
 #include "common/ParallelTransitionHelper.h"
+#include "common/HierarchicalStateHelper.h"
+#include "common/ConflictResolutionHelper.h"
 {% endif %}
 {% if model.needs_event_data_helper %}
 #include "common/EventDataHelper.h"
@@ -95,6 +97,9 @@ template<typename SelfType>
 struct {{ model.name }}Policy {
     using State = ::RSM::Generated::{{ model.name }}::State;
     using Event = ::RSM::Generated::{{ model.name }}::Event;
+
+    // W3C SCXML Appendix D: Flag indicating parallel state support
+    static constexpr bool HAS_PARALLEL_STATES = {{ 'true' if model.has_parallel_states else 'false' }};
 
     {% if model.variables %}
     // Datamodel variables
@@ -319,20 +324,10 @@ struct {{ model.name }}Policy {
         }
     }
 
-    // W3C SCXML 3.4: Check if descendant is a descendant of ancestor (anywhere in hierarchy)
-    // Matches Interpreter's collectDescendantStates logic
+    // W3C SCXML 3.4: Check if descendant is a descendant of ancestor
+    // ARCHITECTURE.MD: Zero Duplication - delegates to HierarchicalStateHelper
     static bool isDescendantOf(State descendant, State ancestor) {
-        State current = descendant;
-        while (true) {
-            auto parent = getParent(current);
-            if (!parent.has_value()) {
-                return false;  // Reached root without finding ancestor
-            }
-            if (parent.value() == ancestor) {
-                return true;  // Found ancestor in parent chain
-            }
-            current = parent.value();
-        }
+        return ::RSM::Common::HierarchicalStateHelper<{{ model.name }}Policy>::isDescendantOf(descendant, ancestor);
     }
 
     // W3C SCXML 3.13: Get document order for exit order tie-breaking

@@ -1,5 +1,6 @@
 #include "runtime/StateMachine.h"
 #include "common/BindingHelper.h"
+#include "common/ConflictResolutionHelper.h"
 #include "common/DataModelInitHelper.h"
 #include "common/DoneDataHelper.h"
 #include "common/Logger.h"
@@ -2380,10 +2381,6 @@ bool StateMachine::checkEventlessTransitions() {
     std::vector<TransitionInfo> enabledTransitions;
     enabledTransitions.reserve(activeStates.size());  // Optimize: pre-allocate for typical case
 
-    // W3C SCXML 3.13: Track states with selected transitions for preemption check
-    // Memory safety: Use state IDs instead of raw pointers
-    std::set<std::string> statesWithTransitions;
-
     for (auto it = activeStates.rbegin(); it != activeStates.rend(); ++it) {
         const std::string &activeStateId = *it;
         auto stateNode = stateCache[activeStateId];
@@ -2407,34 +2404,8 @@ bool StateMachine::checkEventlessTransitions() {
             continue;
         }
 
-        // W3C SCXML 3.13: Preemption check - skip if descendant state already has transition
-        bool isPreempted = false;
-        for (const auto &transitionStateId : statesWithTransitions) {
-            // Check if current state is ancestor of a state that already has a transition
-            auto transitionStateNode = stateCache[transitionStateId];
-            if (!transitionStateNode) {
-                continue;
-            }
-
-            IStateNode *descendant = transitionStateNode;
-            while (descendant) {
-                if (descendant->getParent() == stateNode) {
-                    // Current state is ancestor of state with transition - preempted
-                    isPreempted = true;
-                    LOG_DEBUG("W3C SCXML 3.13: Transition from '{}' preempted by descendant state", activeStateId);
-                    break;
-                }
-                descendant = descendant->getParent();
-            }
-            if (isPreempted) {
-                break;
-            }
-        }
-
-        if (isPreempted) {
-            continue;
-        }
-
+        // W3C SCXML Appendix D.2: Collect all enabled transitions first
+        // Conflict resolution will be applied after collection
         const auto &transitions = stateNode->getTransitions();
         for (const auto &transitionNode : transitions) {
             const std::vector<std::string> &eventDescriptors = transitionNode->getEvents();
@@ -2464,7 +2435,6 @@ bool StateMachine::checkEventlessTransitions() {
             ExitSetResult exitSetResult = computeExitSet(activeStateId, targetState);
 
             enabledTransitions.emplace_back(stateNode, transitionNode, targetState, exitSetResult.states);
-            statesWithTransitions.insert(activeStateId);  // Track for preemption
             LOG_DEBUG("W3C SCXML 3.13: Collected parallel transition: {} -> {}", activeStateId, targetState);
 
             // W3C SCXML: Only select first enabled transition per state (document order)
@@ -2474,6 +2444,60 @@ bool StateMachine::checkEventlessTransitions() {
 
     if (enabledTransitions.empty()) {
         LOG_DEBUG("W3C SCXML 3.13: No transitions collected from parallel regions");
+        return false;
+    }
+
+    // W3C SCXML Appendix D.2: Apply conflict resolution using shared Helper
+    // ARCHITECTURE.MD: Zero Duplication - use ConflictResolutionHelper (Single Source of Truth)
+    {
+        using Helper = RSM::Common::ConflictResolutionHelperString;
+        std::vector<Helper::TransitionDescriptor> descriptors;
+        descriptors.reserve(enabledTransitions.size());
+
+        // Convert to Helper format with exit sets
+        for (const auto &trans : enabledTransitions) {
+            Helper::TransitionDescriptor desc;
+            desc.source = trans.sourceState->getId();
+            desc.target = trans.targetState;
+            desc.transitionIndex = static_cast<int>(descriptors.size());
+
+            // Exit set already computed in computeExitSet()
+            desc.exitSet = trans.exitSet;
+
+            descriptors.push_back(desc);
+        }
+
+        // Apply W3C SCXML Appendix D.2 conflict resolution
+        auto getParentFunc = [&stateCache](const std::string &stateId) -> std::optional<std::string> {
+            auto stateNode = stateCache[stateId];
+            if (!stateNode || !stateNode->getParent()) {
+                return std::nullopt;
+            }
+            return stateNode->getParent()->getId();
+        };
+
+        auto filtered = Helper::removeConflictingTransitions(descriptors, getParentFunc);
+
+        // Rebuild enabledTransitions with filtered set
+        std::vector<TransitionInfo> filteredTransitions;
+        filteredTransitions.reserve(filtered.size());
+
+        for (const auto &desc : filtered) {
+            // Find original transition by matching source and target
+            for (const auto &trans : enabledTransitions) {
+                if (trans.sourceState->getId() == desc.source && trans.targetState == desc.target) {
+                    filteredTransitions.push_back(trans);
+                    break;
+                }
+            }
+        }
+
+        enabledTransitions = std::move(filteredTransitions);
+        LOG_DEBUG("W3C SCXML Appendix D.2: After conflict resolution: {} transitions", enabledTransitions.size());
+    }
+
+    if (enabledTransitions.empty()) {
+        LOG_DEBUG("W3C SCXML Appendix D.2: All transitions preempted by conflict resolution");
         return false;
     }
 

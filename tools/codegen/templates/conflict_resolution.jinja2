@@ -1,0 +1,58 @@
+{#
+    Conflict Resolution Template (Jinja2)
+
+    W3C SCXML Appendix D.2: removeConflictingTransitions Implementation
+
+    ARCHITECTURE.md Compliance:
+    - Zero Duplication Principle: Uses ConflictResolutionHelper (Single Source of Truth)
+    - Shared with Interpreter: Both engines use identical W3C SCXML D.2 algorithm
+    - No inline implementation: Delegates to Helper for maintainability
+
+    This template generates calls to ConflictResolutionHelper for optimal transition set selection.
+
+    Algorithm (implemented in ConflictResolutionHelper):
+    1. For each transition t1 in enabledTransitions
+    2. Check against all already-filtered transitions t2
+    3. If exit sets intersect (conflict):
+       - If t1's source is descendant of t2's source → t1 preempts t2
+       - Otherwise → t2 preempts t1 (document order)
+    4. Add t1 to filtered set if not preempted
+#}
+
+    // W3C SCXML Appendix D.2: Remove conflicting transitions using shared Helper
+    // ARCHITECTURE.MD: Zero Duplication - delegates to ConflictResolutionHelper
+    static ::std::vector<TransitionInfo> removeConflictingTransitions(
+        const ::std::vector<TransitionInfo>& enabledTransitions) {
+
+        // Convert TransitionInfo to Helper format with exit sets
+        using Helper = ::RSM::Common::ConflictResolutionHelper<{{ model.name }}Policy>;
+        ::std::vector<typename Helper::TransitionDescriptor> descriptors;
+        descriptors.reserve(enabledTransitions.size());
+
+        for (const auto& trans : enabledTransitions) {
+            typename Helper::TransitionDescriptor desc;
+            desc.source = trans.source;
+            desc.target = trans.target;
+            desc.transitionIndex = trans.transitionIndex;
+            desc.hasActions = trans.hasActions;  // W3C SCXML 3.13: Preserve action metadata
+
+            // W3C SCXML Appendix D.2: Compute exit set using shared Helper
+            desc.exitSet = Helper::computeExitSet(trans.source, trans.target);
+
+            descriptors.push_back(desc);
+        }
+
+        // W3C SCXML Appendix D.2: Use shared Helper for conflict resolution
+        // Single Source of Truth - same algorithm as Interpreter engine
+        auto filtered = Helper::removeConflictingTransitions(descriptors);
+
+        // Convert back to TransitionInfo
+        ::std::vector<TransitionInfo> result;
+        result.reserve(filtered.size());
+
+        for (const auto& desc : filtered) {
+            result.push_back(TransitionInfo(desc.source, desc.target, desc.transitionIndex, desc.hasActions));
+        }
+
+        return result;
+    }

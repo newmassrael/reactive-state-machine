@@ -223,26 +223,76 @@ public:
                                                       const std::vector<StateType> &activeStates) {
         std::vector<StateType> statesToExit;
 
-        // Collect unique source states that are active
+        // W3C SCXML Appendix D.2: For each transition, compute LCA-based exit set
+        // Exit set = all active states that are descendants of LCA (excluding LCA itself)
         for (const auto &trans : transitions) {
-            bool found = false;
-            for (StateType s : statesToExit) {
-                if (s == trans.source) {
-                    found = true;
-                    break;
-                }
+            // Handle each target separately (parallel states may have multiple targets)
+            if (trans.targets.empty()) {
+                continue;  // No target, no exit needed
             }
-            if (!found) {
-                for (StateType active : activeStates) {
-                    if (active == trans.source) {
-                        statesToExit.push_back(trans.source);
-                        break;
+
+            for (const auto &target : trans.targets) {
+                // Find LCA of source and target
+                auto lca = RSM::Common::HierarchicalStateHelper<PolicyType>::findLCA(trans.source, target);
+
+                if (!lca.has_value()) {
+                    // No LCA found - exit from source up to root
+                    auto current = trans.source;
+                    while (true) {
+                        // Add to exit set if active and not already present
+                        bool isActive =
+                            std::find(activeStates.begin(), activeStates.end(), current) != activeStates.end();
+                        bool alreadyInSet =
+                            std::find(statesToExit.begin(), statesToExit.end(), current) != statesToExit.end();
+
+                        if (isActive && !alreadyInSet) {
+                            statesToExit.push_back(current);
+                        }
+
+                        auto parent = PolicyType::getParent(current);
+                        if (!parent.has_value()) {
+                            break;
+                        }
+                        current = parent.value();
+                    }
+                } else {
+                    // W3C SCXML 3.13: Collect all active descendants of LCA (excluding LCA itself)
+                    for (const auto &activeState : activeStates) {
+                        if (activeState == lca.value()) {
+                            continue;  // Exclude LCA from exit set
+                        }
+
+                        // Check if activeState is a descendant of LCA
+                        bool isDescendant = false;
+                        auto current = activeState;
+
+                        while (true) {
+                            auto parent = PolicyType::getParent(current);
+                            if (!parent.has_value()) {
+                                break;  // Reached root without finding LCA
+                            }
+
+                            if (parent.value() == lca.value()) {
+                                isDescendant = true;
+                                break;
+                            }
+                            current = parent.value();
+                        }
+
+                        // Add to exit set if descendant and not already present
+                        if (isDescendant) {
+                            bool alreadyInSet =
+                                std::find(statesToExit.begin(), statesToExit.end(), activeState) != statesToExit.end();
+                            if (!alreadyInSet) {
+                                statesToExit.push_back(activeState);
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // W3C SCXML 3.13: Sort by REVERSE document order (exit deepest first)
+        // W3C SCXML 3.13: Sort by REVERSE document order (exit deepest/rightmost first)
         std::sort(statesToExit.begin(), statesToExit.end(), [](StateType a, StateType b) {
             return PolicyType::getDocumentOrder(a) > PolicyType::getDocumentOrder(b);
         });

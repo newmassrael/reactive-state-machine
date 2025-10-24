@@ -385,11 +385,18 @@ protected:
                           static_cast<int>(oldState), static_cast<int>(currentState_),
                           static_cast<int>(actualSourceState));
                 if (oldState != currentState_) {
-                    // ARCHITECTURE.MD: Zero Duplication - use shared helper
-                    // W3C SCXML 3.13: Pass transition action callback for correct execution order
-                    // W3C SCXML 3.4: Use actualSourceState for correct hierarchical exit/entry in parallel states
-                    handleHierarchicalTransition(actualSourceState, currentState_, preTransitionStates,
-                                                 [this] { policy_.executeTransitionActions(*this); });
+                    // W3C SCXML Appendix D: For parallel states, executeMicrostep already handled exit/transition/entry
+                    // Only call handleHierarchicalTransition for non-parallel state machines
+                    if constexpr (!StatePolicy::HAS_PARALLEL_STATES) {
+                        // ARCHITECTURE.MD: Zero Duplication - use shared helper
+                        // W3C SCXML 3.13: Pass transition action callback for correct execution order
+                        // W3C SCXML 3.4: Use actualSourceState for correct hierarchical exit/entry
+                        handleHierarchicalTransition(actualSourceState, currentState_, preTransitionStates,
+                                                     [this] { policy_.executeTransitionActions(*this); });
+                    } else {
+                        LOG_DEBUG("AOT checkEventlessTransitions: Parallel state machine - executeMicrostep handled "
+                                  "all transitions");
+                    }
 
                     // W3C SCXML C.1: Internal events are processed AFTER stable configuration is reached
                     // Continue loop to check for more eventless transitions first

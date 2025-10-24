@@ -439,6 +439,53 @@ public:
     static std::optional<State> getParent(State state) {
         return StatePolicy::getParent(state);
     }
+
+    /**
+     * @brief Check if one state is a descendant of another
+     *
+     * @details
+     * W3C SCXML Appendix D.2: Used for transition conflict resolution.
+     * A state is a descendant of ancestor if ancestor appears in the parent chain.
+     *
+     * @param descendant Potential descendant state
+     * @param ancestor Potential ancestor state
+     * @return true if descendant is a child/grandchild/... of ancestor, false otherwise
+     *
+     * @par Thread Safety
+     * Thread-safe and reentrant.
+     *
+     * @par Performance
+     * - Time Complexity: O(depth)
+     * - Space Complexity: O(1)
+     *
+     * @par Example
+     * @code
+     * // Given hierarchy: S0 → S01 → S011
+     * bool result = HierarchicalStateHelper<Policy>::isDescendantOf(State::S011, State::S0);
+     * // Returns: true (S011 is descendant of S0)
+     *
+     * result = HierarchicalStateHelper<Policy>::isDescendantOf(State::S011, State::S011);
+     * // Returns: false (state is not its own descendant)
+     * @endcode
+     *
+     * @par W3C SCXML Appendix D.2 Compliance
+     * Used for optimal transition set selection:
+     * - If t1.source is descendant of t2.source → t1 preempts t2
+     * - Otherwise → t2 preempts t1 (document order)
+     */
+    static bool isDescendantOf(State descendant, State ancestor) {
+        State current = descendant;
+        while (true) {
+            auto parent = StatePolicy::getParent(current);
+            if (!parent.has_value()) {
+                return false;  // Reached root without finding ancestor
+            }
+            if (parent.value() == ancestor) {
+                return true;  // Found ancestor in parent chain
+            }
+            current = parent.value();
+        }
+    }
 };
 
 /**

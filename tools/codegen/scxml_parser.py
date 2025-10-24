@@ -181,6 +181,10 @@ class SCXMLParser:
         # Resolve deep initial state (matches C++ generator behavior)
         # W3C SCXML 3.6: Follow initial attributes recursively to find leaf state
         self._resolve_deep_initial()
+        
+        # W3C SCXML 3.13: Apply parallel initial state overrides
+        # If scxml initial contains space-separated states, override each region's initial
+        self._apply_parallel_initial_overrides()
 
         # Resolve history state transitions (W3C SCXML 3.11)
         # Replace history state targets with their default transition targets
@@ -894,16 +898,38 @@ class SCXMLParser:
 
         W3C SCXML 3.6: If a compound state has an 'initial' attribute,
         follow it recursively until reaching a leaf (atomic) state.
+        
+        W3C SCXML 3.13: For parallel states, the initial attribute may contain
+        space-separated state IDs representing multiple parallel regions' initial states.
 
         For example:
         - <scxml initial="s0"> where s0 has initial="s01"
         - This sets model.initial to "s01" (the leaf state)
+        - <scxml initial="s2p112 s2p122"> (parallel initial states)
+        - This keeps the space-separated format for parallel entry
         """
         if not self.model.initial:
             return
 
+        # W3C SCXML 3.13: Check if initial contains space-separated state IDs (parallel initial states)
+        initial_states = self.model.initial.split()
+        
+        if len(initial_states) > 1:
+            # Multiple initial states (parallel entry)
+            # Verify all states exist in model
+            all_exist = all(state_id in self.model.states for state_id in initial_states)
+            
+            if all_exist:
+                # Keep space-separated format for parallel initial states
+                # This will be handled by code generator with parallel entry logic
+                return
+            else:
+                # Some states don't exist - treat as single state (fallback to original behavior)
+                initial_states = [self.model.initial]
+        
+        # Single initial state - resolve to leaf
         MAX_DEPTH = 20  # Safety limit to detect cycles
-        current = self.model.initial
+        current = initial_states[0]
         depth = 0
 
         while depth < MAX_DEPTH:
@@ -925,6 +951,58 @@ class SCXMLParser:
 
         # Update model.initial to the resolved leaf state
         self.model.initial = current
+
+    def _apply_parallel_initial_overrides(self):
+        """
+        Apply parallel initial state overrides (W3C SCXML 3.13)
+        
+        When scxml initial="s1 s2", these states override the initial attributes
+        of their parent regions in parallel states.
+        
+        Example:
+          <scxml initial="s2p112 s2p122">
+            <parallel id="s2p1">
+              <state id="s2p11" initial="s2p111">  <!-- Override to s2p112 -->
+                <state id="s2p111"/>
+                <state id="s2p112"/>
+              </state>
+              <state id="s2p12" initial="s2p121">  <!-- Override to s2p122 -->
+                <state id="s2p121"/>
+                <state id="s2p122"/>
+              </state>
+            </parallel>
+        """
+        if not self.model.initial:
+            return
+        
+        # Check if initial contains space-separated states (parallel initial states)
+        initial_states = self.model.initial.split()
+        
+        if len(initial_states) <= 1:
+            # Single initial state - no overrides needed
+            return
+        
+        # W3C SCXML 3.13: Override parent region initial attributes
+        for state_id in initial_states:
+            if state_id not in self.model.states:
+                # State not found - skip
+                continue
+            
+            # Find parent of this initial state
+            state = self.model.states[state_id]
+            parent_id = state.parent
+            
+            if not parent_id or parent_id not in self.model.states:
+                # No parent or parent not found
+                continue
+            
+            # Override parent's initial attribute
+            parent_state = self.model.states[parent_id]
+            parent_state.initial = state_id
+        
+        # After overrides, set model.initial to the first state
+        # The parallel regions will use their overridden initial attributes
+        self.model.initial = initial_states[0]
 
     def _resolve_history_targets(self):
         """
