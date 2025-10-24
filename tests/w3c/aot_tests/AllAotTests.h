@@ -97,6 +97,7 @@
 #include "Test185.h"
 #include "Test186.h"
 #include "Test208.h"
+#include "Test422.h"
 
 // Special tests (custom final states or logic)
 #include "Test178.h"

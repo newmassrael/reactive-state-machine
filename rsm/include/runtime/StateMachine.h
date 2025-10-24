@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/HierarchicalStateHelper.h"
+#include "common/InvokeHelper.h"  // W3C SCXML 6.4: Shared invoke lifecycle logic (Zero Duplication)
 #include "events/IEventDispatcher.h"
 #include "model/IStateNode.h"
 #include "model/SCXMLModel.h"
@@ -436,14 +437,17 @@ private:
     // W3C SCXML 6.5: Completion callback for invoke done.invoke event
     CompletionCallback completionCallback_;
 
-    // Deferred invoke execution for W3C SCXML compliance
-    struct DeferredInvoke {
-        std::string stateId;
-        std::vector<std::shared_ptr<IInvokeNode>> invokes;
+    // W3C SCXML 6.4: Pending invoke execution (deferred until macrostep end)
+    // Uses InvokeHelper for shared logic with AOT engine (ARCHITECTURE.md Zero Duplication)
+    struct PendingInvoke {
+        std::string invokeId;                 // Invoke ID (for InvokeHelper logging)
+        std::string state;                    // State ID (matches InvokeHelper template parameter)
+        std::shared_ptr<IInvokeNode> invoke;  // Single invoke node (not vector)
     };
 
-    std::vector<DeferredInvoke> pendingInvokes_;
-    std::mutex pendingInvokesMutex_;  // Thread safety for pendingInvokes_
+    std::vector<PendingInvoke> pendingInvokes_;
+    std::recursive_mutex
+        pendingInvokesMutex_;  // Recursive: same-thread re-entry during child invoke initialization (W3C 6.4)
 
     // W3C SCXML: Thread safety for StateHierarchyManager access from JSEngine worker thread
     mutable std::mutex hierarchyManagerMutex_;  // Protects hierarchyManager_ read access

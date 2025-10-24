@@ -1414,10 +1414,10 @@ StateMachine::TransitionResult StateMachine::processStateTransitions(IStateNode 
                 }
             }
 
-            // W3C SCXML compliance: Execute deferred invokes after macrostep completes
-            executePendingInvokes();
-
             // TransitionGuard will automatically clear inTransition_ flag on return
+            // Note: executePendingInvokes() is NOT called here to prevent recursive deadlock
+            // when child invokes send events to parent during initialization (W3C SCXML 6.4)
+            // Invokes are executed only at top-level macrostep boundaries in start()
             return TransitionResult(true, fromState, targetState, eventName);
         }
     }
@@ -3267,19 +3267,20 @@ bool StateMachine::setupAndActivateParallelState(ConcurrentStateNode *parallelSt
 
     // W3C SCXML 6.4: Set invoke callback for proper invoke defer timing
     // Regions must be able to delegate invoke execution to StateMachine
+    // Uses same defer pattern as AOT engine (ARCHITECTURE.md Zero Duplication)
     auto invokeCallback = [this](const std::string &stateId, const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
         if (invokes.empty()) {
             return;
         }
         LOG_DEBUG("StateMachine: Deferring {} invokes for state: {}", invokes.size(), stateId);
 
-        // Thread-safe access to pendingInvokes_
-        DeferredInvoke deferred;
-        deferred.stateId = stateId;
-        deferred.invokes = invokes;
-
-        std::lock_guard<std::mutex> lock(pendingInvokesMutex_);
-        pendingInvokes_.push_back(deferred);
+        // Thread-safe access to pendingInvokes_ - defer each invoke individually (matches AOT)
+        std::lock_guard<std::recursive_mutex> lock(pendingInvokesMutex_);
+        for (const auto &invoke : invokes) {
+            std::string invokeId = invoke ? (invoke->getId().empty() ? "(auto-generated)" : invoke->getId()) : "null";
+            PendingInvoke pending{invokeId, stateId, invoke};
+            pendingInvokes_.push_back(pending);
+        }
     };
 
     for (const auto &region : regions) {
@@ -3639,22 +3640,20 @@ void StateMachine::deferInvokeExecution(const std::string &stateId,
                                         const std::vector<std::shared_ptr<IInvokeNode>> &invokes) {
     LOG_DEBUG("StateMachine: Deferring {} invokes for state: {} in session: {}", invokes.size(), stateId, sessionId_);
 
-    // Log each invoke being deferred
+    // Thread-safe access to pendingInvokes_
+    std::lock_guard<std::recursive_mutex> lock(pendingInvokesMutex_);
+    size_t beforeSize = pendingInvokes_.size();
+
+    // W3C SCXML 6.4: Defer each invoke individually (matches AOT pattern)
     for (size_t i = 0; i < invokes.size(); ++i) {
         const auto &invoke = invokes[i];
-        std::string invokeId = invoke ? invoke->getId() : "null";
+        std::string invokeId = invoke ? (invoke->getId().empty() ? "(auto-generated)" : invoke->getId()) : "null";
         std::string invokeType = invoke ? invoke->getType() : "null";
         LOG_DEBUG("StateMachine: DETAILED DEBUG - Deferring invoke[{}]: id='{}', type='{}'", i, invokeId, invokeType);
+
+        PendingInvoke pending{invokeId, stateId, invoke};
+        pendingInvokes_.push_back(pending);
     }
-
-    DeferredInvoke deferred;
-    deferred.stateId = stateId;
-    deferred.invokes = invokes;
-
-    // Thread-safe access to pendingInvokes_
-    std::lock_guard<std::mutex> lock(pendingInvokesMutex_);
-    size_t beforeSize = pendingInvokes_.size();
-    pendingInvokes_.push_back(std::move(deferred));
 
     LOG_DEBUG("StateMachine: DETAILED DEBUG - Pending invokes count: {} -> {}", beforeSize, pendingInvokes_.size());
 }
@@ -3675,64 +3674,31 @@ void StateMachine::executePendingInvokes() {
         }
     }
 
-    // Thread-safe copy of pending invokes
-    std::vector<DeferredInvoke> invokesToExecute;
-    {
-        std::lock_guard<std::mutex> lock(pendingInvokesMutex_);
-        if (pendingInvokes_.empty()) {
-            LOG_DEBUG("StateMachine: No pending invokes to execute for session: {}", sessionId_);
+    // W3C SCXML 6.4: Execute pending invokes using InvokeHelper (ARCHITECTURE.md Zero Duplication)
+    // Uses same pattern as AOT engine - copy-and-clear prevents iterator invalidation
+    std::lock_guard<std::recursive_mutex> lock(pendingInvokesMutex_);
+
+    LOG_DEBUG("StateMachine: Found {} pending invokes to execute for session: {}", pendingInvokes_.size(), sessionId_);
+
+    InvokeHelper::executePendingInvokes(pendingInvokes_, [this](const PendingInvoke &pending) {
+        // W3C SCXML Test 252: Only execute if state is still active (entered-and-not-exited)
+        if (!isStateActive(pending.state)) {
+            LOG_DEBUG("StateMachine: Skipping invoke '{}' for inactive state: {}", pending.invokeId, pending.state);
             return;
         }
 
-        LOG_DEBUG("StateMachine: Found {} pending invokes to execute for session: {}", pendingInvokes_.size(),
-                  sessionId_);
-
-        LOG_DEBUG("StateMachine: DETAILED DEBUG - Executing {} pending invokes for session {}", pendingInvokes_.size(),
-                  sessionId_);
-
-        // Log all pending invokes for debugging
-        for (size_t i = 0; i < pendingInvokes_.size(); ++i) {
-            const auto &deferred = pendingInvokes_[i];
-            LOG_DEBUG("StateMachine: DETAILED DEBUG - Pending invoke[{}]: stateId='{}', invokeCount={}", i,
-                      deferred.stateId, deferred.invokes.size());
-            for (size_t j = 0; j < deferred.invokes.size(); ++j) {
-                const auto &invoke = deferred.invokes[j];
-                std::string invokeId = invoke ? invoke->getId() : "null";
-                LOG_DEBUG("StateMachine: DETAILED DEBUG - Pending invoke[{}][{}]: id='{}', type='{}'", i, j, invokeId,
-                          invoke ? invoke->getType() : "null");
-            }
-        }
-
-        // Copy to execute outside of lock
-        invokesToExecute = std::move(pendingInvokes_);
-        pendingInvokes_.clear();
-        LOG_DEBUG("StateMachine: Cleared all pending invokes");
-    }
-
-    // Execute invokes outside of lock to avoid deadlock
-    for (const auto &deferred : invokesToExecute) {
-        // W3C SCXML Test 252: Only execute invokes if their state is still active
-        if (!isStateActive(deferred.stateId)) {
-            LOG_DEBUG("StateMachine: Skipping {} deferred invokes for inactive state: {}", deferred.invokes.size(),
-                      deferred.stateId);
-            continue;
-        }
-
-        LOG_DEBUG("StateMachine: Executing {} deferred invokes for state: {}", deferred.invokes.size(),
-                  deferred.stateId);
+        LOG_DEBUG("StateMachine: Executing invoke '{}' for state '{}'", pending.invokeId, pending.state);
 
         if (invokeExecutor_) {
-            bool invokeSuccess = invokeExecutor_->executeInvokes(deferred.invokes, sessionId_);
-            if (invokeSuccess) {
-                LOG_DEBUG("StateMachine: Successfully executed all deferred invokes for state: {}", deferred.stateId);
-            } else {
-                LOG_ERROR("StateMachine: Failed to execute some deferred invokes for state: {}", deferred.stateId);
+            std::string invokeid = invokeExecutor_->executeInvoke(pending.invoke, sessionId_);
+            if (invokeid.empty()) {
+                LOG_ERROR("StateMachine: Failed to execute invoke '{}' for state: {}", pending.invokeId, pending.state);
                 // W3C SCXML: Continue execution even if invokes fail
             }
         } else {
-            LOG_ERROR("StateMachine: Cannot execute deferred invokes - InvokeExecutor is null");
+            LOG_ERROR("StateMachine: Cannot execute invoke - InvokeExecutor is null");
         }
-    }
+    });
 }
 
 // W3C SCXML 3.7 & 5.5: Handle compound state completion when final child is entered

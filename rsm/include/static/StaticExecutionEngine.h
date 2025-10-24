@@ -222,6 +222,8 @@ public:
      */
     void raiseExternal(const EventWithMetadata &eventWithMetadata) {
         // W3C SCXML C.1: Enqueue event with full metadata
+        LOG_DEBUG("AOT raiseExternal: Enqueuing external event with metadata (event={}, invokeId='{}')",
+                  static_cast<int>(eventWithMetadata.event), eventWithMetadata.invokeId);
         externalQueue_.raise(eventWithMetadata);
 
         // W3C SCXML 5.10.1: Mark next event as external for _event.type (test331)
@@ -297,7 +299,11 @@ protected:
                 std::vector<State> preTransitionStates =
                     getActiveStates();  // W3C SCXML 3.11: Capture before transition
                 // Call through policy instance (works for both static and non-static)
-                if (policy_.processTransition(currentState_, event, *this)) {
+                bool transitionTaken = policy_.processTransition(currentState_, event, *this);
+                LOG_DEBUG(
+                    "AOT processEventQueues (internal): processTransition returned {}, oldState={}, currentState={}",
+                    transitionTaken, static_cast<int>(oldState), static_cast<int>(currentState_));
+                if (transitionTaken) {
                     // Transition occurred: execute hierarchical exit/entry actions
                     if (oldState != currentState_) {
                         LOG_DEBUG("AOT processEventQueues: State transition {} -> {}", static_cast<int>(oldState),
@@ -313,6 +319,11 @@ protected:
                         // This ensures guards evaluate BEFORE queued error.execution events are processed
                         checkEventlessTransitions();
                         LOG_DEBUG("AOT processEventQueues: Returned from checkEventlessTransitions");
+                    } else {
+                        // W3C SCXML 3.4: Internal transition - no state change, but execute actions
+                        LOG_DEBUG("AOT processEventQueues: Internal transition in state {}",
+                                  static_cast<int>(currentState_));
+                        policy_.executeTransitionActions(*this);
                     }
                 }
                 return true;  // Continue processing
@@ -333,7 +344,11 @@ protected:
                 std::vector<State> preTransitionStates =
                     getActiveStates();  // W3C SCXML 3.11: Capture before transition
                 // Call through policy instance (works for both static and non-static)
-                if (policy_.processTransition(currentState_, event, *this)) {
+                bool transitionTaken = policy_.processTransition(currentState_, event, *this);
+                LOG_DEBUG(
+                    "AOT processEventQueues (external): processTransition returned {}, oldState={}, currentState={}",
+                    transitionTaken, static_cast<int>(oldState), static_cast<int>(currentState_));
+                if (transitionTaken) {
                     // Transition occurred: execute hierarchical exit/entry actions
                     if (oldState != currentState_) {
                         // ARCHITECTURE.md: Zero Duplication - use shared helper
@@ -343,6 +358,11 @@ protected:
 
                         // W3C SCXML 3.13: Check eventless transitions immediately after state entry
                         checkEventlessTransitions();
+                    } else {
+                        // W3C SCXML 3.4: Internal transition - no state change, but execute actions
+                        LOG_DEBUG("AOT processEventQueues: Internal transition in state {}",
+                                  static_cast<int>(currentState_));
+                        policy_.executeTransitionActions(*this);
                     }
                 }
                 return true;  // Continue processing
@@ -466,6 +486,19 @@ public:
             processEventQueues();
         }
         LOG_DEBUG("AOT initialize: Macrostep completion loop finished - stable configuration reached");
+
+        // W3C SCXML 6.4: Execute pending invokes after macrostep completes (ARCHITECTURE.md Zero Duplication)
+        // Only invokes in entered-and-not-exited states execute (cancellation handled during state exits)
+        if constexpr (requires { policy_.executePendingInvokes(*this); }) {
+            policy_.executePendingInvokes(*this);
+
+            // W3C SCXML 6.4: Process done.invoke events raised by immediately-completed children
+            // Child state machines may reach final state during initialization and raise done.invoke
+            // These events must be processed to allow parent transitions (e.g., s1 -> pass)
+            LOG_DEBUG("AOT initialize: Processing events raised by completed invokes");
+            processEventQueues();
+            checkEventlessTransitions();
+        }
     }
 
     /**
