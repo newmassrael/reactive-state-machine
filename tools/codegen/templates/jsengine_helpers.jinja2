@@ -91,6 +91,22 @@
 {% endif %}
 {% endfor %}
 
+{% if model.global_scripts %}
+        // W3C SCXML 5.8: Execute global (top-level) scripts at document load time
+        // ARCHITECTURE.md Zero Duplication: Matches Interpreter behavior (StateMachine.cpp execution order)
+        // Execution order: datamodel init → global scripts → state machine start
+{% for script in model.global_scripts %}
+        {
+            auto scriptResult = jsEngine.executeScript(sessionId_.value(), "{{ script.content | escape_cpp }}").get();
+            if (!::RSM::JSEngine::isSuccess(scriptResult)) {
+                std::string errorMsg = "Global script execution failed";
+                LOG_ERROR("W3C SCXML 5.8: {}", errorMsg);
+                engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));
+            }
+        }
+{% endfor %}
+{% endif %}
+
 {% if model.has_parallel_states or model.uses_in_predicate %}
         // W3C SCXML 5.9.2: Register state query callback for In() predicate support
         // ARCHITECTURE.md All-or-Nothing Strategy: Static AOT engines cannot hold StateMachine*

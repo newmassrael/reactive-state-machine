@@ -90,7 +90,10 @@ class SCXMLModel:
 
     # Data model variables
     variables: List[Dict] = field(default_factory=list)
-    
+
+    # W3C SCXML 5.8: Global (top-level) scripts executed at document load time
+    global_scripts: List[Dict] = field(default_factory=list)
+
     # Static invoke information (for code generation)
     static_invokes: List[Dict] = field(default_factory=list)
     
@@ -170,6 +173,9 @@ class SCXMLParser:
 
         # Parse datamodel
         self._parse_datamodel(root)
+
+        # W3C SCXML 5.8: Parse global (top-level) scripts
+        self._parse_global_scripts(root)
 
         # Parse states recursively
         self._parse_states(root, None)
@@ -255,6 +261,100 @@ class SCXMLParser:
                 # Detect if expression requires JSEngine
                 # W3C SCXML 5.2: All datamodel variables are runtime-evaluated (handled by JSEngine)
                 self.model.needs_jsengine = True
+
+    def _parse_global_scripts(self, root):
+        """
+        Parse top-level &lt;script&gt; elements (W3C SCXML 5.8)
+
+        Global scripts are children of &lt;scxml&gt; root and are executed
+        at document load time, after datamodel initialization but before
+        the state machine starts.
+
+        ARCHITECTURE.md Zero Duplication: Follows FileLoadingHelper pattern.
+        Algorithm matches C++ FileLoadingHelper::loadExternalScript().
+        See rsm/include/common/FileLoadingHelper.h for C++ implementation.
+
+        W3C SCXML 5.8: "If the script can not be downloaded within a platform-specific
+        timeout interval, the document is considered non-conformant, and the platform
+        MUST reject it."
+        """
+        import logging
+
+        # Find direct children &lt;script&gt; elements of &lt;scxml&gt; root
+        for script_elem in root.findall('./sc:script', SCXML_NS):
+            src = script_elem.get('src', '')
+            content = script_elem.text or ''
+
+            # W3C SCXML 5.8: External script loading (src attribute)
+            if src:
+                try:
+                    # ARCHITECTURE.md Zero Duplication: FileLoadingHelper::loadExternalScript() equivalent
+                    # Step 1: Normalize path (remove "file:" prefix) - FileLoadingHelper::normalizePath()
+                    normalized_src = src
+                    if normalized_src.startswith('file://'):
+                        normalized_src = normalized_src[7:]  # Remove "file://"
+                    elif normalized_src.startswith('file:'):
+                        normalized_src = normalized_src[5:]  # Remove "file:"
+
+                    # Step 2: Resolve path relative to SCXML file location
+                    scxml_dir = Path(self.scxml_path).parent
+                    script_path = scxml_dir / normalized_src
+                    script_path = script_path.resolve()
+
+                    # Step 3: Security validation - prevent path traversal attacks
+                    # FileLoadingHelper::loadExternalScript() security check equivalent
+                    scxml_dir_resolved = scxml_dir.resolve()
+
+                    # Check if script_path is within allowed directory tree
+                    # Use relative_to() to verify path is inside scxml_dir
+                    try:
+                        relative_path = script_path.relative_to(scxml_dir_resolved)
+                        # If relative_to() succeeds, check for ".." in path
+                        if '..' in str(relative_path):
+                            raise ValueError("Path contains '..' after resolution")
+                    except ValueError:
+                        # script_path is not relative to scxml_dir (path traversal attempt)
+                        raise ValueError(
+                            f"Security violation: Script path '{src}' resolves outside SCXML directory. "
+                            f"Resolved to: {script_path}, SCXML dir: {scxml_dir_resolved}"
+                        )
+
+                    # Step 4: Load file content - FileLoadingHelper::loadFileContent() equivalent
+                    logging.info(f"FileLoadingHelper pattern: W3C SCXML 5.8 - Loading external script: {src} (resolved to {script_path})")
+                    content = script_path.read_text(encoding='utf-8')
+
+                    # W3C SCXML 5.8: Content loaded successfully
+
+                except FileNotFoundError:
+                    # W3C SCXML 5.8: Document MUST be rejected if script cannot be loaded
+                    # FileLoadingHelper::loadExternalScript() error message equivalent
+                    raise ValueError(
+                        f"W3C SCXML 5.8: External script file not found: '{src}' "
+                        f"(resolved to {script_path}). Document is non-conformant and MUST be rejected."
+                    )
+                except PermissionError as e:
+                    # W3C SCXML 5.8: Document MUST be rejected if script cannot be loaded
+                    raise ValueError(
+                        f"W3C SCXML 5.8: Cannot read external script file: '{src}' "
+                        f"(resolved to {script_path}). Permission denied: {e}"
+                    )
+                except ValueError as e:
+                    # Security violation or other value error - propagate
+                    raise
+                except Exception as e:
+                    # Any other error loading script
+                    raise ValueError(
+                        f"W3C SCXML 5.8: Failed to load external script: '{src}'. Error: {e}"
+                    )
+
+            self.model.global_scripts.append({
+                'type': 'script',
+                'src': src,
+                'content': content.strip()
+            })
+
+            # W3C SCXML 5.8: Global scripts require JSEngine
+            self.model.needs_jsengine = True
 
     def _parse_states(self, parent_elem, parent_id: Optional[str]):
         """

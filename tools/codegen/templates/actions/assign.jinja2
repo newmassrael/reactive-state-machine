@@ -9,11 +9,12 @@ if (::RSM::AssignHelper::isValidLocation("{{ action.location }}")) {
     {
         // W3C SCXML 5.3: Execute assignment as JavaScript expression to preserve object references
         // Using direct assignment (location = expr) instead of getInternalValue() for reference semantics
-        LOG_DEBUG("AOT assign: Evaluating: {{ action.location }} = ({{ action.expr }})");
-        auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ action.location }} = ({{ action.expr }})").get();
+        // Remove trailing semicolon from expr to avoid syntax error in parenthesized expression
+        LOG_DEBUG("AOT assign: Evaluating: {{ action.location }} = ({{ action.expr.rstrip(';') }})");
+        auto exprResult = jsEngine.evaluateExpression(sessionId_.value(), "{{ action.location }} = ({{ action.expr.rstrip(';') }})").get();
         LOG_DEBUG("AOT assign: Result - success={}", ::RSM::JSEngine::isSuccess(exprResult));
         if (!::RSM::JSEngine::isSuccess(exprResult)) {
-            std::string errorMsg = "Failed to evaluate assignment expression: {{ action.location }} = ({{ action.expr }})";
+            std::string errorMsg = "Failed to evaluate assignment expression: {{ action.location }} = ({{ action.expr.rstrip(';') }})";
             LOG_ERROR("{}", errorMsg);
             engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));
         }

@@ -66,6 +66,15 @@ public:
     bool isExternalActionNode(const xmlpp::Element *element) const;
 
     /**
+     * @brief Set SCXML file base path for external script loading
+     * @param basePath Base directory path of the SCXML file
+     *
+     * W3C SCXML 5.8: External scripts (src attribute) are resolved
+     * relative to the SCXML file location
+     */
+    void setScxmlBasePath(const std::string &basePath);
+
+    /**
      * @brief Check if element is executable content requiring special processing
      * @param element XML element
      * @return Whether it is special executable content
@@ -104,6 +113,12 @@ private:
     std::string getLocalName(const std::string &nodeName) const;
 
     std::shared_ptr<NodeFactory> nodeFactory_;
+
+    /**
+     * @brief Base directory path of the SCXML file (for resolving external script src attributes)
+     * W3C SCXML 5.8: External scripts are resolved relative to SCXML file location
+     */
+    std::string scxmlBasePath_;
 };
 
 }  // namespace RSM

@@ -52,6 +52,12 @@ std::shared_ptr<RSM::SCXMLModel> RSM::SCXMLParser::parseFile(const std::string &
 
         LOG_INFO("Parsing SCXML file: {}", filename);
 
+        // W3C SCXML 5.8: Set base path for external script resolution
+        std::filesystem::path scxmlPath(filename);
+        std::string basePath = scxmlPath.parent_path().string();
+        actionParser_->setScxmlBasePath(basePath);
+        LOG_DEBUG("Set SCXML base path for external script resolution: {}", basePath);
+
         // Parse file
         xmlpp::DomParser parser;
         parser.set_validate(false);

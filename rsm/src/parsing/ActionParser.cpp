@@ -7,9 +7,10 @@
 #include "actions/RaiseAction.h"
 #include "actions/ScriptAction.h"
 #include "actions/SendAction.h"
+#include "common/FileLoadingHelper.h"
 #include "common/LogUtils.h"
 #include "common/Logger.h"
-#include "parsing/ParsingCommon.h"  // ✅ Fix: Missing ParsingCommon header
+#include "parsing/ParsingCommon.h"
 #include <algorithm>
 #include <libxml++/nodes/textnode.h>
 #include <libxml/tree.h>
@@ -54,35 +55,31 @@ std::shared_ptr<RSM::IActionNode> RSM::ActionParser::parseActionNode(const xmlpp
         // W3C SCXML 5.8: Check for external script source
         auto srcAttr = actionElement->get_attribute("src");
 
+        // Content will hold either external script or inline script
+        std::string content;
+
         if (srcAttr) {
             // External script specified via 'src' attribute
             std::string srcPath = srcAttr->get_value();
+            std::string errorMsg;
 
-            // ⚠️ LIMITATION: External script loading NOT implemented (W3C SCXML 5.8)
-            //
-            // W3C SCXML 5.8 requires: "If the script specified by the 'src' attribute cannot be
-            // downloaded within a platform-specific timeout interval, the document is considered
-            // non-conformant, and the platform MUST reject it."
-            //
-            // Current implementation: ALL external scripts are rejected for security reasons.
-            // W3C Test 301 (external script validation) is marked as "manual: True" in metadata
-            // and is automatically skipped by TestResultValidator::shouldSkipTest().
-            //
-            // Workaround: Use inline scripts instead: <script>your code here</script>
-            // Future work: Implement secure external script loading with timeout and sandboxing
-            LOG_ERROR("ActionParser: W3C SCXML 5.8 - Document rejected, cannot load external script: {}",
-                      Log::sanitize(srcPath));
+            // ARCHITECTURE.md Zero Duplication: Use FileLoadingHelper
+            // W3C SCXML 5.8: Load external script with security validation
+            if (!FileLoadingHelper::loadExternalScript(srcPath, scxmlBasePath_, content, errorMsg)) {
+                LOG_ERROR("ActionParser: {}", errorMsg);
+                return nullptr;
+            }
 
-            // Reject document by returning nullptr (caller will handle error)
-            return nullptr;
+            // Script loaded successfully via FileLoadingHelper
+        } else {
+            // Inline script: read text content
+            auto textNode = actionElement->get_first_child_text();
+            if (textNode) {
+                content = textNode->get_content();
+            }
         }
 
-        // Inline script: read text content
-        std::string content;
-        auto textNode = actionElement->get_first_child_text();
-        if (textNode) {
-            content = textNode->get_content();
-        }
+        // Return ScriptAction with loaded content (external or inline)
         return std::make_shared<RSM::ScriptAction>(content, id);
 
     } else if (elementName == "assign") {
@@ -620,4 +617,8 @@ std::string RSM::ActionParser::getLocalName(const std::string &nodeName) const {
         return nodeName.substr(colonPos + 1);
     }
     return nodeName;
+}
+
+void RSM::ActionParser::setScxmlBasePath(const std::string &basePath) {
+    scxmlBasePath_ = basePath;
 }
