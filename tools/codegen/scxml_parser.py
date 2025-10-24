@@ -906,6 +906,14 @@ class SCXMLParser:
             if feature in expr:
                 return True
 
+        # W3C SCXML B.2: ECMAScript string/number literals require JSEngine for proper boolean conversion
+        # Examples: 'foo' (non-empty string → true), '' (empty string → false), 0 (→ false), 1 (→ true)
+        # Must use JSEngine to ensure ECMAScript semantics (test 449)
+        import re
+        # Check for string literals (single or double quotes)
+        if re.search(r"['\"]", expr):
+            return True
+
         # Check for event metadata access
         for field in self.EVENT_METADATA_FIELDS:
             if field in expr:
