@@ -240,6 +240,17 @@
                 }
             }
         }
+
+        // W3C SCXML 3.3: If entering compound state (non-parallel), enter initial child
+        // This ensures compound states behave like Interpreter (auto-enter initial child)
+        if (isCompoundState(state) && !isParallelState(state)) {
+            State initialChild = getInitialChild(state);
+            if (initialChild != state) {
+                LOG_DEBUG("AOT executeEntryActions: State {} is compound, entering initial child {}",
+                         static_cast<int>(state), static_cast<int>(initialChild));
+                executeEntryActions(initialChild, engine);
+            }
+        }
 {% endif %}
     }
 
