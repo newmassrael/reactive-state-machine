@@ -84,6 +84,51 @@ public:
         }
         return false;
     }
+
+    /**
+     * @brief Detect if expression is a function expression requiring special handling
+     *
+     * W3C SCXML B.2: Function expressions must use executeScript() for direct JavaScript
+     * assignment to preserve function type. ECMAScript evaluateExpression() would convert
+     * function -> C++ ScriptValue -> function, losing the function type.
+     *
+     * @param expr Expression string to check (may have leading/trailing whitespace)
+     * @return true if expression is a function literal (starts with "function" keyword)
+     *
+     * Test coverage: test453 (function expression assignment and invocation)
+     *
+     * ARCHITECTURE.md: Zero Duplication Principle - Single Source of Truth
+     * Used by:
+     * - Interpreter engine: StateMachine.cpp:1616
+     * - AOT engine: jsengine_helpers.jinja2:73
+     * - JSEngine fallback: JSEngineImpl.cpp:102
+     *
+     * Example:
+     *   isFunctionExpression("function(x) { return x + 1; }") // true
+     *   isFunctionExpression("  function foo() {} ") // true
+     *   isFunctionExpression("() => x + 1") // false (arrow functions not yet supported)
+     *   isFunctionExpression("myVar + 1") // false
+     *
+     * Future enhancements:
+     * - Arrow functions: () => expr, x => expr
+     * - Async functions: async function() {}, async () => {}
+     * - Generator functions: function* gen() {}
+     * See: https://www.w3.org/TR/scxml/#ecmascript-profile
+     */
+    static inline bool isFunctionExpression(const std::string &expr) {
+        // Trim leading whitespace
+        size_t start = 0;
+        while (start < expr.length() && std::isspace(static_cast<unsigned char>(expr[start]))) {
+            ++start;
+        }
+
+        // Check if starts with "function" keyword (8 characters)
+        if (start + 8 > expr.length()) {
+            return false;
+        }
+
+        return expr.compare(start, 8, "function") == 0;
+    }
 };
 
 }  // namespace RSM

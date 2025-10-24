@@ -70,12 +70,30 @@
 
 {% for var in model.variables %}
 {% if var.expr %}
+{# ARCHITECTURE.md: Zero Duplication - Function detection matches DataModelInitHelper::isFunctionExpression() #}
+{# W3C SCXML B.2: Template-time detection (Python) for code generation optimization #}
+{% set is_function_expr = var.expr.strip().startswith('function') %}
+{% if is_function_expr %}
+        // W3C SCXML B.2: For function expressions, use direct JavaScript assignment to preserve function type
+        // Test 453: ECMAScript function literals must be stored as functions, not converted to C++
+        // ARCHITECTURE.md Zero Duplication: Matches Interpreter behavior (StateMachine.cpp:1615-1635)
+        {
+            auto scriptResult = jsEngine.executeScript(sessionId_.value(), "{{ var.id }} = {{ var.expr | escape_cpp }}").get();
+            if (!::RSM::JSEngine::isSuccess(scriptResult)) {
+                std::string errorMsg = "Failed to assign function expression for '{{ var.id }}'";
+                LOG_ERROR("AOT initializeDataModel: {}", errorMsg);
+                engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, errorMsg));
+            }
+            LOG_DEBUG("AOT initializeDataModel: Initialized function variable '{{ var.id }}'");
+        }
+{% else %}
         // W3C SCXML 5.2/5.3: Use shared Helper for datamodel initialization
         ::RSM::DataModelInitHelper::initializeVariable(
             jsEngine, sessionId_.value(), "{{ var.id }}", "{{ var.expr | escape_cpp }}",
             [&engine](const ::std::string& msg) {
                 engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, msg));
             });
+{% endif %}
 {% elif var.content %}
         ::RSM::DataModelInitHelper::initializeVariable(
             jsEngine, sessionId_.value(), "{{ var.id }}", R"({{ var.content | escape_cpp }})",

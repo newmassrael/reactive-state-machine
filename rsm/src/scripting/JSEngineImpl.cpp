@@ -1,3 +1,4 @@
+#include "common/DataModelInitHelper.h"
 #include "common/Logger.h"
 #include "quickjs.h"
 #include "scripting/DOMBinding.h"
@@ -97,9 +98,10 @@ JSResult JSEngine::evaluateExpressionInternal(const std::string &sessionId, cons
             JS_Eval(ctx, wrappedExpression.c_str(), wrappedExpression.length(), "<expression>", JS_EVAL_TYPE_GLOBAL);
     }
 
+    // ARCHITECTURE.MD: Zero Duplication - Use DataModelInitHelper (shared with Interpreter/AOT)
     // W3C SCXML B.2: If it failed and the expression starts with 'function', try wrapping in parentheses for function
     // expressions Test 453: ECMAScript function literals must be accepted as value expressions
-    if (JS_IsException(result) && expression.find("function") == 0) {
+    if (JS_IsException(result) && DataModelInitHelper::isFunctionExpression(expression)) {
         SPDLOG_DEBUG("JSEngine::evaluateExpressionInternal - First evaluation failed, trying wrapped expression for "
                      "function literal");
         JS_FreeValue(ctx, result);  // Free the exception

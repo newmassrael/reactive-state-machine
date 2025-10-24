@@ -585,6 +585,7 @@ rsm_generate_static_w3c_test(448 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2: ECM
 rsm_generate_static_w3c_test(449 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2: ECMAScript boolean conversion for string literals
 rsm_generate_static_w3c_test(451 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: In() predicate in parallel states
 rsm_generate_static_w3c_test(452 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.3/5.4: datamodel substructure assignment (object properties)
+rsm_generate_static_w3c_test(453 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2/3.12.1: ECMAScript function expression evaluation
 rsm_generate_static_w3c_test(579 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: default history content execution
 rsm_generate_static_w3c_test(580 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: history state not in configuration (parallel)
 rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.4: auto-discovers test239sub1.txml

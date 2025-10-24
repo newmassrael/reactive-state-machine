@@ -1611,9 +1611,10 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
 
     // Early binding or late binding value assignment: Evaluate and assign
     if (!expr.empty()) {
+        // ARCHITECTURE.MD: Zero Duplication - Use DataModelInitHelper (shared with AOT engine)
         // W3C SCXML B.2: For function expressions, use direct JavaScript assignment to preserve function type
         // Test 453: ECMAScript function literals must be stored as functions, not converted to C++
-        bool isFunctionExpression = (expr.find("function") == 0);
+        bool isFunctionExpression = DataModelInitHelper::isFunctionExpression(expr);
 
         if (isFunctionExpression) {
             // Use direct JavaScript assignment to avoid function → C++ → function conversion loss
