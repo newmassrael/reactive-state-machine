@@ -664,8 +664,9 @@ public:
         State oldState = currentState_;
         std::vector<State> preTransitionStates = getActiveStates();  // W3C SCXML 3.11: Capture before transition
         if (policy_.processTransition(currentState_, Event(), *this)) {
-            // Only execute state change actions if state actually changed
+            // Check if state actually changed (external transition) or just actions (internal transition)
             if (oldState != currentState_) {
+                // W3C SCXML 3.13: External transition - exit old, execute actions, enter new
                 executeOnExit(oldState, preTransitionStates);
                 executeOnEntry(currentState_);
                 processEventQueues();
@@ -675,6 +676,10 @@ public:
                 if (isInFinalState() && completionCallback_) {
                     completionCallback_();
                 }
+            } else {
+                // W3C SCXML 3.4: Internal transition - no state change, but execute actions
+                LOG_DEBUG("AOT tick: Internal transition in state {}", static_cast<int>(currentState_));
+                policy_.executeTransitionActions(*this);
             }
         }
 

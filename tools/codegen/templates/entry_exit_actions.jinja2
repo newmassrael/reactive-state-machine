@@ -42,80 +42,12 @@
 {% if state.on_entry or state.static_invokes or (state.is_final and state.donedata) or (state.is_final and state.parent) %}
                 {
 {% if state.static_invokes %}
-                // W3C SCXML 6.4: Start invoke elements
-                ensureSessionId();
-                if (!sessionId_.has_value()) return;  // Should not happen
-
+                // W3C SCXML 6.4: Defer invoke execution until macrostep end (ARCHITECTURE.md Zero Duplication)
 {% for invoke_info in state.static_invokes %}
-                // W3C SCXML 6.4: Static invoke (compile-time child SCXML)
-                // Child SCXML: {{ invoke_info.src }} (generated as {{ invoke_info.child_name }}_sm.h)
-                {
-                    std::string childSessionId = sessionId_.value() + "_" + "{{ invoke_info.invoke_id }}";
-                    LOG_INFO("Starting static invoke: id={{ invoke_info.invoke_id }}, src={{ invoke_info.src }}");
-
-{% if invoke_info.idlocation %}
-                    // W3C SCXML 6.4.1: Set idlocation variable to invoke id (before child initialization)
-                    this->ensureJSEngine();
-                    auto& jsEngine = ::RSM::JSEngine::instance();
-                    jsEngine.setVariable(sessionId_.value(), "{{ invoke_info.idlocation }}", "{{ invoke_info.invoke_id }}");
-{% endif %}
-
-                    // Instantiate and store child state machine in Policy member
-                    child_{{ invoke_info.invoke_id }}_ = std::make_shared<::RSM::Generated::{{ invoke_info.child_name }}::{{ invoke_info.child_name }}<SelfType>>(static_cast<SelfType*>(&engine));
-                    
-                    // W3C SCXML 6.4.1: Set child's invokeid for _event.invokeid in parent (test338)
-                    child_{{ invoke_info.invoke_id }}_->getPolicy().invokeId_ = "{{ invoke_info.invoke_id }}";
-
-                    // W3C SCXML 6.4: Set completion callback for done.invoke event
-                    child_{{ invoke_info.invoke_id }}_->setCompletionCallback([this]() {
-                        pendingDoneInvoke_{{ invoke_info.invoke_id }}_ = true;
-                        LOG_DEBUG("Child {{ invoke_info.invoke_id }} completed, pending done.invoke event");
-                    });
-
-                    // W3C SCXML 6.4.6: Handle invoke failure with error.execution
-                    try {
-{% if invoke_info.params %}
-                        // W3C SCXML 6.4: Pass params to child state machine (before initialization for eventless transitions)
-{% for param in invoke_info.params %}
-{% if invoke_info.child_needs_jsengine %}
-                        // Child uses JSEngine - initialize JSEngine first, then override param
-                        child_{{ invoke_info.invoke_id }}_->getPolicy().ensureJSEngine();
-                        auto& childJSEngine = ::RSM::JSEngine::instance();
-                        auto childSessionId = child_{{ invoke_info.invoke_id }}_->getPolicy().sessionId_.value();
-                        // Override param value BEFORE initialize() processes eventless transitions
-                        childJSEngine.setVariable(childSessionId, "{{ param.name }}", {{ param.expr }});
-{% else %}
-                        // Child uses pure static datamodel - set C++ member variable before initialize()
-                        child_{{ invoke_info.invoke_id }}_->getPolicy().{{ param.name }} = {{ param.expr }};
-{% endif %}
-{% endfor %}
-
-{% endif %}
-                        child_{{ invoke_info.invoke_id }}_->initialize();
-
-                        // W3C SCXML 6.4: Check if child immediately reached final state
-                        if (child_{{ invoke_info.invoke_id }}_->isInFinalState()) {
-                            LOG_INFO("Child {{ invoke_info.invoke_id }} immediately completed, raising done.invoke");
-                            engine.raise(typename Engine::EventWithMetadata(Event::Done_invoke));
-                        }
-                    } catch (const std::exception& e) {
-                        // W3C SCXML 6.4.6: Raise error.execution on invoke failure
-                        LOG_ERROR("Failed to initialize child {{ invoke_info.invoke_id }}: {}", e.what());
-                        engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, e.what()));
-                        child_{{ invoke_info.invoke_id }}_ = nullptr;
-                    }
-
-                    // W3C SCXML 6.4: Track child session for lifecycle management
-                    ChildSession session;
-                    session.sessionId = childSessionId;
-                    session.invokeId = "{{ invoke_info.invoke_id }}";
-                    session.parentSessionId = sessionId_.value();
-                    session.autoforward = {{ 'true' if invoke_info.autoforward else 'false' }};
-                    session.finalizeScript = "";
-
-                    activeInvokes_["{{ invoke_info.invoke_id }}"] = session;
-                    LOG_DEBUG("Invoke session created: id={}, autoforward={}", "{{ invoke_info.invoke_id }}", session.autoforward);
-                }
+                // Defer invoke: {{ invoke_info.invoke_id }} ({{ invoke_info.src }})
+                ::RSM::InvokeHelper::deferInvoke(pendingInvokes_,
+                    PendingInvoke{"{{ invoke_info.invoke_id }}", State::{{ state_id | capitalize }}});
+                LOG_DEBUG("Deferred invoke: {{ invoke_info.invoke_id }} in state {{ state_id }}");
 {% endfor %}
 {% endif %}
 {% for action in state.on_entry %}
@@ -340,10 +272,11 @@
 {% if state.on_exit or state.static_invokes %}
                 {
 {% if state.static_invokes %}
-                // W3C SCXML 6.4: Cancel invoke elements
+                // W3C SCXML 6.4: Cancel pending invokes for exited state (ARCHITECTURE.md Zero Duplication)
+                ::RSM::InvokeHelper::cancelInvokesForState(pendingInvokes_, state);
                 {% for invoke_info in state.static_invokes %}
 
-                // W3C SCXML 6.4: Cleanup static invoke child
+                // W3C SCXML 6.4: Cleanup already-running static invoke child (if started in previous macrostep)
                 if (child_{{ invoke_info.invoke_id }}_) {
                     LOG_DEBUG("Stopping static invoke: id={{ invoke_info.invoke_id }}");
                     // W3C SCXML 6.4: Send cancel.invoke platform event
@@ -366,3 +299,92 @@
                 break;
         }
     }
+
+{% if model.static_invokes %}
+
+    // W3C SCXML 6.4: Execute pending invokes at macrostep end
+    // Uses InvokeHelper defer/cancel/execute pattern (ARCHITECTURE.md Zero Duplication)
+    template<typename Engine>
+    void executePendingInvokes(Engine& engine) {
+        (void)engine;  // May be used in future for context
+        
+        if (pendingInvokes_.empty()) {
+            return;
+        }
+        
+        LOG_DEBUG("Executing {} pending invokes at macrostep end", pendingInvokes_.size());
+        
+        // W3C SCXML 6.4: Use InvokeHelper as Single Source of Truth
+        ::RSM::InvokeHelper::executePendingInvokes(
+            pendingInvokes_,
+            [this](const PendingInvoke& pending) {
+                LOG_DEBUG("Executing pending invoke: {} in state {}", pending.invokeId, static_cast<int>(pending.state));
+                
+                // Switch on state to find which invoke to execute
+                {% for state_id, state in model.states.items() %}
+                {% if state.static_invokes %}
+                if (pending.state == State::{{ state_id | capitalize }}) {
+                    {% for invoke_info in state.static_invokes %}
+                    if (pending.invokeId == "{{ invoke_info.invoke_id }}") {
+                        // W3C SCXML 6.4: Instantiate and initialize child state machine
+                        LOG_DEBUG("Creating child state machine: {{ invoke_info.child_name }} for invoke {{ invoke_info.invoke_id }}");
+                        
+                        // Create child instance with parent pointer and invokeId
+                        child_{{ invoke_info.invoke_id }}_ = std::make_shared<::RSM::Generated::{{ invoke_info.child_name }}::{{ invoke_info.child_name }}<SelfType>>(self_, "{{ invoke_info.invoke_id }}");
+
+                        {% if invoke_info.idlocation %}
+                        // W3C SCXML 6.4.1: Store invokeId in parent datamodel via idlocation
+                        {
+                            ensureJSEngine();
+                            auto& jsEngine = ::RSM::JSEngine::instance();
+                            jsEngine.setVariable(sessionId_.value(), "{{ invoke_info.idlocation }}", "{{ invoke_info.invoke_id }}").get();
+                            LOG_DEBUG("Set idlocation {{ invoke_info.idlocation }} = {{ invoke_info.invoke_id }}");
+                        }
+                        {% endif %}
+
+                        {% if invoke_info.params %}
+                        // W3C SCXML 6.4.1: Pass params to child datamodel before initialization
+                        {% for param in invoke_info.params %}
+                        {% if invoke_info.child_needs_jsengine %}
+                        child_{{ invoke_info.invoke_id }}_->setParamInJSEngine("{{ param.name }}", "{{ param.expr }}");
+                        {% else %}
+                        // Child does not use JSEngine - params handled via static datamodel
+                        LOG_DEBUG("Param {{ param.name }}={{ param.expr }} - child uses static datamodel");
+                        {% endif %}
+                        {% endfor %}
+                        {% endif %}
+
+                        // W3C SCXML 6.4: Initialize child state machine
+                        child_{{ invoke_info.invoke_id }}_->initialize();
+                        
+                        // W3C SCXML 6.4: Register completion callback for done.invoke event
+                        child_{{ invoke_info.invoke_id }}_->setCompletionCallback([this]() {
+                            // W3C SCXML 6.4: Mark done.invoke as pending
+                            pendingDoneInvoke_{{ invoke_info.invoke_id }}_ = true;
+                            LOG_DEBUG("Child state machine {{ invoke_info.invoke_id }} completed, done.invoke pending");
+                        });
+                        
+                        // W3C SCXML 6.4: Track active invoke session
+                        activeInvokes_["{{ invoke_info.invoke_id }}"] = ChildSession{
+                            sessionId_.has_value() ? sessionId_.value() : "",  // Parent session ID
+                            "{{ invoke_info.invoke_id }}",
+                            sessionId_.has_value() ? sessionId_.value() : "",  // Parent session ID (same)
+                            false,  // autoforward
+                            ""      // finalize
+                        };
+                        
+                        LOG_DEBUG("Child state machine {{ invoke_info.invoke_id }} initialized and running");
+                        return;  // Found and executed the invoke
+                    }
+                    {% endfor %}
+                }
+                {% endif %}
+                {% endfor %}
+                
+                LOG_ERROR("Pending invoke not found: {} in state {}", pending.invokeId, static_cast<int>(pending.state));
+            }
+        );
+        
+        LOG_DEBUG("All pending invokes executed");
+    }
+{% endif %}

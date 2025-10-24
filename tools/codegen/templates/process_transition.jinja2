@@ -75,6 +75,9 @@
 {{ restore_history_or_transition(trans) }}
                     }
 {% endif %}
+{% else %}
+                    // W3C SCXML 3.4: Internal transition (no target) - set transitionTaken flag
+                    transitionTaken = true;
 {% endif %}
 {% endmacro %}
 

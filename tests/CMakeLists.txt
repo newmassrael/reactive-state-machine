@@ -576,6 +576,7 @@ rsm_generate_static_w3c_test(416 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.3.2: d
 rsm_generate_static_w3c_test(417 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.7.1: done.state event for parallel states
 rsm_generate_static_w3c_test(419 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.13: eventless transition precedence over event-driven transitions
 rsm_generate_static_w3c_test(421 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.10.1: internal event priority over external events
+rsm_generate_static_w3c_test(422 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.3: delayed send event scheduling
 rsm_generate_static_w3c_test(423 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: external event queue processing
 rsm_generate_static_w3c_test(436 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: In() predicate in null data model
 rsm_generate_static_w3c_test(444 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.2/5.9: ECMAScript datamodel variable in condition
@@ -587,6 +588,7 @@ rsm_generate_static_w3c_test(451 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.9.2: I
 rsm_generate_static_w3c_test(452 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.3/5.4: datamodel substructure assignment (object properties)
 rsm_generate_static_w3c_test(453 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2/3.12.1: ECMAScript function expression evaluation
 rsm_generate_static_w3c_test(456 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML B.2/5.9: ECMAScript script element execution
+rsm_generate_static_w3c_test(457 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.4/D.3.1: foreach error handling with ECMAScript validation
 rsm_generate_static_w3c_test(579 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: default history content execution
 rsm_generate_static_w3c_test(580 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: history state not in configuration (parallel)
 rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.4: auto-discovers test239sub1.txml

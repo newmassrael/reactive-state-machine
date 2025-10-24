@@ -12,6 +12,9 @@
 #include "{{ invoke_info.child_name }}_sm.h"
 {% endfor %}
 {% endif %}
+{% if model.static_invokes %}
+#include "common/InvokeHelper.h"
+{% endif %}
 {% if model.needs_send_helper %}
 #include "common/SendHelper.h"
 #include "common/NamelistHelper.h"
@@ -169,6 +172,9 @@ struct {{ model.name }}Policy {
     mutable bool nextEventIsExternal_ = false;
     {% endif %}
     {% if model.static_invokes %}
+    // W3C SCXML 6.4: Self-pointer for child state machine creation (defer/cancel/execute pattern)
+    mutable SelfType* self_ = nullptr;
+    
     // W3C SCXML 5.10: Current event metadata (originSessionId for finalize)
     mutable ::RSM::Core::EventMetadata currentEventMetadata_;
     // W3C SCXML 6.4: Static invoke child state machines
@@ -190,8 +196,16 @@ struct {{ model.name }}Policy {
         std::string finalizeScript;      // W3C 6.5: Finalize handler script
     };
 
+    // W3C SCXML 6.4: Pending invoke structure for macrostep-end execution
+    struct PendingInvoke {
+        std::string invokeId;
+        State state;
+    };
+
     // Active child sessions indexed by invokeId
     mutable std::unordered_map<std::string, ChildSession> activeInvokes_;
+    // W3C SCXML 6.4: Pending invokes (deferred until macrostep end)
+    mutable std::vector<PendingInvoke> pendingInvokes_;
     {% endif %}
     {% if model.needs_event_scheduler %}
     // W3C SCXML 6.2: Event scheduler for delayed send (lazy-init)
@@ -372,9 +386,26 @@ public:
 
 {% if model.has_parent_communication %}
     // W3C SCXML 6.2: Parent state machine pointer for #_parent support (Zero Overhead)
-    explicit {{ model.name }}(ParentStateMachine* parent) { this->policy_.parent_ = parent; }
+    explicit {{ model.name }}(ParentStateMachine* parent, const std::string& invokeId = "") {
+        this->policy_.parent_ = parent;
+        this->policy_.invokeId_ = invokeId;
+        {% if model.static_invokes %}
+        this->policy_.self_ = this;
+        {% endif %}
+    }
+{% elif model.static_invokes %}
+    {{ model.name }}() {
+        this->policy_.self_ = this;
+    }
 {% else %}
     {{ model.name }}() = default;
+{% endif %}
+
+{% if model.needs_jsengine %}
+    // W3C SCXML 6.4.1: Wrapper for setting invoke params (delegates to policy)
+    void setParamInJSEngine(const std::string& paramName, const std::string& paramExpr) {
+        this->policy_.setParamInJSEngine(paramName, paramExpr);
+    }
 {% endif %}
 
     {% if model.has_invoke %}

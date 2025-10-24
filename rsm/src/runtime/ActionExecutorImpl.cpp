@@ -1039,7 +1039,6 @@ bool ActionExecutorImpl::executeForeachAction(const ForeachAction &action) {
     try {
         if (!isSessionReady()) {
             LOG_ERROR("Session {} not ready for foreach action execution", sessionId_);
-            // Generate error.execution event for SCXML W3C compliance
             if (eventRaiser_ && eventRaiser_->isReady()) {
                 eventRaiser_->raiseEvent("error.execution", "Session not ready");
             }
@@ -1051,187 +1050,42 @@ bool ActionExecutorImpl::executeForeachAction(const ForeachAction &action) {
         std::string itemVar = action.getItem();
         std::string indexVar = action.getIndex();
 
-        // W3C SCXML 4.6: Validate array and item attributes using common validation function
+        // W3C SCXML 4.6: Validate array and item attributes
         try {
             RSM::Validation::validateForeachAttributes(arrayExpr, itemVar);
         } catch (const std::runtime_error &e) {
             LOG_ERROR("Foreach validation failed: {}", e.what());
-            // Generate error.execution event for SCXML W3C compliance
             if (eventRaiser_ && eventRaiser_->isReady()) {
                 eventRaiser_->raiseEvent("error.execution", e.what());
             }
             return false;
         }
 
-        // Parse array expression to get items
-        LOG_DEBUG("ActionExecutorImpl: Evaluating foreach array expression '{}'", arrayExpr);
-
         // Transform numeric variable names for array expression
         std::string jsArrayExpr = transformVariableName(arrayExpr);
 
-        // First try to get the variable directly if it's a simple identifier
-        // This handles cases like arrayExpr="3" where we need globalThis["var3"] (the array) not 3 (the number)
-        auto arrayResult = JSEngine::instance().getVariable(sessionId_, jsArrayExpr).get();
-        if (!arrayResult.isSuccess()) {
-            // If variable access fails, try expression evaluation
-            LOG_DEBUG("ActionExecutorImpl: Variable '{}' not found, trying expression evaluation", jsArrayExpr);
-            arrayResult = JSEngine::instance().evaluateExpression(sessionId_, jsArrayExpr).get();
-        } else {
-            LOG_DEBUG("ActionExecutorImpl: Successfully got variable '{}' with value: {}", arrayExpr,
-                      arrayResult.getValueAsString());
-        }
-        if (!arrayResult.isSuccess()) {
-            LOG_ERROR("ActionExecutorImpl: Failed to evaluate foreach array expression '{}': {}", arrayExpr,
-                      arrayResult.getErrorMessage());
+        // W3C SCXML 4.6: Use ForeachHelper as Single Source of Truth
+        // ARCHITECTURE.md: Zero Duplication Principle - shared logic between Interpreter and AOT engines
+        bool success = Common::ForeachHelper::executeForeachWithActions(
+            JSEngine::instance(), sessionId_, jsArrayExpr, transformVariableName(itemVar),
+            indexVar.empty() ? "" : transformVariableName(indexVar), [&](size_t i) -> bool {
+                // Execute nested actions for this iteration
+                auto sharedThis = std::shared_ptr<IActionExecutor>(this, [](IActionExecutor *) {});
+                ExecutionContextImpl context(sharedThis, sessionId_);
 
-            // Try to get the variable directly to see if it exists
-            LOG_DEBUG("ActionExecutorImpl: Attempting to get variable '{}' directly", arrayExpr);
-            auto varResult = JSEngine::instance().getVariable(sessionId_, jsArrayExpr).get();
-            if (varResult.isSuccess()) {
-                LOG_DEBUG("ActionExecutorImpl: Variable '{}' exists with value: {}", jsArrayExpr,
-                          varResult.getValueAsString());
-                // Use the variable value instead
-                arrayResult = varResult;
-            } else {
-                LOG_ERROR("ActionExecutorImpl: Variable '{}' also not found: {}", jsArrayExpr,
-                          varResult.getErrorMessage());
-                // Generate error.execution event for SCXML W3C compliance
-                if (eventRaiser_ && eventRaiser_->isReady()) {
-                    eventRaiser_->raiseEvent("error.execution", "Array expression evaluation failed: " + arrayExpr);
-                }
-                return false;
-            }
-        } else {
-            LOG_DEBUG("ActionExecutorImpl: Successfully evaluated array expression '{}' with result: {}", arrayExpr,
-                      arrayResult.getValueAsString());
-        }
-
-        // Convert result to string array using integrated API
-        std::vector<std::string> arrayItems = JSEngine::resultToStringArray(arrayResult, sessionId_, jsArrayExpr);
-
-        // Check if resultToStringArray failed due to null/invalid array
-        // This can happen when arrayResult is valid but contains null or non-array value
-        if (arrayItems.empty()) {
-            // Check if the original value was null or invalid for array operations
-            std::string resultStr = arrayResult.getValueAsString();
-            if (resultStr == "null" || resultStr == "undefined") {
-                LOG_ERROR("ActionExecutorImpl: Foreach array '{}' is null or undefined", arrayExpr);
-                // Generate error.execution event for SCXML W3C compliance
-                if (eventRaiser_ && eventRaiser_->isReady()) {
-                    eventRaiser_->raiseEvent("error.execution", "Foreach array is null or undefined: " + arrayExpr);
-                }
-                return false;
-            }
-
-            // W3C SCXML B.2 (test 457): Check if value is actually an array
-            // Empty result from resultToStringArray could mean non-array value
-            std::string arrayCheckExpr = jsArrayExpr + " instanceof Array";
-            auto arrayCheckResult = JSEngine::instance().evaluateExpression(sessionId_, arrayCheckExpr).get();
-            if (arrayCheckResult.isSuccess() && std::holds_alternative<bool>(arrayCheckResult.getInternalValue()) &&
-                !std::get<bool>(arrayCheckResult.getInternalValue())) {
-                LOG_ERROR("ActionExecutorImpl: Foreach array '{}' is not an array (value: {})", arrayExpr, resultStr);
-                // Generate error.execution event for SCXML W3C compliance
-                if (eventRaiser_ && eventRaiser_->isReady()) {
-                    eventRaiser_->raiseEvent("error.execution",
-                                             "Foreach requires an array, got non-array value: " + arrayExpr);
-                }
-                return false;
-            }
-
-            LOG_DEBUG("Foreach array is empty, declaring variables without iterations");
-        }
-
-        // W3C SCXML 4.6 Compliance: Declare variables even for empty arrays
-        if (arrayItems.empty()) {
-            // Declare item variable as undefined
-            if (!setLoopVariable(itemVar, "undefined", 0)) {
-                LOG_ERROR("Failed to declare foreach item variable for empty array: {}", itemVar);
-                if (eventRaiser_ && eventRaiser_->isReady()) {
-                    eventRaiser_->raiseEvent("error.execution", "Failed to declare foreach variable: " + itemVar);
-                }
-                return false;
-            }
-
-            // Declare index variable if specified
-            if (!indexVar.empty()) {
-                if (!setLoopVariable(indexVar, "undefined", 0)) {
-                    LOG_ERROR("Failed to declare foreach index variable for empty array: {}", indexVar);
-                    if (eventRaiser_ && eventRaiser_->isReady()) {
-                        eventRaiser_->raiseEvent("error.execution",
-                                                 "Failed to declare foreach index variable: " + indexVar);
+                for (const auto &nestedAction : action.getIterationActions()) {
+                    if (nestedAction && !nestedAction->execute(context)) {
+                        LOG_ERROR("Failed to execute action in foreach iteration {}", i);
+                        if (eventRaiser_ && eventRaiser_->isReady()) {
+                            eventRaiser_->raiseEvent("error.execution", "Failed to execute nested action in foreach");
+                        }
+                        return false;  // W3C SCXML 4.6: Stop foreach execution on error
                     }
-                    return false;
                 }
-            }
+                return true;  // Continue to next iteration
+            });
 
-            return true;
-        }
-
-        // Execute foreach iterations
-        bool allSucceeded = true;
-        for (size_t i = 0; i < arrayItems.size(); ++i) {
-            LOG_DEBUG("Foreach iteration {}/{}", i + 1, arrayItems.size());
-
-            // Set loop variable - SCXML W3C compliance: preserve type information
-            if (!setLoopVariable(itemVar, arrayItems[i], i)) {
-                LOG_ERROR("Failed to set foreach item variable: {}", itemVar);
-                if (eventRaiser_ && eventRaiser_->isReady()) {
-                    eventRaiser_->raiseEvent("error.execution", "Failed to set foreach variable: " + itemVar);
-                }
-                allSucceeded = false;
-                break;
-            }
-
-            // Set index variable if specified - SCXML: index is always numeric
-            if (!indexVar.empty()) {
-                if (!setLoopVariable(indexVar, std::to_string(i), i)) {
-                    LOG_ERROR("Failed to set foreach index variable: {}", indexVar);
-                    if (eventRaiser_ && eventRaiser_->isReady()) {
-                        eventRaiser_->raiseEvent("error.execution",
-                                                 "Failed to set foreach index variable: " + indexVar);
-                    }
-                    allSucceeded = false;
-                    break;
-                }
-            }
-
-            // Execute nested actions
-            auto sharedThis = std::shared_ptr<IActionExecutor>(this, [](IActionExecutor *) {});
-            ExecutionContextImpl context(sharedThis, sessionId_);
-
-            for (const auto &nestedAction : action.getIterationActions()) {
-                if (nestedAction && !nestedAction->execute(context)) {
-                    LOG_ERROR("Failed to execute action in foreach iteration {}", i);
-                    if (eventRaiser_ && eventRaiser_->isReady()) {
-                        eventRaiser_->raiseEvent("error.execution", "Failed to execute nested action in foreach");
-                    }
-                    allSucceeded = false;
-                }
-            }
-
-            if (!allSucceeded) {
-                break;
-            }
-        }
-
-        LOG_DEBUG("Foreach action completed with {} iterations", arrayItems.size());
-
-        // W3C Test Debugging: Log final variable states
-        if (!itemVar.empty()) {
-            std::string jsItemVar = transformVariableName(itemVar);
-            auto itemCheckResult = JSEngine::instance().evaluateExpression(sessionId_, "typeof " + jsItemVar).get();
-            LOG_INFO("Foreach FINAL: Variable '{}' (JS: '{}') type: {}", itemVar, jsItemVar,
-                     itemCheckResult.isSuccess() ? itemCheckResult.getValueAsString() : "check_failed");
-        }
-
-        if (!indexVar.empty()) {
-            std::string jsIndexVar = transformVariableName(indexVar);
-            auto indexCheckResult = JSEngine::instance().evaluateExpression(sessionId_, "typeof " + jsIndexVar).get();
-            LOG_INFO("Foreach FINAL: Variable '{}' (JS: '{}') type: {}", indexVar, jsIndexVar,
-                     indexCheckResult.isSuccess() ? indexCheckResult.getValueAsString() : "check_failed");
-        }
-
-        return allSucceeded;
+        return success;
 
     } catch (const std::exception &e) {
         LOG_ERROR("Exception in foreach action execution: {}", e.what());

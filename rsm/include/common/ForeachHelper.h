@@ -84,11 +84,15 @@ public:
     /**
      * @brief Evaluates a foreach array expression using JSEngine
      *
+     * W3C SCXML 5.4: The 'array' attribute must evaluate to an iterable collection,
+     * specifically objects that satisfy instanceof(Array) in ECMAScript.
+     * Non-array values (numbers, strings, booleans, objects) must raise error.execution.
+     *
      * @param jsEngine Reference to JSEngine instance
      * @param sessionId JSEngine session ID
      * @param arrayExpr Array expression to evaluate (e.g., "Var3", "[1,2,3]")
      * @return std::vector<std::string> Array values as strings
-     * @throws std::runtime_error if evaluation fails
+     * @throws std::runtime_error if evaluation fails or value is not an array
      */
     static inline std::vector<std::string> evaluateForeachArray(JSEngine &jsEngine, const std::string &sessionId,
                                                                 const std::string &arrayExpr) {
@@ -97,6 +101,17 @@ public:
         if (!JSEngine::isSuccess(arrayResult)) {
             LOG_ERROR("Failed to evaluate array expression: {}", arrayExpr);
             throw std::runtime_error("Foreach array evaluation failed");
+        }
+
+        // W3C SCXML 5.4: Validate that the value is an array (instanceof Array)
+        std::string arrayCheckExpr = "(" + arrayExpr + ") instanceof Array";
+        auto arrayCheckResult = jsEngine.evaluateExpression(sessionId, arrayCheckExpr).get();
+
+        if (!JSEngine::isSuccess(arrayCheckResult) ||
+            !std::holds_alternative<bool>(arrayCheckResult.getInternalValue()) ||
+            !std::get<bool>(arrayCheckResult.getInternalValue())) {
+            LOG_ERROR("Foreach array '{}' is not an iterable collection (W3C SCXML 5.4)", arrayExpr);
+            throw std::runtime_error("Foreach array must be instanceof Array");
         }
 
         return JSEngine::resultToStringArray(arrayResult, sessionId, arrayExpr);
