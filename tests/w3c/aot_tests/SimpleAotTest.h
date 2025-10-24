@@ -34,7 +34,18 @@ public:
         sm.initialize();
         auto finalState = sm.getCurrentState();
         bool isFinished = sm.isInFinalState();
-        bool isPass = (finalState == SM::State::Pass);
+
+        // W3C SCXML: Check success state (default: Pass, override with PASS_STATE)
+        // Policy-based design: Derived class can define PASS_STATE for custom success states
+        bool isPass;
+        if constexpr (requires { Derived::PASS_STATE; }) {
+            // Manual test or custom success state
+            isPass = (finalState == Derived::PASS_STATE);
+        } else {
+            // Standard test: success = Pass state
+            isPass = (finalState == SM::State::Pass);
+        }
+
         LOG_DEBUG("AOT Test {}: isInFinalState={}, currentState={}, isPass={}", TEST_ID, isFinished,
                   static_cast<int>(finalState), isPass);
         return isFinished && isPass;

@@ -169,11 +169,11 @@ jobs:
       run: |
         python3 tests/w3c/scripts/xml_to_html.py \
           build/tests/w3c_test_results.xml \
-          build/tests/test-results.html
+          build/tests/w3c_test_results.html
 
         # Create a clean directory with only HTML files for GitHub Pages
         mkdir -p gh-pages
-        cp build/tests/test-results.html gh-pages/
+        cp build/tests/w3c_test_results.html gh-pages/test-results.html
         cp build/tests/w3c_test_results.xml gh-pages/
 
     - name: Deploy to GitHub Pages
