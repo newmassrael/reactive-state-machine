@@ -214,6 +214,37 @@ class SCXMLParser:
                 # Get text content
                 content = data.text or ''
 
+                # W3C SCXML 5.2.2: Load external content from src attribute
+                # ARCHITECTURE.MD: Zero Duplication - Same logic as FileLoadingHelper (Single Source of Truth)
+                if src:
+                    # FileLoadingHelper::normalizePath() equivalent
+                    # Remove "file://" or "file:" prefix
+                    file_path = src
+                    if file_path.startswith('file://'):
+                        file_path = file_path[7:]  # Remove "file://"
+                    elif file_path.startswith('file:'):
+                        file_path = file_path[5:]  # Remove "file:"
+
+                    # Resolve relative to SCXML file directory
+                    scxml_dir = Path(self.scxml_path).parent
+                    full_path = scxml_dir / file_path
+
+                    try:
+                        # FileLoadingHelper::loadFileContent() equivalent
+                        with open(full_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+
+                        # W3C SCXML 5.2.2: Trim whitespace for consistency
+                        content = content.strip()
+                    except FileNotFoundError:
+                        import logging
+                        logging.warning(f"External data file not found: {full_path}")
+                        content = ''
+                    except Exception as e:
+                        import logging
+                        logging.warning(f"Failed to read external data file {full_path}: {e}")
+                        content = ''
+
                 self.model.variables.append({
                     'id': var_id,
                     'expr': expr,

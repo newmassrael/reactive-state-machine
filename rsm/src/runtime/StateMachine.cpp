@@ -3,6 +3,7 @@
 #include "common/ConflictResolutionHelper.h"
 #include "common/DataModelInitHelper.h"
 #include "common/DoneDataHelper.h"
+#include "common/FileLoadingHelper.h"
 #include "common/Logger.h"
 #include "common/ParallelTransitionHelper.h"
 #include "common/StringUtils.h"
@@ -1651,12 +1652,9 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
         }
     } else if (!src.empty()) {
         // W3C SCXML 5.3: Load data from external source (test 446)
-        std::string filePath = src;
+        // ARCHITECTURE.MD: Zero Duplication - Use FileLoadingHelper (Single Source of Truth)
 
-        // Remove "file:" prefix if present
-        if (filePath.find("file:") == 0) {
-            filePath = filePath.substr(5);
-        }
+        std::string filePath = FileLoadingHelper::normalizePath(src);
 
         // Resolve relative path based on SCXML file location
         if (filePath[0] != '/') {  // Relative path
@@ -1671,19 +1669,18 @@ void StateMachine::initializeDataItem(const std::shared_ptr<IDataModelItem> &ite
             }
         }
 
-        // Read file content
-        std::ifstream file(filePath);
-        if (!file.is_open()) {
-            LOG_ERROR("StateMachine: Failed to open file '{}' for variable '{}'", filePath, id);
+        // Load file content using FileLoadingHelper
+        std::string fileContent;
+        bool success = FileLoadingHelper::loadFileContent(filePath, fileContent);
+
+        if (!success) {
+            LOG_ERROR("StateMachine: Failed to load file '{}' for variable '{}'", filePath, id);
             if (eventRaiser_) {
                 eventRaiser_->raiseEvent("error.execution",
-                                         "Failed to open file '" + filePath + "' for variable '" + id + "'");
+                                         "Failed to load file '" + filePath + "' for variable '" + id + "'");
             }
             return;
         }
-
-        std::string fileContent((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        file.close();
 
         // W3C SCXML B.2: Check content type (XML/JSON/text) and handle appropriately
         if (isXMLContent(fileContent)) {

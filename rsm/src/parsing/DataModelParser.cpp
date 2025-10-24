@@ -1,4 +1,5 @@
 #include "parsing/DataModelParser.h"
+#include "common/FileLoadingHelper.h"
 #include "common/Logger.h"
 #include <algorithm>
 #include <libxml/tree.h>
@@ -258,31 +259,21 @@ bool RSM::DataModelParser::matchNodeName(const std::string &nodeName, const std:
 }
 
 void RSM::DataModelParser::loadExternalContent(const std::string &src, std::shared_ptr<IDataModelItem> dataItem) {
-    // This method handles loading data from external URLs
-    // e.g., file system, HTTP requests, etc.
+    // W3C SCXML 5.2.2: Load data from external sources
+    // ARCHITECTURE.MD: Zero Duplication - Use FileLoadingHelper (Single Source of Truth)
 
     LOG_DEBUG("Loading content from: {}", src);
 
-    // Example: Load file content for file paths
-    if (src.find("file://") == 0 || src.find("/") == 0 || src.find("./") == 0) {
-        std::string filePath = src;
-        if (src.find("file://") == 0) {
-            filePath = src.substr(7);  // Remove "file://" prefix
-        }
+    // W3C SCXML 5.2.2: Handle file:// or file: URIs
+    if (src.find("file://") == 0 || src.find("file:") == 0 || src.find("/") == 0 || src.find("./") == 0) {
+        std::string content;
+        bool success = FileLoadingHelper::loadFromSrc(src, content);
 
-        try {
-            // Load file content
-            std::ifstream file(filePath);
-            if (file.is_open()) {
-                std::stringstream buffer;
-                buffer << file.rdbuf();
-                dataItem->setContent(buffer.str());
-                LOG_DEBUG("Content loaded from file");
-            } else {
-                LOG_ERROR("Failed to open file: {}", filePath);
-            }
-        } catch (std::exception &e) {
-            LOG_ERROR("Exception loading file: {}", e.what());
+        if (success) {
+            dataItem->setContent(content);
+            LOG_DEBUG("Content loaded from file via FileLoadingHelper");
+        } else {
+            LOG_ERROR("Failed to load file via FileLoadingHelper: {}", src);
         }
     } else if (src.find("http://") == 0 || src.find("https://") == 0) {
         // HTTP requests require more complex implementation and external libraries are recommended

@@ -65,11 +65,13 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
     endforeach()
 
     # Step 1: TXML -> SCXML conversion with name attribute
+    # ARCHITECTURE.MD: CMake portability - Use ${CMAKE_COMMAND} instead of bash
     add_custom_command(
         OUTPUT "${SCXML_FILE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
         COMMAND txml-converter "${TXML_FILE}" "${SCXML_FILE}"
         COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/fix_scxml_name.py" "${SCXML_FILE}" "test${TEST_NUM}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${RESOURCE_DIR}/test${TEST_NUM}.txt" "${OUTPUT_DIR}/" || ${CMAKE_COMMAND} -E true
         DEPENDS txml-converter "${TXML_FILE}" ${SUB_SCXML_DEPENDENCIES}
         COMMENT "Converting TXML to SCXML: test${TEST_NUM}.txml"
         VERBATIM
@@ -78,11 +80,33 @@ function(rsm_generate_static_w3c_test TEST_NUM OUTPUT_DIR)
     # Step 2: SCXML -> C++ code generation (parent + inline children)
     # W3C SCXML 6.2/6.4: Parent header must depend on child headers (template detection)
     # Uses Python helper script to generate parent and process inline content children
+    # ARCHITECTURE.MD: CMake portability - Use CMake scripting instead of bash
     set(CHILDREN_METADATA "${OUTPUT_DIR}/test${TEST_NUM}_children.txt")
+    set(PROCESS_CHILDREN_SCRIPT "${OUTPUT_DIR}/process_children_${TEST_NUM}.cmake")
+
+    # Generate CMake script to process inline children
+    file(WRITE "${PROCESS_CHILDREN_SCRIPT}" "
+        if(EXISTS \"${CHILDREN_METADATA}\")
+            file(STRINGS \"${CHILDREN_METADATA}\" CHILDREN)
+            foreach(child \${CHILDREN})
+                if(child)
+                    execute_process(
+                        COMMAND python3 \"${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py\"
+                                \"${OUTPUT_DIR}/\${child}.scxml\" -o \"${OUTPUT_DIR}\" --as-child
+                        RESULT_VARIABLE result
+                    )
+                    if(NOT result EQUAL 0)
+                        message(WARNING \"Failed to generate child: \${child}\")
+                    endif()
+                endif()
+            endforeach()
+        endif()
+    ")
+
     add_custom_command(
         OUTPUT "${GENERATED_HEADER}"
         COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py" "${SCXML_FILE}" -o "${OUTPUT_DIR}"
-        COMMAND bash -c "if [ -f \"${CHILDREN_METADATA}\" ]; then while IFS= read -r child; do [ -n \"$child\" ] && python3 \"${CMAKE_SOURCE_DIR}/tools/codegen/codegen.py\" \"${OUTPUT_DIR}/$child.scxml\" -o \"${OUTPUT_DIR}\" --as-child; done < \"${CHILDREN_METADATA}\"; fi"
+        COMMAND ${CMAKE_COMMAND} -P "${PROCESS_CHILDREN_SCRIPT}"
         DEPENDS "${SCXML_FILE}" ${SUB_HEADER_DEPENDENCIES} ${CODEGEN_DEPENDENCIES}
         COMMENT "Generating C++ code: test${TEST_NUM}_sm.h (with inline children)"
         VERBATIM
