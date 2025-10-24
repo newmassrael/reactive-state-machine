@@ -1,5 +1,9 @@
 // W3C SCXML 3.8.5: <if>
-{% if model.needs_jsengine %}
+{% if action.is_pure_in_predicate %}
+// W3C SCXML 5.9.2: Pure In() predicate - direct C++ call (no JSEngine)
+if ({{ action.cond_cpp }}) {
+{% elif model.needs_jsengine %}
+// W3C SCXML 5.9: ECMAScript expression - JSEngine evaluation
 this->ensureJSEngine();
 auto& jsEngine = ::RSM::JSEngine::instance();
 if (::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ action.cond | escape_cpp }}")) {
@@ -12,7 +16,7 @@ if ({{ action.cond }}) {
     {% endwith %}
     {% endfor %}
 {% for elseif in action.elseif_branches %}
-} else if ({% if model.needs_jsengine %}::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ elseif.cond | escape_cpp }}"){% else %}{{ elseif.cond }}{% endif %}) {
+} else if ({% if elseif.is_pure_in_predicate %}{{ elseif.cond_cpp }}{% elif model.needs_jsengine %}::RSM::GuardHelper::evaluateGuard(jsEngine, sessionId_.value(), "{{ elseif.cond | escape_cpp }}"){% else %}{{ elseif.cond }}{% endif %}) {
     {% for elseif_action in elseif.actions %}
     {% with action=elseif_action %}
     {% include 'actions/' + elseif_action.type + '.jinja2' %}

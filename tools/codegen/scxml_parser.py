@@ -27,7 +27,9 @@ class Transition:
     """W3C SCXML 3.3: Transition element"""
     event: str = ""
     target: str = ""
-    cond: str = ""  # guard condition
+    cond: str = ""  # guard condition (original SCXML expression)
+    cond_cpp: str = ""  # C++ code for pure In() predicates (empty if needs JSEngine)
+    is_pure_in_predicate: bool = False  # True if cond is ONLY In() predicates
     type: str = "external"  # external or internal
     actions: List[Dict] = field(default_factory=list)  # executable content
 
@@ -422,10 +424,21 @@ class SCXMLParser:
 
     def _parse_transition(self, trans_elem) -> Transition:
         """Parse <transition> element (W3C SCXML 3.3)"""
+        cond = trans_elem.get('cond', '')
+        
+        # W3C SCXML 5.9.2: Check if condition is pure In() predicate
+        is_pure_in = False
+        cond_cpp = ''
+        if cond and self._is_pure_in_predicate(cond):
+            is_pure_in = True
+            cond_cpp = self._convert_in_to_cpp(cond)
+        
         transition = Transition(
             event=trans_elem.get('event', ''),
             target=trans_elem.get('target', ''),
-            cond=trans_elem.get('cond', ''),
+            cond=cond,
+            cond_cpp=cond_cpp,
+            is_pure_in_predicate=is_pure_in,
             type=trans_elem.get('type', 'external')
         )
 
@@ -521,8 +534,18 @@ class SCXMLParser:
                 # Actions after <if> but before <elseif>/<else> are the "then" branch
                 # Actions after <elseif> but before next <elseif>/<else> are elseif branches
                 # Actions after <else> until </if> are else branch
-                
-                action['cond'] = child.get('cond', '')
+
+                cond = child.get('cond', '')
+                # W3C SCXML 5.9.2: Check if condition is pure In() predicate
+                is_pure_in = False
+                cond_cpp = ''
+                if cond and self._is_pure_in_predicate(cond):
+                    is_pure_in = True
+                    cond_cpp = self._convert_in_to_cpp(cond)
+
+                action['cond'] = cond
+                action['cond_cpp'] = cond_cpp
+                action['is_pure_in_predicate'] = is_pure_in
                 action['elseif_branches'] = []
                 action['else_actions'] = []
                 
@@ -542,8 +565,18 @@ class SCXMLParser:
                     
                     if elem_tag == 'elseif':
                         # Start new elseif branch
+                        elseif_cond = elem.get('cond', '')
+                        # W3C SCXML 5.9.2: Check if condition is pure In() predicate
+                        elseif_is_pure_in = False
+                        elseif_cond_cpp = ''
+                        if elseif_cond and self._is_pure_in_predicate(elseif_cond):
+                            elseif_is_pure_in = True
+                            elseif_cond_cpp = self._convert_in_to_cpp(elseif_cond)
+
                         branch = {
-                            'cond': elem.get('cond', ''),
+                            'cond': elseif_cond,
+                            'cond_cpp': elseif_cond_cpp,
+                            'is_pure_in_predicate': elseif_is_pure_in,
                             'actions': []
                         }
                         action['elseif_branches'].append(branch)
@@ -734,6 +767,80 @@ class SCXMLParser:
 
         return invoke
 
+    def _is_pure_in_predicate(self, expr: str) -> bool:
+        """
+        Check if expression contains ONLY In() predicates with && and || operators
+        
+        W3C SCXML 5.9.2: In(stateId) is a built-in function, not an ECMAScript expression.
+        Pure In() predicates can be implemented with direct C++ calls without JSEngine.
+        
+        Examples of pure In() predicates:
+        - "In('s1')" → True
+        - "In('s1') && In('s2')" → True
+        - "In('s1') || In('s2')" → True
+        - "In('s1') && typeof x !== 'undefined'" → False (has ECMAScript)
+        - "In(stateName)" → False (variable, not static string)
+        
+        Args:
+            expr: Expression string to check
+            
+        Returns:
+            True if expression is ONLY In() predicates, False otherwise
+        """
+        if not expr or 'In(' not in expr:
+            return False
+        
+        import re
+        
+        # W3C SCXML B.1: XML entity escaping - convert back for parsing
+        # &amp;&amp; → &&, &amp;| → ||
+        clean_expr = expr.replace('&amp;&amp;', '&&').replace('&amp;|', '||').strip()
+        
+        # Pattern: Only In('...') with optional &&, ||, (, ), whitespace
+        # In('state') with single quotes and static string literals only
+        # Reject: In(var), In("state"), In(`state`)
+        pattern = r"^[\s()&|]*(?:In\('[^']+'\)[\s()&|]*)+$"
+        
+        if not re.match(pattern, clean_expr):
+            return False
+        
+        # Additional validation: No ECMAScript keywords
+        ecma_keywords = ['typeof', '_event', 'function', 'var', 'let', 'const', 'return']
+        for keyword in ecma_keywords:
+            if keyword in clean_expr:
+                return False
+        
+        return True
+    
+    def _convert_in_to_cpp(self, expr: str) -> str:
+        """
+        Convert In() predicates to direct C++ isStateActive() calls
+        
+        W3C SCXML 5.9.2: In(stateId) → this->isStateActive("stateId")
+        ARCHITECTURE.md Zero Duplication: Uses InPredicateHelper internally
+        
+        Examples:
+        - "In('s1')" → "this->isStateActive(\"s1\")"
+        - "In('s1') && In('s2')" → "this->isStateActive(\"s1\") && this->isStateActive(\"s2\")"
+        - "In('s1') || In('s2')" → "this->isStateActive(\"s1\") || this->isStateActive(\"s2\")"
+        
+        Args:
+            expr: Pure In() predicate expression
+            
+        Returns:
+            C++ code with direct isStateActive() calls
+        """
+        import re
+        
+        # W3C SCXML B.1: XML entity escaping - convert for C++ code
+        cpp_expr = expr.replace('&amp;&amp;', '&&').replace('&amp;|', '||')
+        
+        # Transform: In('state') → this->isStateActive("state")
+        # Use double quotes in C++ for consistency with generated code
+        cpp_expr = re.sub(r"In\('([^']+)'\)", r'this->isStateActive("\1")', cpp_expr)
+        
+        return cpp_expr
+
     def _requires_jsengine(self, expr: str) -> bool:
         """
         Detect if expression requires JSEngine evaluation
@@ -748,14 +855,21 @@ class SCXMLParser:
         if not expr:
             return False
 
-        # ECMAScript-specific features
-        js_features = ['typeof', 'In(', '_event.', 'function', 'var ', 'let ', 'const ']
+        # W3C SCXML 5.9.2: Check if expression is ONLY In() predicates
+        # Pure In() predicates can be implemented without JSEngine
+        if 'In(' in expr:
+            self.model.uses_in_predicate = True
+            if self._is_pure_in_predicate(expr):
+                # Pure In() predicate - no JSEngine needed
+                return False
+            # Mixed In() with ECMAScript - needs JSEngine
+            return True
+
+        # ECMAScript-specific features (excluding In() - handled above)
+        js_features = ['typeof', '_event.', 'function', 'var ', 'let ', 'const ']
 
         for feature in js_features:
             if feature in expr:
-                # W3C SCXML 3.12.1: In() predicate requires activeStates_ management
-                if 'In(' in expr:
-                    self.model.uses_in_predicate = True
                 return True
 
         # Check for event metadata access

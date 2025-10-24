@@ -30,6 +30,7 @@ struct TestRunSummary {
 struct TestReport {
     std::string testId;
     std::string engineType;  // "interpreter" or "aot" - indicates which engine executed the test
+    std::string testType;    // "pure_static", "static_hybrid", or "interpreter_fallback" - AOT implementation type
     TestMetadata metadata;
     TestExecutionContext executionContext;
     ValidationResult validationResult;

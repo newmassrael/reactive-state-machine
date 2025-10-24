@@ -79,7 +79,7 @@
 {% endmacro %}
 
     template<typename Engine>
-{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler and not model.has_transition_actions %}    static bool processTransition(State& currentState, Event event, Engine& engine) {
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler and not model.has_transition_actions and not model.has_parallel_states %}    static bool processTransition(State& currentState, Event event, Engine& engine) {
 {% else %}    bool processTransition(State& currentState, Event event, Engine& engine) {
 {% endif %}
 {% if model.static_invokes %}
@@ -413,7 +413,7 @@ private:
     // - collectMode = vector: Collection only (for optimal transition set)
     template<typename Engine>
     // W3C SCXML 3.13: Conditional static based on transition actions (Zero Overhead)
-{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler and not model.has_transition_actions %}    static bool tryTransitionInState([[maybe_unused]] State checkState, [[maybe_unused]] Event event,
+{% if not model.needs_jsengine and not model.static_invokes and not model.needs_event_scheduler and not model.has_transition_actions and not model.has_parallel_states %}    static bool tryTransitionInState([[maybe_unused]] State checkState, [[maybe_unused]] Event event,
                                       [[maybe_unused]] State& currentState, [[maybe_unused]] bool& transitionTaken,
                                       [[maybe_unused]] Engine& engine,
                                       [[maybe_unused]] ::std::vector<TransitionInfo>* collectMode = nullptr) {
@@ -465,7 +465,11 @@ private:
 {% endif %}
 {# Process single transition with its condition #}
 {% if trans.cond %}
-{% if model.needs_jsengine %}
+{% if trans.is_pure_in_predicate %}
+                // W3C SCXML 5.9.2: Pure In() predicate - direct C++ call (no JSEngine)
+                if ({{ trans.cond_cpp }}) {
+{% elif model.needs_jsengine %}
+                // W3C SCXML 5.9: ECMAScript expression - JSEngine evaluation
                 if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ trans.cond | escape_cpp }}", engine)) {
 {% else %}
                 if ({{ trans.cond }}) {
@@ -520,14 +524,22 @@ private:
 {% for transition in eventless_transitions %}
 {% if transition.cond %}
 {% if first_trans.value %}
-{% if model.needs_jsengine %}
+{% if transition.is_pure_in_predicate %}
+                // W3C SCXML 5.9.2: Pure In() predicate - direct C++ call (no JSEngine)
+                if ({{ transition.cond_cpp }}) {
+{% elif model.needs_jsengine %}
+                // W3C SCXML 5.9: ECMAScript expression - JSEngine evaluation
                 if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}", engine)) {
 {% else %}
             if ({{ transition.cond }}) {
 {% endif %}
 {% set first_trans.value = False %}
 {% else %}
-{% if model.needs_jsengine and first_uses_jsengine %}
+{% if transition.is_pure_in_predicate %}
+                // W3C SCXML 5.9.2: Pure In() predicate - direct C++ call (no JSEngine)
+                } else if ({{ transition.cond_cpp }}) {
+{% elif model.needs_jsengine and first_uses_jsengine %}
+                // W3C SCXML 5.9: ECMAScript expression - JSEngine evaluation
                 } else if (this->safeEvaluateGuard(jsEngine, sessionId_.value(), "{{ transition.cond | escape_cpp }}", engine)) {
 {% else %}
             } else if ({{ transition.cond }}) {

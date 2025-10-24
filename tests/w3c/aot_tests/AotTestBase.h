@@ -48,6 +48,14 @@ public:
     virtual bool needsSchedulerPolling() const {
         return false;
     }
+
+    /**
+     * @brief Get test type: pure_static, static_hybrid, or interpreter_fallback
+     * @return Test type string for XML reporting
+     */
+    virtual const char *getTestType() const {
+        return "pure_static";  // Default for most tests
+    }
 };
 
 }  // namespace RSM::W3C::AotTests

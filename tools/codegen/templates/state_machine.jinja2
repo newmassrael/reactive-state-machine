@@ -101,6 +101,9 @@ struct {{ model.name }}Policy {
     // W3C SCXML Appendix D: Flag indicating parallel state support
     static constexpr bool HAS_PARALLEL_STATES = {{ 'true' if model.has_parallel_states else 'false' }};
 
+    // W3C SCXML 5.9: Flag indicating JSEngine requirement (ECMAScript expressions)
+    static constexpr bool NEEDS_JSENGINE = {{ 'true' if model.needs_jsengine else 'false' }};
+
     {% if model.variables %}
     // Datamodel variables
     {% for var in model.variables %}
@@ -363,6 +366,9 @@ template<typename ParentStateMachine>
 {% endif %}
 class {{ model.name }} : public ::RSM::Static::StaticExecutionEngine<{% if model.has_parent_communication %}{{ model.name }}Policy<ParentStateMachine>{% elif model.static_invokes %}{{ model.name }}Policy<{{ model.name }}>{% else %}{{ model.name }}Policy{% endif %}> {
 public:
+    // W3C SCXML: Policy type alias for test infrastructure
+    using PolicyType = {% if model.has_parent_communication %}{{ model.name }}Policy<ParentStateMachine>{% elif model.static_invokes %}{{ model.name }}Policy<{{ model.name }}>{% else %}{{ model.name }}Policy{% endif %};
+
 {% if model.has_parent_communication %}
     // W3C SCXML 6.2: Parent state machine pointer for #_parent support (Zero Overhead)
     explicit {{ model.name }}(ParentStateMachine* parent) { this->policy_.parent_ = parent; }

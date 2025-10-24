@@ -62,6 +62,7 @@ test_output/
 test_data/
 *.log
 w3c_test_results.xml
+w3c_test_results.html
 
 # Package files
 *.tar.gz

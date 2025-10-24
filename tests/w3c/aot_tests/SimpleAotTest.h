@@ -47,6 +47,18 @@ public:
     const char *getDescription() const override {
         return Derived::DESCRIPTION;
     }
+
+    /**
+     * @brief Get test type: pure_static or static_hybrid
+     *
+     * Uses Policy::NEEDS_JSENGINE to determine if test uses JSEngine
+     * for ECMAScript expression evaluation (In(), typeof, _event, etc.)
+     */
+    const char *getTestType() const {
+        using SM = typename Derived::SM;
+        using Policy = typename SM::PolicyType;
+        return Policy::NEEDS_JSENGINE ? "static_hybrid" : "pure_static";
+    }
 };
 
 /**
@@ -112,6 +124,18 @@ public:
 
     bool needsSchedulerPolling() const override {
         return true;
+    }
+
+    /**
+     * @brief Get test type: pure_static or static_hybrid
+     *
+     * Uses Policy::NEEDS_JSENGINE to determine if test uses JSEngine
+     * for ECMAScript expression evaluation (In(), typeof, _event, etc.)
+     */
+    const char *getTestType() const {
+        using SM = typename Derived::SM;
+        using Policy = typename SM::PolicyType;
+        return Policy::NEEDS_JSENGINE ? "static_hybrid" : "pure_static";
     }
 };
 

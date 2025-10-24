@@ -38,6 +38,22 @@ namespace RSM::W3C {
 class TestResultValidator;
 class W3CTestSuite;
 
+// W3C SCXML: Helper function to convert TestResult enum to string for XML output
+static const char *testResultToString(TestResult result) {
+    switch (result) {
+    case TestResult::PASS:
+        return "PASS";
+    case TestResult::FAIL:
+        return "FAIL";
+    case TestResult::ERROR:
+        return "ERROR";
+    case TestResult::TIMEOUT:
+        return "TIMEOUT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 class ConsoleTestReporter : public ITestReporter {
 private:
     size_t testCount_ = 0;
@@ -626,6 +642,25 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
                     }
                 }
 
+                // Helper function to write XML testcase element (Zero Duplication Principle)
+                auto writeTestCase = [](std::ofstream &xmlFile, const TestReport &report,
+                                        const std::string &classname) {
+                    xmlFile << "    <testcase classname=\"" << classname << "\" "
+                            << "name=\"Test_" << report.testId << "\" "
+                            << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\" "
+                            << "type=\"" << report.testType << "\" "
+                            << "result=\"" << testResultToString(report.validationResult.finalResult) << "\" "
+                            << "description=\"" << report.validationResult.reason << "\"";
+
+                    if (report.validationResult.finalResult != TestResult::PASS) {
+                        xmlFile << ">" << std::endl;
+                        xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>" << std::endl;
+                        xmlFile << "    </testcase>" << std::endl;
+                    } else {
+                        xmlFile << "/>" << std::endl;
+                    }
+                };
+
                 // Calculate statistics per engine
                 auto calculateEngineStats = [](const std::vector<TestReport> &reports) {
                     size_t failures = 0, errors = 0;
@@ -662,18 +697,7 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
                             << "time=\"" << interpTime << "\">" << std::endl;
 
                     for (const auto &report : interpreterReports) {
-                        xmlFile << "    <testcase classname=\"W3C_Interpreter\" "
-                                << "name=\"Test_" << report.testId << "\" "
-                                << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
-
-                        if (report.validationResult.finalResult != TestResult::PASS) {
-                            xmlFile << ">" << std::endl;
-                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>"
-                                    << std::endl;
-                            xmlFile << "    </testcase>" << std::endl;
-                        } else {
-                            xmlFile << "/>" << std::endl;
-                        }
+                        writeTestCase(xmlFile, report, "W3C_Interpreter");
                     }
 
                     xmlFile << "  </testsuite>" << std::endl;
@@ -688,18 +712,7 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
                             << "time=\"" << aotTime << "\">" << std::endl;
 
                     for (const auto &report : aotReports) {
-                        xmlFile << "    <testcase classname=\"W3C_AOT\" "
-                                << "name=\"Test_" << report.testId << "\" "
-                                << "time=\"" << (report.executionContext.executionTime.count() / 1000.0) << "\"";
-
-                        if (report.validationResult.finalResult != TestResult::PASS) {
-                            xmlFile << ">" << std::endl;
-                            xmlFile << "      <failure message=\"" << report.validationResult.reason << "\"/>"
-                                    << std::endl;
-                            xmlFile << "    </testcase>" << std::endl;
-                        } else {
-                            xmlFile << "/>" << std::endl;
-                        }
+                        writeTestCase(xmlFile, report, "W3C_AOT");
                     }
 
                     xmlFile << "  </testsuite>" << std::endl;
@@ -707,6 +720,53 @@ std::unique_ptr<ITestReporter> TestComponentFactory::createXMLReporter(const std
 
                 xmlFile << "</testsuites>" << std::endl;
                 xmlFile.close();
+
+                // Generate HTML report using Python script
+                // Script location: tests/w3c/scripts/xml_to_html.py (version-controlled)
+                std::filesystem::path scriptPath =
+                    std::filesystem::path(__FILE__).parent_path() / "scripts" / "xml_to_html.py";
+                std::filesystem::path scriptDir = scriptPath.parent_path();
+                std::filesystem::path xmlPathObj(outputPath_);
+
+                // Make XML path absolute if relative
+                if (xmlPathObj.is_relative()) {
+                    xmlPathObj = std::filesystem::current_path() / xmlPathObj;
+                }
+
+                // Check if Python script exists
+                if (std::filesystem::exists(scriptPath)) {
+                    // Redirect stderr to temporary file for detailed error capture
+                    std::string errorLogPath = (xmlPathObj.parent_path() / "html_generation_error.log").string();
+                    std::string command =
+                        "python3 " + scriptPath.string() + " " + xmlPathObj.string() + " 2> " + errorLogPath;
+                    LOG_DEBUG("Executing HTML generation: {}", command);
+
+                    int result = std::system(command.c_str());
+
+                    if (result == 0) {
+                        std::string htmlPath = outputPath_;
+                        htmlPath.replace(htmlPath.find(".xml"), 4, ".html");
+                        LOG_INFO("HTML report generated: {}", htmlPath);
+
+                        // Clean up error log if successful
+                        std::filesystem::remove(errorLogPath);
+                    } else {
+                        LOG_WARN("Failed to generate HTML report (exit code: {})", result);
+
+                        // Read and log error details if available
+                        std::ifstream errorLog(errorLogPath);
+                        if (errorLog.is_open()) {
+                            std::string errorLine;
+                            LOG_DEBUG("Python script error details:");
+                            while (std::getline(errorLog, errorLine)) {
+                                LOG_DEBUG("  {}", errorLine);
+                            }
+                            errorLog.close();
+                        }
+                    }
+                } else {
+                    LOG_DEBUG("HTML generation script not found: {}", scriptPath.string());
+                }
             }
 
             // Do not show console summary - let main runner handle it
@@ -908,6 +968,7 @@ TestReport W3CTestRunner::runSingleTest(const std::string &testDirectory) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
     report.engineType = "interpreter";  // Interpreter engine execution
+    report.testType = "interpreter";    // Interpreter runtime execution
 
     try {
         // Parse metadata
@@ -1397,6 +1458,7 @@ TestReport W3CTestRunner::runSingleTestWithHttpServer(const std::string &testDir
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
     report.engineType = "interpreter";  // Interpreter engine execution
+    report.testType = "interpreter";    // Interpreter runtime execution
 
     try {
         // Parse metadata
@@ -1554,6 +1616,7 @@ TestReport W3CTestRunner::runAotTest(int testId) {
         report.timestamp = std::chrono::system_clock::now();
         report.testId = std::to_string(testId);
         report.engineType = "aot";
+        report.testType = registryTest->getTestType();  // pure_static or static_hybrid based on Policy::NEEDS_JSENGINE
 
         auto startTime = std::chrono::steady_clock::now();
 
@@ -1595,7 +1658,8 @@ TestReport W3CTestRunner::runAotTest(int testId) {
     TestReport report;
     report.timestamp = std::chrono::system_clock::now();
     report.testId = std::to_string(testId);
-    report.engineType = "aot";  // AOT engine execution (static generated code)
+    report.engineType = "aot";                 // AOT engine execution (static generated code)
+    report.testType = "interpreter_fallback";  // Uses Interpreter engine via wrapper
 
     auto startTime = std::chrono::steady_clock::now();
 
