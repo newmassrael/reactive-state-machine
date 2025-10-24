@@ -573,6 +573,7 @@ rsm_generate_static_w3c_test(412 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.3.2: i
 rsm_generate_static_w3c_test(413 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.13: parallel initial states with space-separated state IDs
 rsm_generate_static_w3c_test(415 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.7.1: manual test (no Pass state)
 rsm_generate_static_w3c_test(416 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.3.2: done.state.id event generation for compound states
+rsm_generate_static_w3c_test(417 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.7.1: done.state event for parallel states
 rsm_generate_static_w3c_test(579 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: default history content execution
 rsm_generate_static_w3c_test(580 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: history state not in configuration (parallel)
 rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.4: auto-discovers test239sub1.txml

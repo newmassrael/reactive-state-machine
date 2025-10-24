@@ -1,21 +1,23 @@
 {#
     Entry/Exit Actions Template (Jinja2)
 
-    Last Modified: 2025-10-23
+    Last Modified: 2025-10-24
     ARCHITECTURE.md Version: 2025-10-23
 
     ARCHITECTURE.md Compliance (Lines 311-491):
-    - Zero Duplication: Uses DoneDataHelper for param/content evaluation
-    - Single Source of Truth: All W3C SCXML 5.5/5.7 logic in helper class
-    - Long-Term Correctness: No workarounds, complete implementation
+    - Zero Duplication: Uses shared Helper classes for all W3C SCXML semantics
+    - Single Source of Truth: All logic delegated to Helper classes shared with Interpreter
+    - Long-Term Correctness: No workarounds, complete W3C SCXML implementation
 
     Helper Classes Used:
     - DoneDataHelper: W3C SCXML 5.5/5.7 (donedata param/content evaluation)
+    - ParallelCompletionHelper: W3C SCXML 3.4/3.7.1 (parallel state completion detection)
     - HistoryHelper: W3C SCXML 3.11 (history state recording)
     - AssignHelper: W3C SCXML 5.3/5.4 (location validation)
 
     Features Implemented:
     - W3C SCXML 3.4: Parallel state auto-entry (enter all child regions)
+    - W3C SCXML 3.7.1: Parallel state done.state event generation
     - W3C SCXML 3.8: Onexit handlers with datamodel updates
     - W3C SCXML 3.9: Entry/exit action execution
     - W3C SCXML 6.4: Static invoke lifecycle management
@@ -190,6 +192,24 @@
                     LOG_DEBUG("Final state {{ state_id }} entered, generating done.state.{{ state.parent }}");
                     engine.raise(typename Engine::EventWithMetadata(Event::Done_state_{{ state.parent }}));
                 }
+{% if model.states[state.parent].parent and model.states[model.states[state.parent].parent].is_parallel %}
+                // W3C SCXML 3.4: Check if parent's parent (parallel state) is complete
+                // W3C SCXML 3.7.1: Generate done.state event when all regions reach final states
+                // Uses ParallelCompletionHelper (Zero Duplication - shared with Interpreter)
+                {
+                    const auto parallelState = State::{{ model.states[state.parent].parent | capitalize }};
+                    LOG_DEBUG("Checking parallel state {} completion after region {} final",
+                             static_cast<int>(parallelState), "{{ state.parent }}");
+
+                    // W3C SCXML 3.4: Use shared Helper (ARCHITECTURE.md Zero Duplication Principle)
+                    if (::RSM::ParallelCompletionHelper::areAllRegionsInFinal<State, {{ model.name }}Policy>(
+                            parallelState, activeStates_)) {
+                        LOG_DEBUG("All regions of parallel state {} are complete, generating done.state event",
+                                 static_cast<int>(parallelState));
+                        engine.raise(typename Engine::EventWithMetadata(Event::Done_state_{{ model.states[state.parent].parent }}));
+                    }
+                }
+{% endif %}
 {% endif %}
                 }
 {% endif %}

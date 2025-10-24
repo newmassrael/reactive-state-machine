@@ -194,9 +194,12 @@ class SCXMLParser:
         
         # W3C SCXML 3.4: Compute parallel regions (child states of parallel states)
         self._compute_parallel_regions()
-        
+
         # W3C SCXML 3.13: Check if any transitions have actions (for static optimization)
         self._detect_transition_actions()
+
+        # W3C SCXML 3.7: Add done.state events for states with final children
+        self._add_done_state_events()
 
         return self.model
 
@@ -1218,6 +1221,31 @@ class SCXMLParser:
         
         # No transition actions found
         self.model.has_transition_actions = False
+
+    def _add_done_state_events(self):
+        """
+        Add done.state events for states with final children (W3C SCXML 3.7)
+
+        When a state has final child states, done.state.{state_id} events
+        will be generated automatically at runtime. These need to be added
+        to the event enum for compile-time type safety.
+        """
+        for state_id, state in self.model.states.items():
+            # Skip parallel states (they use different done.state generation logic)
+            if state.is_parallel:
+                continue
+
+            # Check if this state has any final children
+            has_final_child = False
+            for child_id, child_state in self.model.states.items():
+                if child_state.parent == state_id and child_state.is_final:
+                    has_final_child = True
+                    break
+
+            # If state has final children, add done.state.{state_id} event
+            if has_final_child:
+                done_event = f"done.state.{state_id}"
+                self.model.events.add(done_event)
 
     def _detect_features(self):
         """
