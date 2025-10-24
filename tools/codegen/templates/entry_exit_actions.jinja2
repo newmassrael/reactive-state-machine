@@ -37,7 +37,7 @@
         switch (state) {
 {% for state_id, state in model.states.items() %}
             case State::{{ state_id | capitalize }}:
-{% if state.on_entry or state.static_invokes or (state.is_final and state.donedata) %}
+{% if state.on_entry or state.static_invokes or (state.is_final and state.donedata) or (state.is_final and state.parent) %}
                 {
 {% if state.static_invokes %}
                 // W3C SCXML 6.4: Start invoke elements
