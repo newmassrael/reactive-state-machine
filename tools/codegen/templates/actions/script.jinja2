@@ -3,7 +3,7 @@
     this->ensureJSEngine();
     auto& jsEngine = ::RSM::JSEngine::instance();
     {% if action.content %}
-    auto scriptResult = jsEngine.executeScript(sessionId_.value(), R"({{ action.content | escape_cpp }})").get();
+    auto scriptResult = jsEngine.executeScript(sessionId_.value(), "{{ action.content | escape_cpp }}").get();
     if (!::RSM::JSEngine::isSuccess(scriptResult)) {
         std::string errorMsg = "Script execution failed";
         LOG_ERROR("{}", errorMsg);
