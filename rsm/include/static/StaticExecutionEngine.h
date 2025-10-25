@@ -94,12 +94,30 @@ private:
         LOG_DEBUG("AOT handleHierarchicalTransition: Transition {} -> {}", static_cast<int>(oldState),
                   static_cast<int>(newState));
 
-        // W3C SCXML 3.12: Find LCA and build exit/entry chains
-        auto lca = RSM::Common::HierarchicalStateHelper<StatePolicy>::findLCA(oldState, newState);
+        // W3C SCXML 3.13: Internal transitions do not exit source state
+        // For internal transitions, treat source state as LCA (exit only descendants)
+        std::optional<State> lca;
+        State effectiveOldState = oldState;
+        if (policy_.lastTransitionIsInternal_) {
+            // W3C SCXML 3.13: Internal transition - use target as oldState (exit and re-enter target)
+            // The transition source is the compound state, but we need to exit/re-enter the target child
+            effectiveOldState = newState;  // Exit from and re-enter to the same state
+            lca = oldState;                // Source is the LCA - don't exit it
+            LOG_DEBUG(
+                "AOT handleHierarchicalTransition: Internal transition - source {} is LCA, exit/re-enter target {}",
+                static_cast<int>(oldState), static_cast<int>(newState));
+        } else {
+            // W3C SCXML 3.12: Find LCA and build exit/entry chains
+            lca = RSM::Common::HierarchicalStateHelper<StatePolicy>::findLCA(oldState, newState);
+        }
+
+        // Use effectiveOldState for exit chain calculation
+        State oldStateForExit = effectiveOldState;
 
         if (lca.has_value()) {
             // W3C SCXML 3.13: Exit states from oldState up to (but not including) LCA
-            auto exitChain = RSM::Common::HierarchicalStateHelper<StatePolicy>::buildExitChain(oldState, lca.value());
+            auto exitChain =
+                RSM::Common::HierarchicalStateHelper<StatePolicy>::buildExitChain(oldStateForExit, lca.value());
             for (const auto &state : exitChain) {
                 LOG_DEBUG("AOT handleHierarchicalTransition: Hierarchical exit state {}", static_cast<int>(state));
                 executeOnExit(state, preTransitionStates);

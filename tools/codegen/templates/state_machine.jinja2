@@ -87,9 +87,10 @@ struct TransitionInfo {
     State target;              // Target state of transition
     int transitionIndex;       // Index of transition in source state (for executeTransitionActions)
     bool hasActions;           // Whether transition has executable content
+    bool isInternal;           // W3C SCXML 3.13: Whether transition is type="internal"
 
-    TransitionInfo(State src, State tgt, int idx, bool actions)
-        : source(src), target(tgt), transitionIndex(idx), hasActions(actions) {}
+    TransitionInfo(State src, State tgt, int idx, bool actions, bool internal = false)
+        : source(src), target(tgt), transitionIndex(idx), hasActions(actions), isInternal(internal) {}
 };
 
 {# Policy class #}
@@ -238,6 +239,7 @@ struct {{ model.name }}Policy {
     mutable size_t lastTransitionIndex_ = 0;
     mutable bool hasTransitionActions_ = false;
 {% endif %}
+    mutable bool lastTransitionIsInternal_ = false;  // W3C SCXML 3.13: Track internal transition type
     // Default constructor (lazy initialization, no immediate resource allocation)
     {{ model.name }}Policy() = default;
 

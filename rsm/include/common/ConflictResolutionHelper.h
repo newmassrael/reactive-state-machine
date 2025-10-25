@@ -2,6 +2,7 @@
 
 #include "common/HierarchicalStateHelper.h"
 #include "common/Logger.h"
+#include "common/ParallelTransitionHelper.h"
 #include <algorithm>
 #include <optional>
 #include <vector>
@@ -53,11 +54,12 @@ public:
         std::vector<State> exitSet;
         int transitionIndex = 0;
         bool hasActions = false;  // W3C SCXML 3.13: Transition action metadata
+        bool isInternal = false;  // W3C SCXML 3.13: Whether transition is type="internal"
 
         TransitionDescriptor() = default;
 
-        TransitionDescriptor(State src, State tgt, int idx = 0, bool actions = false)
-            : source(src), target(tgt), transitionIndex(idx), hasActions(actions) {}
+        TransitionDescriptor(State src, State tgt, int idx = 0, bool actions = false, bool internal = false)
+            : source(src), target(tgt), transitionIndex(idx), hasActions(actions), isInternal(internal) {}
     };
 
     /**
@@ -66,11 +68,8 @@ public:
      * @details
      * W3C SCXML Appendix D.2: Exit set = states from source up to (but not including) LCA
      *
-     * Algorithm:
-     * 1. Build path from source to root
-     * 2. Build path from target to root
-     * 3. Find Least Common Ancestor (LCA)
-     * 4. Collect all states from source up to (but not including) LCA
+     * ARCHITECTURE.md Zero Duplication: Delegates to ParallelTransitionHelper for exit set computation.
+     * Single Source of Truth - same algorithm used by AOT engine microstep execution.
      *
      * @param source Source state of transition
      * @param target Target state of transition
@@ -92,55 +91,17 @@ public:
      * @endcode
      */
     static std::vector<State> computeExitSet(State source, State target) {
-        std::vector<State> exitSet;
+        // ARCHITECTURE.MD Zero Duplication: Delegate to ParallelTransitionHelper
+        // Construct minimal Transition descriptor for exit set computation
+        typename ParallelTransitionHelper::Transition<State> trans;
+        trans.source = source;
+        trans.targets = {target};
 
-        // Build path from source to root
-        std::vector<State> sourcePath;
-        State current = source;
-        sourcePath.push_back(current);
+        // W3C SCXML Appendix D.2: Use shared Helper for exit set computation
+        auto exitSetUnordered = ParallelTransitionHelper::computeExitSet<State, StatePolicy>(trans);
 
-        while (true) {
-            auto parent = StatePolicy::getParent(current);
-            if (!parent.has_value()) {
-                break;
-            }
-            current = parent.value();
-            sourcePath.push_back(current);
-        }
-
-        // Build path from target to root
-        std::vector<State> targetPath;
-        current = target;
-        targetPath.push_back(current);
-
-        while (true) {
-            auto parent = StatePolicy::getParent(current);
-            if (!parent.has_value()) {
-                break;
-            }
-            current = parent.value();
-            targetPath.push_back(current);
-        }
-
-        // Find LCA (Least Common Ancestor)
-        State lca = sourcePath.back();  // Root by default
-        for (State s : sourcePath) {
-            for (State t : targetPath) {
-                if (s == t) {
-                    lca = s;
-                    goto found_lca;
-                }
-            }
-        }
-    found_lca:
-
-        // Add all states from source up to (but not including) LCA
-        for (State s : sourcePath) {
-            if (s == lca) {
-                break;
-            }
-            exitSet.push_back(s);
-        }
+        // Convert unordered_set to vector for conflict resolution algorithm
+        std::vector<State> exitSet(exitSetUnordered.begin(), exitSetUnordered.end());
 
         LOG_DEBUG("ConflictResolutionHelper::computeExitSet: Transition {} -> {} exits {} states",
                   static_cast<int>(source), static_cast<int>(target), exitSet.size());
@@ -313,11 +274,13 @@ struct ConflictResolutionHelperString {
         std::vector<std::string> exitSet;
         int transitionIndex = 0;
         bool hasActions = false;  // W3C SCXML 3.13: Transition action metadata
+        bool isInternal = false;  // W3C SCXML 3.13: Whether transition is type="internal"
 
         TransitionDescriptor() = default;
 
-        TransitionDescriptor(std::string src, std::string tgt, int idx = 0, bool actions = false)
-            : source(std::move(src)), target(std::move(tgt)), transitionIndex(idx), hasActions(actions) {}
+        TransitionDescriptor(std::string src, std::string tgt, int idx = 0, bool actions = false, bool internal = false)
+            : source(std::move(src)), target(std::move(tgt)), transitionIndex(idx), hasActions(actions),
+              isInternal(internal) {}
     };
 
     /**

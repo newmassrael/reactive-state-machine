@@ -29,14 +29,15 @@ public:
         // W3C SCXML 3.13: Additional metadata for AOT engine compatibility
         int transitionIndex = 0;  // Index for executeTransitionActions
         bool hasActions = false;  // Whether transition has executable content
+        bool isInternal = false;  // W3C SCXML 3.13: Whether transition is type="internal"
 
         Transition() = default;
 
         Transition(StateType src, std::vector<StateType> tgts) : source(src), targets(std::move(tgts)) {}
 
         // Constructor with full metadata (for AOT engine)
-        Transition(StateType src, std::vector<StateType> tgts, int idx, bool actions)
-            : source(src), targets(std::move(tgts)), transitionIndex(idx), hasActions(actions) {}
+        Transition(StateType src, std::vector<StateType> tgts, int idx, bool actions, bool internal = false)
+            : source(src), targets(std::move(tgts)), transitionIndex(idx), hasActions(actions), isInternal(internal) {}
     };
 
     /**
@@ -232,8 +233,14 @@ public:
             }
 
             for (const auto &target : trans.targets) {
-                // Find LCA of source and target
-                auto lca = RSM::Common::HierarchicalStateHelper<PolicyType>::findLCA(trans.source, target);
+                // W3C SCXML 3.13: Internal transitions do not exit source state
+                // For internal transitions, treat source state as LCA (exit only descendants)
+                std::optional<StateType> lca;
+                if (trans.isInternal) {
+                    lca = trans.source;  // Source is the LCA - don't exit it
+                } else {
+                    lca = RSM::Common::HierarchicalStateHelper<PolicyType>::findLCA(trans.source, target);
+                }
 
                 if (!lca.has_value()) {
                     // No LCA found - exit from source up to root

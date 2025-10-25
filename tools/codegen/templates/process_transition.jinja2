@@ -68,7 +68,7 @@
                     if (collectMode != nullptr) {
                         // Collection mode: Store transition info, don't execute
                         LOG_DEBUG("AOT processTransition: Collecting transition {} -> {}", static_cast<int>(checkState), static_cast<int>(State::{{ trans.target | capitalize }}));
-                        collectMode->push_back(TransitionInfo(checkState, State::{{ trans.target | capitalize }}, {{ trans_index }}, {{ 'true' if trans.actions else 'false' }}));
+                        collectMode->push_back(TransitionInfo(checkState, State::{{ trans.target | capitalize }}, {{ trans_index }}, {{ 'true' if trans.actions else 'false' }}, {{ 'true' if trans.type == 'internal' else 'false' }}));
                         transitionTaken = true;
                     } else {
                         // Immediate execution mode
@@ -326,7 +326,8 @@ private:
                 trans.source,
                 ::std::vector<State>{trans.target},
                 trans.transitionIndex,
-                trans.hasActions
+                trans.hasActions,
+                trans.isInternal
             );
         }
 
@@ -487,6 +488,10 @@ private:
                     lastTransitionIndex_ = {{ event_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if trans.actions else 'false' }};
 {% endif %}
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.13: Track internal transition type
+                    lastTransitionIsInternal_ = {{ 'true' if trans.type == 'internal' else 'false' }};
+{% endif %}
 {{ transition_execution_or_collection(trans, event_transition_indices[loop.index0]) }}
                     return true;  // Transition found
                 }
@@ -501,6 +506,10 @@ private:
 // W3C SCXML 3.13: Store transition for deferred execution (use original index)
                     lastTransitionIndex_ = {{ event_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if trans.actions else 'false' }};
+{% endif %}
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.13: Track internal transition type
+                    lastTransitionIsInternal_ = {{ 'true' if trans.type == 'internal' else 'false' }};
 {% endif %}
 {{ transition_execution_or_collection(trans, event_transition_indices[loop.index0]) }}
                     return true;  // Transition found
@@ -563,6 +572,10 @@ private:
                     lastTransitionIndex_ = {{ eventless_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if transition.actions else 'false' }};
 {% endif %}
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.13: Track internal transition type
+                    lastTransitionIsInternal_ = {{ 'true' if transition.type == 'internal' else 'false' }};
+{% endif %}
 {{ transition_execution_or_collection(transition, eventless_transition_indices[loop.index0]) }}
                     return true;  // Eventless transition found
 {% endfor %}
@@ -586,6 +599,10 @@ private:
 // W3C SCXML 3.13: Store transition for deferred execution (use original index)
                     lastTransitionIndex_ = {{ eventless_transition_indices[loop.index0] }};
                     hasTransitionActions_ = {{ 'true' if transition.actions else 'false' }};
+{% endif %}
+{% if model.needs_jsengine or model.static_invokes or model.needs_event_scheduler or model.has_transition_actions %}
+// W3C SCXML 3.13: Track internal transition type
+                    lastTransitionIsInternal_ = {{ 'true' if transition.type == 'internal' else 'false' }};
 {% endif %}
 {{ transition_execution_or_collection(transition, eventless_transition_indices[loop.index0]) }}
                     return true;  // Unconditional eventless transition
