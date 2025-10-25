@@ -33,7 +33,7 @@ if (!::RSM::JSEngine::isSuccess(targetResult)) {
     LOG_ERROR("Failed to evaluate targetexpr: {{ action.targetexpr }}");
     engine.raise(typename Engine::EventWithMetadata(Event::Error_execution));
 }
-dynamicTarget = ::RSM::JSEngine::resultToString(targetResult);
+dynamicTarget = ::RSM::JSEngine::resultToString(targetResult, sessionId_.value(), "{{ action.targetexpr | escape_cpp }}");
 {% else %}
 {% if action.targetexpr == '_event.origin' %}
 dynamicTarget = pendingEventOrigin_;
@@ -41,11 +41,20 @@ dynamicTarget = pendingEventOrigin_;
 dynamicTarget = {{ action.targetexpr }};
 {% endif %}
 {% endif %}
+// W3C SCXML 6.2 (test 159, 194): Invalid target raises error.execution and stops subsequent content
 if (::RSM::SendHelper::isInvalidTarget(dynamicTarget)) {
 {% if model.needs_jsengine or model.needs_event_origin %}
     pendingEventSendId_ = sendId;
 {% endif %}
     engine.raise(typename Engine::EventWithMetadata(Event::Error_execution, "", "", sendId));
+    return;  // W3C SCXML 5.10: Stop execution of subsequent executable content
+}
+
+// W3C SCXML C.1 (test 496): Check for unreachable target using SendHelper (ARCHITECTURE.md Zero Duplication)
+if (::RSM::SendHelper::isUnreachableTarget(dynamicTarget)) {
+    LOG_ERROR("Send target evaluation resulted in invalid target: '{}'", dynamicTarget);
+    engine.raise(typename Engine::EventWithMetadata(Event::Error_communication));
+    return;  // W3C SCXML 5.10: Stop execution of subsequent executable content
 }
 {% elif action.target %}
 {% if action.target == '#_parent' %}

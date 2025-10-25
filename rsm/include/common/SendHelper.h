@@ -77,6 +77,27 @@ public:
     }
 
     /**
+     * @brief Check if target is unreachable or inaccessible (W3C SCXML C.1)
+     *
+     * Single Source of Truth for unreachable target detection logic.
+     * ARCHITECTURE.md: Zero Duplication - used by both Interpreter and AOT engines.
+     *
+     * Usage:
+     * - Interpreter: ActionExecutorImpl::executeSendAction() (rsm/src/runtime/ActionExecutorImpl.cpp)
+     * - AOT: StaticCodeGenerator send.jinja2 template (tools/codegen/templates/actions/send.jinja2)
+     *
+     * W3C SCXML C.1 (test 496): Empty or "undefined" target evaluation results
+     * indicate unreachable or inaccessible target sessions, requiring error.communication.
+     *
+     * @param target Target string evaluated from targetexpr
+     * @return true if target is unreachable (empty or "undefined"), false otherwise
+     */
+    static bool isUnreachableTarget(const std::string &target) {
+        // W3C SCXML C.1: Empty or "undefined" targets are unreachable
+        return target.empty() || target == "undefined";
+    }
+
+    /**
      * @brief Generate unique sendid (Single Source of Truth)
      *
      * Used by both Interpreter and AOT engines to ensure consistent sendid format.

@@ -803,10 +803,9 @@ bool ActionExecutorImpl::executeSendAction(const SendAction &action) {
             return false;
         }
 
-        // W3C SCXML C.1 (test 496): If target evaluation results in empty or undefined, raise error.communication
-        // This handles unreachable or inaccessible target sessions
+        // W3C SCXML C.1 (test 496): Check for unreachable target using SendHelper (ARCHITECTURE.md Zero Duplication)
         // Note: Only applies when targetexpr is explicitly set, not for normal internal sends
-        if (!action.getTargetExpr().empty() && (target.empty() || target == "undefined")) {
+        if (!action.getTargetExpr().empty() && SendHelper::isUnreachableTarget(target)) {
             LOG_ERROR("ActionExecutorImpl: Send target evaluation resulted in invalid target: '{}'", target);
             if (eventRaiser_) {
                 eventRaiser_->raiseEvent("error.communication",

@@ -651,6 +651,10 @@ class SCXMLParser:
                     self.model.has_dynamic_expressions = True
                     self.model.needs_jsengine = True
 
+                # W3C SCXML C.1 (test 496): targetexpr may result in unreachable target → error.communication
+                if action['targetexpr']:
+                    self.model.events.add('error.communication')
+
                 if action['event']:
                     self.model.events.add(action['event'])
 
