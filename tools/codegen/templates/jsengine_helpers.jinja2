@@ -14,6 +14,14 @@
         auto& jsEngine = ::RSM::JSEngine::instance();
         jsEngine.createSession(sessionId_.value());
 
+        // W3C SCXML 5.10: Setup system variables (_sessionid, _name, _ioprocessors) using SystemVariableHelper
+        // ARCHITECTURE.md Zero Duplication: SystemVariableHelper provides Single Source of Truth
+        std::vector<std::string> ioProcessors = {"scxml"};  // W3C SCXML I/O Processors
+        auto setupResult = ::RSM::SystemVariableHelper::setupSystemVariables(sessionId_.value(), "{{ model.name }}", ioProcessors).get();
+        if (!setupResult.isSuccess()) {
+            LOG_ERROR("AOT ensureJSEngine: Failed to setup system variables: {}", setupResult.getErrorMessage());
+        }
+
 {% for var in model.variables %}
 {% if var.expr %}
         auto initExpr_{{ var.id }} = jsEngine.evaluateExpression(sessionId_.value(), "{{ var.expr | escape_cpp }}").get();
@@ -64,6 +72,14 @@
         if (!sessionId_.has_value()) return;
         auto& jsEngine = ::RSM::JSEngine::instance();
         jsEngine.createSession(sessionId_.value());
+
+        // W3C SCXML 5.10: Setup system variables (_sessionid, _name, _ioprocessors) using SystemVariableHelper
+        // ARCHITECTURE.md Zero Duplication: SystemVariableHelper provides Single Source of Truth
+        std::vector<std::string> ioProcessors = {"scxml"};  // W3C SCXML I/O Processors
+        auto setupResult = ::RSM::SystemVariableHelper::setupSystemVariables(sessionId_.value(), "{{ model.name }}", ioProcessors).get();
+        if (!setupResult.isSuccess()) {
+            LOG_ERROR("AOT initializeDataModel: Failed to setup system variables: {}", setupResult.getErrorMessage());
+        }
 {% if not model.variables %}
         (void)engine;  // No variables to initialize
 {% endif %}
