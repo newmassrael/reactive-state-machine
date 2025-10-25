@@ -593,6 +593,7 @@ rsm_generate_static_w3c_test(459 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.4: for
 rsm_generate_static_w3c_test(460 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 4.6: foreach shallow copy semantics with array modification
 rsm_generate_static_w3c_test(487 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.3/5.4: illegal assignment error.execution event
 rsm_generate_static_w3c_test(488 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 5.7: error handling in donedata param expressions
+rsm_generate_static_w3c_test(495 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.2: SCXML Event I/O Processor internal vs external queue handling
 rsm_generate_static_w3c_test(579 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: default history content execution
 rsm_generate_static_w3c_test(580 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 3.11: history state not in configuration (parallel)
 rsm_generate_static_w3c_test(239 ${STATIC_W3C_OUTPUT_DIR})  # W3C SCXML 6.4: auto-discovers test239sub1.txml

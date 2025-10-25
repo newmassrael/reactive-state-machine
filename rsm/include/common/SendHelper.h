@@ -39,9 +39,13 @@ public:
      * @brief Check if target should use internal event queue (W3C SCXML C.1)
      *
      * Single Source of Truth for internal queue routing logic.
-     * Used by AOT engine to determine which queue to use for raise operations.
+     * ARCHITECTURE.md: Zero Duplication - used by both Interpreter and AOT engines.
      *
-     * W3C SCXML C.1 (test189): Events with target="#_internal" must go to
+     * Usage:
+     * - Interpreter: EventTargetFactoryImpl::createTarget() (rsm/src/events/EventTargetFactoryImpl.cpp)
+     * - AOT: StaticCodeGenerator send.jinja2 template (tools/codegen/templates/actions/send.jinja2)
+     *
+     * W3C SCXML C.1 (test189, test495): Events with target="#_internal" must go to
      * the internal event queue, which has higher priority than external queue.
      *
      * @param target Target to check

@@ -1,5 +1,6 @@
 #include "events/EventTargetFactoryImpl.h"
 #include "common/Logger.h"
+#include "common/SendHelper.h"
 #include "events/EventRaiserService.h"
 #include "events/HttpEventTarget.h"
 #include "events/InternalEventTarget.h"
@@ -49,8 +50,9 @@ std::shared_ptr<IEventTarget> EventTargetFactoryImpl::createTarget(const std::st
         return createExternalTarget(sessionId);
     }
 
-    // Handle special internal target URI
-    if (targetUri == "#_internal") {
+    // W3C SCXML C.1: Handle special internal target URI
+    // ARCHITECTURE.md: Zero Duplication - use SendHelper (Single Source of Truth)
+    if (SendHelper::isInternalTarget(targetUri)) {
         return createInternalTarget(targetUri, sessionId);
     }
 
